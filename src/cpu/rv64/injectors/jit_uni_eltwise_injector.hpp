@@ -17,6 +17,8 @@
 #ifndef CPU_RV64_INJECTORS_JIT_UNI_ELTWISE_INJECTOR_HPP
 #define CPU_RV64_INJECTORS_JIT_UNI_ELTWISE_INJECTOR_HPP
 
+#include <array>
+#include <cstdint>
 #include <vector>
 
 #include "common/c_types_map.hpp"
@@ -45,7 +47,9 @@ struct static_params_t {
             const Xbyak_riscv::VReg &v_aux1, const Xbyak_riscv::VReg &v_aux2,
             const Xbyak_riscv::VReg &v_aux3, const Xbyak_riscv::VReg &v_aux4,
             const Xbyak_riscv::FReg &f_aux0, const Xbyak_riscv::FReg &f_aux1,
-            const Xbyak_riscv::Reg &gpr_aux0, bool is_fwd)
+            const Xbyak_riscv::Reg &gpr_aux0, bool is_fwd,
+            const Xbyak_riscv::FReg *hoist_fregs = nullptr,
+            size_t hoist_fregs_count = 0)
         : v_aux0(v_aux0)
         , v_aux1(v_aux1)
         , v_aux2(v_aux2)
@@ -54,7 +58,9 @@ struct static_params_t {
         , f_aux0(f_aux0)
         , f_aux1(f_aux1)
         , gpr_aux0(gpr_aux0)
-        , is_fwd(is_fwd) {}
+        , is_fwd(is_fwd)
+        , hoist_fregs(hoist_fregs)
+        , hoist_fregs_count(hoist_fregs_count) {}
 
     // Up to five vector scratch groups (same LMUL as the host accumulator).
     // Forward arithmetic algorithms use at most v_aux0; exp/logistic use
@@ -69,6 +75,16 @@ struct static_params_t {
     Xbyak_riscv::Reg gpr_aux0; // one GPR scratch for constant materialization
     // Forward (d = alg(s)) or backward (ds = alg'(s)).
     bool is_fwd;
+    // Optional pool of dedicated FP registers that stay live across the
+    // fixed-VL main loop. When non-empty, the injector materializes each
+    // distinct FP coefficient at most once into a register drawn from this
+    // pool (the host emits the setup once before the loop, see
+    // emit_hoisted_constants()), and the loop body references those registers
+    // directly instead of re-running lui/addiw/fmv.w.x on every iteration.
+    // The host must guarantee the pool registers are dead before the loop and
+    // unused by the loop body outside the injector.
+    const Xbyak_riscv::FReg *hoist_fregs;
+    size_t hoist_fregs_count;
 };
 
 /*
@@ -120,7 +136,7 @@ struct jit_uni_eltwise_injector_t {
     //   spilling, and the mask register is architecturally v0).
     // use_dst is derived from alg: backward descriptors carry the
     //   *_use_dst_for_bwd kinds (x64 receives it as a constructor argument).
-    jit_uni_eltwise_injector_t(jit_generator_t *host, alg_kind_t alg,
+    jit_uni_eltwise_injector_t(Xbyak_riscv::CodeGenerator *host, alg_kind_t alg,
             float alpha, float beta, float scale,
             const eltwise_injector::static_params_t &sp)
         : alg_(alg)
@@ -144,7 +160,9 @@ struct jit_uni_eltwise_injector_t {
         , v_aux4_(sp.v_aux4)
         , f_aux0_(sp.f_aux0)
         , f_aux1_(sp.f_aux1)
-        , gpr_aux0_(sp.gpr_aux0) {
+        , gpr_aux0_(sp.gpr_aux0)
+        , hoist_fregs_(sp.hoist_fregs)
+        , hoist_fregs_count_(sp.hoist_fregs_count) {
         assert(eltwise_injector::is_supported(alg_));
         // An algorithm reaching into the 4th/5th group needs distinct
         // registers there; hosts without the budget alias v_aux4 = v_aux3 and
@@ -157,7 +175,7 @@ struct jit_uni_eltwise_injector_t {
                         v_aux1_.getIdx(), v_aux2_.getIdx(), v_aux3_.getIdx())));
     }
 
-    jit_uni_eltwise_injector_t(jit_generator_t *host,
+    jit_uni_eltwise_injector_t(Xbyak_riscv::CodeGenerator *host,
             const post_ops_t::entry_t::eltwise_t &e,
             const eltwise_injector::static_params_t &sp)
         : jit_uni_eltwise_injector_t(
@@ -182,6 +200,23 @@ struct jit_uni_eltwise_injector_t {
         compute_vector_range(idx, idx + group_stride, group_stride);
     }
 
+    // Loop-invariant FP coefficient hoisting. When static_params_t carries a
+    // pool of dedicated FP registers (see hoist_fregs/hoist_fregs_count), the
+    // injector materializes each distinct single-precision coefficient at most
+    // once into a register drawn from that pool and reuses the register at
+    // every use site, so a fixed-VL main loop body contains no per-iteration
+    // lui/addiw/fmv.w.x materialization. The host drives the two phases:
+    //   1. collect_hoisted_constants(vmm) - emits the algorithm body once into
+    //      a scratch generator (discarded) to discover the distinct
+    //      coefficients and reserve the pool registers;
+    //   2. emit_hoisted_constants() - emits the li+fmv.w.x setup once before
+    //      the loop; the loop body then reads the pre-set registers directly.
+    // Hosts that do not provide a pool keep the previous inline
+    // materialization behavior.
+    bool hoisting_enabled() const { return hoist_fregs_count_ > 0; }
+    void collect_hoisted_constants(const Vmm &vmm_src);
+    void emit_hoisted_constants();
+
     // This call is `static` and `public` so a host can size its
     // static_params_t before constructing the injector. Unlike x64 (which
     // counts exact spill slots), rv64 counts required aux vector *groups* at
@@ -196,7 +231,7 @@ private:
     const float beta_;
     const float scale_;
 
-    jit_generator_t *const h_;
+    Xbyak_riscv::CodeGenerator *const h_;
 
     const bool is_fwd_;
     const bool use_dst_;
@@ -212,11 +247,23 @@ private:
     // v0.t, so unlike x64's assignable k_mask this is not a parameter.
     const Xbyak_riscv::VReg vmm_mask_ = Xbyak_riscv::VReg(0);
 
+    // Loop-invariant FP coefficient hoisting state (empty pool = disabled).
+    const Xbyak_riscv::FReg *hoist_fregs_;
+    size_t hoist_fregs_count_;
+    size_t hoisted_count_ = 0;
+    // The register for entry i is hoist_fregs_[i]. A fixed-capacity table keeps
+    // primitive creation free of per-coefficient heap allocations.
+    static constexpr size_t max_hoisted_constants = 32;
+    std::array<uint32_t, max_hoisted_constants> hoisted_bits_ {};
+
     // Worker: applies the op to one register group, dispatching on
     // alg_/is_fwd_.
     void compute_body(const Vmm &vmm_src);
 
-    void load_f32_const(const Xbyak_riscv::FReg &f, float val);
+    // Returns the FP register holding `val` (materializing it into `f` inline
+    // when hoisting is disabled, or into a dedicated pool register when
+    // hoisting is enabled). Callers must use the returned register.
+    Xbyak_riscv::FReg load_f32_const(const Xbyak_riscv::FReg &f, float val);
     // NaN-preserving clamp(v, lo, hi); reuses f_aux0_/f_aux1_ and v0.
     void clamp(const Vmm &vmm_src, float lo, float hi);
     // Building blocks without an x64 analog (x64 keeps every algorithm

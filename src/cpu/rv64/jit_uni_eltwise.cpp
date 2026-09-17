@@ -105,13 +105,28 @@ namespace {
 struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_kernel)
 
-    jit_uni_kernel_t(const eltwise_pd_t *pd)
-        : jit_uni_eltwise_kernel_t(pd), is_fwd_(pd_->is_fwd()) {
+    jit_uni_kernel_t(const eltwise_pd_t *pd, bool hoist_constants)
+        : jit_uni_eltwise_kernel_t(pd)
+        , is_fwd_(pd_->is_fwd())
+        , hoist_constants_(hoist_constants) {
         const auto &desc = *pd_->desc();
         const VReg vmm_aux3 = is_fwd_ ? VReg(20) : VReg(24);
         const VReg vmm_aux4 = is_fwd_ ? VReg(24) : VReg(28);
+        // Dedicated FP registers for the injector's loop-invariant FP
+        // coefficients. All are caller-saved and unused by the rest of the
+        // kernel (fa0/fa1 are the injector's FP scratch), so the constants can
+        // be materialized once before the fixed-VL main loop and stay live
+        // across the backedge. ft0-ft7/f28-f31 and fa2-fa7 cover the exp-family
+        // (~15 distinct coefficients); any overflow falls back to inline
+        // materialization inside load_f32_const().
+        static const FReg hoist_fregs[] = {ft0, ft1, ft2, ft3, ft4, ft5, ft6,
+                ft7, fa2, fa3, fa4, fa5, fa6, fa7, ft8, ft9, ft10, ft11};
+        static constexpr size_t hoist_fregs_count
+                = sizeof(hoist_fregs) / sizeof(hoist_fregs[0]);
         eltwise_injector::static_params_t sp(VReg(8), VReg(12), VReg(16),
-                vmm_aux3, vmm_aux4, fa0, fa1, reg_tmp, is_fwd_);
+                vmm_aux3, vmm_aux4, fa0, fa1, reg_tmp, is_fwd_,
+                hoist_constants_ ? hoist_fregs : nullptr,
+                hoist_constants_ ? hoist_fregs_count : 0);
         eltwise_injector_.reset(new jit_uni_eltwise_injector_t<v>(
                 this, desc.alg_kind, desc.alpha, desc.beta, 1.f, sp));
     }
@@ -207,11 +222,8 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         }
     }
 
-    // One vector-length-agnostic pass over the `vl` elements the vsetvli in
-    // load_vector() grants (the analog of x64's compute_dst(tail): vsetvli
-    // subsumes the tail case).
+    // Compute and store the vector already loaded by load_vector().
     void compute_dst() {
-        load_vector();
         // load_vector() leaves the vtype at e32 / the dtype's compute LMUL:
         // f32 -> m2, f16/bf16 -> m4 (widened), s32/s8/u8 -> m4. The eltwise
         // injector is LMUL-agnostic, but pass the matching stride so its
@@ -223,27 +235,50 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         store_vector();
     }
 
-    void compute() {
+    void advance_vector() {
+        const int dsz = dtype_size();
+        if (dsz == 1) // s8 / u8
+            mv(reg_bytes, reg_vl);
+        else
+            slli(reg_bytes, reg_vl, dsz == 4 ? 2 : 1);
+        add(reg_src, reg_src, reg_bytes);
+        add(reg_dst, reg_dst, reg_bytes);
+        if (!is_fwd_) add(reg_diff_dst, reg_diff_dst, reg_bytes);
+        sub(reg_work_amount, reg_work_amount, reg_vl);
+    }
+
+    void compute_inline() {
         Label loop_start, loop_end;
 
         L(loop_start);
         {
             beqz(reg_work_amount, loop_end);
-
+            load_vector();
             compute_dst();
+            advance_vector();
+            j_(loop_start);
+        }
+        L(loop_end);
+    }
 
-            // Advance pointers by vl * sizeof(dtype) using the vl granted by
-            // vsetvli, not the requested work amount.
-            const int dsz = dtype_size();
-            if (dsz == 1) // s8 / u8
-                mv(reg_bytes, reg_vl);
-            else
-                slli(reg_bytes, reg_vl, dsz == 4 ? 2 : 1);
-            add(reg_src, reg_src, reg_bytes);
-            add(reg_dst, reg_dst, reg_bytes);
-            if (!is_fwd_) add(reg_diff_dst, reg_diff_dst, reg_bytes);
+    void compute_hoisted() {
+        Label loop_start, loop_end;
 
-            sub(reg_work_amount, reg_work_amount, reg_vl);
+        beqz(reg_work_amount, loop_end);
+
+        // Issue the first vector load before materializing the coefficients.
+        // This preserves the baseline's opportunity to overlap load/conversion
+        // latency with scalar constant setup. The loop backedge targets the
+        // compute body below, so the setup still executes exactly once.
+        load_vector();
+        eltwise_injector_->emit_hoisted_constants();
+
+        L(loop_start);
+        {
+            compute_dst();
+            advance_vector();
+            beqz(reg_work_amount, loop_end);
+            load_vector();
             j_(loop_start);
         }
         L(loop_end);
@@ -258,6 +293,15 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         if (!is_fwd_) ld(reg_diff_dst, param, GET_OFF(diff_dst));
         ld(reg_work_amount, param, GET_OFF(work_amount));
 
+        if (hoist_constants_) {
+            // Discover the injector's loop-invariant FP coefficients while
+            // generating the primitive, then materialize them once before the
+            // main loop. Small primitives generate only the original inline
+            // loop, so they pay neither a runtime dispatch nor duplicated JIT
+            // code.
+            eltwise_injector_->collect_hoisted_constants(vmm_src);
+        }
+
         // TODO: consider improving.
         // This piece of code is responsible for the preserve_zero function
         // being a natural restriction of this implementation. It works with any
@@ -268,7 +312,10 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         // there's a restriction on certain blocked layouts, when this behavior
         // can be relevantly easy controlled, this will cost much from code
         // perspective and will complicate the compute logic significantly.
-        compute();
+        if (hoist_constants_)
+            compute_hoisted();
+        else
+            compute_inline();
 
         ret();
     }
@@ -282,6 +329,7 @@ private:
     }
 
     const bool is_fwd_;
+    const bool hoist_constants_;
 
     Reg reg_src = a1;
     Reg reg_dst = a2;
@@ -300,6 +348,13 @@ private:
 
     std::unique_ptr<jit_uni_eltwise_injector_t<v>> eltwise_injector_;
 };
+
+constexpr dim_t hoist_min_work_amount = 2048;
+
+bool should_hoist_constants(dim_t nelems) {
+    const dim_t max_threads = dnnl_get_max_threads();
+    return utils::div_up(nelems, max_threads) >= hoist_min_work_amount;
+}
 
 } // namespace
 
@@ -355,7 +410,9 @@ jit_uni_eltwise_fwd_t<isa>::~jit_uni_eltwise_fwd_t() = default;
 
 template <cpu_isa_t isa>
 status_t jit_uni_eltwise_fwd_t<isa>::init(engine_t *engine) {
-    CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t(pd())));
+    const dim_t nelems = memory_desc_wrapper(pd()->src_md()).nelems(true);
+    CHECK(safe_ptr_assign(kernel_,
+            new jit_uni_kernel_t(pd(), should_hoist_constants(nelems))));
     return kernel_->create_kernel();
 }
 
@@ -447,7 +504,9 @@ jit_uni_eltwise_bwd_t<isa>::~jit_uni_eltwise_bwd_t() = default;
 
 template <cpu_isa_t isa>
 status_t jit_uni_eltwise_bwd_t<isa>::init(engine_t *engine) {
-    CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t(pd())));
+    const dim_t nelems = memory_desc_wrapper(pd()->data_md()).nelems(true);
+    CHECK(safe_ptr_assign(kernel_,
+            new jit_uni_kernel_t(pd(), should_hoist_constants(nelems))));
     return kernel_->create_kernel();
 }
 

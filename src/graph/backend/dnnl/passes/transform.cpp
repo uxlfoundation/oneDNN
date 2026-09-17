@@ -142,6 +142,32 @@ static bool is_reciprocal(const op_t *op) {
     return alpha == 1.f && beta == -1.f;
 }
 
+static bool is_host_f32_scalar(const value_ptr &value) {
+    const auto &lt = value->get_logical_tensor();
+    const ltw scale_lt(lt);
+    return scale_lt.is_host_scalar()
+            && scale_lt.data_type() == graph::data_type::f32;
+}
+
+// DynamicQuantize lowers to a multiply by the reciprocal of the scale; look
+// through the reciprocal when the quantization is its only consumer
+static value_ptr get_probs_quant_scale(const op_t *quant_op) {
+    value_ptr scale = quant_op->get_input_value(1);
+    if (scale->has_producer() && is_reciprocal(&scale->get_producer())
+            && scale->get_consumers().size() == 1) {
+        scale = scale->get_producer().get_input_value(0);
+    }
+    return scale;
+}
+
+static bool is_supported_probs_scale_pair(
+        const op_t *quant_op, const op_t *dequant_op) {
+    return quant_op->num_inputs() > 1 && dequant_op->num_inputs() > 1
+            && get_quant_mask(quant_op) == 0 && get_quant_mask(dequant_op) == 0
+            && is_host_f32_scalar(get_probs_quant_scale(quant_op))
+            && is_host_f32_scalar(dequant_op->get_input_value(1));
+}
+
 // replace mul_scales and add_zps with binary_mul and binary_add respectively
 status_t replace_quant_data_with_binary_post_op(
         std::shared_ptr<subgraph_t> &sg) {
@@ -4632,7 +4658,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         op_ptr walker = cur_op;
         bool valid_pattern = true;
         bool has_scale = false, has_mask = false, has_softmax = false,
-             has_dropout = false;
+             has_dropout = false, has_probs_quant = false;
         bool finished = false;
         while (walker && !finished) {
             pattern_ops.push_back(walker);
@@ -4670,6 +4696,13 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                     has_softmax = true;
                     break;
                 }
+                case op_kind::_mul_scales: {
+                    // P quantization; fuse_src_scales already moved the
+                    // dequantization into the VS matmul
+                    if (!has_softmax || has_probs_quant) valid_pattern = false;
+                    has_probs_quant = true;
+                    break;
+                }
                 case op_kind::_dropout: {
                     if (has_dropout) valid_pattern = false;
                     has_dropout = true;
@@ -4697,9 +4730,38 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
 
     if (candidates.empty()) return status::success;
 
+    // The primitive takes no output quantization yet, so don't fuse (and
+    // drop) any that was already folded into the VS matmul
+    if (candidates.back()->has_attr(op_attr::fusion_info)) {
+        const auto &vs_fusion_info = candidates.back()->get_attr<fusion_info_t>(
+                op_attr::fusion_info);
+        if (vs_fusion_info.with_runtime_scales(false, 0)
+                || vs_fusion_info.with_runtime_zero_points(false, 0))
+            return status::unimplemented;
+    }
+
     VCHECK_TRANSFORM(merge_gqa_quant_masks(candidates[0], candidates.back()),
             status::unimplemented,
             "quantization varies along only one of the merged GQA dims");
+
+    // The P dequantization was fused into the VS matmul as its src scales
+    op_ptr probs_quant, probs_dequant;
+    for (const auto &op : candidates)
+        if (op->get_kind() == op_kind::_mul_scales) probs_quant = op;
+    if (probs_quant && candidates.back()->has_attr(op_attr::fusion_info)) {
+        auto vs_fusion_info = candidates.back()->get_attr<fusion_info_t>(
+                op_attr::fusion_info);
+        if (op_t *dequant = vs_fusion_info.get_mutable_scales(true, 0))
+            probs_dequant = dequant->shared_from_this();
+    }
+    VCHECK_TRANSFORM(!probs_quant
+                    || (probs_dequant
+                            && is_supported_probs_scale_pair(
+                                    probs_quant.get(), probs_dequant.get())),
+            status::unimplemented,
+            "probability scales must be per-tensor f32 host scalars");
+    const value_ptr probs_dequant_scale
+            = probs_dequant ? probs_dequant->get_input_value(1) : nullptr;
 
     subgraph_rewriter_t rewriter(sg);
     op_ptr sdpa_op = std::make_shared<op_t>(op_kind::_sdpa);
@@ -4784,8 +4846,23 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         for (size_t idx = 2; idx < inputs.size(); ++idx) {
             const auto &qparam_val = inputs[idx];
             qparam_val->remove_consumer(*matmul, idx);
+            // connected after the quantization scale below
+            if (qparam_val == probs_dequant_scale) continue;
             sdpa_op->connect_input(input_idx++, qparam_val);
         }
+    }
+
+    if (probs_quant) {
+        const value_ptr quant_in = probs_quant->get_input_value(1);
+        const value_ptr quant_scale = get_probs_quant_scale(probs_quant.get());
+        quant_in->remove_consumer(*probs_quant, 1);
+        if (quant_scale != quant_in) {
+            op_t &inv_op = quant_in->get_producer();
+            quant_scale->remove_consumer(inv_op, 0);
+            rewriter.to_remove(inv_op.shared_from_this());
+        }
+        sdpa_op->connect_input(input_idx++, quant_scale);
+        sdpa_op->connect_input(input_idx++, probs_dequant_scale);
     }
 
     // Handle QK and VS accumulation modes
@@ -4838,6 +4915,11 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                             ->shared_from_this(),
                     true, DNNL_ARG_VALUES);
         }
+    }
+    if (probs_quant) {
+        sdpa_fusion_info.set_runtime_scales(probs_quant, true, DNNL_ARG_KQ_DST);
+        sdpa_fusion_info.set_runtime_scales(
+                probs_dequant, true, DNNL_ARG_PROBABILITIES);
     }
     sdpa_op->set_attr<fusion_info_t>(op_attr::fusion_info, sdpa_fusion_info);
 

@@ -2181,8 +2181,11 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(
                 input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        VDISPATCH_REORDER_IC(
-                IMPLICATION(!output_d.is_dense(), output_d.is_plain()),
+        VDISPATCH_REORDER_IC(output_d.is_dense(true) || output_d.is_plain(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        VDISPATCH_REORDER_IC(!output_d.has_broadcast(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        VDISPATCH_REORDER_IC(output_d.offset0() % 2 == 0,
                 VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         return status::success;
@@ -2201,8 +2204,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         DECLARE_COMMON_PARAMS();
         using namespace utils;
 
-        input += input_d.blk_off(0);
-        output += output_d.blk_off(0);
+        output += output_d.offset0() / 2;
 
         data_t<type_i> *wspace = const_cast<data_t<type_i> *>(input);
 
@@ -2210,8 +2212,9 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         // is to reorder the data from the input format to the output format
         // but within the same data type, and after the format reorder apply
         // the compression into int4 as on `abx` format.
-        const bool need_transform = !output_d.is_dense()
-                || output_d.strides()[output_d.ndims() - 1] != 1;
+        const bool need_transform = !output_d.is_dense() || !output_d.is_plain()
+                || output_d.strides()[output_d.ndims() - 1] != 1
+                || output_d.dims()[output_d.ndims() - 1] % 2 != 0;
         if (need_transform) {
             wspace = scratchpad.template get<data_t<type_i>>(
                     memory_tracking::names::key_reorder_space);
@@ -2241,7 +2244,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 PRAGMA_OMP_SIMD()
                 for (dim_t idx = start; idx < end; idx++) {
                     const auto i_off = input_d.off_l(idx);
-                    const auto o_off = output_d.off_l(idx);
+                    const auto o_off = output_d.off_l(idx) - output_d.offset0();
                     wspace[o_off] = input[i_off];
                 }
             });
@@ -2270,11 +2273,100 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         = need_transform ? idx + 1 : input_d.off_l(idx + 1);
                 auto val1 = _qz_a1b0<data_type::f32, type_o>()(wspace[i1_off]);
 
-                const auto o_off = need_transform ? idx : output_d.off_l(idx);
+                const auto o_off = need_transform
+                        ? idx
+                        : output_d.off_l(idx) - output_d.offset0();
                 nibble2_t o_val(val0.raw_bits_, val1.raw_bits_);
                 reinterpret_cast<uint8_t *>(output)[o_off / 2] = o_val.get();
             }
         });
+
+        return status::success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
+        typename utils::enable_if<tag_i == format_tag::any
+                        && tag_o == format_tag::any
+                        && type_i == data_type::f4_e2m1
+                        && type_o == data_type::f4_e2m1,
+                spec::reference>::type> {
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VDISPATCH_REORDER_IC(input_d.is_dense(true) || input_d.is_plain(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(output_d.is_dense(true) || output_d.is_plain(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        VDISPATCH_REORDER_IC(!output_d.has_broadcast(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        VDISPATCH_REORDER_IC(output_d.offset0() % 2 == 0,
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        VDISPATCH_REORDER_IC(
+                attr->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+
+        return status::success;
+    }
+
+    static bool can_use_direct_copy(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d) {
+        return input_d.is_dense() && output_d.is_dense()
+                && input_d.offset0() % 2 == 0
+                && input_d.similar_to(output_d, true, false, 0);
+    }
+
+    static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d) {
+        if (can_use_direct_copy(input_d, output_d)) return 0;
+        return output_d.size() * nibble2_t::nelems();
+    }
+
+    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+        DECLARE_COMMON_PARAMS();
+        using namespace utils;
+
+        const auto u8_input = reinterpret_cast<const uint8_t *>(input);
+        auto u8_output
+                = reinterpret_cast<uint8_t *>(output) + output_d.offset0() / 2;
+
+        if (can_use_direct_copy(input_d, output_d)) {
+            const size_t sz = input_d.size();
+            parallel(0, [=](const int ithr, const int nthr) {
+                size_t start {0}, end {0};
+                balance211(sz, nthr, ithr, start, end);
+                if (start < end) {
+                    std::memcpy(u8_output + start,
+                            u8_input + input_d.offset0() / 2 + start,
+                            end - start);
+                }
+            });
+        } else {
+            auto wspace = scratchpad.template get<uint8_t>(
+                    memory_tracking::names::key_reorder_space);
+            const dim_t work_amount = output_d.size();
+            parallel_nd(work_amount * 2, [=](dim_t idx) { wspace[idx] = 0; });
+
+            // Keep raw nibbles (including negative zero) in separate bytes so
+            // logical elements never race when their destination pair changes.
+            parallel_nd(input_d.nelems(), [=](dim_t idx) {
+                const auto i_off = input_d.off_l(idx);
+                const auto o_off = output_d.off_l(idx) - output_d.offset0();
+                wspace[o_off] = nibble2_t(u8_input[i_off / 2]).get(i_off % 2);
+            });
+
+            // One owner per output byte, including padding and an odd tail.
+            parallel(0, [=](const int ithr, const int nthr) {
+                dim_t start {0}, end {0};
+                balance211(work_amount, nthr, ithr, start, end);
+                PRAGMA_OMP_SIMD()
+                for (dim_t j = start; j < end; j++) {
+                    u8_output[j]
+                            = nibble2_t(wspace[2 * j], wspace[2 * j + 1]).get();
+                }
+            });
+        }
 
         return status::success;
     }
@@ -2294,9 +2386,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-        VDISPATCH_REORDER_IC(
-                input_d.nelems() % 2 == 0, "Unsupported dimensions");
-        VDISPATCH_REORDER_IC(input_d.is_plain() || input_d.is_dense(),
+        VDISPATCH_REORDER_IC(input_d.is_plain() || input_d.is_dense(true),
                 VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
         VDISPATCH_REORDER_IC(
                 output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
@@ -2319,9 +2409,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
     static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
         DECLARE_COMMON_PARAMS();
         using namespace utils;
-
-        input += input_d.blk_off(0);
-        output += output_d.blk_off(0);
 
         // TODO: optimization: use int8/f8 types for workspace to save memory.
         data_t<type_o> *wspace = scratchpad.template get<data_t<type_o>>(

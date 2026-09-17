@@ -106,7 +106,7 @@ int type_t::size() const {
     if (is_bool()) return div_up(elems(), 8);
     if (is_x4() || is_fp4()) return div_up(elems(), 2);
 
-    if (elems() != 1) return elems() * base().size();
+    if (elems() != 1) return elems() * scalar().size();
 
     switch (kind()) {
         case kind_t::u8:
@@ -201,8 +201,8 @@ bool is_subset(const type_t &a, const type_t &b) {
     if (a.is_tf32() && b.is_f32()) return true;
     if (a.is_fp() && b.is_int()) return false;
 
-    const auto a_bits = a.base().bitsize();
-    const auto b_bits = b.base().bitsize();
+    const auto a_bits = a.scalar().bitsize();
+    const auto b_bits = b.scalar().bitsize();
     if (is_untyped(a) && is_untyped(b)) return a_bits <= b_bits;
     if (is_untyped(a) || is_untyped(b)) return false; // unordered
     if (a.is_int() && b.is_fp())

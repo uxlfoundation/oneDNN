@@ -76,6 +76,7 @@ public:
     hw_t() = default;
     explicit hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
             size_t l3_cache_size, attr_t attr);
+    explicit hw_t(const ngen::ProductFamily &family);
     hw_t(const hw_t &);
     hw_t operator=(const hw_t &other) {
         hw_t tmp(other);

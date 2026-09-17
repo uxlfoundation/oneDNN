@@ -17,15 +17,10 @@
 #ifndef GEMMSTONE_DSL_UTILS_PROFILER_HPP
 #define GEMMSTONE_DSL_UTILS_PROFILER_HPP
 
-#ifndef _WIN32
-#include <sys/time.h>
-#else
-#include <windows.h>
-#endif
-
 #include <algorithm>
 #include <assert.h>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <iomanip>
 #include <sstream>
@@ -40,20 +35,9 @@ GEMMSTONE_NAMESPACE_START
 namespace dsl {
 
 static double get_msec() {
-#ifdef _WIN32
-    static LARGE_INTEGER frequency;
-    if (frequency.QuadPart == 0) QueryPerformanceFrequency(&frequency);
-    // In case the hardware does not support high-resolution perf counter
-    if (frequency.QuadPart == 0) return 0.0;
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-    return 1e+3 * now.QuadPart / frequency.QuadPart;
-#else
-    struct timeval time;
-    gettimeofday(&time, nullptr);
-    return 1e+3 * static_cast<double>(time.tv_sec)
-            + 1e-3 * static_cast<double>(time.tv_usec);
-#endif
+    return std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count();
 }
 
 // Record custom profiling information within a single thread.

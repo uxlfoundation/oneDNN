@@ -441,6 +441,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen
 
     if (one_of(hw, {ngen::HW::Xe2, ngen::HW::Xe3, ngen::HW::Xe3p})) *tagPtr++ = ReqXe2Block2D;
 
+    if (problem.aScale2D() || problem.bScale2D()) *tagPtr++ = ReqScale2D;
+
+    assert(tagPtr < temp.data() + temp.size());  // leave room for the string terminator
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;
 }

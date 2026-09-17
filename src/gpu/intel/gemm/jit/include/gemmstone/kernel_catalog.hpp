@@ -70,6 +70,7 @@ enum RestrictionTags : char {
     ReqBatchN = 'N',         ReqNoBatchN = 'n',
     ReqCustom1 = 'D',        ReqNoCustom1 = 'd',
     ReqXe2Block2D = 'G',     ReqNoXe2Block2D = 'g',
+    ReqScale2D = 'K',        ReqNoScale2D = 'k',
 };
 
 enum HWTags : char {

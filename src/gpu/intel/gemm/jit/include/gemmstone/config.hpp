@@ -48,6 +48,7 @@ inline int getVerbose(GEMMVerbose v) { return 0; }
 #endif
 
 #ifndef GEMMSTONE_NAMESPACE_START
+#define GEMMSTONE_NAMESPACE gemmstone
 #define GEMMSTONE_NAMESPACE_START namespace gemmstone {
 #endif
 

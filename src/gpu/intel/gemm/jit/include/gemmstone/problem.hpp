@@ -41,6 +41,10 @@ static inline bool isColMajor(MatrixLayout l) {
     return (l == MatrixLayout::N || l == MatrixLayout::Pc);
 }
 
+static inline bool isRowMajor(MatrixLayout l) {
+    return (l == MatrixLayout::T || l == MatrixLayout::Pr);
+}
+
 static inline MatrixLayout transposeLayout(MatrixLayout l) {
     return static_cast<MatrixLayout>(static_cast<uint8_t>(l) ^ 0x1);
 }
@@ -86,6 +90,14 @@ struct MatrixAddressing {
     void transpose() {
         layout = transposeLayout(layout);
         std::swap(tileR, tileC);
+    }
+
+    bool isColMajor() const {
+        return ::GEMMSTONE_NAMESPACE::isColMajor(layout);
+    }
+
+    bool isRowMajor() const {
+        return ::GEMMSTONE_NAMESPACE::isRowMajor(layout);
     }
 
 private:

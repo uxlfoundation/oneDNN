@@ -39,6 +39,7 @@ struct EvaluateParams {
     bool postOps = false;
     bool batch = false;
     bool deterministic = false;
+    bool noCAtomics = false;
     Type Tc_ext = Type::invalid;    // External C element type; Type::invalid = use catalog precision
 };
 
@@ -58,6 +59,7 @@ struct EvaluateAuxOutput {
     int wgK = 1;
     bool kParallel = false;
     bool kParallelVariable = false;
+    bool disableAtomics = false;
 };
 
 DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateParams &p);

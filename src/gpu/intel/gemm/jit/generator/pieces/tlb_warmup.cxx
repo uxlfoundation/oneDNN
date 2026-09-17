@@ -147,7 +147,9 @@ void Generator<hw>::tlbWarmup(AddressBase base, const Subregister &ptr, const Su
 
     mark(lTop);
     add(simd | gt | flag, count, count, -simd);
-    if (hw >= HW::XeHPC)
+    if (hw >= HW::Xe3p)
+        load(simd | flag, null, D8U32 | L1C_L2C_L3C, base, addr);
+    else if (hw >= HW::XeHPC)
         load(simd | flag, null, D8U32 | L1C_L3C, base, addr);
     else if (hw >= HW::XeHPG)
         load(simd | flag, data, D8U32 | L1C_L3C, base, addr);

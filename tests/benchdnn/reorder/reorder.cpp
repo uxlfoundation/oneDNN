@@ -37,8 +37,8 @@
 namespace reorder {
 
 static bool is_raw_fp4_reorder(const prb_t *prb) {
-    return is_cpu() && prb->sdt == dnnl_f4_e2m1 && prb->ddt == dnnl_f4_e2m1
-            && prb->attr.is_def();
+    return is_cpu() && prb->src_dt() == dnnl_f4_e2m1
+            && prb->dst_dt() == dnnl_f4_e2m1 && prb->attr.is_def();
 }
 
 int fill_mem(int exec_arg, const prb_t *prb, data_kind_t kind,

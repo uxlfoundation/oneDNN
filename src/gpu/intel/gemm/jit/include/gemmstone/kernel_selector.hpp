@@ -60,7 +60,7 @@ struct MatchParamsBase
     MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen::Product &product, const GEMMProblem &problem);
 
 protected:
-    std::array<char, 32> temp;
+    std::array<char, 40> temp;
 };
 
 struct MatchParams : public MatchParamsBase

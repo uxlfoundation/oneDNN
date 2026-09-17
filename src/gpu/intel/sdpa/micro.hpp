@@ -106,7 +106,8 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     bool pv_fp8;
     bool quantize_probs;
     bool with_probs_quant;
-    uint8_t padding3[5] = {0};
+    bool with_probs_quant_2pass;
+    uint8_t padding3[4] = {0};
 
     micro_fwd_ukernel_params_t ukernel_config;
 };

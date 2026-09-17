@@ -3943,7 +3943,7 @@ std::vector<float> decomposed_reference(const std::vector<float> &q_deq,
 } // namespace
 
 static void test_fp8_sdpa(memory::dim mb, memory::dim H_q, memory::dim H_kv,
-        memory::dim S_q, mdt dst_dt, float tolerance,
+        memory::dim S_q, memory::dim S_kv, mdt dst_dt, float tolerance,
         bool with_probs_scales = false,
         float probs_quant_scale = 1.f / vs_s_fp8_scale,
         float probs_dequant_scale = 1.f / vs_s_fp8_scale) {
@@ -3954,7 +3954,7 @@ static void test_fp8_sdpa(memory::dim mb, memory::dim H_q, memory::dim H_kv,
     dnnl::engine eng(engine::kind::gpu, 0);
     dnnl::stream strm(eng);
 
-    const memory::dim D = 64, S_kv = 128;
+    const memory::dim D = 64;
     const memory::dims q_sz = {mb, H_q, S_q, D}, k_sz = {mb, H_kv, D, S_kv},
                        v_sz = {mb, H_kv, S_kv, D}, o_sz = {mb, H_q, S_q, D};
     const auto abcd = memory::format_tag::abcd;
@@ -4058,18 +4058,18 @@ static void test_fp8_sdpa(memory::dim mb, memory::dim H_q, memory::dim H_kv,
 
 TEST(sdpa_fp8, E4M3PerHeadF16Dst) {
     test_fp8_sdpa(/* mb = */ 2, /* H_q = */ 4, /* H_kv = */ 4, /* S_q = */ 128,
-            mdt::f16, /* tolerance = */ 0.125f);
+            /* S_kv = */ 128, mdt::f16, /* tolerance = */ 0.125f);
 }
 
 // Only the store rounds differently, so the budget is one bf16 ulp (2^-8)
 TEST(sdpa_fp8, E4M3PerHeadBf16Dst) {
     test_fp8_sdpa(/* mb = */ 2, /* H_q = */ 4, /* H_kv = */ 4, /* S_q = */ 128,
-            mdt::bf16, /* tolerance = */ 0.125f);
+            /* S_kv = */ 128, mdt::bf16, /* tolerance = */ 0.125f);
 }
 
 TEST(sdpa_fp8, E4M3PerHeadGQA) {
     test_fp8_sdpa(/* mb = */ 2, /* H_q = */ 8, /* H_kv = */ 2, /* S_q = */ 128,
-            mdt::bf16, /* tolerance = */ 0.125f);
+            /* S_kv = */ 128, mdt::bf16, /* tolerance = */ 0.125f);
 }
 
 // Softmax output quantization. The scales ride in on the VS attribute: the
@@ -4107,13 +4107,30 @@ dnnl_status_t try_probs_scales_pd(
 // Flip to a numerical check once an implementation consumes these scales
 TEST(sdpa_probs_scales, PerTensorMatchesReference) {
     test_fp8_sdpa(/* mb = */ 2, /* H_q = */ 4, /* H_kv = */ 4, /* S_q = */ 128,
-            mdt::bf16, /* tolerance = */ 0.02f, /* with_probs_scales = */ true);
+            /* S_kv = */ 128, mdt::bf16, /* tolerance = */ 0.02f,
+            /* with_probs_scales = */ true);
 }
 
 // A scale other than 1/448 proves the kernel uses the supplied grid
 TEST(sdpa_probs_scales, UserScaleMatchesReference) {
     test_fp8_sdpa(/* mb = */ 2, /* H_q = */ 4, /* H_kv = */ 4, /* S_q = */ 128,
-            mdt::bf16, /* tolerance = */ 0.02f, /* with_probs_scales = */ true,
+            /* S_kv = */ 128, mdt::bf16, /* tolerance = */ 0.02f,
+            /* with_probs_scales = */ true,
+            /* probs_quant_scale = */ 0.25f, /* probs_dequant_scale = */ 0.25f);
+}
+
+// More keys than one workgroup tile, so the kernel gathers the row sums in a
+// separate pass before rounding
+TEST(sdpa_probs_scales, MultiBlockKeysMatchReference) {
+    test_fp8_sdpa(/* mb = */ 2, /* H_q = */ 4, /* H_kv = */ 4, /* S_q = */ 128,
+            /* S_kv = */ 512, mdt::bf16, /* tolerance = */ 0.02f,
+            /* with_probs_scales = */ true);
+}
+
+TEST(sdpa_probs_scales, MultiBlockKeysUserScale) {
+    test_fp8_sdpa(/* mb = */ 2, /* H_q = */ 4, /* H_kv = */ 4, /* S_q = */ 128,
+            /* S_kv = */ 512, mdt::bf16, /* tolerance = */ 0.02f,
+            /* with_probs_scales = */ true,
             /* probs_quant_scale = */ 0.25f, /* probs_dequant_scale = */ 0.25f);
 }
 

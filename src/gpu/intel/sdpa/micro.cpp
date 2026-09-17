@@ -912,15 +912,12 @@ status_t micro_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     conf.pv_fp8 = pv_fp8();
     conf.quantize_probs = quantize_probs();
     conf.with_probs_quant = with_probs_quant_scales();
-    if (conf.with_probs_quant) {
-        // The row sum must be complete before the probabilities are rounded,
-        // which only holds when all keys land in one workgroup tile
-        // TODO: add support for arbitrary K in kernel
-        const int kq_wg_tile_m
-                = conf.ukernel_config.wg_m_kq * conf.ukernel_config.unroll_m_kq;
-        VDISPATCH_SDPA(desc()->keys() <= kq_wg_tile_m,
-                "softmax output quantization requires a single key block");
-    }
+    // Rounding needs the complete row sum, which online softmax only has after
+    // the last key block, so walk the keys twice unless they fit in one tile
+    const int probs_kq_wg_tile_m
+            = conf.ukernel_config.wg_m_kq * conf.ukernel_config.unroll_m_kq;
+    conf.with_probs_quant_2pass
+            = conf.with_probs_quant && desc()->keys() > probs_kq_wg_tile_m;
 
     conf.require_stateless_addressing = has_large_buffers();
 
@@ -1177,6 +1174,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     if (any_hf8) kernel_ctx.define_int("MATH_UTILS_DECLARE_HF8", 1);
     kernel_ctx.define_int("QRY_SLM_FP8", q_slm_fp8);
     kernel_ctx.define_int("PROBS_QUANT", with_probs_quant);
+    kernel_ctx.define_int("PROBS_QUANT_2PASS", with_probs_quant_2pass);
     kernel_ctx.define_int("VS_S_FP8", pv_fp8);
     kernel_ctx.define_int("VS_S_QUANT", quantize_probs);
 

@@ -53,6 +53,10 @@ struct jit_sve_convolution_fwd_t : public primitive_t {
             }
 #endif
 
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
             bool ok = true && mayiuse(isa) && is_fwd()
                     && set_default_alg_kind(alg_kind::convolution_direct)
                     && expect_data_types(src_type, wei_type, dst_type, dst_type,

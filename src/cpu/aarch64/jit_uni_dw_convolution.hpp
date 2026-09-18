@@ -47,6 +47,10 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
                 jit_uni_dw_convolution_fwd_t);
 
         status_t init(const engine_t *engine) {
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
             bool ok = true && is_fwd()
                     && set_default_alg_kind(alg_kind::convolution_direct)
                     && expect_data_types(src_type, src_type, data_type::undef,

@@ -19,15 +19,16 @@
 #include <cassert>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+
+#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/jit_brgemm_conv.hpp"
 #include "cpu/aarch64/jit_brgemm_conv_comp_pad_kernel.hpp"
 #include "cpu/aarch64/jit_brgemm_conv_utils.hpp"
-#include "cpu/cpu_primitive.hpp"
-#include "cpu/scale_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -548,9 +549,17 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
 
     auto scratchpad = scratchpad_registry().registrar();
     brgemm_convolution_utils::init_scratchpad(scratchpad, jcp_);
-    if (jcp_.with_scales)
-        book_precomputed_scales(scratchpad, attr()->scales_, OC(),
-                jcp_.scale_adjust_factor != 1.0f);
+    if (need_postwork || jcp_.with_scales) {
+        const size_t scales_size = jcp_.is_oc_scale
+                ? nstl::max(static_cast<size_t>(OC()),
+                          scale_utils::scales_simd_w())
+                : scale_utils::scales_simd_w();
+        scratchpad.template book<float>(key_precomputed_scales, scales_size,
+                brgemm_convolution_utils::P4K);
+    }
+    if (!attr()->scales_.has_default_values(DNNL_ARG_DST))
+        scratchpad.template book<float>(key_conv_dst_scales,
+                scale_utils::scales_simd_w(), brgemm_convolution_utils::P4K);
 
     return status::success;
 }
@@ -1061,7 +1070,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 }
 template <cpu_isa_t isa>
 struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
-    brgemm_thread_ctx_t(brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
+    brgemm_thread_ctx_t(const brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
             brgemm_batch_element_t *__restrict brg_batch_, char *c_buffer_,
             char *wsp_tile_)
         : brgemm_ctx(brgemm_ctx_)
@@ -1070,7 +1079,7 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
         , c_buffer(c_buffer_)
         , wsp_tile(wsp_tile_) {}
 
-    brgemm_exec_ctx_t &brgemm_ctx;
+    const brgemm_exec_ctx_t &brgemm_ctx;
     int ithr {0};
     brgemm_batch_element_t *__restrict brg_batch {nullptr};
     char *c_buffer {nullptr};
@@ -1097,13 +1106,22 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
-    const float *oscales = precompute_scales(ctx.get_scratchpad_grantor(),
-            src_scales, wei_scales, _pd->OC(), _pd->attr(),
-            jcp.scale_adjust_factor);
+    if (!_pd->attr()->scales_.has_default_values(DNNL_ARG_SRC)
+            && src_scales == nullptr)
+        return status::invalid_arguments;
+    if (!_pd->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
+            && wei_scales == nullptr)
+        return status::invalid_arguments;
+    if (!_pd->attr()->scales_.has_default_values(DNNL_ARG_DST)
+            && dst_scales == nullptr)
+        return status::invalid_arguments;
 
     brgemm_exec_ctx_t brgemm_ctx(ctx, _pd);
 
@@ -1126,6 +1144,15 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
             : nullptr;
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
+    const bool needs_oscales = _pd->need_postwork || jcp.with_scales;
+    float *const oscales = needs_oscales
+            ? scratchpad.template get<float>(key_precomputed_scales)
+            : nullptr;
+    float *const inv_dst_scales_precomputed
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)
+            ? scratchpad.template get<float>(key_conv_dst_scales)
+            : nullptr;
+
     brgemm_batch_element_t *const __restrict brg_batch_global
             = brgemm_convolution_utils::uses_batch_elements(
                       jcp.brg_type, jcp.exec_type)
@@ -1155,6 +1182,15 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
+    if (needs_oscales || inv_dst_scales_precomputed) {
+        parallel(1, [= COMPAT_THIS_CAPTURE](const int, const int) {
+            scale_utils::precompute_oscales(oscales, pd()->attr(), src_scales,
+                    wei_scales, pd()->OC(), pd()->jcp_.scale_adjust_factor);
+            scale_utils::precompute_inv_dst_scales(
+                    inv_dst_scales_precomputed, pd()->attr(), dst_scales);
+        });
+    }
+
     // --------------- Parallel section ------------------------------
     const dim_t work_amount = static_cast<dim_t>(jcp.mb) * jcp.ngroups
             * jcp.nb_oc * jcp.nb_od * jcp.nb_oh * jcp.nb_ow;
@@ -1163,7 +1199,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     // or made ic_chunks = 1 if use_buffer
     // or (looks more general) increase buffer size to store several rows
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         brgemm_batch_element_t *const __restrict brg_batch = brg_batch_global
@@ -1213,7 +1249,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                     = jcp.src_zero_point ? src_zp_comp_base : nullptr;
             btc.s8s8_comp_ptr
                     = jcp.s8s8_compensation_required ? s8s8_comp_base : nullptr;
-            btc.dst_scales = dst_scales;
+            btc.dst_scales = inv_dst_scales_precomputed;
 
             if (jcp.exec_type == exec_trans && (last_n != n || last_g != g)) {
                 if (!jcp.copy_block_only)
@@ -1292,7 +1328,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         dim_t start {0}, end {0};

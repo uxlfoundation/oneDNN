@@ -429,6 +429,19 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             int maxSIMD = (op == BinaryOp::Sub && T.isInt8()) ? 64 : 32;
             if (Tq == Type::f32) maxSIMD = elementsPerGRF(hw, Tq);
             int simd = std::min({ne * crosspack / strided, 2 * elementsPerGRF(hw, T) / strided, maxSIMD});
+            // Xe3p+ requires non-scalar FP source to share the destination's channel bit positions
+            // within a GRF, relocate when required.
+            int strideq0 = strideq;
+            GRFRange qTemp;
+            if (hw >= HW::Xe3p && T.isFP() && T == Tq && strideq != 0 && data.getOffset() != qdata.getOffset()) {
+                int off = data.getOffset();
+                qTemp = state.ra.alloc_range(div_up((off + simd * strided) * T.size(), GRF::bytes(hw)));
+                auto qt = qTemp[0].sub(off, T.ngen());
+                auto Ti = T.asSignedInt().ngen();
+                mov(simd, qt.reinterpret(0, Ti)(strided), qdata.reinterpret(0, Ti)(strideq));
+                qdata = qt, strideq = strided;
+            }
+
             switch (op) {
                 case BinaryOp::Sub:
                     if (T.isInt8() && strided == 1) {
@@ -448,6 +461,8 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
                     break;
                 default: stub();
             }
+            state.ra.safeRelease(qTemp);
+            strideq = strideq0;
             x0 += simd * strided / crosspack;
         }
         }

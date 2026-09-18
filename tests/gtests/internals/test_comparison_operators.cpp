@@ -132,8 +132,8 @@ HANDLE_EXCEPTIONS_FOR_TEST(comparison_operators_t, TestBinarySelectPostOp) {
         return attr;
     };
 
-    // binary_select reads its third operand, so post-ops that differ in it
-    // describe different computations and must not compare equal.
+    // post-ops with binary_select must not compare equal when their
+    // third operand descriptor differs (s8 vs u8).
     ASSERT_EQ(compare(make_attr(src2_s8_md), make_attr(src2_u8_md)), false);
 }
 

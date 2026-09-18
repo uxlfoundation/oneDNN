@@ -589,7 +589,7 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
 
             postops_injector.reset(new ir::postops_injector_t(*this,
                     brg_.isa_impl, brg_.attr()->post_ops_, *brg_.dst_md(),
-                    abi_param1, GET_OFF(post_ops_binary_rhs_arg_vec),
+                    abi_param1, GET_OFF(post_ops_binary_rhs),
                     GET_OFF(data_C_ptr_), postops_tail_elems));
 
             emit_injector = [&](const std::vector<int> &acc_phys, int base_phys,

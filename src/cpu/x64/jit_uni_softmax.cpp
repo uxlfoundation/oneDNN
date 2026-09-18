@@ -950,12 +950,14 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
             static constexpr bool use_exact_tail_scalar_bcast = false;
             static constexpr std::size_t tmp_vmm_injector = 0u;
 
-            const binary_injector::rhs_arg_static_params_t rhs_sp {
+            binary_injector::rhs_arg_static_params_t rhs_sp {
                     tmp_vmm_injector, this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
-                    PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst_orig),
+                    PARAM_OFF(post_ops_binary_rhs), PARAM_OFF(dst_orig),
                     dst_d_, axis_simd_tail_, tail_opmask,
                     use_exact_tail_scalar_bcast};
+            rhs_sp.rhs_arg_mode
+                    = binary_injector::get_rhs_arg_mode(pd_->attr()->post_ops_);
 
             const binary_injector::static_params_t bsp {
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
@@ -1530,12 +1532,14 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
             static constexpr bool use_exact_tail_scalar_bcast = false;
             static constexpr std::size_t tmp_vmm_injector = 0u;
 
-            const binary_injector::rhs_arg_static_params_t rhs_sp {
+            binary_injector::rhs_arg_static_params_t rhs_sp {
                     tmp_vmm_injector, this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
-                    PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst_orig),
+                    PARAM_OFF(post_ops_binary_rhs), PARAM_OFF(dst_orig),
                     dst_d_, axis_simd_tail_, tail_opmask,
                     use_exact_tail_scalar_bcast};
+            rhs_sp.rhs_arg_mode
+                    = binary_injector::get_rhs_arg_mode(pd_->attr()->post_ops_);
 
             const binary_injector::static_params_t bsp {
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
@@ -1689,9 +1693,10 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
     auto scratchpad_ptr = scratchpad.template get<char>(
             memory_tracking::names::key_softmax_interim_store);
 
-    const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(
-                    pd()->attr()->post_ops_, ctx);
+    binary_injector_utils::rhs_arg_storage_t rhs_storage;
+    rhs_storage.prepare(pd()->attr()->post_ops_, ctx,
+            binary_injector::get_rhs_arg_mode(pd()->attr()->post_ops_));
+    const auto rhs = rhs_storage.data();
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -1784,7 +1789,7 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
         p.dst_scales = dst_scales_inv_ptr;
         // post-ops
         p.dst_orig = dst_orig_ptr;
-        p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+        p.post_ops_binary_rhs = rhs;
         (*ker_)(&p);
     });
 

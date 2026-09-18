@@ -23,20 +23,16 @@ namespace impl {
 namespace cpu {
 namespace binary_injector_utils {
 
-std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
-        const exec_ctx_t &ctx, const unsigned first_arg_idx_offset) {
-    std::vector<const void *> post_ops_binary_rhs_arg_vec;
-    if (post_ops.len() == 0) return post_ops_binary_rhs_arg_vec;
-    post_ops_binary_rhs_arg_vec.reserve(post_ops.entry_.size());
-
+template <typename Append>
+static void resolve_binary_args(const post_ops_t &post_ops, const exec_ctx_t &ctx,
+        unsigned first_arg_idx_offset, const Append &append) {
     unsigned idx = first_arg_idx_offset;
     for (const auto &post_op : post_ops.entry_) {
         if (post_op.is_binary()) {
             auto append_arg = [&](int arg, const memory_desc_t &md) {
                 const auto *base = CTX_IN_MEM(const char *, arg);
                 const memory_desc_wrapper mdw(md);
-                post_ops_binary_rhs_arg_vec.emplace_back(
-                        base + mdw.offset0() * mdw.data_type_size());
+                append(base + mdw.offset0() * mdw.data_type_size());
             };
 
             append_arg(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1,
@@ -49,13 +45,49 @@ std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
             auto *arg = CTX_IN_MEM(const void *,
                     DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_WEIGHTS);
             assert(arg);
-            post_ops_binary_rhs_arg_vec.emplace_back(arg);
+            append(arg);
         }
         ++idx;
     }
+}
 
-    post_ops_binary_rhs_arg_vec.shrink_to_fit();
+void prepare_binary_args(const post_ops_t &post_ops, const exec_ctx_t &ctx,
+        std::vector<const void *> &args, unsigned first_arg_idx_offset) {
+    args.clear();
+    args.reserve(post_ops.entry_.size());
+    resolve_binary_args(post_ops, ctx, first_arg_idx_offset,
+            [&](const void *arg) { args.push_back(arg); });
+}
 
+rhs_arg_mode_t get_rhs_arg_mode(const post_ops_t &post_ops) {
+    size_t count = 0;
+    for (const auto &post_op : post_ops.entry_) {
+        if (post_op.is_like_binary()) ++count;
+        if (post_op.is_binary_with_ternary_op()) ++count;
+    }
+    // Single mode is safe only when the entire chain has exactly one RHS
+    // operand; ternary and multi-binary chains use the pointer array.
+    return count == 1 ? rhs_arg_mode_t::single : rhs_arg_mode_t::array;
+}
+
+void rhs_arg_storage_t::prepare(const post_ops_t &post_ops, const exec_ctx_t &ctx,
+        rhs_arg_mode_t mode, unsigned first_arg_idx_offset) {
+    single_ = nullptr;
+    array_.clear();
+    if (mode == rhs_arg_mode_t::single) {
+        assert(get_rhs_arg_mode(post_ops) == rhs_arg_mode_t::single);
+        resolve_binary_args(post_ops, ctx, first_arg_idx_offset,
+                [&](const void *arg) { single_ = arg; });
+    } else {
+        prepare_binary_args(post_ops, ctx, array_, first_arg_idx_offset);
+    }
+}
+
+std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
+        const exec_ctx_t &ctx, const unsigned first_arg_idx_offset) {
+    std::vector<const void *> post_ops_binary_rhs_arg_vec;
+    prepare_binary_args(post_ops, ctx, post_ops_binary_rhs_arg_vec,
+            first_arg_idx_offset);
     return post_ops_binary_rhs_arg_vec;
 }
 

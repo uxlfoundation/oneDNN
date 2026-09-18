@@ -18,6 +18,7 @@
 #define CPU_X64_BRGEMM_BRGEMM_TYPES_HPP
 
 #include "common/primitive_attr.hpp"
+#include "cpu/binary_injector_utils.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/jit_generator.hpp"
@@ -303,6 +304,9 @@ struct brgemm_desc_t {
     impl::data_type_t sum_dt = data_type::undef;
     bool with_eltwise = false;
     bool with_binary = false;
+    // Producers must opt in to a single raw RHS before kernel generation.
+    binary_injector_utils::rhs_arg_mode_t binary_post_ops_rhs_mode
+            = binary_injector_utils::rhs_arg_mode_t::array;
     bool skip_zp_b_compensation = false;
     bool skip_zp_a_compensation = false;
     bool n_bcast_1_load = false;
@@ -810,11 +814,9 @@ struct brgemm_kernel_params_t {
     size_t do_apply_comp = 0;
     size_t BS = 0;
 
-    /*
-     * ptr to table of void * elements that are pointers to post_op binary
-     * src1 tensors
-     */
-    const void *post_ops_binary_rhs_arg_vec = nullptr;
+    // Raw RHS in single mode, otherwise a pointer array. The interpretation
+    // is fixed by brgemm_desc_t::binary_post_ops_rhs_mode.
+    const void *post_ops_binary_rhs = nullptr;
     size_t oc_logical_off = 0;
     size_t first_mb_matrix_addr_off = 0;
     size_t dst_row_logical_off = 0;
@@ -914,9 +916,9 @@ private:
 ///     scale factors for matrixes A and B. If brgemm_desc_t::is_per_n_scale = true
 ///     vector length is N otherwise it must be broadcasted to vector of simd
 ///     width length
-/// @param binary_post_ops_rhs - Ptr to table of pointers to tensors used as rhs
-///     in binary post-operation { void* binary_op_tensor1, ...,
-///      void* binary_op_tensor_n}
+/// @param binary_post_ops_rhs - Raw RHS pointer or pointer array, matching
+///     brgemm_desc_t::binary_post_ops_rhs_mode. Legacy producers always use
+///     array mode, including for a single RHS operand.
 /// @param oc_logical_off - Used in binary postops in per_oc bcast strategy.
 ///     Offset to start oc processed by given thread in elements.
 /// @param dst_row_logical_off - Used in binary postops in per_oc bcast

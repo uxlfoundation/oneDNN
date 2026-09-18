@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include "common/nstl.hpp"
 #include "common/verbose.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/platform.hpp"
@@ -89,12 +90,31 @@ size_t find_representative_cpu(Xbyak::util::CoreType target_type,
     return SIZE_MAX;
 }
 
-// Calculate per-core cache size for a specific cache level and CPU index.
-// Matches the legacy getCoresSharingDataCache semantics: divides by the number
-// of PHYSICAL cores sharing the cache, not logical CPUs.  The legacy Xbyak Cpu
-// path (CPUID leaf 4) uses L1d sharing count as the SMT width and divides it
-// out of every level's logical-CPU sharing count.  We replicate that here so
-// that non-hybrid results are identical to the legacy path.
+// Physical cores sharing the given cache level/CPU index, from
+// Xbyak::util::CpuTopology. Divides the logical-CPU sharing count by L1d's
+// (the SMT width), mirroring legacy getCoresSharingDataCache semantics.
+// Returns 0 if the level is not present.
+unsigned topology_sharing_cores(size_t cpu_index, int level) {
+    const auto &topo = get_topology_cache().topology;
+
+    Xbyak::util::CacheType cache_type = convert_cache_level(level);
+    if (cache_type == Xbyak::util::CACHE_UNKNOWN) { return 0; }
+
+    const auto &cache = topo.getCache(cpu_index, cache_type);
+    if (cache.size == 0) { return 0; }
+
+    size_t sharing_logical = cache.getSharedCpuNum();
+    if (sharing_logical == 0) sharing_logical = 1;
+
+    size_t smt_width
+            = topo.getCache(cpu_index, Xbyak::util::L1d).getSharedCpuNum();
+    if (smt_width == 0) smt_width = 1;
+
+    return static_cast<unsigned>(
+            std::max(sharing_logical / smt_width, size_t(1)));
+}
+
+// Per-core cache size for a specific cache level and CPU index, in bytes.
 uint32_t calculate_per_core_cache(size_t cpu_index, int level) {
     const auto &topo = get_topology_cache().topology;
 
@@ -104,20 +124,10 @@ uint32_t calculate_per_core_cache(size_t cpu_index, int level) {
     const auto &cache = topo.getCache(cpu_index, cache_type);
     if (cache.size == 0) { return 0; }
 
-    // Number of logical CPUs (threads) sharing this cache instance.
-    size_t sharing_logical = cache.getSharedCpuNum();
-    if (sharing_logical == 0) sharing_logical = 1;
+    unsigned sharing_cores = topology_sharing_cores(cpu_index, level);
+    if (sharing_cores == 0) sharing_cores = 1;
 
-    // SMT width = logical CPUs sharing L1d (L1 is always private to one
-    // physical core, so this count equals the number of HT threads per core).
-    size_t smt_width
-            = topo.getCache(cpu_index, Xbyak::util::L1d).getSharedCpuNum();
-    if (smt_width == 0) smt_width = 1;
-
-    // Physical cores sharing this cache (mirrors legacy smt_width division).
-    size_t sharing_cores = std::max(sharing_logical / smt_width, size_t(1));
-
-    return static_cast<uint32_t>(cache.size / sharing_cores);
+    return cache.size / sharing_cores;
 }
 
 struct cache_level_info_t {
@@ -254,6 +264,131 @@ hybrid_core_cache_sizes_t &get_hybrid_core_cache_sizes() {
     return result;
 }
 
+// Smallest `width` such that `(1u << width) >= n`, for n > 0.
+unsigned ceil_log2(unsigned n) {
+    unsigned width = 0;
+    while ((1u << width) < n)
+        width++;
+    return width;
+}
+
+// CPUID leaf 4 cache-sharing mask width, in x2APIC ID bits, for platform
+// cache level `level` (1=L1d, 2=L2, 3=L3). Returns -1 if not present.
+int get_cache_mask_width(unsigned level) {
+    uint32_t data[4];
+    for (uint32_t sub = 0;; sub++) {
+        Xbyak::util::Cpu::getCpuidEx(0x4, sub, data);
+        const uint32_t cache_type = data[0] & 0x1f;
+        if (cache_type == 0) break; // no more cache entries
+        if (cache_type == 2) continue; // instruction cache
+        const uint32_t cache_level = (data[0] >> 5) & 0x7;
+        if (cache_level != level) continue;
+        const uint32_t max_ids_sharing = ((data[0] >> 14) & 0xfff) + 1;
+        return (int)ceil_log2(max_ids_sharing);
+    }
+    return -1;
+}
+
+struct topology_level_t {
+    unsigned shift; // cumulative x2APIC ID shift width for this domain
+    // 1=SMT, 2=Core, 3=Module, 4=Tile, 5=Die, 6=DieGrp (SDM Vol 2A); leaf 0xB
+    // defines only 1 and 2.
+    unsigned type;
+    unsigned logical_count; // actual (not rounded) logical processors in it
+};
+
+// Enumerates topology levels via CPUID `leaf`/subleaf. Returns the number of
+// levels found, or 0 if the leaf yields none (e.g. present but unpopulated
+// under some hypervisors).
+unsigned enumerate_topology_leaf(
+        uint32_t leaf, topology_level_t *levels, unsigned max_levels) {
+    uint32_t data[4];
+    unsigned n = 0;
+    for (uint32_t sub = 0; n < max_levels; sub++) {
+        Xbyak::util::Cpu::getCpuidEx(leaf, sub, data);
+        const uint32_t level_type = (data[2] >> 8) & 0xff;
+        if (level_type == 0) break; // no more levels
+        levels[n].shift = data[0] & 0x1f;
+        levels[n].type = level_type;
+        levels[n].logical_count = data[1] & 0xffff;
+        n++;
+    }
+    return n;
+}
+
+// Walks CPUID leaf 0x1F, falling back to leaf 0xB if it yields no levels.
+// Returns the number of topology levels found, or 0 if neither leaf is usable.
+unsigned get_topology_levels(topology_level_t *levels, unsigned max_levels) {
+    uint32_t data[4];
+    Xbyak::util::Cpu::getCpuid(0x0, data);
+    const uint32_t max_leaf = data[0];
+
+    if (max_leaf >= 0x1f) {
+        const unsigned n = enumerate_topology_leaf(0x1f, levels, max_levels);
+        if (n > 0) return n;
+    }
+    if (max_leaf < 0xb) return 0;
+    return enumerate_topology_leaf(0xb, levels, max_levels);
+}
+
+// Number of physical cores sharing platform cache level `level` (1-based),
+// derived from CPUID leaf 0x1F/0xB topology: each level's EAX[4:0] shift
+// width is matched against leaf 4's cache-sharing mask width, and the
+// matching level's EBX[15:0] logical-processor count is divided by the SMT
+// level's count.
+unsigned get_topology_cores_sharing_cache(unsigned level) {
+    const int mask_width = get_cache_mask_width(level);
+    if (mask_width < 0) return 0;
+    // One reserved ID: the cache is private to a single logical processor.
+    if (mask_width == 0) return 1;
+
+    topology_level_t levels[8];
+    const unsigned n = get_topology_levels(levels, 8);
+    if (n == 0) return 0;
+
+    unsigned smt_count = 0;
+    for (unsigned i = 0; i < n; i++)
+        if (levels[i].type == 1) smt_count = levels[i].logical_count;
+    if (smt_count == 0) return 0;
+
+    for (unsigned i = 0; i < n; i++) {
+        if ((int)levels[i].shift != mask_width) continue;
+        return nstl::max(1u, levels[i].logical_count / smt_count);
+    }
+    return 0; // no topology level maps exactly onto the cache's ID width
+}
+
+// Number of physical cores sharing the data/unified cache at 0-based index `l`.
+// Leaf 4's EAX[25:14]+1 is an ID reservation that can overstate the true
+// sharing count; prefer leaf 0x1F/0xB, then OS-reported topology (the same
+// Xbyak::util::CpuTopology used for hybrid systems), and fall back to raw
+// CPUID.
+unsigned compute_cores_sharing_cache(unsigned l) {
+    // Absent level (e.g. no L3 exposed under a hypervisor): Xbyak's getter
+    // would record a sticky ERR_BAD_PARAMETER that fails every later JIT.
+    if (l >= cpu().getDataCacheLevels()) return 1;
+    const unsigned topo_sharing = get_topology_cores_sharing_cache(l + 1);
+    if (topo_sharing > 0) return topo_sharing;
+
+    const unsigned os_sharing = topology_sharing_cores(0, (int)l + 1);
+    if (os_sharing > 0) return os_sharing;
+
+    const unsigned sharing = cpu().getCoresSharingDataCache(l);
+    return sharing > 0 ? sharing : 1;
+}
+
+// Cached: the CPUID walk above is a dozen serializing instructions (each a
+// VM exit under a hypervisor) and the result never changes.
+unsigned cores_sharing_cache(unsigned l) {
+    if (l >= 3) {
+        const unsigned sharing = cpu().getCoresSharingDataCache(l);
+        return sharing > 0 ? sharing : 1;
+    }
+    static const unsigned sharing[3] = {compute_cores_sharing_cache(0),
+            compute_cores_sharing_cache(1), compute_cores_sharing_cache(2)};
+    return sharing[l];
+}
+
 // Print per-core cache sizes once (CPUID path, no CpuTopology init).
 // Format mirrors the hybrid path: shared levels show total, sharing count, and
 // per-core budget; private levels show just the total. smt field is appended.
@@ -262,8 +397,10 @@ void print_cache_debuginfo_once() {
     static std::atomic_flag printed = ATOMIC_FLAG_INIT;
     if (printed.test_and_set()) return;
 
-    // SMT width = L1d sharing count (L1d is private to one physical core).
-    uint32_t smt = cpu().getCoresSharingDataCache(0);
+    // SMT width is the number of logical processors at the SMT topology
+    // level (cores_sharing_cache(0) is unsuitable: it returns the number of
+    // PHYSICAL cores sharing L1d, which is always 1).
+    uint32_t smt = cpu().getNumCores(Xbyak::util::CpuTopologyLevel::SmtLevel);
     if (smt == 0) smt = 1;
 
     char buf[256];
@@ -273,7 +410,7 @@ void print_cache_debuginfo_once() {
             "cpu,debuginfo,platform,cache");
     for (unsigned li = 0; li < nlevels && li < 3; li++) {
         uint32_t total_kb = cpu().getDataCacheSize(li) / 1024;
-        uint32_t sharing = cpu().getCoresSharingDataCache(li);
+        uint32_t sharing = cores_sharing_cache(li);
         if (sharing == 0) sharing = 1;
         uint32_t per_core_kb = total_kb / sharing;
         const char *label = (li == 0) ? "L1d" : (li == 1) ? "L2" : "L3";
@@ -320,7 +457,13 @@ bool is_hybrid() {
 unsigned get_per_core_cache_size_cpuid(int level) {
     if (level > 0 && (unsigned)level <= cpu().getDataCacheLevels()) {
         unsigned l = level - 1;
+#ifdef __APPLE__
+        // cores_sharing_cache() (leaf 0x1F/0xB + OS fallback) is not compiled
+        // on macOS; use the legacy leaf-4-only count directly.
         return cpu().getDataCacheSize(l) / cpu().getCoresSharingDataCache(l);
+#else
+        return cpu().getDataCacheSize(l) / cores_sharing_cache(l);
+#endif
     }
     return 0;
 }

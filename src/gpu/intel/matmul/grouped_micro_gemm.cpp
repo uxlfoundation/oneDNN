@@ -326,7 +326,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
             } break;
             case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
             default:
-                m_unroll = sg_size_ / problem.Ta_ext;
+                m_unroll = std::max<dim_t>(sg_size_, sg_size_ / problem.Ta_ext);
                 max_n_unroll
                         = problem.Ta.isInt4() ? sg_size_ * problem.Ta_ext : 32;
         }
@@ -648,7 +648,8 @@ status_t grouped_micro_gemm_t::pd_t::init_kernel_ctx_m_axis() {
         kernel_ctx_.define_int("SRC_GROUP_SIZE", src_group_sizes_[1]);
     }
     if (wei_quant_.with_scale() || wei_quant_.with_zp()) {
-        kernel_ctx_.define_int("WEI_GROUP_SIZE", wei_group_sizes_[1]);
+        kernel_ctx_.define_int("WEI_K_GROUP_SIZE", wei_group_sizes_[1]);
+        kernel_ctx_.define_int("WEI_N_GROUP_SIZE", wei_group_sizes_[2]);
     }
 
     kernel_ctx_.define_int("SRC_SCALES_GROUPED",

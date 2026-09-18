@@ -1336,7 +1336,6 @@ CopyOperand CopyPlan::bfImmediate(uint16_t bits, bool ternary)
     }
 };
 
-
 // {b,ub}->bf sequence.
 void CopyPlan::planInt8ToBF(CopyInstruction &i)
 {
@@ -4073,7 +4072,6 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     temps.clear();
 }
 
-
 CopyResource::Kind CopyResource::makeConstant32(uint32_t c)
 {
     return static_cast<Kind>(constantBase | c);
@@ -4137,7 +4135,7 @@ int CopyPlan::cycleCount() const
 
 void CopyPlan::dump(std::ostream &os, int n, bool sortInfo) const
 {
-    for (int i = 0; i < std::min(n, (int)insns.size()); ++i) {
+    for (int i = 0; i < std::min<int>(n, insns.size()); ++i) {
         insns[i].dump(os, *this, sortInfo);
         os << std::endl;
     }

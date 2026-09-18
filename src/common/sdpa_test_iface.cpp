@@ -33,7 +33,7 @@ status_t sdpa_primitive_desc_create(
         bool invert_scale, dim_t kv_head_number, int attn_mask_type,
         alg_kind_t softmax_alg, prop_kind_t prop, const primitive_attr_t *attr,
         const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr,
-        const memory_desc_t *stats_desc) {
+        const memory_desc_t *stats_desc, bool invert_select) {
     CHECK(sdpa_desc_check(query_desc, key_desc, value_desc, dst_desc, mask_desc,
             engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_attr_check(query_desc, key_desc, value_desc, dst_desc, engine,
@@ -41,8 +41,9 @@ status_t sdpa_primitive_desc_create(
 
     sdpa_desc_t sdpa_desc = create_sdpa_desc(query_desc, key_desc, value_desc,
             dst_desc, mask_desc, scale_desc, stats_desc, invert_scale,
-            kv_head_number, static_cast<attn_mask_type_t>(attn_mask_type),
-            softmax_alg, prop, kq_attr, vs_attr);
+            invert_select, kv_head_number,
+            static_cast<attn_mask_type_t>(attn_mask_type), softmax_alg, prop,
+            kq_attr, vs_attr);
     return primitive_desc_create(primitive_desc_iface, engine,
             (const op_desc_t *)&sdpa_desc, nullptr, attr);
 }
@@ -67,8 +68,8 @@ status_t sdpa_primitive_desc_create(
     sdpa_desc_t sdpa_desc = create_sdpa_desc(query_desc, key_desc, value_desc,
             dst_desc, mask_desc, scale_desc, diff_query_desc, diff_key_desc,
             diff_value_desc, diff_dst_desc, dS_desc, invert_scale,
-            kv_head_number, static_cast<attn_mask_type_t>(attn_mask_type),
-            softmax_alg);
+            /* invert_select = */ false, kv_head_number,
+            static_cast<attn_mask_type_t>(attn_mask_type), softmax_alg);
     return primitive_desc_create(primitive_desc_iface, engine,
             (const op_desc_t *)&sdpa_desc, hint_fwd_pd, attr);
 }

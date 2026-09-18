@@ -1903,6 +1903,9 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
         const bool is_invert_scale = op->has_attr(op_attr::is_invert_scale)
                 ? op->get_attr<bool>(op_attr::is_invert_scale)
                 : false;
+        const bool is_invert_select = op->has_attr(op_attr::is_invert_select)
+                ? op->get_attr<bool>(op_attr::is_invert_select)
+                : false;
         const bool with_explicit_mask = mask_type == attn_mask_type::buffer;
 
         auto md_q = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
@@ -1950,9 +1953,10 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
         std::shared_ptr<primitive_desc_t> hint_fwd_pd;
         status = create_sdpa_pd(hint_fwd_pd, p_engine.get(), md_q.get(),
                 md_k.get(), md_v.get(), md_dst.get(), md_attn_mask.get(),
-                md_scale.get(), is_invert_scale, kv_head_number, mask_type,
-                softmax_alg, impl::prop_kind::forward_training, attr.get(),
-                qk_attr.get(), vs_attr.get());
+                md_scale.get(), is_invert_scale, is_invert_select,
+                kv_head_number, mask_type, softmax_alg,
+                impl::prop_kind::forward_training, attr.get(), qk_attr.get(),
+                vs_attr.get());
         VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
                 "failed to create hint fwd pd for sdpa_bwd scratchpad");
 

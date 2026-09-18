@@ -69,6 +69,14 @@ struct sdpa_pd_t : public primitive_desc_t {
         return (desc()->attn_mask_md()->data_type != data_type::undef);
     }
 
+    bool with_buffer_mask() const {
+        return (desc()->mask_type == attn_mask_type::buffer);
+    }
+
+    bool with_select_mask() const {
+        return (desc()->mask_type == attn_mask_type::select);
+    }
+
     /// Returns the accumulation data type of the KQ matmul
     data_type_t kq_acc_dt() const { return desc()->kq_acc_dt; }
 
@@ -209,6 +217,9 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
                     DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
             return arg_usage_t::input;
 
+        if (arg == DNNL_ARG_ATTN_MASK_FILL && with_select_mask())
+            return arg_usage_t::input;
+
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
         if (arg == DNNL_ARG_WORKSPACE)
@@ -250,7 +261,8 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
     }
 
     int n_inputs() const override {
-        return 3 + int(with_attn_mask()) + int(with_attn_scale());
+        const bool with_fill_input = with_select_mask();
+        return 3 + with_attn_mask() + with_attn_scale() + with_fill_input;
     }
     int n_outputs() const override {
         return 1 + (!types::is_zero_md(workspace_md()));

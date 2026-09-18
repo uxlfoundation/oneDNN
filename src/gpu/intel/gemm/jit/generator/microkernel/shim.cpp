@@ -25,6 +25,8 @@
 #include <stdexcept>
 #include <unordered_set>
 
+#ifdef MICROKERNEL_INTERFACE
+
 GEMMSTONE_NAMESPACE_START
 namespace microkernel {
 
@@ -767,3 +769,5 @@ std::string generateShim(const Package &package, HostLanguage language,
 
 }
 GEMMSTONE_NAMESPACE_END
+
+#endif

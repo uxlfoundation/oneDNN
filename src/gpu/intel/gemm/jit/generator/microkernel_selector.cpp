@@ -16,6 +16,8 @@
 
 #include "gemmstone/config.hpp"
 
+#ifdef MICROKERNEL_INTERFACE
+
 #define BINARY_OUTPUT
 
 #include "gemmstone/microkernel_selector.hpp"
@@ -742,3 +744,5 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 
 }
 GEMMSTONE_NAMESPACE_END
+
+#endif

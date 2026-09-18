@@ -461,6 +461,7 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
 
         if (dp.deterministic)
             tryKV &= (dp.threadCount > dp.hwThreadCapacity);
+        tryKV &= !e.driverInfo.kParallelLocal();
 
         if (tryKV) {
             EvaluateAuxOutput auxKV;

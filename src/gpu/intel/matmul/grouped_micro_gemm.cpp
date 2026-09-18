@@ -326,7 +326,10 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
             } break;
             case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
             default:
-                m_unroll = sg_size_ / problem.Ta_ext;
+                if (problem.Tb != Type::f32) {
+                    m_unroll = std::max<dim_t>(
+                            sg_size_, sg_size_ / problem.Ta_ext);
+                }
                 max_n_unroll
                         = problem.Ta.isInt4() ? sg_size_ * problem.Ta_ext : 32;
         }

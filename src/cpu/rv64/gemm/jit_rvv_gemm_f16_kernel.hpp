@@ -57,7 +57,7 @@ struct jit_rvv_gemm_f16_kernel_t : public jit_generator_t {
         dim_t ldc;
         dim_t K;
         dim_t m;
-        const float *bias; // f32 bias per column (only when has_bias)
+        const float *bias; // f32 bias for the accumulator lanes
     };
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_gemm_f16_kernel_t)
@@ -82,12 +82,11 @@ private:
 };
 
 struct jit_rvv_gemm_f16_kernel_table_t {
-    std::array<const jit_rvv_gemm_f16_kernel_t *, 8> nb {};
-    std::array<const jit_rvv_gemm_f16_kernel_t *, 8> b {};
+    std::array<const jit_rvv_gemm_f16_kernel_t *, 8> kernels {};
 };
 
 const jit_rvv_gemm_f16_kernel_table_t &get_jit_rvv_gemm_f16_kernel_table(
-        bool isTransA, data_type_t in_dt);
+        bool isTransA, data_type_t in_dt, bool has_bias);
 
 } // namespace gemm_utils
 } // namespace rv64

@@ -96,11 +96,11 @@ struct rvv_matmul_t : public primitive_t {
             if (is_hp_path_) {
                 VDISPATCH_MATMUL(mayiuse(src_dt == f16 ? zvfh : zvfbfwma),
                         VERBOSE_UNSUPPORTED_ISA);
-                // f32 bias is fused in the GEMM epilogue; other bias dtypes
-                // (or post-ops) still fall back to the reference path.
-                VDISPATCH_MATMUL(
-                        bias_mdw.is_zero()
-                                || bias_mdw.data_type() == data_type::f32,
+                // The JIT currently implements the common f32 1xN bias. More
+                // general matmul bias broadcasts fall back to another path.
+                VDISPATCH_MATMUL(bias_mdw.is_zero()
+                                || (bias_mdw.data_type() == data_type::f32
+                                        && is_bias_1xN()),
                         VERBOSE_UNSUPPORTED_BIAS_CFG);
             }
             // The int8 path rejects per-oc / per-tensor scales, zero-points,

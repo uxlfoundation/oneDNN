@@ -1631,7 +1631,7 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vmv_v_x(v_acc, t1);
             vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         } else {
-            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
             li(t1, 0xFBFF); // f16 lowest (-65504.0)
             vmv_v_x(v_acc, t1);
         }
@@ -1646,10 +1646,17 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
                 mv(t3, s11); // running window index = pos_base (reset per chunk)
         }
     } else {
-        // avg: f32m2 accumulator zeroed; window runs under e16/m1 (same vl).
-        vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-        vmv_v_x(v_acc, x0);
-        vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        if (is_bf16) {
+            // bf16 avg: f32m2 accumulator; window runs under e16/m1.
+            vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+            vmv_v_x(v_acc, x0);
+            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        } else {
+            // f16 avg: f32m4 accumulator; window runs under e16/m2.
+            vsetvli(t0, s2, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            vmv_v_x(v_acc, x0);
+            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+        }
     }
 
     mv(a3, s6);
@@ -1795,7 +1802,10 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
         ld(t2, reg_param, GET_OFF_P(ws_vec_byte_stride));
         li(t1, static_cast<int>(ind_sz));
         if (ind_u8) {
-            vsetvli(t3, s2, SEW::e8, LMUL::mf2, VTA::ta, VMA::ma);
+            if (is_bf16)
+                vsetvli(t3, s2, SEW::e8, LMUL::mf2, VTA::ta, VMA::ma);
+            else
+                vsetvli(t3, s2, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
             vnsrl_wi(v_tmp, v_ind, 0);
             Label u8_unit, u8_done;
             beq(t2, t1, u8_unit);
@@ -1805,7 +1815,10 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vse8_v(v_tmp, s10);
             L(u8_done);
         } else {
-            vsetvli(t3, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+            if (is_bf16)
+                vsetvli(t3, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+            else
+                vsetvli(t3, s2, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
             vzext_vf2(v28, v_ind);
             Label s32_unit, s32_done;
             beq(t2, t1, s32_unit);
@@ -1815,8 +1828,10 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vse32_v(v28, s10);
             L(s32_done);
         }
-        vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta,
-                VMA::ma); // restore e16 vtype (t0 = channel vl)
+        if (is_bf16)
+            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        else
+            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
     }
 
     // Advance src/dst by vl * stride (f16 unit stride = vl * 2).

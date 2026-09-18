@@ -301,11 +301,11 @@ status_t check_isa_with_datatype(
 status_t gemv_check_isa_with_datatype(
         const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     // Valid GEMV (dt, isa) combinations:
-    // - f32  -> avx2
+    // - f32  -> avx512_core, avx2
     // - bf16 -> avx512_core_bf16
     // - f16  -> avx512_core_fp16
     // Any other data type or isa is unsupported.
-    const bool ok = (bm_conf_utils.is_f32() && isa == avx2)
+    const bool ok = (bm_conf_utils.is_f32() && one_of(isa, avx512_core, avx2))
             || (bm_conf_utils.is_bf16() && isa == avx512_core_bf16)
             || (bm_conf_utils.is_f16() && isa == avx512_core_fp16);
 
@@ -580,7 +580,8 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     // instantiation can execute the case because GEMM/GEMV dispatching logic
     // relies on it. Here we require the platform to support the exact isa that
     // `gemv_check_isa_with_datatype` mandates for the data type:
-    // f32 -> avx2, bf16 -> avx512_core_bf16, f16 -> avx512_core_fp16.
+    // f32 -> avx512_core or avx2, bf16 -> avx512_core_bf16,
+    // f16 -> avx512_core_fp16.
     // This also rejects any data type not supported by the GEMV path.
     const bool gemv_isa_dt_supported = (bm_conf_utils.is_f32() && mayiuse(avx2))
             || (bm_conf_utils.is_bf16() && mayiuse(avx512_core_bf16))
@@ -1120,17 +1121,37 @@ void maybe_unswap_mn_blocking(const brgemm_matmul_conf_t &bgmmc,
     std::swap(best_blocking.m_tail, best_blocking.n_tail);
 }
 
+// The in-kernel B offset is int32 and grows as K_blk * B row stride, so a
+// K_blk picked purely in elements overflows once B is wide enough. Return the
+// largest K_blk that keeps that offset representable, rounded down to the K
+// granularity because K_blk is rounded up to it later.
+dim_t gemv_max_k_blk_by_b_stride(const brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils) {
+    // copy_B_wei_stride is not computed yet, so leave buffered B to the
+    // existing stride check.
+    if (bgmmc.use_buffer_b) return std::numeric_limits<dim_t>::max();
+
+    const dim_t b_stride = bm_conf_utils.get_actual_LDB() * bgmmc.b_dt_sz;
+    if (b_stride <= 0) return std::numeric_limits<dim_t>::max();
+
+    const dim_t granularity = nstl::max<dim_t>(1, bgmmc.required_k_granularity);
+    const dim_t cap = std::numeric_limits<int32_t>::max() / b_stride;
+    return nstl::max(granularity, rnd_dn(cap, granularity));
+}
+
 // GEMV is memory-bound so we want the largest possible K_blk because a small
 // K_blk splits K into many K_chunks that accumulate through the C buffer and
 // break A/B streaming. Using one large K_blk keeps the whole reduction in
 // registers.
 //
-// - K_blk is capped as a conservative bound on in-kernel (int32) offsets.
+// - K_blk is capped both by a fixed bound and by `max_k_blk`, which keeps
+//   in-kernel (int32) offsets from overflowing on wide B.
 // - batch_size is set so K_blk * batch_size covers K (K_chunks == 1) so the
 //   brgemm batch loop reduces all K-blocks in registers.
-void compute_gemv_k_blocking(dim_t K, int &k_blk, int &batch_size) {
+void compute_gemv_k_blocking(
+        dim_t K, dim_t max_k_blk, int &k_blk, int &batch_size) {
     constexpr dim_t max_gemv_k_blk = 16384;
-    k_blk = static_cast<int>(std::min<dim_t>(K, max_gemv_k_blk));
+    k_blk = static_cast<int>(std::min({K, max_gemv_k_blk, max_k_blk}));
     batch_size = static_cast<int>(std::max<dim_t>(1, div_up(K, k_blk)));
 }
 
@@ -1208,7 +1229,10 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
     const dim_t default_k_blk = use_extended_k_blk ? 1024 : 512;
     int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
     int brgemm_bs = 1;
-    if (bgmmc.is_gemv) compute_gemv_k_blocking(matmul.K, k_blk, brgemm_bs);
+    const dim_t gemv_max_k_blk
+            = gemv_max_k_blk_by_b_stride(bgmmc, bm_conf_utils);
+    if (bgmmc.is_gemv)
+        compute_gemv_k_blocking(matmul.K, gemv_max_k_blk, k_blk, brgemm_bs);
     int start_nthr_k = 1;
     int last_nthr_k = 1;
 
@@ -1302,8 +1326,8 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         const int max_gemv_nthr_k = 4;
         const int gemv_nthr_k = std::min(nthr, max_gemv_nthr_k);
         // Re-calculate k blocking.
-        compute_gemv_k_blocking(
-                div_up(matmul.K, gemv_nthr_k), k_blk, brgemm_bs);
+        compute_gemv_k_blocking(div_up(matmul.K, gemv_nthr_k), gemv_max_k_blk,
+                k_blk, brgemm_bs);
         start_nthr_k = last_nthr_k = gemv_nthr_k;
     }
 
@@ -1444,7 +1468,10 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     constexpr dim_t default_k_blk = 1024;
     int k_blk = static_cast<int>(nstl::min(matmul.K, default_k_blk));
     int brgemm_bs = 1;
-    if (bgmmc.is_gemv) compute_gemv_k_blocking(matmul.K, k_blk, brgemm_bs);
+    if (bgmmc.is_gemv)
+        compute_gemv_k_blocking(matmul.K,
+                gemv_max_k_blk_by_b_stride(bgmmc, bm_conf_utils), k_blk,
+                brgemm_bs);
     const int start_nthr_k = 1;
 
     // for cases with low parallel work, reduce 'min_m_blk' to

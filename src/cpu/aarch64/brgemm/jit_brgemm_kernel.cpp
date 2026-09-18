@@ -243,7 +243,8 @@ private:
 
     ZReg load(int ld = 0) const {
         if (n_bcast_1_load) {
-            return ZReg(brg.bd_block);
+            // Two B registers between A and C enable one-ahead loads.
+            return ZReg(brg.bd_block + ld % 2);
         } else {
             // Starts off from lowest accm register, and continues descending
             int idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
@@ -1640,6 +1641,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     auto A_stride_bytes = static_cast<int32_t>(brg.typesize_A * brg.LDA);
 
     if (n_bcast_1_load) {
+        const bool load_b_early = ld_block2 > 1;
         // Use a tmp to store the pointer to the first element of A in the tile
         // We can't use reg_aux_A directly because we increment this by a quadword when needed
         XReg reg_A_ptr = X_TMP_4;
@@ -1660,6 +1662,20 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                 // Bump by quadword
                 add(reg_A_ptr, reg_A_ptr, 16);
             }
+            auto load_b = [&](const int ld) {
+                const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
+                const int b_offset = B_offset(ld, rd);
+                if (!use_mul_vl(b_offset - b_base_offset, 4, cpu_sveLen)) {
+                    add_vl_or_imm(reg_tmp_, x_addr, b_offset - b_base_offset,
+                            X_TMP_0);
+                    b_base_offset = b_offset;
+                    x_addr = reg_tmp_;
+                }
+                const auto b_mul_vl = compute_off_mul_vl(
+                        b_offset - b_base_offset, 4, cpu_sveLen);
+                ld1w(load(ld).s, mask / T_z, ptr(x_addr, b_mul_vl, MUL_VL));
+            };
+            if (load_b_early) load_b(0);
             if (quadword_index == 0) {
                 // If loading a quadword would take us past the end of rd_loop, we need to use a mask
                 bool quadword_is_too_much = (rd + 4 * brg.rd_step) > rd_loop;
@@ -1675,19 +1691,10 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                 }
             }
             for (int ld = 0; ld < ld_block2; ld++) {
-                const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
-                const int b_offset = B_offset(ld, rd);
-                if (!use_mul_vl(b_offset - b_base_offset, 4, cpu_sveLen)) {
-                    add_vl_or_imm(reg_tmp_, x_addr, b_offset - b_base_offset,
-                            X_TMP_0);
-                    b_base_offset = b_offset;
-                    x_addr = reg_tmp_;
-                }
-                auto b_mul_vl = compute_off_mul_vl(
-                        b_offset - b_base_offset, 4, cpu_sveLen);
-                ld1w(load(ld).s, mask / T_z, ptr(x_addr, b_mul_vl, MUL_VL));
+                const int next_ld = ld + load_b_early;
+                if (next_ld < ld_block2) load_b(next_ld);
                 for (int bd = bd_b; bd < bd_e; bd++) {
-                    dot_product(accm(ld_block2, bd, ld), load(), bcst(bd),
+                    dot_product(accm(ld_block2, bd, ld), load(ld), bcst(bd),
                             quadword_index);
                 }
             }

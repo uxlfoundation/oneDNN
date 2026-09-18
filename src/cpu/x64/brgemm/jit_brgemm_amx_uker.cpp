@@ -112,7 +112,7 @@ struct jit_brgemm_amx_uker_t : public brgemm_kernel_t {
             std::tie(with_binary_per_oc_bcast_, with_binary_per_oc_sp_bcast_,
                     with_binary_per_oc_d_bcast_, with_binary_per_mb_bcast_,
                     with_binary_channel_bcast_, with_binary_per_mb_w_bcast_,
-                    with_binary_per_w_bcast_, with_binary_spatial_bcast_,
+                    with_binary_per_w_bcast_, with_binary_per_hw_bcast_,
                     with_binary_batch_bcast_, with_binary_spatial_bcast_,
                     with_binary_no_bcast_)
                     = bcast_strategies_present_tup(brg.attr()->post_ops_.entry_,

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@
 
 #include "common/primitive.hpp"
 
-#include "cpu/cpu_eltwise_pd.hpp"
-
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/jit_uni_binary_kernel.hpp"
+#include "cpu/cpu_binary_pd.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -39,7 +39,8 @@ struct jit_uni_binary_t : public primitive_t {
     struct pd_t : public cpu_binary_pd_t {
         using cpu_binary_pd_t::cpu_binary_pd_t;
 
-        DECLARE_COMMON_PD_T("jit:uni", jit_uni_binary_t);
+        DECLARE_COMMON_PD_T(
+                JIT_IMPL_NAME_HELPER("jit:", conf_.isa, ""), jit_uni_binary_t);
 
         status_t init(const engine_t *engine);
 

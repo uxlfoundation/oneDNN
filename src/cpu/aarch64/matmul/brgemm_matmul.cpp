@@ -16,16 +16,20 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <memory>
+
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
+#include "common/nstl.hpp"
+#include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
-#include "cpu/cpu_primitive.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
-#include "cpu/scale_utils.hpp"
 
+#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
 #include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul.hpp"
 
@@ -228,7 +232,22 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
 
     auto scratchpad = scratchpad_registry().registrar();
     init_scratchpad(scratchpad, bgmmc_);
-    book_precomputed_scales(scratchpad, attr()->scales_, N());
+
+    constexpr size_t page_alignment_bytes = 4096;
+    if (bgmmc_.with_scales) {
+        const size_t scales_size = bgmmc_.is_oscale_per_n
+                ? nstl::max(static_cast<size_t>(N()),
+                          scale_utils::scales_simd_w())
+                : scale_utils::scales_simd_w();
+
+        scratchpad.template book<float>(
+                key_precomputed_scales, scales_size, page_alignment_bytes);
+    }
+
+    if (bgmmc_.with_dst_scales) {
+        scratchpad.template book<float>(key_matmul_dst_scales,
+                scale_utils::scales_simd_w(), page_alignment_bytes);
+    }
 
     const bool is_B_transposed = one_of(bgmmc_.wei_tag, abdc, ba, acb, adbc,
             abced, abcdfe, abcdegf, abcdefhg, abcdefgih, abcdefghji,
@@ -284,32 +303,59 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
 
 template <cpu_isa_t isa>
 status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
     const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     matmul_helper_t helper(src_d, weights_d, dst_d);
 
-    const auto &scratchpad = ctx.get_scratchpad_grantor();
-    const float *oscales = precompute_scales(
-            scratchpad, src_scales, wei_scales, pd()->N(), pd()->attr());
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
-    brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), oscales, dst_scales, helper);
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    const bool use_buffer_a
-            = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
-    const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
+    float *oscales = bgmmc.with_scales
+            ? scratchpad.template get<float>(key_precomputed_scales)
+            : nullptr;
 
-    const int M_chunks = brgmm_ctx.get_M_chunks();
-    const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
-    const int M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    float *inv_dst_scales = bgmmc.with_dst_scales
+            ? scratchpad.template get<float>(key_matmul_dst_scales)
+            : nullptr;
+
+    if (bgmmc.with_scales || bgmmc.with_dst_scales) {
+        parallel(1, [= COMPAT_THIS_CAPTURE](int, int) {
+            scale_utils::precompute_oscales(oscales, pd()->attr(), src_scales,
+                    wei_scales, pd()->N(), 1.f);
+
+            scale_utils::precompute_inv_dst_scales(
+                    inv_dst_scales, pd()->attr(), dst_scales);
+        });
+    }
+
+    const auto &brgmm_ctx_ptr = std::make_shared<brg_matmul_exec_ctx_t>(
+            ctx, pd(), oscales, inv_dst_scales, helper);
+
+    const int num_threads
+            = brgmm_ctx_ptr->get_num_threads_for_parallelization();
+
+    parallel(num_threads,
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
+
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn(ithr);
         const int ithr_k = brgmm_ctx.get_thread_idx_for_k(ithr);
+        const int M_chunks = brgmm_ctx.get_M_chunks();
+        const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
+        const int M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
+
+        const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+        const bool use_buffer_a
+                = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
+
         if (ithr_bmn < 0 || ithr_k < 0) return;
         int start {0}, end {0};
         balance211(brgmm_ctx.get_parallel_work_amount(),
@@ -363,7 +409,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         }
     });
 
-    maybe_reduce_partial_results_and_apply_postops(brgmm_ctx);
+    maybe_reduce_partial_results_and_apply_postops(brgmm_ctx_ptr);
 
     return status::success;
 }
@@ -506,13 +552,17 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
-        const brg_matmul_exec_ctx_t &brgmm_ctx) const {
-    if (!brgmm_ctx.parallel_reduction_is_used()) return;
+        const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const {
+    if (!brgmm_ctx_ptr->parallel_reduction_is_used()) return;
 
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
+    const int num_threads
+            = brgmm_ctx_ptr->get_num_threads_for_parallelization();
 
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    parallel(num_threads,
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
+
         const int nthr_k = brgmm_ctx.get_num_threads_for_k();
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn(ithr);
         const int ithr_k = brgmm_ctx.get_thread_idx_for_k(ithr);

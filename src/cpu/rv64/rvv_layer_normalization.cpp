@@ -20,6 +20,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
 
+#include "cpu/rv64/cpu_isa_traits.hpp"
 #include "cpu/rv64/rvv_layer_normalization.hpp"
 
 namespace dnnl {
@@ -30,10 +31,16 @@ namespace rv64 {
 rvv_layer_normalization_fwd_t::rvv_layer_normalization_fwd_t(const pd_t *apd)
     : primitive_t(apd) {
     if (pd()->src_md()->data_type == data_type::f16) {
+        // The widening sum is profitable on the tested VLEN <= 256 systems
+        // only when the normalized axis contains at least 129 elements.
+        constexpr dim_t widening_sum_min_len = 129;
+        const bool use_widening_sum = get_platform_vlen() <= 256
+                && pd()->norm_axis() >= widening_sum_min_len;
         const bool weights_f16
                 = pd()->weights_md()->data_type == data_type::f16;
-        f16_fused_kernel_.reset(new jit_rvv_layernorm_f16_fused_kernel_t(
-                pd()->use_scale(), pd()->use_shift(), weights_f16));
+        f16_fused_kernel_.reset(
+                new jit_rvv_layernorm_f16_fused_kernel_t(pd()->use_scale(),
+                        pd()->use_shift(), weights_f16, use_widening_sum));
     } else {
         fused_kernel_.reset(new jit_rvv_layernorm_fused_kernel_t(
                 pd()->use_scale(), pd()->use_shift()));

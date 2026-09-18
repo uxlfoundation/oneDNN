@@ -564,15 +564,18 @@ void jit_rvv_layernorm_data_kernel_t::generate() {
             jit_rvv_layernorm_f16_fused_kernel_t::call_params_t, field))
 
 jit_rvv_layernorm_f16_fused_kernel_t::jit_rvv_layernorm_f16_fused_kernel_t(
-        bool with_scale, bool with_shift, bool weights_f16)
+        bool with_scale, bool with_shift, bool weights_f16,
+        bool use_widening_sum)
     : jit_generator_t("jit_rvv_layernorm_f16_fused_kernel")
     , with_scale_(with_scale)
     , with_shift_(with_shift)
-    , weights_f16_(weights_f16) {
+    , weights_f16_(weights_f16)
+    , use_widening_sum_(use_widening_sum) {
     create_kernel();
 }
 
 void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
+    const bool use_widening_sum = use_widening_sum_;
     const Reg reg_param = a0;
     const Reg reg_src = a1;
     const Reg reg_dst = a2;
@@ -615,18 +618,29 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     ld(reg_t1, reg_param, GET_F16_OFF(len));
     vsetvli(reg_tmp, x0, SEW::e32, LMUL::m8, VTA::ta, VMA::ma);
     vmv_v_x(v_sum, x0);
+    if (!use_widening_sum) vmv_v_x(v_work, x0);
 
     L(sum_loop);
     beqz(reg_t1, sum_done);
-    vsetvli(reg_vl, reg_t1, SEW::e16, LMUL::m4, VTA::ta, VMA::ma);
+    if (use_widening_sum) {
+        // Preserve inactive accumulator lanes for the final full-width
+        // reduction; they may contain sums from preceding full chunks.
+        vsetvli(reg_vl, reg_t1, SEW::e16, LMUL::m4, VTA::tu, VMA::ma);
+    } else {
+        vsetvli(reg_vl, reg_t1, SEW::e16, LMUL::m4, VTA::ta, VMA::ma);
+    }
     sub(reg_t1, reg_t1, reg_vl);
     vle16_v(v_ld, reg_src);
     slli(reg_tmp, reg_vl, 1);
     add(reg_src, reg_src, reg_tmp);
-    // Widening add in one instruction under the e16/m4 vtype; previously
-    // this was vfwcvt + a vsetvli e32/m8 no-op (VLMAX(e16/m4) ==
-    // VLMAX(e32/m8)) + vfadd + a tail-clearing vmv.
-    vfwadd_vv(v_sum, v_sum, v_ld);
+    if (use_widening_sum) {
+        vfwadd_wv(v_sum, v_sum, v_ld);
+    } else {
+        vfwcvt_f_f_v(v_work, v_ld);
+        vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m8, VTA::tu, VMA::ma);
+        vfadd_vv(v_sum, v_sum, v_work);
+        vmv_v_x(v_work, x0);
+    }
     j_(sum_loop);
     L(sum_done);
 

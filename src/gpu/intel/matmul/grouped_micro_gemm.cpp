@@ -648,7 +648,8 @@ status_t grouped_micro_gemm_t::pd_t::init_kernel_ctx_m_axis() {
         kernel_ctx_.define_int("SRC_GROUP_SIZE", src_group_sizes_[1]);
     }
     if (wei_quant_.with_scale() || wei_quant_.with_zp()) {
-        kernel_ctx_.define_int("WEI_GROUP_SIZE", wei_group_sizes_[1]);
+        kernel_ctx_.define_int("WEI_K_GROUP_SIZE", wei_group_sizes_[1]);
+        kernel_ctx_.define_int("WEI_N_GROUP_SIZE", wei_group_sizes_[2]);
     }
 
     kernel_ctx_.define_int("SRC_SCALES_GROUPED",

@@ -486,7 +486,9 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     int min2DAlignmentA = block2DMinAlignment(hw, problem.A, strategy.A, /* asIfBlock2D */ true);
     int min2DAlignmentB = block2DMinAlignment(hw, problem.B, strategy.B, /* asIfBlock2D */ true);
 
-    bool systolic = hwInfo.systolicAvailable;
+    bool systolic = hwInfo.systolicAvailable &&
+                   (problem.Ta.paddedSize() <= 2 || problem.Ta == Type::tf32) &&
+                   (problem.Tb.paddedSize() <= 2 || problem.Tb == Type::tf32);
     // Non-systolic integer dot products require byte operands. Keep the
     // external int4 format and let the generator unpack it for computation.
     if (!systolic) {

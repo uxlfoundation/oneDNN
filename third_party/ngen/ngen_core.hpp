@@ -4148,6 +4148,7 @@ static inline void encodeAtomicDescriptor(HW hw, SendgMessageDescriptor &desc, S
 {
     spec.template getDescriptor<Access::AtomicInteger>(hw, mod.getExecSize(), sfid, base, desc, src0Len, src1Len, addr);
     spec.applyAtomicOp(op, desc);
+    src1Len *= (operandCount(op) - 1);
 }
 
 inline void unimplemented() {

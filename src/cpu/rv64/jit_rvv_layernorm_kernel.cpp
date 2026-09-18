@@ -615,7 +615,6 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     ld(reg_t1, reg_param, GET_F16_OFF(len));
     vsetvli(reg_tmp, x0, SEW::e32, LMUL::m8, VTA::ta, VMA::ma);
     vmv_v_x(v_sum, x0);
-    vmv_v_x(v_work, x0);
 
     L(sum_loop);
     beqz(reg_t1, sum_done);
@@ -624,10 +623,10 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     vle16_v(v_ld, reg_src);
     slli(reg_tmp, reg_vl, 1);
     add(reg_src, reg_src, reg_tmp);
-    vfwcvt_f_f_v(v_work, v_ld); // f16 -> f32, first reg_vl elems
-    vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m8, VTA::tu, VMA::ma);
-    vfadd_vv(v_sum, v_sum, v_work);
-    vmv_v_x(v_work, x0); // keep tail zero for next widen
+    // Widening add in one instruction under the e16/m4 vtype; previously
+    // this was vfwcvt + a vsetvli e32/m8 no-op (VLMAX(e16/m4) ==
+    // VLMAX(e32/m8)) + vfadd + a tail-clearing vmv.
+    vfwadd_vv(v_sum, v_sum, v_ld);
     j_(sum_loop);
     L(sum_done);
 

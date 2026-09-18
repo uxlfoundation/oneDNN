@@ -27,6 +27,7 @@
 #include "utils/fill.hpp"
 #include "utils/memory.hpp"
 #include "utils/parallel.hpp"
+#include "utils/engine.hpp"
 
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"
@@ -666,6 +667,23 @@ void prb_t::skip_unimplemented(res_t *res) const {
             {prb->src_dt(), prb->wei_dt(), prb->bia_dt, prb->dst_dt()},
             prb->dir, res);
     skip_unimplemented_binary_po(prb->attr, res);
+
+    bool dynamic_fp = prb->attr.scales.get(DNNL_ARG_DST).is_dynamic_fp();
+    if(is_gpu() && dynamic_fp) {
+        BENCHDNN_PRINTF(2, "%s",
+                "[SKIP]: Dynamic FP scale is unsupported by GPU.");
+        res->state = SKIPPED;
+        res->reason = reason_t::skip_not_supported;
+        return;
+    }
+
+    if(prb->bia_dt == dnnl_f4_e2m1 || prb->bia_dt == dnnl_f4_e3m0) {
+        BENCHDNN_PRINTF(2, "%s",
+                "[SKIP]: FP4 Bias is unsupported.");
+        res->state = SKIPPED;
+        res->reason = reason_t::skip_not_supported;
+        return;
+    }
 
     const auto wei_encoding
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);

@@ -1479,22 +1479,26 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
     const VReg v_mask(0);
-    // f16 max: v_acc(f16m1)=v4, v_tmp(f16m1)=v8.
-    // avg (both dtypes) and bf16 max: v_acc(f32m2)=v4-v5, v_tmp(f16m1)=v8
-    // (load buffer + narrowed result).
+    // Nspc f16 max uses e16/m2 at VLEN=256 to process twice as many contiguous
+    // channels. Other layouts and VLENs retain e16/m1 because cross-core tests
+    // show that the larger group can cost more than the saved loop iterations.
+    // Avg and bf16 retain f32/m2 + e16/m1.
     const VReg v_acc(4), v_tmp(8);
     // bf16 has no e16 arithmetic, so its max compares at f32 like avg already
     // does: every load is widened into v_wide and the accumulator stays f32/m2.
     // v24 is otherwise only the f16-max post-op widen buffer, which the bf16
     // path does not need (its accumulator is already f32), so it is free here.
     constexpr bool is_bf16 = d_type == data_type::bf16;
+    const bool use_wide_f16 = !is_bf16 && is_max_pool_
+            && jpp_.tag_kind == jit_pool_tag_kind_t::nspc
+            && get_platform_vlen() == 256;
     const VReg v_wide(24);
     const bool acc_is_f32 = !is_max_pool_ || is_bf16;
     const VReg v_res = (is_max_pool_ && !is_bf16) ? v_acc : v_tmp;
     // Max forward-training tracks the per-channel argmax. The index fits e16 for
-    // any realistic pooling window (< 32768), so v_ind stays e16/m1 — the same
-    // vtype as the f16 data, avoiding a per-window-element vtype switch. It is
-    // narrowed to e8 (u8 ws) or widened to e32/m2 in v28 (s32 ws) only at store.
+    // any realistic pooling window (< 32768), so v_ind uses the same e16 LMUL
+    // as the data and avoids a per-window-element vtype switch. It is narrowed
+    // to e8 (u8 ws) or widened to e32 in v28 (s32 ws) only at store.
     const bool max_train = is_max_pool_ && jpp_.is_training;
     // Max-training may also fuse post-ops (applied to the widened f32 max before
     // the narrow/store). When a binary is fused the ws pointer keeps s10, the rhs
@@ -1631,7 +1635,10 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vmv_v_x(v_acc, t1);
             vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         } else {
-            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            if (use_wide_f16)
+                vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            else
+                vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
             li(t1, 0xFBFF); // f16 lowest (-65504.0)
             vmv_v_x(v_acc, t1);
         }
@@ -1646,17 +1653,10 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
                 mv(t3, s11); // running window index = pos_base (reset per chunk)
         }
     } else {
-        if (is_bf16) {
-            // bf16 avg: f32m2 accumulator; window runs under e16/m1.
-            vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-            vmv_v_x(v_acc, x0);
-            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        } else {
-            // f16 avg: f32m4 accumulator; window runs under e16/m2.
-            vsetvli(t0, s2, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-            vmv_v_x(v_acc, x0);
-            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-        }
+        // avg: f32m2 accumulator; window runs under e16/m1 (same vl).
+        vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+        vmv_v_x(v_acc, x0);
+        vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
     }
 
     mv(a3, s6);
@@ -1745,10 +1745,9 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
     j_(id_loop);
     L(id_done);
 
-    // f32 accumulator (avg for both dtypes, and bf16 max): scale for avg
-    // (e32/m2), apply the fused post-op chain at f32, then narrow to xf16
-    // (e16/m1). bf16 max needs no widen/narrow round trip here -- the compare
-    // already ran at f32 -- so the chain applies to v_acc directly.
+    // f32 accumulator (avg for both dtypes, and bf16 max): scale for avg,
+    // apply the fused post-op chain at f32, then narrow to xf16. bf16 max needs
+    // no widen/narrow round trip here because the compare already ran at f32.
     if (acc_is_f32) {
         vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
         if (!is_max_pool_) vfmul_vf(v_acc, v_acc, ft1);
@@ -1768,7 +1767,7 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
         else
             vfncvt_f_f_w(v_tmp, v_acc);
     } else if (jpp_.fuse_eltwise || jpp_.fuse_binary) {
-        // max: the accumulator is f16; widen to f32 (v24/m2), apply the post-op
+        // max: widen the f16 accumulator to f32, apply the post-op
         // chain (eltwise and/or binary, rhs in v28), then narrow back in place
         // so the store path is unchanged. For max-training the f32 rhs stride
         // (a6) is positioned here (t3 holds the argmax scratch), free after
@@ -1776,12 +1775,21 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
         if (mt_bin) {
             slli(a6, s9, 1); // f32 rhs channel stride (= 2 * f16 dst stride)
         }
-        vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        if (use_wide_f16)
+            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+        else
+            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vfwcvt_f_f_v(VReg(24), v_acc);
-        vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-        // f16 max widened to f32 at e32/m2 (group_stride 2).
-        po_inj.compute_vector(24, rhs_dyn, 2 /*group_stride*/);
-        vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        if (use_wide_f16)
+            vsetvli(t0, s2, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+        else
+            vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+        po_inj.compute_vector(
+                24, rhs_dyn, use_wide_f16 ? 4 : 2 /*group_stride*/);
+        if (use_wide_f16)
+            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+        else
+            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vfncvt_f_f_w(v_acc, VReg(24));
     }
 
@@ -1795,17 +1803,17 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
         L(dst_st_done);
     }
     if (max_train) {
-        // Store the per-channel argmax (e16m1) to the workspace at s10. u8:
-        // narrow e16->e8; s32: widen e16->e32 (v28/m2). unit (nspc,
+        // Store the per-channel argmax to the workspace at s10. u8: narrow
+        // e16->e8; s32: widen e16->e32 in v28. Unit (nspc,
         // ws_vec_byte_stride == ind_sz) vs strided (ncsp). t3 is the vsetvli
         // scratch (free after the window sweep) so t0 (the channel vl) survives.
         ld(t2, reg_param, GET_OFF_P(ws_vec_byte_stride));
         li(t1, static_cast<int>(ind_sz));
         if (ind_u8) {
-            if (is_bf16)
-                vsetvli(t3, s2, SEW::e8, LMUL::mf2, VTA::ta, VMA::ma);
-            else
+            if (use_wide_f16)
                 vsetvli(t3, s2, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
+            else
+                vsetvli(t3, s2, SEW::e8, LMUL::mf2, VTA::ta, VMA::ma);
             vnsrl_wi(v_tmp, v_ind, 0);
             Label u8_unit, u8_done;
             beq(t2, t1, u8_unit);
@@ -1815,10 +1823,10 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vse8_v(v_tmp, s10);
             L(u8_done);
         } else {
-            if (is_bf16)
-                vsetvli(t3, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-            else
+            if (use_wide_f16)
                 vsetvli(t3, s2, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            else
+                vsetvli(t3, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
             vzext_vf2(v28, v_ind);
             Label s32_unit, s32_done;
             beq(t2, t1, s32_unit);
@@ -1828,10 +1836,10 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vse32_v(v28, s10);
             L(s32_done);
         }
-        if (is_bf16)
-            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        else
+        if (use_wide_f16)
             vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+        else
+            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
     }
 
     // Advance src/dst by vl * stride (f16 unit stride = vl * 2).

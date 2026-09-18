@@ -654,6 +654,71 @@ void jit_brgemm_f16_kernel_t::generate() {
         L(lbl_no_bias);
     }
 
+    if (brg_.store_f16) {
+        // Narrow the f32 accumulators to f16 on store: e32/m4 -> e16/m2
+        // keeps VL unchanged. C is a 2-byte element array.
+        vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+        {
+            Label lbl_bz, lbl_store_done;
+            beq(reg_beta, x0, lbl_bz);
+
+            // Column pair 0/1: load f16 C, widen to f32, add, narrow, store.
+            mv(reg_tmp0, reg_C);
+            vle16_v(v_a0, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vle16_v(v_a1, reg_tmp0);
+            vfwcvt_f_f_v(v_a0, v_a0); // vtype still e16/m2; result e32/m4
+            vfwcvt_f_f_v(v_a1, v_a1);
+            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            vfadd_vv(v_a0, v_a0, v_c0);
+            vfadd_vv(v_a1, v_a1, v_c1);
+            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vfncvt_f_f_w(v_a0, v_a0);
+            vfncvt_f_f_w(v_a1, v_a1);
+            mv(reg_tmp0, reg_C);
+            vse16_v(v_a0, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse16_v(v_a1, reg_tmp0);
+
+            // Column pair 2/3: same, reusing v_a0/v_a1.
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vle16_v(v_a0, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vle16_v(v_a1, reg_tmp0);
+            vfwcvt_f_f_v(v_a0, v_a0);
+            vfwcvt_f_f_v(v_a1, v_a1);
+            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            vfadd_vv(v_a0, v_a0, v_c2);
+            vfadd_vv(v_a1, v_a1, v_c3);
+            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vfncvt_f_f_w(v_a0, v_a0);
+            vfncvt_f_f_w(v_a1, v_a1);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse16_v(v_a1, reg_tmp0);
+            sub(reg_tmp0, reg_tmp0, reg_ldc);
+            vse16_v(v_a0, reg_tmp0);
+
+            j_(lbl_store_done);
+
+            L(lbl_bz);
+            mv(reg_tmp0, reg_C);
+            vfncvt_f_f_w(v_c0, v_c0);
+            vfncvt_f_f_w(v_c1, v_c1);
+            vfncvt_f_f_w(v_c2, v_c2);
+            vfncvt_f_f_w(v_c3, v_c3);
+            vse16_v(v_c0, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse16_v(v_c1, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse16_v(v_c2, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse16_v(v_c3, reg_tmp0);
+
+            L(lbl_store_done);
+        }
+        // Restore e32/m4 for the next n-loop iteration.
+        vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+    } else {
     {
         mv(reg_tmp0, reg_C);
         Label lbl_bz, lbl_store_done;
@@ -690,6 +755,7 @@ void jit_brgemm_f16_kernel_t::generate() {
         vse32_v(v_c3, reg_tmp0);
 
         L(lbl_store_done);
+    }
     }
 
     if (use_single_b) {
@@ -1498,12 +1564,32 @@ void jit_brgemm_s8_kernel_t::generate() {
     {
         Label lbl_bz2, lbl_done2;
         beq(reg_beta, x0, lbl_bz2);
-        vle32_v(v_tmp, reg_C);
-        vadd_vv(v_tmp, v_tmp, v_c0);
-        vse32_v(v_tmp, reg_C);
+        if (brg_.store_f16) {
+            // f16 C: load f16, widen, add accumulator, narrow, store.
+            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vle16_v(v_a0, reg_C);
+            vfwcvt_f_f_v(v_a0, v_a0);
+            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            vfadd_vv(v_a0, v_a0, v_c0);
+            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vfncvt_f_f_w(v_a0, v_a0);
+            vse16_v(v_a0, reg_C);
+            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+        } else {
+            vle32_v(v_tmp, reg_C);
+            vfadd_vv(v_tmp, v_tmp, v_c0);
+            vse32_v(v_tmp, reg_C);
+        }
         j_(lbl_done2);
         L(lbl_bz2);
-        vse32_v(v_c0, reg_C);
+        if (brg_.store_f16) {
+            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vfncvt_f_f_w(v_c0, v_c0);
+            vse16_v(v_c0, reg_C);
+            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+        } else {
+            vse32_v(v_c0, reg_C);
+        }
         L(lbl_done2);
     }
 

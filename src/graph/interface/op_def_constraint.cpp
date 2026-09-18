@@ -361,9 +361,6 @@ bool check_dyn_quant_dequant_scales_zps(const op_t *n) {
     const int64_t inputs_num = n->num_inputs();
     const auto &src_lt = n->get_input_logical_tensor(0);
     const auto &scales_lt = n->get_input_logical_tensor(1);
-    const int64_t sz_scales = scales_lt.ndims == 0 ? 1 : scales_lt.dims[0];
-    // in case of not setting value for scales
-    if (sz_scales == DNNL_GRAPH_UNKNOWN_DIM) { return true; }
 
     // FP8 quantization does not support zps regardless of mask or qtype.
     if (inputs_num == 3) {
@@ -376,6 +373,10 @@ bool check_dyn_quant_dequant_scales_zps(const op_t *n) {
                 "%s, f8 quantization or dequantization does not support zps.",
                 op_t::kind2str(n->get_kind()).c_str());
     }
+
+    const int64_t sz_scales = scales_lt.ndims == 0 ? 1 : scales_lt.dims[0];
+    // in case of not setting value for scales
+    if (sz_scales == DNNL_GRAPH_UNKNOWN_DIM) { return true; }
 
     // qtype is not a required attribute.
     const auto qtype = n->has_attr(op_attr::qtype)

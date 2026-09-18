@@ -366,10 +366,11 @@ grouped_micro_gemm_m_axis(const global SRC_DATA_T *src, long ldsrc,
     src_attr_zp += src_offset * ldsrcq / SRC_ZP_ELEMS_PER_BYTE;
 #endif
 #if WITH_WEI_SCALES
-    wei_attr_scales += batch * n * (k / WEI_GROUP_SIZE);
+    wei_attr_scales += batch * (n / WEI_N_GROUP_SIZE) * (k / WEI_K_GROUP_SIZE);
 #endif
 #if WITH_WEI_ZP
-    wei_attr_zp += batch * n * (k / WEI_GROUP_SIZE) / WEI_ZP_ELEMS_PER_BYTE;
+    wei_attr_zp += batch * (n / WEI_N_GROUP_SIZE) * (k / WEI_K_GROUP_SIZE)
+            / WEI_ZP_ELEMS_PER_BYTE;
 #endif
 
     ugemm_grouped_c_type c_tile_result = ugemm_grouped(wei, ldwei, src, ldsrc,

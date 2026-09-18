@@ -45,7 +45,8 @@ status_t rvv_gemm_f16(const char *transa, const char *transb, const dim_t *M,
         const dim_t *N, const dim_t *K, const float *alpha, const void *A,
         const dim_t *lda, const void *B, const dim_t *ldb, const float *beta,
         void *C, const dim_t *ldc, data_type_t dt, char *ws_buffers = nullptr,
-        const gemm_utils::gemm_partition_t *part = nullptr);
+        const gemm_utils::gemm_partition_t *part = nullptr,
+        const float *bias = nullptr);
 
 } // namespace rv64
 } // namespace cpu

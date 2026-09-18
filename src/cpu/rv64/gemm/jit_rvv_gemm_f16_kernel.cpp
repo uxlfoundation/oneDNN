@@ -29,11 +29,12 @@ using namespace Xbyak_riscv;
 using namespace dnnl::impl::utils;
 
 jit_rvv_gemm_f16_kernel_t::jit_rvv_gemm_f16_kernel_t(
-        dim_t n_cols, bool isTransA, data_type_t in_dt)
+        dim_t n_cols, bool isTransA, data_type_t in_dt, bool has_bias)
     : jit_generator_t("rv64_gemm_kernel_f16_jit")
     , n_cols_(n_cols)
     , isTransA_(isTransA)
-    , is_bf16_(in_dt == data_type::bf16) {
+    , is_bf16_(in_dt == data_type::bf16)
+    , has_bias_(has_bias) {
     assert(utils::one_of(in_dt, data_type::f16, data_type::bf16));
     create_kernel();
 }
@@ -54,7 +55,9 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
     const Reg reg_k = a4; // current k counter
     const Reg reg_B0_ptr = a6; // running pointer into B
     const Reg reg_tmp0 = a7;
+    const Reg reg_bias = t4; // bias pointer (f32 per column)
     const FReg freg_b[6] = {fa2, fa3, fa4, fa5, fa6, fa7};
+    const FReg f_bias = fa0;
 
     const VReg v_c[6]
             = {VReg(0), VReg(4), VReg(8), VReg(12), VReg(16), VReg(20)};
@@ -70,6 +73,7 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
     //   40 : dim_t ldc
     //   48 : dim_t K
     //   56 : dim_t m
+    //   64 : const float *bias (only when has_bias_)
     ld(reg_A_ptr, reg_param, 0);
     ld(reg_B0_ptr, reg_param, 8);
     ld(reg_C_base, reg_param, 16);
@@ -78,6 +82,7 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
     ld(reg_ldc_bytes, reg_param, 40);
     ld(reg_K, reg_param, 48);
     ld(reg_m, reg_param, 56);
+    if (has_bias_) ld(reg_bias, reg_param, 64);
 
     // A, B and C elements are 2 bytes.
     slli(reg_lda_bytes, reg_lda_bytes, 1);
@@ -179,16 +184,21 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
 
     L(label_k_done);
 
-    // C store: narrow the f32 accumulators in place to the input data type and
-    // store (overwrite-only; the driver rejects beta != 0). Stays at e16/m2,
-    // the configuration of the narrowing destination.
+    // C store: add the optional f32 bias into the accumulators, then narrow
+    // them in place to the input data type and store (overwrite-only). The
+    // bias add runs at e32/m4; the narrowing lands at e16/m2.
     for (dim_t c = 0; c < n_cols_; c++) {
         if (c == 0) {
             mv(reg_tmp3, reg_C_base);
         } else {
-            li(reg_tmp0, c);
-            mul(reg_tmp3, reg_ldc_bytes, reg_tmp0);
-            add(reg_tmp3, reg_C_base, reg_tmp3);
+            add(reg_tmp3, reg_tmp3, reg_ldc_bytes);
+        }
+        if (has_bias_) {
+            vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            flw(f_bias, reg_bias, 0);
+            vfadd_vf(v_c[c], v_c[c], f_bias);
+            addi(reg_bias, reg_bias, 4);
+            vsetvli(x0, reg_m, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
         }
         if (is_bf16_) {
             vfncvtbf16_f_f_w(v_c[c], v_c[c]);
@@ -209,6 +219,7 @@ namespace {
 template <bool isTransA, bool isBf16>
 struct jit_rvv_gemm_f16_kernel_storage_t {
     std::array<std::unique_ptr<jit_rvv_gemm_f16_kernel_t>, 8> nb;
+    std::array<std::unique_ptr<jit_rvv_gemm_f16_kernel_t>, 8> b;
     jit_rvv_gemm_f16_kernel_table_t table;
 };
 
@@ -221,8 +232,13 @@ get_jit_rvv_gemm_f16_kernel_storage() {
     std::call_once(initialized, [] {
         for (dim_t n_cols = 1; n_cols <= 6; n_cols++) {
             storage.nb[n_cols].reset(new jit_rvv_gemm_f16_kernel_t(n_cols,
-                    isTransA, isBf16 ? data_type::bf16 : data_type::f16));
+                    isTransA, isBf16 ? data_type::bf16 : data_type::f16,
+                    /*has_bias=*/false));
             storage.table.nb[n_cols] = storage.nb[n_cols].get();
+            storage.b[n_cols].reset(new jit_rvv_gemm_f16_kernel_t(n_cols,
+                    isTransA, isBf16 ? data_type::bf16 : data_type::f16,
+                    /*has_bias=*/true));
+            storage.table.b[n_cols] = storage.b[n_cols].get();
         }
     });
 

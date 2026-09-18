@@ -96,10 +96,12 @@ struct rvv_matmul_t : public primitive_t {
             if (is_hp_path_) {
                 VDISPATCH_MATMUL(mayiuse(src_dt == f16 ? zvfh : zvfbfwma),
                         VERBOSE_UNSUPPORTED_ISA);
-                // The half-precision GEMM kernel has no fused bias / post-ops
-                // yet.
+                // f32 bias is fused in the GEMM epilogue; other bias dtypes
+                // (or post-ops) still fall back to the reference path.
                 VDISPATCH_MATMUL(
-                        bias_mdw.is_zero(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+                        bias_mdw.is_zero()
+                                || bias_mdw.data_type() == data_type::f32,
+                        VERBOSE_UNSUPPORTED_BIAS_CFG);
             }
             // The int8 path rejects per-oc / per-tensor scales, zero-points,
             // and post-ops in this MVP; only optional f32 bias is supported.

@@ -57,13 +57,15 @@ struct jit_rvv_gemm_f16_kernel_t : public jit_generator_t {
         dim_t ldc;
         dim_t K;
         dim_t m;
+        const float *bias; // f32 bias per column (only when has_bias)
     };
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_gemm_f16_kernel_t)
 
     // Construct a JIT kernel for a specific n_cols (1..6) and A access pattern.
     // in_dt selects f16 (Zvfh) vs bf16 (Zvfbfwma); the caller gates the ISA.
-    jit_rvv_gemm_f16_kernel_t(dim_t n_cols, bool isTransA, data_type_t in_dt);
+    jit_rvv_gemm_f16_kernel_t(
+            dim_t n_cols, bool isTransA, data_type_t in_dt, bool has_bias);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -76,10 +78,12 @@ private:
     dim_t n_cols_;
     bool isTransA_;
     bool is_bf16_;
+    bool has_bias_;
 };
 
 struct jit_rvv_gemm_f16_kernel_table_t {
     std::array<const jit_rvv_gemm_f16_kernel_t *, 8> nb {};
+    std::array<const jit_rvv_gemm_f16_kernel_t *, 8> b {};
 };
 
 const jit_rvv_gemm_f16_kernel_table_t &get_jit_rvv_gemm_f16_kernel_table(

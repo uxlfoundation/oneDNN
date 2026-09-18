@@ -510,7 +510,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 
     if (problem.A.layout == MatrixLayout::Pc) {
         s.A.accessType = AccessType::Block;
-        s.A_copies = 4 / problem.Ta_ext;
+        s.A_copies = 2;
         s.A.padded = true;
     } else if (!block2DA) {
         s.A.accessType = AccessType::Block;
@@ -524,13 +524,13 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.ka_load = utils::roundup_pow2(s.ka_load);
     } else if (problem.A.layout == MatrixLayout::N) {
         s.A.accessType = AccessType::Block2DVNNI;
-        s.A_copies = 4 / problem.Ta;
+        s.A_copies = 2;
     }
 
     if (problem.B.layout == MatrixLayout::Pr) {
         s.B.accessType = AccessType::Block;
         s.B.padded = true;
-        s.B_copies = 4 / problem.Tb_ext;
+        s.B_copies = 2;
     } else if (!block2DB) {
         s.B.accessType = AccessType::Block;
         if (systolic) {

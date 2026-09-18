@@ -58,7 +58,6 @@ pass::pass_registry_t dnnl_backend_t::register_passes() {
     DNNL_BACKEND_REGISTER_PATTERN_CALL(shuffle_fusion, pass_registry);
     DNNL_BACKEND_REGISTER_PATTERN_CALL(reduction_fusion, pass_registry);
     DNNL_BACKEND_REGISTER_PATTERN_CALL(groupnorm_fusion, pass_registry);
-    DNNL_BACKEND_REGISTER_PATTERN_CALL(mlp, pass_registry);
     DNNL_BACKEND_REGISTER_PATTERN_CALL(bmb, pass_registry);
 
     const std::vector<data_type_t> dtypes_to_check

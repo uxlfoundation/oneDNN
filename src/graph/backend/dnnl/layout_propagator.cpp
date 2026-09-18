@@ -1994,25 +1994,6 @@ status_t layout_propagator_for_host_scalar(std::shared_ptr<op_t> &op,
     return status::success;
 }
 
-status_t layout_propagator_for_gated_mlp(std::shared_ptr<op_t> &op,
-        const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-        const fpmath_t &fpmath, bool use_block_layout,
-        subgraph_rewriter_t &rewriter) {
-    UNUSED(rewriter);
-    const auto pd = gated_mlp_executable_t::create_desc(
-            op, p_engine, pd_cache, fpmath, use_block_layout);
-
-    if (!pd) return status::unimplemented;
-
-    value_ptr dst_val = op->get_output_value(0);
-    status_t status = fill_layout_info(dst_val, pd.dst_desc());
-    if (status != status::success) { return status; }
-
-    value_ptr spad_val = op->get_output_value(1);
-    status = fill_layout_info(spad_val, pd.scratchpad_desc());
-    return status;
-}
-
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

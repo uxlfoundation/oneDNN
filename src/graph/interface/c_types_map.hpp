@@ -269,7 +269,6 @@ const op_kind_t _sdpa = 1069;
 const op_kind_t _host_scalar = 1070;
 const op_kind_t _identity = 1071;
 const op_kind_t _dropout = 1072;
-const op_kind_t _gated_mlp = 1073;
 const op_kind_t _sdpa_bwd = 1074;
 } // namespace op_kind
 

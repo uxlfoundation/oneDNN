@@ -55,8 +55,8 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     // brgemm f16 kernel narrows on store via vfncvt when store_f16 is set.
     const bool dst_ok = dst_type == f32
             || (dst_type == f16 && src_type == f16 && mayiuse(zvfh));
-    const bool types_ok = in_dt_ok && dst_ok
-            && IMPLICATION(with_bias(), bia_type == f32);
+    const bool types_ok
+            = in_dt_ok && dst_ok && IMPLICATION(with_bias(), bia_type == f32);
     VDISPATCH_INNER_PRODUCT(types_ok, VERBOSE_UNSUPPORTED_DT);
     input_typesize_ = types::data_type_size(src_type);
 
@@ -149,8 +149,7 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     // typesize_C = 4 (the accumulator width).
     if (dst_type == f16) {
         brg_desc.store_f16 = true;
-        brg_desc.typesize_C
-                = static_cast<int>(types::data_type_size(dst_type));
+        brg_desc.typesize_C = static_cast<int>(types::data_type_size(dst_type));
     }
 
     brgemm_kernel_t *kernel = nullptr;
@@ -197,7 +196,8 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
         // MB < nthr: not enough rows for 1D parallelism.
         // Distribute work across M (OC) tiles so all cores are utilized.
         // Each thread processes ALL MB rows for its assigned M tile range.
-        const dim_t BK = BRGEMM_BK;
+        // Keep f32 accumulation until the final f16 store.
+        const dim_t BK = brg.store_f16 ? K : BRGEMM_BK;
 
         parallel(0, [&](int ithr, int nthr_actual) {
             dim_t mt_start {0}, mt_end {0};

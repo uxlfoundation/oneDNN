@@ -693,10 +693,10 @@ void jit_brgemm_f16_kernel_t::generate() {
             vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
             vfncvt_f_f_w(v_a0, v_a0);
             vfncvt_f_f_w(v_a1, v_a1);
-            add(reg_tmp0, reg_tmp0, reg_ldc);
-            vse16_v(v_a1, reg_tmp0);
             sub(reg_tmp0, reg_tmp0, reg_ldc);
             vse16_v(v_a0, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse16_v(v_a1, reg_tmp0);
 
             j_(lbl_store_done);
 
@@ -719,43 +719,43 @@ void jit_brgemm_f16_kernel_t::generate() {
         // Restore e32/m4 for the next n-loop iteration.
         vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
     } else {
-    {
-        mv(reg_tmp0, reg_C);
-        Label lbl_bz, lbl_store_done;
-        beq(reg_beta, x0, lbl_bz);
+        {
+            mv(reg_tmp0, reg_C);
+            Label lbl_bz, lbl_store_done;
+            beq(reg_beta, x0, lbl_bz);
 
-        vle32_v(v_tmp, reg_tmp0);
-        vfadd_vv(v_tmp, v_tmp, v_c0);
-        vse32_v(v_tmp, reg_tmp0);
-        add(reg_tmp0, reg_tmp0, reg_ldc);
+            vle32_v(v_tmp, reg_tmp0);
+            vfadd_vv(v_tmp, v_tmp, v_c0);
+            vse32_v(v_tmp, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
 
-        vle32_v(v_tmp, reg_tmp0);
-        vfadd_vv(v_tmp, v_tmp, v_c1);
-        vse32_v(v_tmp, reg_tmp0);
-        add(reg_tmp0, reg_tmp0, reg_ldc);
+            vle32_v(v_tmp, reg_tmp0);
+            vfadd_vv(v_tmp, v_tmp, v_c1);
+            vse32_v(v_tmp, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
 
-        vle32_v(v_tmp, reg_tmp0);
-        vfadd_vv(v_tmp, v_tmp, v_c2);
-        vse32_v(v_tmp, reg_tmp0);
-        add(reg_tmp0, reg_tmp0, reg_ldc);
+            vle32_v(v_tmp, reg_tmp0);
+            vfadd_vv(v_tmp, v_tmp, v_c2);
+            vse32_v(v_tmp, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
 
-        vle32_v(v_tmp, reg_tmp0);
-        vfadd_vv(v_tmp, v_tmp, v_c3);
-        vse32_v(v_tmp, reg_tmp0);
+            vle32_v(v_tmp, reg_tmp0);
+            vfadd_vv(v_tmp, v_tmp, v_c3);
+            vse32_v(v_tmp, reg_tmp0);
 
-        j_(lbl_store_done);
+            j_(lbl_store_done);
 
-        L(lbl_bz);
-        vse32_v(v_c0, reg_tmp0);
-        add(reg_tmp0, reg_tmp0, reg_ldc);
-        vse32_v(v_c1, reg_tmp0);
-        add(reg_tmp0, reg_tmp0, reg_ldc);
-        vse32_v(v_c2, reg_tmp0);
-        add(reg_tmp0, reg_tmp0, reg_ldc);
-        vse32_v(v_c3, reg_tmp0);
+            L(lbl_bz);
+            vse32_v(v_c0, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse32_v(v_c1, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse32_v(v_c2, reg_tmp0);
+            add(reg_tmp0, reg_tmp0, reg_ldc);
+            vse32_v(v_c3, reg_tmp0);
 
-        L(lbl_store_done);
-    }
+            L(lbl_store_done);
+        }
     }
 
     if (use_single_b) {
@@ -816,14 +816,35 @@ void jit_brgemm_f16_kernel_t::generate() {
     {
         Label lbl_bz2, lbl_done2;
         beq(reg_beta, x0, lbl_bz2);
-        vle32_v(v_tmp, reg_C);
-        vfadd_vv(v_tmp, v_tmp, v_c0);
-        vse32_v(v_tmp, reg_C);
+        if (brg_.store_f16) {
+            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vle16_v(v_a0, reg_C);
+            vfwcvt_f_f_v(v_a0, v_a0);
+            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            vfadd_vv(v_a0, v_a0, v_c0);
+            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vfncvt_f_f_w(v_a0, v_a0);
+            vse16_v(v_a0, reg_C);
+        } else {
+            vle32_v(v_tmp, reg_C);
+            vfadd_vv(v_tmp, v_tmp, v_c0);
+            vse32_v(v_tmp, reg_C);
+        }
         j_(lbl_done2);
         L(lbl_bz2);
-        vse32_v(v_c0, reg_C);
+        if (brg_.store_f16) {
+            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vfncvt_f_f_w(v_c0, v_c0);
+            vse16_v(v_c0, reg_C);
+        } else {
+            vse32_v(v_c0, reg_C);
+        }
         L(lbl_done2);
     }
+
+    // The next tail iteration initializes an e32 accumulator before switching
+    // to e16 for the K loop.
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     add(reg_B_base, reg_B_base, reg_ldb);
     add(reg_C, reg_C, reg_ldc);
@@ -1564,32 +1585,12 @@ void jit_brgemm_s8_kernel_t::generate() {
     {
         Label lbl_bz2, lbl_done2;
         beq(reg_beta, x0, lbl_bz2);
-        if (brg_.store_f16) {
-            // f16 C: load f16, widen, add accumulator, narrow, store.
-            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-            vle16_v(v_a0, reg_C);
-            vfwcvt_f_f_v(v_a0, v_a0);
-            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-            vfadd_vv(v_a0, v_a0, v_c0);
-            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-            vfncvt_f_f_w(v_a0, v_a0);
-            vse16_v(v_a0, reg_C);
-            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-        } else {
-            vle32_v(v_tmp, reg_C);
-            vfadd_vv(v_tmp, v_tmp, v_c0);
-            vse32_v(v_tmp, reg_C);
-        }
+        vle32_v(v_tmp, reg_C);
+        vadd_vv(v_tmp, v_tmp, v_c0);
+        vse32_v(v_tmp, reg_C);
         j_(lbl_done2);
         L(lbl_bz2);
-        if (brg_.store_f16) {
-            vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-            vfncvt_f_f_w(v_c0, v_c0);
-            vse16_v(v_c0, reg_C);
-            vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-        } else {
-            vse32_v(v_c0, reg_C);
-        }
+        vse32_v(v_c0, reg_C);
         L(lbl_done2);
     }
 

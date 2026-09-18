@@ -51,7 +51,11 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     const bool in_dt_ok = src_type == wei_type
             && (src_type == f32 || (src_type == bf16 && mayiuse(zvfbfwma))
                     || (src_type == f16 && mayiuse(zvfh)));
-    const bool types_ok = in_dt_ok && dst_type == f32
+    // dst is f32, or f16 narrowed from the f32 accumulators (Zvfh). The
+    // brgemm f16 kernel narrows on store via vfncvt when store_f16 is set.
+    const bool dst_ok = dst_type == f32
+            || (dst_type == f16 && src_type == f16 && mayiuse(zvfh));
+    const bool types_ok = in_dt_ok && dst_ok
             && IMPLICATION(with_bias(), bia_type == f32);
     VDISPATCH_INNER_PRODUCT(types_ok, VERBOSE_UNSUPPORTED_DT);
     input_typesize_ = types::data_type_size(src_type);
@@ -140,6 +144,14 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     brgemm_desc_t brg_desc;
     CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_type, src_type,
             brgemm_col_major, 1.0f, 0.0f, LDA, LDB, LDC, M, MB(), K));
+    // f16 dst: narrow the f32 accumulators to f16 on store. The kernel reads
+    // typesize_C (2) to advance C between columns; the f32/bf16 paths keep
+    // typesize_C = 4 (the accumulator width).
+    if (dst_type == f16) {
+        brg_desc.store_f16 = true;
+        brg_desc.typesize_C
+                = static_cast<int>(types::data_type_size(dst_type));
+    }
 
     brgemm_kernel_t *kernel = nullptr;
     CHECK(brgemm_kernel_create(&kernel, brg_desc));
@@ -152,9 +164,10 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto wei = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bia = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
 
     const int in_ts = pd()->input_typesize_;
+    const int out_ts = pd()->brg_kernel_->get_brg().typesize_C;
 
     const dim_t MB = pd()->MB();
     const dim_t OC = pd()->OC();
@@ -178,7 +191,7 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
             if (n_work <= 0) return;
 
             brgemm_kernel_execute(brg_kernel, wei, src + (n_start * K) * in_ts,
-                    dst + n_start * OC, n_work, 0.0f, bia);
+                    dst + (n_start * OC) * out_ts, n_work, 0.0f, bia);
         });
     } else {
         // MB < nthr: not enough rows for 1D parallelism.
@@ -202,7 +215,7 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
                     brgemm_kernel_params_t p;
                     p.ptr_A = wei + (kb * OC + m_offset) * in_ts;
                     p.ptr_B = src + kb * in_ts;
-                    p.ptr_C = dst + m_offset;
+                    p.ptr_C = dst + m_offset * out_ts;
                     p.N = MB;
                     p.M = m_size;
                     p.K = K_inner;

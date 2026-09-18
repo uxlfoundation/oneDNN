@@ -41,7 +41,7 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     // Supported:
     //   f32  × f32  → f32  (always)
     //   bf16 × bf16 → f32  (Zvfbfwma widening FMA)
-    //   f16  × f16  → f32  (Zvfh widening FMA)
+    //   f16  × f16  → f32  (Zvfh widening FMA; store_f16 narrows to f16)
     //   s8   × s8   → s32  (always)
     const bool is_f32 = everyone_is(data_type::f32, dt_a, dt_b);
     const bool is_bf16

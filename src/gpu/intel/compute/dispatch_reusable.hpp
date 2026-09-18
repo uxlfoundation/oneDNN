@@ -40,8 +40,8 @@ namespace compute {
 
 // How many buffers can be registered simultaneously
 #define MAX_REGISTERED_BUFFERS 4
-// Maximum length of each indexed dim's name
-#define MAX_DIM_NAME_LENGTH 15
+// Maximum length of each buffer's name
+#define MAX_BUFFER_NAME_LENGTH 7
 
 enum class gws_op_t : uint32_t {
     ZERO,

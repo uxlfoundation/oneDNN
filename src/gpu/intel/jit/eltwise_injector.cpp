@@ -151,7 +151,7 @@ int eltwise_injector_f32_t<ngen_generator_t>::phase_count(alg_kind_t alg) {
             case eltwise_elu_use_dst_for_bwd: return 5;
             case eltwise_exp:
             case eltwise_exp_use_dst_for_bwd: return 2;
-            case eltwise_gelu_erf: return 25;
+            case eltwise_gelu_erf: return 31;
             case eltwise_hardsigmoid: return 4;
             case eltwise_hardswish: return 5;
             case eltwise_log: return 2;
@@ -854,6 +854,13 @@ void eltwise_injector_f32_t<ngen_generator_t>::gelu_erf_compute_fwd(
     const float a3 = 1.421413741f;
     const float a4 = -1.453152027f;
     const float a5 = 1.061405429f;
+    // DIAGNOSTIC: threshold at which the reference (glibc erff) saturates
+    // exactly to +/-1.0f, i.e. |r| >= thr implies erff(r/sqrt2) is exactly
+    // +/-1 in float32, so gelu_erf(r) collapses to exactly 0 (r<0) or r
+    // (r>0). Clamping here reproduces that saturation on the GPU JIT path,
+    // used only to prove that MX-scale-group divergence is caused by this
+    // saturation mismatch, not a merge-quality fix.
+    const float gelu_erf_sat_thr = 5.542594480354135f;
     switch (phase) {
         case 0: h->mul(simd, temp, abs(r), reciproc_sqrt_2); break;
         case 1: h->mul(simd, temp, temp, p); break;
@@ -876,10 +883,24 @@ void eltwise_injector_f32_t<ngen_generator_t>::gelu_erf_compute_fwd(
         case 18: h->mul(simd, temp, temp, -log2e * 0.5f); break;
         case 19: h->exp(simd, temp, temp); break;
         case 20: h->mul(simd, temp, temp, at_accum); break;
-        case 21: h->mul(simd, temp, temp, r); break;
-        case 22: h->mul(simd, temp, temp, 0.5f); break;
-        case 23: h->add(simd, temp2, r, -temp); break;
-        case 24: h->csel(simd | le | f0[0], r, temp, temp2, r); break;
+        // tpow is unused past phase 16; reuse it to stash the original r
+        // before it gets overwritten by the final result below.
+        case 21: h->mov(simd, tpow, r); break;
+        case 22: h->mul(simd, temp, temp, r); break;
+        case 23: h->mul(simd, temp, temp, 0.5f); break;
+        case 24: h->add(simd, temp2, r, -temp); break;
+        case 25: h->csel(simd | le | f0[0], r, temp, temp2, r); break;
+        // DIAGNOSTIC clamp: force exact reference-style saturation using
+        // the stashed original input (tpow).
+        case 26: h->add(simd, at_accum, tpow, gelu_erf_sat_thr); break;
+        case 27: h->mul(simd, temp2, temp2, 0.f); break;
+        case 28:
+            h->csel(simd | le | f0[0], r, temp2, r, at_accum);
+            break;
+        case 29: h->add(simd, at_accum, tpow, -gelu_erf_sat_thr); break;
+        case 30:
+            h->csel(simd | ge | f0[0], r, tpow, r, at_accum);
+            break;
         default: assert(!"invalid phase");
     }
 }

@@ -207,7 +207,7 @@ protected:
 
     DebugLine debugLine;
 
-    std::unique_ptr<std::atomic<bool>> cancelAutoSWSB_;
+    std::unique_ptr<std::atomic<bool>> cancelAutoSWSB_ = nullptr;
 
 private:
     InstructionModifier defaultModifier;
@@ -1991,7 +1991,6 @@ inline void BinaryCodeGenerator<hw>::unsupported()
 #endif
 }
 
-
 template <HW hw>
 typename BinaryCodeGenerator<hw>::InstructionStream *BinaryCodeGenerator<hw>::popStream()
 {
@@ -2205,7 +2204,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     if (getBytes(src0.getType()) == 8)
         i.imm64.value = static_cast<uint64_t>(src0);
     else
-        i.imm32.value = (int32_t)static_cast<uint64_t>(src0);
+        i.imm32.value = (uint32_t)static_cast<uint64_t>(src0);
 
     db(i, loc);
 }
@@ -2375,7 +2374,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     i.binary.src0RegFile = src0.getRegFile();
     i.binary.src1RegFile = src1.getRegFile();
 
-    i.imm32.value = (int32_t)static_cast<uint64_t>(src1);
+    i.imm32.value = (uint32_t)static_cast<uint64_t>(src1);
 
     db(i, loc);
 }

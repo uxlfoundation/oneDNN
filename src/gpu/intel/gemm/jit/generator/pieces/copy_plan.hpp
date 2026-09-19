@@ -215,6 +215,9 @@ public:
     CopyInstruction &appendDestructiveMov(int simd, const CopyOperand &dst, const CopyOperand &src0, bool overwriteStride = false);
     CopyInstruction &appendDestructiveMov(int simd, ngen::InstructionModifier mod, const CopyOperand &dst, const CopyOperand &src0, bool overwriteStride = false);
 
+    // Leave int4/int3 -> hf/bf results biased by 2^(# mantissa bits), i.e. skip the final bias subtraction.
+    void keepSubByteBias(bool keep = true) { keepBias = keep; }
+
     void transform();
     void materializeTemps(const GRFAllocator &grfAllocator, const FlagAllocator &flagAllocator);
 
@@ -233,6 +236,7 @@ public:
 protected:
     ngen::HW hw;
     bool systolicAvailable;
+    bool keepBias = false;
     bool freezeRange = false;
     std::vector<CopyInstruction> insns, newInsns;
     std::vector<CopyTemporary> temps;
@@ -272,6 +276,7 @@ protected:
     void planInt8ToHF(CopyInstruction &i);
     void planInt8ToBF(CopyInstruction &i);
     void planInt4ToF16(CopyInstruction &i);
+    void setSubByteToF16(CopyInstruction &i0, CopyInstruction *i1, int bits, bool s4);
     void planUnpack4To16(CopyInstruction &i);
     void planUnpack8To16High(CopyInstruction &i);
     void planInt3Upconvert(CopyInstruction &i);

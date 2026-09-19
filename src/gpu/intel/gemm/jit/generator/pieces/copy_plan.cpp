@@ -825,7 +825,9 @@ void CopyPlan::planTypeConversions()
         if (st == dt)
             i.moveToIntegerPipe();
 
-        if (hw == ngen::HW::Xe3p && is4(st) && one_of(getBits(dt), {8, 16}))
+        bool biasedDst = keepBias && one_of(dt, {DataType::hf, DataType::bf});
+
+        if (hw == ngen::HW::Xe3p && is4(st) && one_of(getBits(dt), {8, 16}) && !biasedDst)
             if (planShflUpconvertXe3p(i))
                 continue;
 
@@ -848,8 +850,10 @@ void CopyPlan::planTypeConversions()
             planInt4Downconversion(i);
             rerun = true;
         } else if (isInt4(st) && one_of(dt, {DataType::hf, DataType::bf})) {
-            if (bfArithmeticOK(i))
+            if (bfArithmeticOK(i) || (biasedDst && dt == DataType::hf))
                 copyThrough(i, ngen_b16_l4x());
+            else if (biasedDst)
+                stub("Cannot keep bias");
             else
                 copyThrough(i, (st == DataType::s4) ? DataType::b : DataType::ub);
             rerunZip = true;
@@ -1342,33 +1346,38 @@ void CopyPlan::planInt4ToF16(CopyInstruction &i)
 {
     if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
 
-    // Incoming int4 data x has been shifted into the low 4-bits of src0;
-    //   there may be junk in other bits.
-    //
-    // Use bfn to create 2^m + x (+ 8 if x is s4) as an hf/bf number, where
-    //   m = # mantissa bits.
-    // Then subtract the 2^m (+ 8) bias in hf/bf arithmetic.
-
-    auto &i0 = i, &i1 = split(i);
-
-    bool hf = (i.dst.type == DataType::hf);
     bool s4 = (i.src0.range == DataType::s4);
+    setSubByteToF16(i, keepBias ? nullptr : &split(i), 4, s4);
+}
 
-    uint16_t bias = (hf ? 0x6400 : 0x4300) | (s4 ? 8 : 0);
-
-    auto yUW = i.dst;
+// Convert int4/int3 data x in-place to hf/bf. i0's dst holds x in its low bits;
+//   there may be junk in other bits.
+//
+// Use bfn to create 2^m + x (+ 2^(bits-1) if x is signed) as an hf/bf number, where
+//   m = # mantissa bits.
+// Then subtract the 2^m (+ 2^(bits-1)) bias in hf/bf arithmetic (i1), unless the
+//   caller asked to keep it (i1 == nullptr).
+void CopyPlan::setSubByteToF16(CopyInstruction &i0, CopyInstruction *i1, int bits, bool s4)
+{
+    auto y = i0.dst, yUW = i0.dst;
     yUW.type = DataType::uw;
+
+    bool hf = (y.type == DataType::hf);
+    uint16_t bias = (hf ? 0x6400 : 0x4300) | (s4 ? (1 << (bits - 1)) : 0);
 
     i0.op = Opcode::bfn;
     i0.ctrl = 0x6A;             // src0 ^ (src1 & src2)
     i0.src0 = bias;
     i0.src1 = i0.dst = yUW;
-    i0.src2 = 0xF;
+    i0.src2 = (1 << bits) - 1;
 
-    i1.op = Opcode::add;
-    i1.src0 = i1.dst;
-    i1.src1 = hf ? CopyOperand(Immediate::hf(bias | 0x8000))
-                 : bfImmediate(bias | 0x8000, false);
+    if (i1) {
+        i1->op = Opcode::add;
+        i1->dst = i1->src0 = y;
+        i1->src1 = hf ? CopyOperand(Immediate::hf(bias | 0x8000))
+                      : bfImmediate(bias | 0x8000, false);
+        i1->src2 = CopyOperand();
+    }
 }
 
 // Emulated f->bf or hf->bf8 sequence.
@@ -1470,8 +1479,26 @@ void CopyPlan::planEarlyInt4Upconversions()
 //
 // If the ultimate destination type is not an integer type (e.g. hf/bf),
 // the unpacked values are written to finalDst reinterpreted as raw uw,
-// followed by a single bulk mov to the real destination type after
-// masking.
+// followed by a bulk bfn sequence (see setSubByteToF16) that masks and
+// converts at once.
+//
+// For row-spread sources with a word-sized crosspack-2 destination, rows are
+// dwords of the packed bitstream, and pairs of elements are extracted with
+// uw/ud reads instead (see classifyU3Pair).
+enum class U3Pair { Vec, Two, LowIn, HighIn };
+
+// Classify a pair of adjacent u3 elements starting at bit b of a dword.
+//   Vec:    both inside one 16-bit half -> one vectored shr.
+//   Two:    both inside the dword       -> two shr.
+//   LowIn:  element 0 inside the dword, element 1 split across the next dword.
+//   HighIn: element 0 split, element 1 inside the next dword.
+static U3Pair classifyU3Pair(int b)
+{
+    if (b + 6 <= 16 || (b >= 16 && b + 6 <= 32)) return U3Pair::Vec;
+    if (b + 6 <= 32) return U3Pair::Two;
+    return (b + 3 < 32) ? U3Pair::LowIn : U3Pair::HighIn;
+}
+
 void CopyPlan::planInt3Upconvert(CopyInstruction &i)
 {
     if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
@@ -1648,7 +1675,16 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     // seed instruction (captured here, before any mutation); the first
     // group reuses `i` itself (as splitMultiple() does normally), and
     // subsequent groups get a fresh clone pushed onto newInsns.
+    // Row-spread layout with a word-sized crosspack-2 destination: rows are dwords of the
+    // packed bitstream, so pairs are extracted with uw/ud reads (see classifyU3Pair).
+    bool dwordExtract = !flatFamily && srcBase.stride == 4 && dstStride == 2 && type_size == 2;
+
     CopyInstruction seedTemplate = i;
+
+    // hf/bf destinations: the bfn sequence masks and converts at once.
+    bool toF16 = (finalDst.type == DataType::hf)
+            || (finalDst.type == DataType::bf && bfArithmeticOK(seedTemplate));
+    if (keepBias && !directWrite && !toF16) stub("Cannot keep bias");
 
     for (int g = 0; g < groups; g++) {
         // Rebase this group's source (by one full group's byte span --
@@ -1700,8 +1736,11 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         // element size. A fresh pair is allocated per group so different
         // groups' instructions (which may be independently reordered/
         // scheduled) never share a temporary.
-        auto tmp = newTemp(DataType::uw, nLocal, 2);
-        auto tmpHi = newTemp(DataType::uw, nLocal, 2);
+        CopyOperand tmp, tmpHi;
+        if (!dwordExtract) {
+            tmp = newTemp(DataType::uw, nLocal, 2);
+            tmpHi = newTemp(DataType::uw, nLocal, 2);
+        }
 
         // All ops needed across the 8 lanes come from a single
         // splitMultiple call on this group's seed instruction, rather than
@@ -1829,7 +1868,77 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         // The merge is valid for both row-spread and flat layouts. In the
         // flat case nLocal == 1, so it combines each pair's two scalar
         // shifts into one SIMD-2 instruction.
-        bool canMergePairs = (dstStride == 2);
+        // Extract pair by pair. Only one element per 32 bits needs splicing.
+        if (dwordExtract) {
+            int byteInDword = srcBaseG.offset % 4;
+
+            auto dword = [&](int w, DataType type, int sub) {
+                auto op = srcBaseG;
+                int off = op.offset - byteInDword + w * rowStrideBytes;
+                op.grf += off / grfBytes;
+                op.offset = (off % grfBytes) / getBytes(type) + sub;
+                op.type = type;
+                op.stride = 4 / getBytes(type);
+                return op;
+            };
+
+            CopyOperand spliceTemp;
+            if (byteInDword >= 2)
+                spliceTemp = newTemp(DataType::uw, nLocal, 2);
+
+            for (int pair = 0; pair < 4; pair++) {
+                int b = 8 * byteInDword + 6 * pair;
+                int w = b / 32;
+                b %= 32;
+
+                auto dst0 = computeFinalDstLane(2 * pair);
+                auto dst1 = computeFinalDstLane(2 * pair + 1);
+                auto S = dword(w, DataType::ud, 0);
+                auto SnextLo = dword(w + 1, DataType::uw, 0);
+
+                // ud sources may only write a dword channel's low word (dst0).
+                // dst1 is then derived from dst0's junk bits.
+                switch (classifyU3Pair(b)) {
+                    case U3Pair::Vec: {
+                        auto dstBoth = dst0;
+                        dstBoth.width = 2;
+                        dstBoth.stride = int(elemIndex(dst1) - elemIndex(dst0));
+                        dstBoth.vs = dstStride;
+
+                        auto half = dword(w, DataType::uw, b / 16);
+                        half.width = 2;
+                        half.vs = half.stride;
+                        half.stride = 0;
+
+                        CopyOperand shift0(b % 16), shift1(b % 16 + 3);
+                        shift0.type = shift1.type = DataType::uw;
+                        auto shifts = zipImmediates(shift0, shift1, 1);
+                        if (!shifts) stub("Failed to pack u3 shift immediates.");
+
+                        setOp(allOps[next++], Opcode::shr, 2 * nLocal, dstBoth, half, shifts);
+                        break;
+                    }
+                    case U3Pair::Two:
+                        setOp(allOps[next++], Opcode::shr, nLocal, dst0, S, CopyOperand(b));
+                        setOp(allOps[next++], Opcode::shr, nLocal, dst1, dst0, CopyOperand(3));
+                        break;
+                    case U3Pair::LowIn:
+                        setOp(allOps[next++], Opcode::shr, nLocal, dst0, S, CopyOperand(b));
+                        setOp(allOps[next++], Opcode::shr, nLocal, dst1, dst0, CopyOperand(3));
+                        setOp(allOps[next++], Opcode::shl, nLocal, spliceTemp, SnextLo, CopyOperand(32 - b - 3));
+                        setOp(allOps[next++], Opcode::or_, nLocal, dst1, dst1, spliceTemp);
+                        break;
+                    case U3Pair::HighIn:
+                        setOp(allOps[next++], Opcode::shr, nLocal, dst1, SnextLo, CopyOperand(b + 3 - 32));
+                        setOp(allOps[next++], Opcode::shr, nLocal, dst0, S, CopyOperand(b));
+                        setOp(allOps[next++], Opcode::shl, nLocal, spliceTemp, SnextLo, CopyOperand(32 - b));
+                        setOp(allOps[next++], Opcode::or_, nLocal, dst0, dst0, spliceTemp);
+                        break;
+                }
+            }
+        }
+
+        bool canMergePairs = (dstStride == 2) && !dwordExtract;
         if (canMergePairs) {
             static const int mergePairs[2][2] = {{0, 1}, {6, 7}};
             for (auto &pr : mergePairs)
@@ -1845,6 +1954,8 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         std::vector<int> soloLanes = {2, 3, 4, 5};
         if (!canMergePairs)
             soloLanes = {0, 1, 2, 3, 4, 5, 6, 7};
+        if (dwordExtract)
+            soloLanes.clear();
         for (int lane : soloLanes) {
             const auto &L = lanes[lane];
             auto finalDstLane = computeFinalDstLane(lane);
@@ -1890,6 +2001,18 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
             auto finalDstFlat = finalDst;
             finalDstFlat.stride = finalStride;
             if (!directWrite) finalDstFlat.type = DataType::uw;
+
+            if (toF16) {
+                auto realDstFlat = finalDst;
+                realDstFlat.stride = finalStride;
+                auto *bfnOp = allOps[next++], *addOp = allOps[next++];
+                setOp(bfnOp, Opcode::bfn, totalElemsAll, realDstFlat, CopyOperand(), CopyOperand());
+                setOp(addOp, Opcode::add, totalElemsAll, realDstFlat, CopyOperand(), CopyOperand());
+                setSubByteToF16(*bfnOp, keepBias ? nullptr : addOp, 3, false);
+                if (keepBias) addOp->invalidate();
+                continue;
+            }
+
             setOp(allOps[next++], Opcode::and_, totalElemsAll, finalDstFlat, finalDstFlat, CopyOperand(int(7)));
 
             // When the real destination type isn't itself an integer
@@ -4328,6 +4451,7 @@ void CopyOperand::dump(std::ostream &os) const
     auto outType = [&](DataType dt) {
         if (dt == Type::ngen_nf4())       os << "nf4";
         else if (dt == Type::ngen_e8m0()) os << "e8m0";
+        else if (dt == Type::ngen_u3())   os << "u3";
         else if (dt == ngen_b16_l4x())    os << "b16_l4x";
         else if (dt == ngen_b16_h4x())    os << "b16_h4x";
         else if (dt == ngen_b16())        os << "b16";

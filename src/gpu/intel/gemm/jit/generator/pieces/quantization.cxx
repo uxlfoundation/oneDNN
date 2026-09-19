@@ -297,49 +297,16 @@ void Generator<hw>::gemmRepack2DOffsetData(Type Text, const RegisterLayout &layo
 {
     auto Ts = layoutSrc.type(), Td = layoutDst.type();
 
-    bool s4 = (Text == Type::s4);
-    bool s8 = (Ts == Type::s8);
-    bool u8 = (Ts == Type::u8);
-
     bool int4SpecialPath = (Text.isInt4() || Text.is3()) && Td == Type::f16;
-    auto tmpType = Td;
 
-    if (int4SpecialPath) {
-        if (u8) tmpType = Type::u16;
-        if (s8) tmpType = Type::s16;
-    }
+    gemmRepack2DQuantizationData(Ts, Td, layoutSrc, layoutDst, src, dst, problem, strategy, state);
 
-    gemmRepack2DQuantizationData(Ts, tmpType, layoutSrc, layoutDst, src, dst, problem, strategy, state);
-
-    if (int4SpecialPath) {
-        if (s8 || u8) {
-            int off = s4 ? 8 : 0;
-
-            // Shift s8 -> u8 data.
-            if (s8) {
-                map(hw, Type::s16, dst, dst, strategy, [&](int esize, RegData r, RegData _) {
-                    add(esize, r, r, 0x80);
-                });
-                off -= 0x80;
-            }
-
-            // Reinterpret as f16 and undo offsets.
-            if (off != 0) map(hw, Type::f16, dst, dst, strategy, [&](int esize, RegData r, RegData _) {
-                uint16_t offF16 = std::abs(off);
-                if (off < 0) offF16 |= 0x8000;
-                add(esize, r, r, Immediate::hf(offF16));
-            });
-
-            // Rescale into normal range. End result is 2^(-12) * intended offset.
+    // Fold the bias left by dequantizeInt4's copy into the offsets.
+    if (int4SpecialPath && int4OffsetsCarryBias(Ts)) {
+        if (int bias = dequantizeInt4Bias(hw, Text))
             map(hw, Type::f16, dst, dst, strategy, [&](int esize, RegData r, RegData _) {
-                mul(esize, r, r, Immediate::hf(0x6C00));
+                add(esize, r, r, Immediate::hf(f16Bits(bias)));
             });
-        } else {
-            map(hw, Type::f16, dst, dst, strategy, [&](int esize, RegData r, RegData _) {
-                s4 ? mad(esize, r, Immediate::hf(0x1800), r, Immediate::hf(0x0C00))     // 0x1800 = 8 * 2^(-12)
-                   : mul(esize, r,                        r, Immediate::hf(0x0C00));    // 0x0C00 = 2^(-12)
-            });
-        }
     }
 }
 
@@ -442,10 +409,6 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
                 case BinaryOp::Mul:
                     emul(simd, data(strided), data(strided), qdata(strideq), strategy, state);
                     break;
-                case BinaryOp::ScaleSub:
-                    if (T != Type::f16) stub();
-                    mad(simd, data(strided), -qdata(strideq), data(strided), Immediate::hf(0x6C00));  /* 0x6C00 = 2^12 */
-                    break;
                 default: stub();
             }
             x0 += simd * strided / crosspack;
@@ -501,42 +464,39 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     if (s4 && s4Shift)
         dequantizeInt4Shift(Tsrc, src, strategy);
 
-    // 2) Copy u4/u3 -> u16 data.
+    // 2) Copy u4/u3 -> f16 data. The copy may leave a bias behind (see CopyPlan::keepSubByteBias).
     auto TsrcU = Tsrc.isInt3() ? Type::u3 : Type::u4;
-    copyRegisters(TsrcU, Type::u16, layoutSrc, *effLayoutDst, src, *effDst, offR, offC, false, strategy, state);
+    int bias = dequantizeInt4Bias(hw, Tsrc);
+    copyRegisters(TsrcU, Type::f16, layoutSrc, *effLayoutDst, src, *effDst, offR, offC, false, strategy, state,
+                  false, true, dequantizeInt4KeepsBias(hw, Tsrc));
 
-    // 3) Reinterpret u16 data as denormal f16, scale into normal range and subtract (rescaled) offsets if available.
-    //     The required rescaling factor (2^24) is necessarily outside f16 range,
-    //     so two multiplications are needed.
-    if (!layoutOffset.empty()) {
-        if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::ScaleSub, *effLayoutDst, layoutOffset, *effDst, offset, h, kab_load, kq_load, *problem, strategy, state);
-    } else {
+    // 3) Subtract offsets if available. Narrow offsets already include the bias.
+    bool haveOffsets = !layoutOffset.empty();
+    if (haveOffsets && !problem) stub();
+    bool biasInOffsets = haveOffsets && layoutOffset.type() == Type::f16
+                      && int4OffsetsCarryBias(doA ? problem->Tao : problem->Tbo);
+
+    if (bias && !biasInOffsets) {
         map(hw, Type::f16, *effDst, *effLayoutDst, strategy, [&](int esize, RegData r) {
-            s4 ? mad(esize, r, Immediate::hf(0x9800), r, Immediate::hf(0x6C00)) /* 0x9800 = -8*2^(-12), 0x6C00 = 2^12 */
-               : mul(esize, r, r, Immediate::hf(0x6C00));
+            add(esize, r, r, Immediate::hf(f16Bits(-bias)));
         });
     }
+    if (haveOffsets)
+        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::Sub, *effLayoutDst, layoutOffset, *effDst, offset, h, kab_load, kq_load, *problem, strategy, state);
 
-    // 4) Finish rescaling -- remaining factor is 2^12.
-    map(hw, Type::f16, *effDst, *effLayoutDst, strategy, [&](int esize, RegData r) {
-        mul(esize, r, r, Immediate::hf(0x6C00));
-    });
-
-    // 5) Apply scales if present. If the scales are not too large (absolute value < 128),
-    //      this could be merged into the previous multiplication.
+    // 4) Apply scales if present.
     if (!f32 && !layoutScale.empty()) {
         if (!problem) stub();
         gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::Mul, *effLayoutDst, layoutScale, *effDst, scale, h, kab_load, kq_load, *problem, strategy, state);
     }
 
-    // 6) Convert to dst type if needed.
+    // 5) Convert to dst type if needed.
     if (f32 || bf16) {
         copyRegisters(Type::f16, Tdst, layoutDstF16, layoutDst, dstF16, dst, offR, offC, false, strategy, state);
         safeReleaseRanges(dstF16, state);
     }
 
-    // 7) Apply scales for f32 after f16->f32 upconversion.
+    // 6) Apply scales for f32 after f16->f32 upconversion.
     if (f32 && !layoutScale.empty()) {
         if (!problem) stub();
         gemmDequantizeOperation(doA, Type::f32, Type::f32, BinaryOp::Mul, layoutDst, layoutScale, dst, scale, h, kab_load, kq_load, *problem, strategy, state);

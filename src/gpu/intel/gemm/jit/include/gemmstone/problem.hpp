@@ -152,8 +152,7 @@ enum class BatchMode {
 enum class BinaryOp {
     Add, Sub, Mul, Div,
     Min, Max,
-    Prelu,
-    ScaleSub    /* internal use only */
+    Prelu
 };
 
 // Problem parameters shared between kernel types.

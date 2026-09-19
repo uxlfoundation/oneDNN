@@ -75,10 +75,10 @@ template <HW hw>
 void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
                                   const GRFMultirange &src, const GRFMultirange &dst,
                                   int dOffR, int dOffC, bool conjugate,
-                                  const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
+                                  const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift, bool keepBias)
 {
     copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, dOffR, dOffC, Scalar{1},
-                  SubregisterPair(), SubregisterPair(), conjugate, strategy, state, preserveSrc, s4Shift);
+                  SubregisterPair(), SubregisterPair(), conjugate, strategy, state, preserveSrc, s4Shift, keepBias);
 }
 
 // Register-to-register copy, with scaling.
@@ -86,7 +86,7 @@ template <HW hw>
 void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
                                   const GRFMultirange &src, const GRFMultirange &dst,
                                   int dOffR, int dOffC, const Scalar &alpha, const SubregisterPair &alpha_real, const SubregisterPair &alpha_imag,
-                                  bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift)
+                                  bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc, bool s4Shift, bool keepBias)
 {
     auto ned = elementsPerGRF(hw, Td.real());
 
@@ -118,6 +118,7 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
 
     // Accumulate copy pseudo-instructions.
     CopyPlan plan(hw, strategy.systolicAvailable);
+    plan.keepSubByteBias(keepBias);
 
     for (auto &sblock : layoutSrc) {
     // u3 packs 8 consecutive elements into a single 3-byte group (see

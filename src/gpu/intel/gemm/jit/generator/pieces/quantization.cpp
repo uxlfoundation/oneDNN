@@ -14,7 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstdlib>
+
+#include "internal/utils.hpp"
 #include "layout_utils.hpp"
+#include "quantization.hpp"
 
 using namespace ngen;
 using std::vector;
@@ -33,6 +37,32 @@ bool canDequantizeInt4(const RegisterLayout &layoutSrc, const RegisterLayout &la
             return false;
 
     return true;
+}
+
+bool dequantizeInt4KeepsBias(ngen::HW hw, Type Tsrc)
+{
+    // Xe3p converts int4 directly with shfl.
+    return !(hw == ngen::HW::Xe3p && Tsrc.isInt4());
+}
+
+int dequantizeInt4Bias(ngen::HW hw, Type Tsrc)
+{
+    return (dequantizeInt4KeepsBias(hw, Tsrc) ? 1024 : 0) + (Tsrc == Type::s4 ? 8 : 0);
+}
+
+bool int4OffsetsCarryBias(Type Txo)
+{
+    return Txo.isInteger() && Txo.paddedSize() <= 1;
+}
+
+uint16_t f16Bits(int value)
+{
+    uint16_t sign = (value < 0) ? 0x8000 : 0;
+    int v = std::abs(value);
+    if (v >= 2048) stub();
+    if (v == 0) return sign;
+    int e = ilog2(v);
+    return sign | ((e + 15) << 10) | ((v - (1 << e)) << (10 - e));
 }
 
 GEMMSTONE_NAMESPACE_END

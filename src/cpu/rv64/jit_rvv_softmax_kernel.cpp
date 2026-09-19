@@ -551,7 +551,11 @@ void jit_rvv_softmax_xf16_exp_sub_sum_kernel_t::generate() {
     const FReg f_log2_low = ft6;
     const FReg f_sub = fa0;
     const FReg f_poly = ft7;
-    const FReg f_poly_coeff = ft8;
+    const FReg f_poly_coeff0 = ft8;
+    const FReg f_poly_coeff1 = ft9;
+    const FReg f_poly_coeff2 = ft11;
+    const FReg f_poly_coeff3 = fa1;
+    const FReg f_poly_coeff4 = fa2;
     const FReg f_sum = ft10;
 
     const VReg v_in16(0);
@@ -586,6 +590,11 @@ void jit_rvv_softmax_xf16_exp_sub_sum_kernel_t::generate() {
     load_f32_bits(f_log2_high, 0xbf317200u);
     load_f32_bits(f_log2_low, 0xb5bfbe8eu);
     load_f32_bits(f_poly, 0x3ab4a000u);
+    load_f32_bits(f_poly_coeff0, 0x3c092f6eu);
+    load_f32_bits(f_poly_coeff1, 0x3d2aadadu);
+    load_f32_bits(f_poly_coeff2, 0x3e2aaa28u);
+    load_f32_bits(f_poly_coeff3, 0x3efffffbu);
+    load_f32_bits(f_poly_coeff4, 0x3f800000u);
     li(reg_minexp, static_cast<int64_t>(0xC1000000u));
     li(reg_maxexp, static_cast<int64_t>(0x3F800000u));
 
@@ -617,21 +626,16 @@ void jit_rvv_softmax_xf16_exp_sub_sum_kernel_t::generate() {
     vfmacc_vf(v_x, f_log2_high, v_tmpv);
     vfmacc_vf(v_x, f_log2_low, v_tmpv);
     vfmv_v_f(v_poly, f_poly);
-    load_f32_bits(f_poly_coeff, 0x3c092f6eu);
     vfmul_vv(v_poly, v_poly, v_x);
-    vfadd_vf(v_poly, v_poly, f_poly_coeff);
-    load_f32_bits(f_poly_coeff, 0x3d2aadadu);
+    vfadd_vf(v_poly, v_poly, f_poly_coeff0);
     vfmul_vv(v_poly, v_poly, v_x);
-    vfadd_vf(v_poly, v_poly, f_poly_coeff);
-    load_f32_bits(f_poly_coeff, 0x3e2aaa28u);
+    vfadd_vf(v_poly, v_poly, f_poly_coeff1);
     vfmul_vv(v_poly, v_poly, v_x);
-    vfadd_vf(v_poly, v_poly, f_poly_coeff);
-    load_f32_bits(f_poly_coeff, 0x3efffffbu);
+    vfadd_vf(v_poly, v_poly, f_poly_coeff2);
     vfmul_vv(v_poly, v_poly, v_x);
-    vfadd_vf(v_poly, v_poly, f_poly_coeff);
-    load_f32_bits(f_poly_coeff, 0x3f800000u);
+    vfadd_vf(v_poly, v_poly, f_poly_coeff3);
     vfmul_vv(v_poly, v_poly, v_x);
-    vfadd_vf(v_poly, v_poly, f_poly_coeff);
+    vfadd_vf(v_poly, v_poly, f_poly_coeff4);
     vsll_vi(v_bias, v_bias, 23);
     vmin_vx(v_tmpv, v_bias, reg_maxexp);
     vmax_vx(v_tmpv, v_tmpv, reg_minexp);

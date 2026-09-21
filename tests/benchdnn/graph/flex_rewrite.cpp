@@ -1404,8 +1404,8 @@ int flex_rewrite_t::op_attrs_rewrite(deserialized_graph_t &dgraph) {
         for (const auto &new_attr : attrs) {
             const auto &attr_name = new_attr.first;
             const auto &new_val = new_attr.second;
-            // clear an attribute if the new value is "-".
-            if (new_val == "-") {
+            // Clear an attribute if the new value is "undef".
+            if (new_val == "undef") {
                 temp_op.attrs_.erase(attr_name);
                 continue;
             }

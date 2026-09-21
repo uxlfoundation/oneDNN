@@ -115,11 +115,11 @@ OP_ID:ATTR_NAME:ATTR_VALUE[*ATTR_NAME:ATTR_VALUE...]
 [+OP_ID:ATTR_NAME:ATTR_VALUE[*ATTR_NAME:ATTR_VALUE...]...]
 ```
 
-Use `*` for multiple attributes of one operation, `+` for multiple operations
-in one test, and `,` for alternative tests. An empty comma-separated entry
-selects the attributes from the JSON file; for example,
+Use `*` for multiple attributes of one operation, `+` for multiple operations in
+one test, and `,` for alternative tests. An empty comma-separated entry selects
+the attributes from the JSON file; for example,
 `--op-attrs=,0:auto_broadcast:numpy` tests both the original attributes and the
-override. Specify `ATTR_NAME:-` to remove an attribute from the operation.
+override. Specify `ATTR_NAME:undef` to remove an attribute from the operation.
 Attribute names, value types, and constraints are defined by the corresponding
 oneDNN Graph operation.
 
@@ -130,7 +130,7 @@ oneDNN Graph operation.
 
 # Change qtype and remove group_shape from operation 34107656704.
 ./benchdnn --mode=C --graph \
-  --op-attrs=34107656704:qtype:per_tensor*group_shape:- \
+  --op-attrs=34107656704:qtype:per_tensor*group_shape:undef \
   --in-shapes=1:1+2:1 \
   --case=complex_fusion/mha/sdpa-compressed-k-int8-gs32.json
 ```

@@ -65,9 +65,9 @@ ID:SHAPE*STRIDES
 ```
 
 - `ID` is a logical tensor ID from the JSON file.
-- `SHAPE` is a dimension list separated by `x`, such as `2x64x112x112`. `-` is
-  the shape of a rank-zero scalar. A value such as `0` is a rank-one tensor
-  whose dimension is zero.
+- `SHAPE` is a dimension list separated by `x`, such as `2x64x112x112`. `scalar`
+  specifies a rank-zero tensor. A value such as `0` is a rank-one tensor whose
+  dimension is zero.
 - `STRIDES` is an explicit stride list with the same rank as the tensor.
 - `TAG` is a permutation of letters from `a` through the letter corresponding
   to the tensor rank. For example, `abcd` represents dense row-major layout for
@@ -102,7 +102,7 @@ Examples:
   --case=pattern/f32/conv_post_ops_fusion.json
 
 # Rewrite a scalar and a one-dimensional zero-size tensor.
-./benchdnn --mode=C --graph --in-shapes=0:- --case=op/f32/add.json
+./benchdnn --mode=C --graph --in-shapes=0:scalar --case=op/f32/add.json
 ./benchdnn --mode=C --graph --in-shapes=0:0+1:0 --case=op/f32/add.json
 ```
 

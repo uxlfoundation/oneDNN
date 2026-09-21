@@ -51,16 +51,19 @@
 # Regular (non-grouped) matmul cases from the OpenVINO u4 GPU workload,
 # adapted to CPU-ref u3: u4->u3 in wei dt, engine dropped. ZP stays u8.
 
-# 3D (wtag=cab), per-K grouped scales/zps (group 64)
+# 3D (wtag=cab), per-K grouped scales (group 64 and 128), grouped-u8 and
+# scalar-s8 zero-points, with/without binary_add post-op (f16 dst)
 --reset
 --dt=f16:u3:f16
 --wtag=cab
---attr-scales=wei:7:f16:64x1
---attr-zero-points=wei:7:u8:64x1
+--attr-post-ops=,binary_add:f16:6:abc
+--attr-scales=wei:7:f16:64x1,wei:7:f16:128x1
+--attr-zero-points=wei:7:u8:64x1,wei:common:1:s8
 --attr-fpmath=f16:true
 64x1x2048:1x2048x4096
 64x1x2048:1x2048x8192
 64x1x2048:1x2048x9216
+1x16x12288:1x12288x4096
 
 # 3D + eltwise_logistic post-op
 --reset

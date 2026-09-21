@@ -18,6 +18,7 @@
 #include "common/impl_registration.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 
+#include <cstdlib>
 #include <limits>
 
 namespace dnnl {
@@ -27,6 +28,21 @@ namespace intel {
 namespace jit {
 
 using namespace ngen;
+
+namespace {
+// DIAGNOSTIC: env-gated toggle for the gelu_erf CPU-reference saturation
+// clamp below. Disabled by default (preserves original GPU behavior);
+// set DNNL_GELU_ERF_CPU_SAT_THR=1 to enable it. Not intended as a
+// production fix, only to demonstrate/validate the root cause of
+// GPU/CPU MX-scale divergence at gelu_erf's saturation boundary.
+bool gelu_erf_cpu_sat_thr_enabled() {
+    static const bool enabled = [] {
+        const char *env = std::getenv("DNNL_GELU_ERF_CPU_SAT_THR");
+        return env && std::atoi(env) != 0;
+    }();
+    return enabled;
+}
+} // namespace
 
 template <typename ngen_generator_t>
 int eltwise_injector_f32_t<ngen_generator_t>::min_scratch_regs() {
@@ -151,7 +167,8 @@ int eltwise_injector_f32_t<ngen_generator_t>::phase_count(alg_kind_t alg) {
             case eltwise_elu_use_dst_for_bwd: return 5;
             case eltwise_exp:
             case eltwise_exp_use_dst_for_bwd: return 2;
-            case eltwise_gelu_erf: return 31;
+            case eltwise_gelu_erf:
+                return gelu_erf_cpu_sat_thr_enabled() ? 31 : 25;
             case eltwise_hardsigmoid: return 4;
             case eltwise_hardswish: return 5;
             case eltwise_log: return 2;
@@ -861,28 +878,52 @@ void eltwise_injector_f32_t<ngen_generator_t>::gelu_erf_compute_fwd(
     // used only to prove that MX-scale-group divergence is caused by this
     // saturation mismatch, not a merge-quality fix.
     const float gelu_erf_sat_thr = 5.542594480354135f;
+    const bool clamp = gelu_erf_cpu_sat_thr_enabled();
+    if (phase <= 20) {
+        switch (phase) {
+            case 0: h->mul(simd, temp, abs(r), reciproc_sqrt_2); break;
+            case 1: h->mul(simd, temp, temp, p); break;
+            case 2: h->add(simd, temp, temp, 1.f); break;
+            case 3: h->inv(simd, temp, temp); break;
+            case 4: h->mul(simd, at_accum, temp, a1); break;
+            case 5: h->mul(simd, tpow, temp, temp); break;
+            case 6: h->mul(simd, temp2, tpow, a2); break;
+            case 7: h->add(simd, at_accum, temp2, at_accum); break;
+            case 8: h->mul(simd, tpow, tpow, temp); break;
+            case 9: h->mul(simd, temp2, tpow, a3); break;
+            case 10: h->add(simd, at_accum, temp2, at_accum); break;
+            case 11: h->mul(simd, tpow, tpow, temp); break;
+            case 12: h->mul(simd, temp2, tpow, a4); break;
+            case 13: h->add(simd, at_accum, temp2, at_accum); break;
+            case 14: h->mul(simd, tpow, tpow, temp); break;
+            case 15: h->mul(simd, temp2, tpow, a5); break;
+            case 16: h->add(simd, at_accum, temp2, at_accum); break;
+            case 17: h->mul(simd, temp, r, r); break;
+            case 18: h->mul(simd, temp, temp, -log2e * 0.5f); break;
+            case 19: h->exp(simd, temp, temp); break;
+            case 20: h->mul(simd, temp, temp, at_accum); break;
+            default: assert(!"invalid phase");
+        }
+        return;
+    }
+    // DIAGNOSTIC: when DNNL_GELU_ERF_CPU_SAT_THR is unset/0, this is
+    // bit-for-bit identical to the original (unpatched) implementation
+    // (phases 21-24, phase_count()==25). When set to a nonzero value, an
+    // extra clamp (phases 21, 26-30) reproduces the CPU reference (glibc
+    // erff) hard saturation to exactly +/-1.0f past `gelu_erf_sat_thr`,
+    // used only to prove/validate the root cause of GPU/CPU MX-scale
+    // divergence at gelu_erf's saturation boundary, not as a real fix.
+    if (!clamp) {
+        switch (phase) {
+            case 21: h->mul(simd, temp, temp, r); break;
+            case 22: h->mul(simd, temp, temp, 0.5f); break;
+            case 23: h->add(simd, temp2, r, -temp); break;
+            case 24: h->csel(simd | le | f0[0], r, temp, temp2, r); break;
+            default: assert(!"invalid phase");
+        }
+        return;
+    }
     switch (phase) {
-        case 0: h->mul(simd, temp, abs(r), reciproc_sqrt_2); break;
-        case 1: h->mul(simd, temp, temp, p); break;
-        case 2: h->add(simd, temp, temp, 1.f); break;
-        case 3: h->inv(simd, temp, temp); break;
-        case 4: h->mul(simd, at_accum, temp, a1); break;
-        case 5: h->mul(simd, tpow, temp, temp); break;
-        case 6: h->mul(simd, temp2, tpow, a2); break;
-        case 7: h->add(simd, at_accum, temp2, at_accum); break;
-        case 8: h->mul(simd, tpow, tpow, temp); break;
-        case 9: h->mul(simd, temp2, tpow, a3); break;
-        case 10: h->add(simd, at_accum, temp2, at_accum); break;
-        case 11: h->mul(simd, tpow, tpow, temp); break;
-        case 12: h->mul(simd, temp2, tpow, a4); break;
-        case 13: h->add(simd, at_accum, temp2, at_accum); break;
-        case 14: h->mul(simd, tpow, tpow, temp); break;
-        case 15: h->mul(simd, temp2, tpow, a5); break;
-        case 16: h->add(simd, at_accum, temp2, at_accum); break;
-        case 17: h->mul(simd, temp, r, r); break;
-        case 18: h->mul(simd, temp, temp, -log2e * 0.5f); break;
-        case 19: h->exp(simd, temp, temp); break;
-        case 20: h->mul(simd, temp, temp, at_accum); break;
         // tpow is unused past phase 16; reuse it to stash the original r
         // before it gets overwritten by the final result below.
         case 21: h->mov(simd, tpow, r); break;
@@ -890,8 +931,6 @@ void eltwise_injector_f32_t<ngen_generator_t>::gelu_erf_compute_fwd(
         case 23: h->mul(simd, temp, temp, 0.5f); break;
         case 24: h->add(simd, temp2, r, -temp); break;
         case 25: h->csel(simd | le | f0[0], r, temp, temp2, r); break;
-        // DIAGNOSTIC clamp: force exact reference-style saturation using
-        // the stashed original input (tpow).
         case 26: h->add(simd, at_accum, tpow, gelu_erf_sat_thr); break;
         case 27: h->mul(simd, temp2, temp2, 0.f); break;
         case 28:

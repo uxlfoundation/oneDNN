@@ -436,6 +436,31 @@ static void fill_dense_fp_values(data_kind_t kind, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_fp) {
     const int64_t nelems = mem_fp.nelems();
 
+    // DIAGNOSTIC: deterministic fill override to demonstrate the impact of
+    // the gelu_erf CPU-reference saturation threshold on GPU MX-scale
+    // groups, bypassing the RNG so the boundary condition is guaranteed
+    // rather than incidental. Intended for use with a 1x1:1x32 f32 matmul,
+    // gelu_erf post-op, and dst:mx:e8m0:1x32 scales: SRC is pinned to 1.0
+    // (identity), so WEI values become the gelu_erf input directly.
+    // MM_ERF_DEMO_R sets the boundary element's input value (default: just
+    // past the saturation threshold, ~5.542594); all other elements are
+    // pinned deep into saturation (-20) where both implementations agree
+    // it's exactly 0, isolating the divergence to a single element.
+    if (const char *env = getenv("MM_ERF_DEMO_R")) {
+        if (kind == SRC) {
+            for (int64_t i = 0; i < nelems; ++i)
+                mem_fp.set_f32_elem(i, 1.f);
+            return;
+        }
+        if (kind == WEI) {
+            const float r = strtof(env, nullptr);
+            mem_fp.set_f32_elem(0, -r);
+            for (int64_t i = 1; i < nelems; ++i)
+                mem_fp.set_f32_elem(i, -20.f);
+            return;
+        }
+    }
+
     cfg_t::density_args_t density_args;
     density_args.data_kind = kind;
     density_args.n_acc = prb->k;

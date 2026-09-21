@@ -149,6 +149,31 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeU3) {
         ASSERT_EQ(md.get_size(), ref_size)
                 << "u3 dense size mismatch for nelems=" << nelems;
     }
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // K should be multiple of 8
+    const std::vector<std::tuple<memory::dim, memory::dim, int>> grouped_cases
+            = {
+                    {10, 256, 3},
+                    {8, 64, 4},
+                    {3, 8, 3},
+            };
+
+    for (const auto &c : grouped_cases) {
+        const memory::dim M = std::get<0>(c);
+        const memory::dim K = std::get<1>(c);
+        const int ngroups = std::get<2>(c);
+        const size_t nelems = static_cast<size_t>(M) * K;
+#if DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
+        const size_t ref_size = (nelems * 3 + 7) / 8;
+#else
+        const size_t ref_size = 3 * ((nelems + 7) / 8);
+#endif
+        auto md = memory::desc::grouped({M, K}, dt::u3, 0, ngroups);
+        ASSERT_EQ(md.get_size(0), ref_size)
+                << "u3 grouped size(0) mismatch for nelems=" << nelems;
+    }
+#endif
 }
 
 TEST(memory_desc_properties_test, TestMemoryDescDimsU3) {

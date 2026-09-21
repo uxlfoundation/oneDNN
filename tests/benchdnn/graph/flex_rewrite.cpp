@@ -1048,7 +1048,7 @@ bool flex_rewrite_t::get_inport_shape_stride(const std::string &in_shape,
         std::string &shape, std::string &stride, std::string &mtag,
         std::string &msg) {
     assert(shape.empty() && stride.empty() && mtag.empty());
-    if (in_shape == "0" || in_shape == "-") {
+    if (in_shape == "0" || in_shape == "scalar") {
         shape = in_shape;
         return true;
     }
@@ -1070,8 +1070,8 @@ bool flex_rewrite_t::get_inport_shape_stride(const std::string &in_shape,
     size_t in_length = in_shape.size();
     size_t delimiter_pos = in_shape.find('*');
     const static std::string err_msg
-            = "A shape is expected in the form of `NUMxNUMxNUM...`. A tag must "
-              "be composed of letters only.";
+            = "A shape is expected in the form of `NUMxNUMxNUM...` or "
+              "`scalar`. A tag must be composed of letters only.";
     if (delimiter_pos != std::string::npos) {
         // strides rewrite is provided
         if (delimiter_pos == in_length - 1) {
@@ -1185,7 +1185,7 @@ int flex_rewrite_t::inports_shape_rewrite(
             }
 
             // Rewrite logic covers the following scenarios:
-            // shape, stride: ["-", ""]
+            // shape, stride: ["scalar", ""]
             // shape, stride: ["1x32x4", ""] including ["0", ""]
             // shape, stride: ["1x32x4", "abc"]
             // shape, stride: ["", "abc"]
@@ -1193,8 +1193,8 @@ int flex_rewrite_t::inports_shape_rewrite(
             // shape,  stride:   ["", "256x128x1"]
             // and checks has been done accordingliy
             size_t ndims = lt.shape_.size(); // the original rank from JSON
-            // shape "-" means this logical tensor is 0 rank with shape: []
-            const bool zero_rank = new_shape == "-";
+            // shape "scalar" means this logical tensor is rank 0 with shape: []
+            const bool zero_rank = new_shape == "scalar";
             // if the current logical tensor is rewritten to rank-0
             if (zero_rank) {
                 lt.shape_ = dims_t {};
@@ -1319,7 +1319,7 @@ int flex_rewrite_t::outports_shape_rewrite(deserialized_graph_t &dgraph) {
         size_t ndims = lt.shape_.size();
 
         // Handle rank-0 scalar output.
-        if (new_shape == "-") {
+        if (new_shape == "scalar") {
             lt.shape_ = dims_t {};
             lt.stride_ = dims_t {};
             dgraph.graph_tensors_[lt.id_] = dims_t {};

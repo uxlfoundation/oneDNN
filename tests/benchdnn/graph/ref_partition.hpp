@@ -47,6 +47,12 @@ public:
     // run partition in ref path, one by one ref primitive
     void exec_ops(res_t *res);
 
+    // Applies only `filling_type_t::sdpa_peaky` (BENCHDNN_SDPA_FILL) to the
+    // graph input memories. Needed in perf mode, which runs neither exec_ops()
+    // nor the reference memory filling it relies on.
+    int displace_peaky_input_data(
+            partition_mem_map_t &partition_mem_map, res_t *res);
+
     // ref execution and cmp
     int check_partition_correctness(
             partition_mem_map_t &partition_mem_map, res_t *res);

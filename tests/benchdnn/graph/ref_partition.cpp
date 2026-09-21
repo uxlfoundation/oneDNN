@@ -223,6 +223,28 @@ int ref_partition_t::init_graph_mem(
     return OK;
 }
 
+int ref_partition_t::displace_peaky_input_data(
+        partition_mem_map_t &partition_mem_map, res_t *res) {
+    for (const auto &id : partition_in_ids_) {
+        if (data_displacer.get_filling_type(id)
+                        != ::graph::filling_type_t::sdpa_peaky
+                && !data_displacer.is_peaky_scale(id))
+            continue;
+        const auto it = partition_mem_map.find(id);
+        if (it == partition_mem_map.end()) continue;
+
+        // The filler needs both Q and K to size the peaks.
+        std::unordered_map<size_t, const dnn_mem_t &> mem_ref;
+        for (const auto &other : partition_in_ids_) {
+            const auto oit = partition_mem_map.find(other);
+            if (oit != partition_mem_map.end())
+                mem_ref.emplace(other, oit->second.get_mem());
+        }
+        SAFE(data_displacer.displace_input_data(id, mem_ref, res), WARN);
+    }
+    return OK;
+}
+
 void ref_partition_t::exec_ops(res_t *res) {
     for (const auto &par_op_ref : partition_ops_ref_) {
         const auto &op = par_op_ref.get();

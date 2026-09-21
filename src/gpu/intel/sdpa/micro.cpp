@@ -1305,6 +1305,34 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     VDEBUGINFO(4, primitive, sdpa, "kq_gemm: %s, vs_gemm: %s,",
             problem_kq.toString().c_str(), problem_vs.toString().c_str());
 
+    /* Per-subgroup exact K-block skip (speculative; dev-mode only).
+       Legal only when the VS microkernel carries no internal barriers,
+       because each subgroup then decides and skips its own ugemm_vs call
+       independently. */
+    {
+        const int want_sg_skip
+                = gpu_utils::dev_getenv("SDPA_EXACT_SKIP_SG", 0);
+        /* VERIFY: name of the VS package member. It is the same object
+           whose barrierCount the shim turns into ugemm_vs_barrier_count. */
+        const bool vs_barrier_free = (gemm_vs.barrierCount == 0);
+        const int sg_skip = (want_sg_skip && vs_barrier_free) ? 1 : 0;
+        kernel_ctx.define_int("EXACT_SKIP_SG", sg_skip);
+        kernel_ctx.define_int("EXACT_SKIP_MATCH_DST",
+                gpu_utils::dev_getenv("SDPA_EXACT_SKIP_MATCH_DST", 0));
+        kernel_ctx.define_int("EXACT_SKIP_PROBE_C",
+                gpu_utils::dev_getenv("SDPA_EXACT_SKIP_PROBE_C", 0));
+        kernel_ctx.define_int("EXACT_SKIP_DEBUG",
+                gpu_utils::dev_getenv("SDPA_EXACT_SKIP_DEBUG", 0));
+        const int tol = gpu_utils::dev_getenv("SDPA_EXACT_SKIP_LOG2_TOL", 0);
+        if (tol > 0) kernel_ctx.define_int("EXACT_SKIP_LOG2_TOL", tol);
+        if (want_sg_skip) {
+            /* one line per primitive creation; feeds the "gate" phase */
+            VDEBUGINFO(1, primitive, sdpa,
+                    "exact_skip_sg=%d (requested=%d, vs_barriers=%d)",
+                    sg_skip, want_sg_skip, (int)gemm_vs.barrierCount);
+        }
+    }
+
     /* Generate microkernel shims */
     compute::microkernel_shims_t shims(kernel_ctx, subgroup_size, hw_arch);
     shims.add("gemm_kq.h", "kq", gemm_kq);

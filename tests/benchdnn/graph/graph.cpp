@@ -752,6 +752,15 @@ int doit(const prb_t *prb, res_t *res) {
                     WARN);
             if (res->state == SKIPPED) return OK;
 
+            if (!has_bench_mode_bit(mode_bit_t::corr)) {
+                // Perf mode skips the reference path, and with it the filling
+                // that exec_ops() displaces, so apply the peaky SDPA filling
+                // to the graph inputs directly.
+                SAFE(ref_partition.displace_peaky_input_data(
+                             partition_mem_map_v[i], res),
+                        WARN);
+            }
+
             // unmap memory from host to device
             SAFE(map_unmap_partition_mem(
                          partition_mem_map_v[i], inputs, UNMAP, res),

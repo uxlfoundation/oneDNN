@@ -50,6 +50,39 @@ typedef NATIVE_LAYOUT_TYPE(QRY_DATA_T) qry_tile_data_t;
 #define sg_per_wg (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n)
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
 
+#ifndef EXACT_SKIP_DEBUG
+#define EXACT_SKIP_DEBUG 0
+#endif
+#ifndef EXACT_SKIP_PROBE_C
+#define EXACT_SKIP_PROBE_C 0
+#endif
+#ifndef EXACT_SKIP_SG
+#define EXACT_SKIP_SG 0
+#endif
+#if EXACT_SKIP_SG
+#if WITH_DROPOUT
+#error "EXACT_SKIP_SG is not supported together with dropout"
+#endif
+#ifndef EXACT_SKIP_MATCH_DST
+#define EXACT_SKIP_MATCH_DST 0
+#endif
+#ifndef EXACT_SKIP_LOG2_TOL
+/* Mantissa bits (incl. hidden) of the accumulator the skipped mass must stay
+ * below one ulp of: the PV accumulator by default, the destination type with
+ * EXACT_SKIP_MATCH_DST (bf16 -> 8, f16 -> 11). */
+#if VS_F16_ACC
+#define EXACT_SKIP_LOG2_TOL 11
+#elif EXACT_SKIP_MATCH_DST && defined(DST_DT_F16)
+#define EXACT_SKIP_LOG2_TOL 11
+#elif EXACT_SKIP_MATCH_DST && defined(DST_DT_BF16)
+#define EXACT_SKIP_LOG2_TOL 8
+#else
+#define EXACT_SKIP_LOG2_TOL 24
+#endif
+#endif
+#endif
+
+
 /* Instantiate tile types and operations */
 typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
@@ -516,18 +549,33 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define S_sum_slm_size \
     (ugemm_kq_wg_tile_n * ugemm_kq_sg_per_wg_m * sizeof(float))
 #define S_max_slm_size (ugemm_kq_wg_tile_n * sizeof(float))
+#if EXACT_SKIP_SG
+#define S_bmax_slm_size \
+    (ugemm_kq_wg_tile_n * ugemm_kq_sg_per_wg_m * sizeof(float))
+#define S_dbg_slm_size (ugemm_kq_wg_tile_n * 5 * sizeof(float))
+#else
+#define S_bmax_slm_size 0
+#define S_dbg_slm_size 0
+#endif
 #define ugemm_slm_size MAX(ugemm_kq_slm_size, ugemm_vs_slm_size)
 
     local char slm[Q_slm_size + S_slm_size + S_sum_slm_size + S_max_slm_size
-            + ugemm_slm_size];
+            + S_bmax_slm_size + S_dbg_slm_size + ugemm_slm_size];
 
     local QRY_DATA_T *Q_slm = (local QRY_DATA_T *)&slm[0];
     local QRY_DATA_T *S_slm = (local QRY_DATA_T *)&slm[Q_slm_size];
     local float *S_sum_slm = (local float *)&slm[Q_slm_size + S_slm_size];
     local float *S_max_slm
             = (local float *)&slm[Q_slm_size + S_slm_size + S_sum_slm_size];
+#if EXACT_SKIP_SG
+    local float *S_bmax_slm = (local float *)&slm[Q_slm_size + S_slm_size
+            + S_sum_slm_size + S_max_slm_size];
+    local float *S_dbg_slm = (local float *)&slm[Q_slm_size + S_slm_size
+            + S_sum_slm_size + S_max_slm_size + S_bmax_slm_size];
+#endif
     local char *ugemm_slm = (local char *)(&slm[Q_slm_size + S_slm_size
-            + S_sum_slm_size + S_max_slm_size]);
+            + S_sum_slm_size + S_max_slm_size + S_bmax_slm_size
+            + S_dbg_slm_size]);
 
     const bool need_sum_barrier = (ugemm_vs_barrier_count == 0);
 
@@ -580,7 +628,21 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         for (uint c0 = sg_ij * SUBGROUP_SIZE; c0 < ugemm_kq_wg_tile_n;
                 c0 += SUBGROUP_SIZE * sg_per_wg) {
             const uint c = c0 + get_sub_group_local_id();
-            if (c < ugemm_kq_wg_tile_n) { S_max_slm[c] = -INFINITY; }
+            if (c < ugemm_kq_wg_tile_n) {
+                S_max_slm[c] = -INFINITY;
+#if EXACT_SKIP_SG
+                /* Rows no subgroup writes would otherwise feed garbage into
+                   the per-subgroup skip vote's max. */
+#pragma unroll
+                for (uint r = 0; r < ugemm_kq_sg_per_wg_m; r++)
+                    S_bmax_slm[r * ugemm_kq_wg_tile_n + c] = -INFINITY;
+                S_dbg_slm[c] = 0.f; /* blocks where the predicate passed */
+                S_dbg_slm[ugemm_kq_wg_tile_n + c] = 0.f; /* blocks skipped */
+                S_dbg_slm[2 * ugemm_kq_wg_tile_n + c] = INFINITY; /* scratch */
+                S_dbg_slm[4 * ugemm_kq_wg_tile_n + c] = INFINITY; /* min gap */
+                S_dbg_slm[3 * ugemm_kq_wg_tile_n + c] = 0.f; /* pre-AND count */
+#endif
+            }
         }
 
 #if Q_ARRIVE_AWAIT_BARRIER
@@ -683,6 +745,14 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
     uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
+
+#if EXACT_SKIP_SG
+    const float log2e_scale = scale * 1.442695f;
+    const float skip_log2_thresh = -((float)EXACT_SKIP_LOG2_TOL
+            + native_log2((float)ugemm_kq_wg_tile_m));
+    const uint sg_j0_vs_local = sg_j_vs * ugemm_vs_sg_tile_n;
+#endif
+
 
 #if WITH_DROPOUT
     /* Hoist loop-invariant dropout scalars and batch offset once. */
@@ -809,12 +879,22 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
         /* Compute our maxima and reduce across SLM */
         tile_vreduce_max(S_tile, &S_max_tile);
+#if EXACT_SKIP_SG
+        {
+            s_sum_tile_type S_bmax_tile;
+            tile_fill(S_bmax_tile, -INFINITY);
+            tile_vreduce_max(S_tile, &S_bmax_tile);
+            tile_store_full(S_bmax_tile, S_bmax_slm, ugemm_kq_wg_tile_n,
+                    sg_j0_kq, sg_i_kq);
+        }
+#endif
+
         tile_atomic_max_full(
                 S_max_tile, S_max_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
         intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 
         int k_chunk = min(k0end - k0, ugemm_kq_wg_tile_m);
-#if PREFETCH_V
+#if PREFETCH_V && !EXACT_SKIP_SG
         /* Prefetch V tile. */
         cooperative_prefetch_2d_maybe_rem(
                 /* ptr */ V,
@@ -861,6 +941,100 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         /* Read back WG-wide maxima */
         intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
         tile_load_full(&S_max_tile, S_max_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+
+#if EXACT_SKIP_SG
+        /* Per-subgroup decision for the VS product: skip iff every query
+           column this subgroup owns in the VS decomposition has the whole
+           block below threshold. Scalar loads, one column per lane. */
+        bool sg_skip = true;
+        {
+            const int lane = get_sub_group_local_id();
+#pragma unroll
+            for (int ii = 0; ii < DIV_UP(ugemm_vs_sg_tile_n, SUBGROUP_SIZE);
+                    ii++) {
+                int cl = ii * SUBGROUP_SIZE + lane;
+                uint col = sg_j0_vs_local + cl;
+                /* Columns past the real query count are padding: their maxima
+                   are -inf, so the gap is NaN and one such lane would veto the
+                   whole subgroup. At decode (q=1) that is every lane but one. */
+                if (cl < ugemm_vs_sg_tile_n && wg_j0 + col < (uint)q) {
+                    float bmax = -INFINITY;
+#if EXACT_SKIP_DEBUG == 15
+                    bmax = S_bmax_slm[col]; /* probe: row 0 only */
+#else
+#pragma unroll
+                    for (uint r = 0; r < ugemm_kq_sg_per_wg_m; r++)
+                        bmax = fmax(bmax,
+                                S_bmax_slm[r * ugemm_kq_wg_tile_n + col]);
+#endif
+                    const float pmax = S_max_slm[col];
+                    /* m == -inf (fully masked so far) -> NaN -> no skip;
+                       bmax == -inf (block fully masked) -> skip. */
+                    float gap = (bmax - pmax) * log2e_scale;
+                    if (gap < skip_log2_thresh)
+                        atomic_inc((local int *)(S_dbg_slm
+                                + 3 * ugemm_kq_wg_tile_n + col));
+                    S_dbg_slm[4 * ugemm_kq_wg_tile_n + col]
+                            = fmin(S_dbg_slm[4 * ugemm_kq_wg_tile_n + col], gap);
+#if EXACT_SKIP_DEBUG == 1
+                    sg_skip &= (bmax < pmax);
+#elif EXACT_SKIP_DEBUG == 2
+                    sg_skip &= (bmax == pmax);
+#elif EXACT_SKIP_DEBUG == 3
+                    sg_skip &= (gap < 0.0f);
+#elif EXACT_SKIP_DEBUG == 5
+                    sg_skip &= (gap < (float)EXACT_SKIP_PROBE_C);
+#elif EXACT_SKIP_DEBUG == 6
+                    sg_skip &= (pmax == -INFINITY);
+#elif EXACT_SKIP_DEBUG == 7
+                    sg_skip &= (bmax == -INFINITY);
+#elif EXACT_SKIP_DEBUG == 8
+                    sg_skip &= (bmax > -INFINITY && pmax > -INFINITY);
+#else
+                    sg_skip &= (gap < skip_log2_thresh);
+#endif
+                }
+            }
+            sg_skip = sub_group_all(sg_skip);
+            /* atomic: 8 vs-subgroups share a column, plain += loses counts */
+            if (lane == 0) {
+                local int *cpost = (local int *)(S_dbg_slm
+                        + ugemm_kq_wg_tile_n + sg_j0_vs_local);
+                if (sg_skip) atomic_inc(cpost);
+            }
+#if EXACT_SKIP_DEBUG == 4
+            sg_skip = (k0 > 0); /* probe: force-skip, upper bound on the win */
+#endif
+        }
+
+#if PREFETCH_V
+        /* Deferred V prefetch: a skipping subgroup drops its share. */
+        if (!sg_skip) {
+            cooperative_prefetch_2d_maybe_rem(
+                    /* ptr */ V,
+                    /* r */ d_v,
+                    /* c */ k0end - k0,
+                    /* rmax */ PREFETCH_V_MAX,
+                    /* cmax */ ugemm_kq_wg_tile_m,
+                    /* ld */ ldv,
+                    /* sg_id */ sg_ij,
+                    /* n_sg */ sg_per_wg,
+                    /* sg_size */ SUBGROUP_SIZE,
+                    /* cache */ LSC_LDCC_L1C_L3C);
+#if VAL_SCALES == QUANTIZE_2D
+            cooperative_prefetch_2d_maybe_rem(V_scales, num_val_groups,
+                    k0end - k0, PREFETCH_V_MAX / VAL_GROUP_SIZE, k_chunk,
+                    ldvq, sg_ij, sg_per_wg, SUBGROUP_SIZE, LSC_LDCC_L1C_L3C);
+#endif
+#if VAL_ZERO_POINTS == QUANTIZE_2D
+            cooperative_prefetch_2d_maybe_rem(V_zp, num_val_groups,
+                    k0end - k0, PREFETCH_V_MAX / VAL_GROUP_SIZE, k_chunk,
+                    ldvq, sg_ij, sg_per_wg, SUBGROUP_SIZE, LSC_LDCC_L1C_L3C);
+#endif
+        }
+#endif
+#endif
+
 
 #if SOFTMAX_INF_AS_ZERO
 #define set_zeros(v) vselect(-FLT_MAX, v, visfinite(v))
@@ -1036,31 +1210,37 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 
             /* Accumulate A += V * S */
-#if VS_F16_ACC
-        a_tile_type A_tile1_f16
-#else
-        a_tile_type A_tile1
+#if EXACT_SKIP_SG
+        if(!sg_skip)
 #endif
-                = ugemm_vs(V, ldv, S_slm, ugemm_kq_wg_tile_m, d_v,
-                        ugemm_kq_wg_tile_n, k_chunk, 0, 0, 0, sg_i_vs, sg_j_vs,
-                        ugemm_slm
+        {
+#if VS_F16_ACC
+            a_tile_type A_tile1_f16
+#else
+            a_tile_type A_tile1
+#endif
+                    = ugemm_vs(V, ldv, S_slm, ugemm_kq_wg_tile_m, d_v,
+                            ugemm_kq_wg_tile_n, k_chunk, 0, 0, 0, sg_i_vs, sg_j_vs,
+                            ugemm_slm
 #if VAL_SCALES == QUANTIZE_2D
-                        ,
-                        V_scales
+                            ,
+                            V_scales
 #endif
 #if VAL_ZERO_POINTS
-                        ,
-                        V_zp
+                            ,
+                            V_zp
 #endif
 #if (VAL_SCALES == QUANTIZE_2D) || VAL_ZERO_POINTS
-                        ,
-                        ldvq
+                            ,
+                            ldvq
 #endif
-                );
+                    );
 #if VS_F16_ACC
-        a_tile_type_float A_tile1;
-        tile_copy_reblock(A_tile1_f16, &A_tile1);
+            a_tile_type_float A_tile1;
+            tile_copy_reblock(A_tile1_f16, &A_tile1);
 #endif
+            tile_binary(A_tile, A_tile1, binary_add);
+        }
 
         V += ldv * ugemm_kq_wg_tile_m / VAL_ELEMENTS_PER_BYTE;
 #if VAL_SCALES == QUANTIZE_2D
@@ -1069,7 +1249,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #if VAL_ZERO_POINTS == QUANTIZE_2D
         V_zp += ldvq * ugemm_kq_wg_tile_m / VAL_ZP_ELEMENTS_PER_BYTE;
 #endif
-        tile_binary(A_tile, A_tile1, binary_add);
     }
 
     if (k0end > 0) {
@@ -1089,6 +1268,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #define log2(x) (native_vlog2(x) * 0.6931471805f)
         tile_elementwise(S_sum_total, log2);
+#if EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 13
+        /* running max as the lse path sees it, before it is scaled */
+        s_sum_tile_type S_lsemax_dbg;
+        tile_copy(S_max_tile_old, S_lsemax_dbg);
+#endif
 #define scale_op(x) ((x) * scale)
         tile_elementwise(S_max_tile_old, scale_op);
         tile_binary(S_max_tile_old, S_sum_total, binary_add);
@@ -1103,6 +1287,68 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const uint preprocess_batch = b1 * (DST_D1 * q) + b0 * q;
 
         global float *ws_logsumexp = ws + preprocess_batch;
+#if EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 9
+        /* probe: expose the vote's operands through the logsumexp output */
+        tile_load_full(&S_max_tile_old, S_max_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 10
+        tile_load_full(&S_max_tile_old, S_bmax_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 11
+        tile_load_full(&S_max_tile_old, S_dbg_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 12
+        tile_load_full(&S_max_tile_old, S_dbg_slm + ugemm_kq_wg_tile_n,
+                ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 23
+        /* replicate the vote's reduction here, where it can be observed */
+        for (uint c0 = sg_ij * SUBGROUP_SIZE; c0 < ugemm_kq_wg_tile_n;
+                c0 += SUBGROUP_SIZE * sg_per_wg) {
+            const uint c = c0 + get_sub_group_local_id();
+            if (c < ugemm_kq_wg_tile_n) {
+                float m = -INFINITY;
+                for (uint r = 0; r < ugemm_kq_sg_per_wg_m; r++)
+                    m = fmax(m, S_bmax_slm[r * ugemm_kq_wg_tile_n + c]);
+                S_dbg_slm[3 * ugemm_kq_wg_tile_n + c] = m;
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        tile_load_full(&S_max_tile_old, S_dbg_slm + 3 * ugemm_kq_wg_tile_n,
+                ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 24
+        tile_fill(S_max_tile_old, (float)ugemm_kq_wg_tile_m);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 18
+        tile_load_full(&S_max_tile_old, S_bmax_slm + 2 * ugemm_kq_wg_tile_n,
+                ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 20
+        tile_fill(S_max_tile_old, (float)ugemm_kq_sg_per_wg_m);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 21
+        tile_fill(S_max_tile_old, (float)ugemm_kq_wg_tile_n);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 22
+        tile_fill(S_max_tile_old, (float)ugemm_vs_sg_tile_n);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 16
+        tile_load_full(&S_max_tile_old, S_bmax_slm + ugemm_kq_wg_tile_n,
+                ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 17 || EXACT_SKIP_DEBUG == 12
+        for (uint c0 = sg_ij * SUBGROUP_SIZE; c0 < ugemm_kq_wg_tile_n;
+                c0 += SUBGROUP_SIZE * sg_per_wg) {
+            const uint c = c0 + get_sub_group_local_id();
+            if (c < ugemm_kq_wg_tile_n) {
+                const uint slot = (EXACT_SKIP_DEBUG == 12) ? 1 : 3;
+                local int *ci = (local int *)(S_dbg_slm
+                        + slot * ugemm_kq_wg_tile_n + c);
+                S_dbg_slm[2 * ugemm_kq_wg_tile_n + c] = (float)(*ci);
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        tile_load_full(&S_max_tile_old, S_dbg_slm + 2 * ugemm_kq_wg_tile_n,
+                ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 25
+        tile_load_full(&S_max_tile_old, S_dbg_slm + 4 * ugemm_kq_wg_tile_n,
+                ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 14
+        tile_load_full(&S_max_tile_old, S_dbg_slm + 2 * ugemm_kq_wg_tile_n,
+                ugemm_kq_wg_tile_n, sg_j0_kq, 0);
+#elif EXACT_SKIP_SG && EXACT_SKIP_DEBUG == 13
+        tile_copy(S_lsemax_dbg, S_max_tile_old);
+#endif
         tile_store(S_max_tile_old, ws_logsumexp, q_group_size, 1, q_group_size,
                 sg_j0_kq + wg_j0, sg_i0_kq);
         // sg_i0 specified to avoid OOB subgroups from aliasing

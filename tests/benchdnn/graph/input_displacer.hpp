@@ -34,6 +34,29 @@ enum class filling_type_t {
     fixed_setting,
     // Fill softmax stats for sdpa backward graph by recomputing the forward graph
     softmax_stats,
+    // Peaky Q/K filling for sdpa forward (BENCHDNN_SDPA_FILL), used to
+    // exercise attention-sparsity paths in the library kernels.
+    sdpa_peaky,
+};
+
+// Shared description of the Q/K pair for `filling_type_t::sdpa_peaky`.
+struct sdpa_peaky_cfg_t {
+    enum class mode_t { none, sink_local, sink_group_local };
+
+    mode_t mode = mode_t::none;
+    float gap_nats = 25.f; // G
+    int64_t group = 16; // P, sink_group_local only
+    float scale = 0.f; // 0 -> 1/sqrt(D)
+    // Logical shapes of the two QK MatMul inputs, (..., S, D). Rank may be 4
+    // (MHA) or 5 (GQA, where K broadcasts over the group dim).
+    std::vector<int64_t> q_shape, k_shape;
+    // K is logically (..., S, D) when the QK MatMul sets transpose_b.
+    bool k_is_sd = true;
+    size_t q_lt_id = 0, k_lt_id = 0;
+    size_t scale_lt_id = 0;
+    bool has_scale_lt = false;
+
+    static sdpa_peaky_cfg_t from_env();
 };
 struct displace_args_t {
 
@@ -65,6 +88,12 @@ public:
     int displace_input_data(size_t lt_id,
             const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
             res_t *res);
+    // The pinned softmax scale is a `fixed_setting`, so perf mode has to ask
+    // for it by id rather than by filling type.
+    bool is_peaky_scale(size_t lt_id) const {
+        return peaky_.mode != sdpa_peaky_cfg_t::mode_t::none
+                && peaky_.has_scale_lt && lt_id == peaky_.scale_lt_id;
+    }
     filling_type_t get_filling_type(size_t lt_id) const {
         auto it = displace_args_.find(lt_id);
         if (it == displace_args_.end()) return filling_type_t::undef;
@@ -77,6 +106,7 @@ private:
     // identify at displacement stage if Deq is the starting point or not.
     std::unordered_set<size_t> op_ids_set_;
     ::std::unordered_map<size_t, displace_args_t> displace_args_;
+    sdpa_peaky_cfg_t peaky_;
 
     int gen_quantize_filling(const ::graph::deserialized_op_t &main_op, int arg,
             dnn_mem_t &mem, const ::std::string &dt, res_t *res);
@@ -92,6 +122,9 @@ private:
     int gen_softmax_stats_filling(const ::graph::deserialized_op_t &main_op,
             int arg, const dnn_mem_t &src_mem, dnn_mem_t &mem,
             const_dnnl_memory_desc_t md, res_t *res) const;
+    // Generates peaky Q/K values, see `sdpa_peaky_cfg_t`.
+    int gen_sdpa_peaky_filling(size_t lt_id, const_dnnl_memory_desc_t peer_md,
+            dnn_mem_t &mem, const_dnnl_memory_desc_t md, res_t *res) const;
 };
 
 } // namespace graph

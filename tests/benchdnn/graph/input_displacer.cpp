@@ -14,8 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <numeric>
 #include <random>
+#include <string>
 
 #include "dnnl_common.hpp"
 #include "input_displacer.hpp"
@@ -84,6 +88,40 @@ void handle_special_dt_set(
 }
 
 } // namespace
+
+sdpa_peaky_cfg_t sdpa_peaky_cfg_t::from_env() {
+    sdpa_peaky_cfg_t c;
+    const char *e = std::getenv("BENCHDNN_SDPA_FILL");
+    if (!e || !*e) return c;
+
+    const std::string s(e);
+    const auto field = [&s](size_t idx) -> std::string {
+        size_t p = 0;
+        for (size_t i = 0; i < idx; i++) {
+            p = s.find(':', p);
+            if (p == std::string::npos) return "";
+            p++;
+        }
+        const size_t q = s.find(':', p);
+        return s.substr(p, q == std::string::npos ? q : q - p);
+    };
+
+    const std::string mode = field(0);
+    if (mode == "sink_local")
+        c.mode = mode_t::sink_local;
+    else if (mode == "sink_group_local")
+        c.mode = mode_t::sink_group_local;
+    else {
+        BENCHDNN_PRINT(0, "[DISPLACE]: BENCHDNN_SDPA_FILL: unknown mode %s, ignored.\n", mode.c_str());
+        return c;
+    }
+    if (!field(1).empty()) c.gap_nats = std::stof(field(1));
+    if (!field(2).empty()) c.group = std::stoll(field(2));
+    if (c.group < 1) c.group = 1;
+    if (const char *sc = std::getenv("BENCHDNN_SDPA_FILL_SCALE"))
+        c.scale = (float)std::atof(sc);
+    return c;
+}
 
 partition_data_displacer_t::partition_data_displacer_t(
         const deserialized_graph_t &dg, const dnnl::graph::partition &par)
@@ -497,6 +535,77 @@ partition_data_displacer_t::partition_data_displacer_t(
             break;
         }
     }
+
+    // BENCHDNN_SDPA_FILL: peaky Q/K filling, applied once per partition to the
+    // two graph inputs of the QK MatMul.
+    peaky_ = sdpa_peaky_cfg_t::from_env();
+    while (peaky_.mode != sdpa_peaky_cfg_t::mode_t::none) {
+        if (dg.get_recognized_pattern()
+                != graph_recognized_pattern_t::sdpa_fwd) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "[DISPLACE]: BENCHDNN_SDPA_FILL: not an sdpa_fwd pattern, ignored.");
+            break;
+        }
+        // Ops are in chronological order, so the QK MatMul is the first one
+        // whose both inputs are graph inputs; the VS MatMul consumes SoftMax.
+        const deserialized_op_t *qk = nullptr;
+        for (const auto &aop : dg_->ops_) {
+            if (aop.kind_ != "MatMul" || aop.in_lts_.size() < 2) continue;
+            if (op_ids_set_.find(aop.id_) == op_ids_set_.end()) continue;
+            if (!dg_->get_op_by_out_lt(aop.in_lts_[0].id_).empty()) continue;
+            if (!dg_->get_op_by_out_lt(aop.in_lts_[1].id_).empty()) continue;
+            qk = &aop;
+            break;
+        }
+        if (!qk) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "[DISPLACE]: BENCHDNN_SDPA_FILL: QK MatMul with plain Q/K graph inputs not found, ignored.");
+            break;
+        }
+        const auto &q_lt = qk->in_lts_[0];
+        const auto &k_lt = qk->in_lts_[1];
+        const size_t nd = q_lt.shape_.size();
+        if (nd < 3 || nd != k_lt.shape_.size()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "[DISPLACE]: BENCHDNN_SDPA_FILL: unsupported Q/K ranks, ignored.");
+            break;
+        }
+        bool transpose_b = false;
+        qk->get_attr_bool(transpose_b, "transpose_b");
+        peaky_.q_shape = q_lt.shape_;
+        peaky_.k_shape = k_lt.shape_;
+        peaky_.k_is_sd = transpose_b;
+        peaky_.q_lt_id = q_lt.id_;
+        peaky_.k_lt_id = k_lt.id_;
+        displace_args_.emplace(q_lt.id_,
+                displace_args_t {*qk, 0, q_lt, filling_type_t::sdpa_peaky});
+        displace_args_.emplace(k_lt.id_,
+                displace_args_t {*qk, 1, k_lt, filling_type_t::sdpa_peaky});
+
+        // The scale is otherwise filled at random from {0.25, 0.5, 1.0}, which
+        // rescales every logit gap and makes gap_nats meaningless. Pin it, and
+        // use the same value when sizing the peaks. operator[] overrides the
+        // generic Mul/Div displacer already registered for this tensor.
+        const int64_t d = q_lt.shape_[nd - 1];
+        if (peaky_.scale <= 0) peaky_.scale = 1.f / std::sqrt((float)d);
+        const auto &sop = dg_->get_op_by_in_lt(qk->out_lts_[0].id_);
+        if (!sop.empty() && (sop.kind_ == "Multiply" || sop.kind_ == "Divide")) {
+            for (size_t i = 0; i < sop.in_lts_.size(); i++) {
+                const auto &slt = sop.in_lts_[i];
+                if (slt.id_ == qk->out_lts_[0].id_) continue;
+                if (!dg_->get_op_by_out_lt(slt.id_).empty()) continue;
+                const float sv = (sop.kind_ == "Divide") ? 1.f / peaky_.scale
+                                                         : peaky_.scale;
+                displace_args_[slt.id_] = displace_args_t {sop, i, slt,
+                        filling_type_t::fixed_setting,
+                        {{sv}, "SDPA peaky scale"}};
+                peaky_.scale_lt_id = slt.id_;
+                peaky_.has_scale_lt = true;
+                break;
+            }
+        }
+        break;
+    }
 }
 
 int partition_data_displacer_t::displace_input_data(size_t lt_id,
@@ -533,6 +642,8 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
             s = "Quantization";
         } else if (filling_type == filling_type_t::compressed_sdpa) {
             s = "Compressed SDPA";
+        } else if (filling_type == filling_type_t::sdpa_peaky) {
+            s = "SDPA peaky Q/K";
         }
         return s;
     };
@@ -558,6 +669,19 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
         const dnn_mem_t &softmax_src_mem = lt_id_2_mems.at(softmax_src_lt->id_);
         SAFE(gen_softmax_stats_filling(main_op, main_op_arg, softmax_src_mem,
                      mem_replace, mem.md_, res),
+                WARN);
+    } else if (filling_type == filling_type_t::sdpa_peaky) {
+        const size_t peer_id
+                = (lt_id == peaky_.q_lt_id) ? peaky_.k_lt_id : peaky_.q_lt_id;
+        const auto peer_it = lt_id_2_mems.find(peer_id);
+        if (peer_it == lt_id_2_mems.end()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "[DISPLACE]: BENCHDNN_SDPA_FILL: peer Q/K memory missing.");
+            res->state = FAILED;
+            return FAIL;
+        }
+        SAFE(gen_sdpa_peaky_filling(
+                     lt_id, peer_it->second.md_, mem_replace, mem.md_, res),
                 WARN);
     } else {
         assert(!"unexpected filling type");
@@ -822,6 +946,10 @@ int partition_data_displacer_t::gen_fixed_set_filling(dnn_mem_t &mem,
         m = dnn_mem_t(query_md_ndims(md), query_md_dims(md), dnnl_f32, tag::abx,
                 get_test_engine(), /* prefill = */ false);
     }
+    // Perf mode hands over unmapped device memory; restore the incoming state
+    // so a later reorder can map it itself.
+    const bool mapped_here = !m.is_mapped();
+    if (mapped_here) m.map();
     const int64_t nelems = m.nelems();
 
     BENCHDNN_PRINT(6, "%s\n", fill_cfg.print_verbose().c_str());
@@ -856,6 +984,7 @@ int partition_data_displacer_t::gen_fixed_set_filling(dnn_mem_t &mem,
         }
     });
 
+    if (mapped_here) m.unmap();
     mem = std::move(m);
     return OK;
 }
@@ -886,6 +1015,129 @@ int partition_data_displacer_t::gen_causal_mask_filling(
         tmp_mem.set_elem(idx, val);
     });
 
+    mem = std::move(tmp_mem);
+    return OK;
+}
+
+int partition_data_displacer_t::gen_sdpa_peaky_filling(size_t lt_id,
+        const_dnnl_memory_desc_t peer_md, dnn_mem_t &mem,
+        const_dnnl_memory_desc_t md, res_t *res) const {
+    const auto &c = peaky_;
+    const bool is_q = (lt_id == c.q_lt_id);
+
+    // Keep the md identical to the destination so the caller can reorder.
+    dnn_mem_t tmp_mem(md, get_test_engine(), /* prefill = */ false);
+    // Perf mode hands over unmapped device memory; corr mode is already mapped.
+    // Restore whatever state it came in with, so the reorder can map it itself.
+    const bool mapped_here = !tmp_mem.is_mapped();
+    if (mapped_here) tmp_mem.map();
+
+    const int ndims = tmp_mem.ndims();
+    if (query_md_ndims(peer_md) != ndims) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "[DISPLACE]: BENCHDNN_SDPA_FILL: Q/K rank mismatch.");
+        res->state = FAILED;
+        return FAIL;
+    }
+    const int nb = ndims - 2; // leading batch/head dims
+    // Index through strides: these tensors are often stored permuted (B,S,H,D).
+    const auto *strides = tmp_mem.strides();
+    // Dims must come from the memory, not the graph: --in-shapes rewrites the
+    // memory but the deserialized logical tensor keeps the original shape.
+    const dnnl_dim_t *self_dims = query_md_dims(md);
+    const dnnl_dim_t *peer_dims = query_md_dims(peer_md);
+    const dnnl_dim_t *q_dims = is_q ? self_dims : peer_dims;
+    const dnnl_dim_t *k_dims = is_q ? peer_dims : self_dims;
+
+    const int64_t D = q_dims[ndims - 1];
+    const int64_t Sq = q_dims[ndims - 2];
+    // Infer K's layout from the descriptor rather than trusting transpose_b:
+    // the MatMul's WEI md may already present K as (..., D, S).
+    bool k_sd = c.k_is_sd;
+    if (k_dims[ndims - 1] == D && k_dims[ndims - 2] != D)
+        k_sd = true;
+    else if (k_dims[ndims - 2] == D && k_dims[ndims - 1] != D)
+        k_sd = false;
+    const int64_t Sk = k_sd ? k_dims[ndims - 2] : k_dims[ndims - 1];
+
+    int64_t q_batch = 1, k_batch = 1;
+    for (int i = 0; i < nb; i++) {
+        q_batch *= q_dims[i];
+        k_batch *= k_dims[i];
+    }
+
+    const float scale = c.scale > 0 ? c.scale : 1.f / std::sqrt((float)D);
+    const float cmax = 3.f / std::sqrt((float)D);
+    const float denom = scale * (1.f - cmax);
+    if (!(denom > 0.f)) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "[DISPLACE]: BENCHDNN_SDPA_FILL: degenerate head size.");
+        res->state = UNIMPLEMENTED;
+        return OK;
+    }
+    const float r = std::sqrt(c.gap_nats / denom);
+
+    // Deterministic unit vector for key j of kv-slice kb; Q and K must agree.
+    const auto unit = [&](int64_t kb, int64_t j, std::vector<float> &u) {
+        std::mt19937 g((uint32_t)((uint64_t)kb * 1000003u
+                + (uint64_t)j * 2654435761u + 0x9e3779b9u));
+        std::normal_distribution<float> nd(0.f, 1.f);
+        u.resize(D);
+        double nrm = 0;
+        for (int64_t d = 0; d < D; d++) {
+            u[d] = nd(g);
+            nrm += (double)u[d] * u[d];
+        }
+        const float inv = nrm > 0 ? 1.f / (float)std::sqrt(nrm) : 1.f;
+        for (int64_t d = 0; d < D; d++)
+            u[d] *= inv;
+    };
+
+    const auto own = [&](int64_t i) {
+        int64_t j = i + (Sk - Sq);
+        if (c.mode == sdpa_peaky_cfg_t::mode_t::sink_group_local)
+            j = (j / c.group) * c.group;
+        return std::min(std::max<int64_t>(j, 0), Sk - 1);
+    };
+
+    if (is_q) {
+        benchdnn_parallel_nd(q_batch, Sq, [&](int64_t qb, int64_t i) {
+            // Decompose the flat batch index into per-dim coords, and fold it
+            // into the matching kv slice (K has 1 where Q carries the group).
+            int64_t off = 0, rem = qb, kb = 0, kmul = 1;
+            for (int d0 = nb - 1; d0 >= 0; d0--) {
+                const int64_t qc = rem % q_dims[d0];
+                rem /= q_dims[d0];
+                off += qc * strides[d0];
+                kb += (k_dims[d0] == 1 ? 0 : qc) * kmul;
+                kmul *= k_dims[d0];
+            }
+            std::vector<float> u0, ui;
+            unit(kb, 0, u0);
+            unit(kb, own(i), ui);
+            off += i * strides[ndims - 2];
+            for (int64_t d = 0; d < D; d++)
+                tmp_mem.set_elem(
+                        off + d * strides[ndims - 1], r * (u0[d] + ui[d]));
+        });
+    } else {
+        const int s_ax = k_sd ? ndims - 2 : ndims - 1;
+        const int d_ax = k_sd ? ndims - 1 : ndims - 2;
+        benchdnn_parallel_nd(k_batch, Sk, [&](int64_t kb, int64_t j) {
+            int64_t off = 0, rem = kb;
+            for (int d0 = nb - 1; d0 >= 0; d0--) {
+                off += (rem % k_dims[d0]) * strides[d0];
+                rem /= k_dims[d0];
+            }
+            std::vector<float> u;
+            unit(kb, j, u);
+            off += j * strides[s_ax];
+            for (int64_t d = 0; d < D; d++)
+                tmp_mem.set_elem(off + d * strides[d_ax], r * u[d]);
+        });
+    }
+
+    if (mapped_here) tmp_mem.unmap();
     mem = std::move(tmp_mem);
     return OK;
 }

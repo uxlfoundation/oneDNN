@@ -42,7 +42,16 @@ void Generator<hw>::gemmCheck32(const GEMMProblem &problem, GEMMStrategy &strate
 
     bool checkA = (strategy.A.base.getModel() == ModelA64);
     bool checkB = (strategy.B.base.getModel() == ModelA64);
-    if (!checkA && !checkB)
+
+    // Quantization buffers are also advanced by the k loop and must be bounded too.
+    bool checkAO = problem.aOffset2D()      && state.inputs.aoPtr.isValid()     && state.inputs.ldao.isValid()     && (strategy.AO.base.getModel()      == ModelA64);
+    bool checkBO = problem.bOffset2D()      && state.inputs.boPtr.isValid()     && state.inputs.ldbo.isValid()     && (strategy.BO.base.getModel()      == ModelA64);
+    bool checkAS = problem.aScale2D()       && state.inputs.aScalePtr.isValid() && state.inputs.ldaScale.isValid() && (strategy.A_scale.base.getModel() == ModelA64);
+    bool checkBS = problem.bScale2D()       && state.inputs.bScalePtr.isValid() && state.inputs.ldbScale.isValid() && (strategy.B_scale.base.getModel() == ModelA64);
+    bool checkAG = problem.needsAGroupSums() && state.inputs.agPtr.isValid()    && state.inputs.ldag.isValid()     && (strategy.Ag.base.getModel()      == ModelA64);
+    bool checkBG = problem.needsBGroupSums() && state.inputs.bgPtr.isValid()    && state.inputs.ldbg.isValid()     && (strategy.Bg.base.getModel()      == ModelA64);
+
+    if (!checkA && !checkB && !checkAO && !checkBO && !checkAS && !checkBS && !checkAG && !checkBG)
         return;
 
     bool emulate = strategy.emulate.emulate64_mul;
@@ -106,6 +115,27 @@ void Generator<hw>::gemmCheck32(const GEMMProblem &problem, GEMMStrategy &strate
         add(mod | ov | flag, temp2, acc0.ud(0), temp2);
         cmp(1 | ~flag | ne | flag, temp1Hi, uint16_t(0));
     }
+
+    // Conservatively estimate upper bound for each buffer's size as ld*k.
+    bool havePrev = checkA || checkB;
+    auto checkQuantBuffer = [&](const ngen::Subregister &ptr, const ngen::Subregister &ld, const ngen::Subregister &offset) {
+        offset.isValid() ? add(1, temp2, ptr.ud(), offset.ud())
+                         : mov(1, temp2, ptr.ud());
+        mulHigh(temp1, ld, k);
+        InstructionModifier mod = 1;
+        if (havePrev)
+            mod |= ~flag;
+        add(mod | ov | flag, temp2, acc0.ud(0), temp2);
+        cmp(1 | ~flag | ne | flag, temp1Hi, uint16_t(0));
+        havePrev = true;
+    };
+
+    if (checkAO) checkQuantBuffer(state.inputs.aoPtr, state.inputs.ldao, state.inputs.offsetAO);
+    if (checkBO) checkQuantBuffer(state.inputs.boPtr, state.inputs.ldbo, state.inputs.offsetBO);
+    if (checkAS) checkQuantBuffer(state.inputs.aScalePtr, state.inputs.ldaScale, state.inputs.offsetAScale);
+    if (checkBS) checkQuantBuffer(state.inputs.bScalePtr, state.inputs.ldbScale, state.inputs.offsetBScale);
+    if (checkAG) checkQuantBuffer(state.inputs.agPtr, state.inputs.ldag, state.inputs.offsetAg);
+    if (checkBG) checkQuantBuffer(state.inputs.bgPtr, state.inputs.ldbg, state.inputs.offsetBg);
 
     state.add64 = state.ra.alloc_sub<uint16_t>();
     and_(1, state.add64, flag, 1u);

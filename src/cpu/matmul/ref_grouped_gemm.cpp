@@ -212,30 +212,35 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
-    // Parallelize over groups (experts in MoE)
-    // Expectation is to see 128-256+ groups, with varying M per group
-    // and possibly some empty groups (M == 0)
-    parallel_nd(group_count, [= COMPAT_THIS_CAPTURE](dim_t group_id) {
-        dim_t M_g, K_g;
+    // Parallelize over output rows across all groups
+    // Allows to avoid almost sequential execution if single group holds almost
+    // all of the tokens (e.g., "hot" benchdnn profile)
+    const dim_t total_rows
+            = is_2dby2d ? group_count * M_fixed : src_d.dims()[0];
+    parallel_nd(total_rows, [= COMPAT_THIS_CAPTURE](dim_t row) {
+        dim_t group_id, m, K_g;
         dim_t src_group_start, wei_group_start, dst_group_start;
         dim_t src_attr_row_base = 0;
         dim_t dst_offset_start = 0;
 
         if (is_2dby2d) {
+            group_id = row / M_fixed;
+            m = row % M_fixed;
             const dim_t k_start
                     = (group_id == 0) ? 0 : src_offsets[group_id - 1];
             const dim_t k_end = src_offsets[group_id];
-            M_g = M_fixed;
             K_g = k_end - k_start;
             src_group_start = k_start;
             wei_group_start = k_start;
             dst_group_start = group_id;
         } else {
+            group_id = std::upper_bound(
+                               src_offsets, src_offsets + group_count, row)
+                    - src_offsets;
             const dim_t src_offset_start
                     = (group_id == 0) ? 0 : src_offsets[group_id - 1];
-            const dim_t src_offset_end = src_offsets[group_id];
+            m = row - src_offset_start;
             dst_offset_start = (group_id == 0) ? 0 : dst_offsets[group_id - 1];
-            M_g = src_offset_end - src_offset_start;
             K_g = K_fixed;
             src_group_start = src_offset_start;
             wei_group_start = group_id;
@@ -247,13 +252,9 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         const dim_t wei_base = wei_group_start * wei_group_stride;
         const dim_t dst_base = dst_group_start * dst_group_stride;
 
-        // skip empty group
         // Note, that K_g == 0 must still write zeros
-        if (M_g == 0) return;
-
         const dim_t k_group_size = K_g / n_k_groups;
 
-        for_(dim_t m = 0; m < M_g; ++m)
         for (dim_t n = 0; n < N; ++n) {
             float result = 0.0f;
 

@@ -3244,12 +3244,12 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     // init_jcp().
     const bool is_ace_dt = brgemm_utils::ace_dt_ok(
             src_d.data_type(), diff_dst_d.data_type());
-
-    jcp.isa = (is_ace_dt && mayiuse(avx10_2_ace))
-            ? avx10_2_ace
-            : (is_fp8 ? (mayiuse(avx10_2_amx_2) ? avx10_2_amx_2
-                                                : avx512_core_amx_fp16)
-                      : (is_f16 ? avx512_core_amx_fp16 : avx512_core_amx));
+    // pd_t::init() allows only bf16, f16 and fp8 src, with diff_dst == src,
+    // so avx10_2_amx_2 is a usable fallback for every case when available.
+    jcp.isa = (is_ace_dt && mayiuse(avx10_2_ace)) ? avx10_2_ace
+            : mayiuse(avx10_2_amx_2)
+            ? avx10_2_amx_2
+            : ((is_fp8 || is_f16) ? avx512_core_amx_fp16 : avx512_core_amx);
 
     // disabling verbose dispatch messages for unsupported isa for better readability
     if (!mayiuse(jcp.isa)) return status::unimplemented;

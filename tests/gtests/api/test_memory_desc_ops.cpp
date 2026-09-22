@@ -140,11 +140,7 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeU3) {
 
     for (const auto &dims : shapes) {
         const size_t nelems = static_cast<size_t>(dims[0]) * dims[1];
-#if DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
         const size_t ref_size = (nelems * 3 + 7) / 8;
-#else
-        const size_t ref_size = 3 * ((nelems + 7) / 8);
-#endif
         auto md = memory::desc(dims, dt::u3, fmt::ab);
         ASSERT_EQ(md.get_size(), ref_size)
                 << "u3 dense size mismatch for nelems=" << nelems;
@@ -164,11 +160,7 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeU3) {
         const memory::dim K = std::get<1>(c);
         const int ngroups = std::get<2>(c);
         const size_t nelems = static_cast<size_t>(M) * K;
-#if DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
         const size_t ref_size = (nelems * 3 + 7) / 8;
-#else
-        const size_t ref_size = 3 * ((nelems + 7) / 8);
-#endif
         auto md = memory::desc::grouped({M, K}, dt::u3, 0, ngroups);
         ASSERT_EQ(md.get_size(0), ref_size)
                 << "u3 grouped size(0) mismatch for nelems=" << nelems;

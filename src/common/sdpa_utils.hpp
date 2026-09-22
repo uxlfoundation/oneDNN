@@ -378,8 +378,8 @@ static inline status_t create_sdpa_pd(
         const primitive_attr_t *vs_attr = nullptr) {
     CHECK(sdpa_attr_check(
             q_md, k_md, v_md, dst_md, engine, attr, kq_attr, vs_attr));
-    CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
-            kq_attr, vs_attr));
+    CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, diff_q_md,
+            diff_k_md, diff_v_md, diff_dst_md, engine, attr));
 
     auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, attn_mask_md,
             scale_md, diff_q_md, diff_k_md, diff_v_md, diff_dst_md, dS_md,

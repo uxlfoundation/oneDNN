@@ -502,8 +502,6 @@ void Generator<hw>::outerProductSystolic(int h, int ha_period, int hb_period, in
                                          GRFMultirange Xr_scaleRegs, bool isA, int x) {
                     RegData XS;
                     if (state.useBDPAS && !Xr_scaleLayout.empty()) {
-                        if (problem.aqGroupM > 1 || problem.bqGroupN > 1) stub();
-
                         int xqGroupK = isA ? problem.aqGroupK : problem.bqGroupK;
                         int kxq = isA ? state.kaq : state.kbq;
                         int kxq_load = xqGroupK * kxq;

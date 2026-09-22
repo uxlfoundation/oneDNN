@@ -187,7 +187,11 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
             return;
         }
         if (mask.fixed.isFixed) stub();
-        mask.variable.rshift += ilog2(xqGroupMN);
+        // Load remainder index is in ungrouped units, so divide it (rshift) and
+        // rescale the span (rsize) to keep the mask-bit count rsize>>rshift.
+        int shift = ilog2(xqGroupMN);
+        mask.variable.rshift += shift;
+        if(state.useBDPAS) mask.variable.rsize <<= shift;
     };
 
     for (auto *Xq_layout: {&X_offsetLayout, &X_scaleLayout, &Xg_layout}) {
@@ -224,13 +228,15 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 
     auto makeQRepack = [&, tileR, tileC](Type Txq, Type Txq_int, RegisterLayout &repack, const RegisterLayout &src,
                                          int m, int n, int cp, bool forceRepack, bool allowBcast) {
-        // Broadcast along M/N: Xe3p+ keeps qCopies per k-row block, packed as [group][copy]
-        // so each GRF holds every copy of one block.
+        // Broadcast along M/N: BDPAS reads one scale per output lane; Xe3p+ keeps qCopies per k-row block,
+        // packed as [group][copy] so each GRF holds every copy of one block.
         int tR = tileR, tC = tileC;
         int bcast = 1;
         bool allowPartialRegs = false;
         auto &mn = isA ? m : n;
-        if (allowBcast && qCopies > 1 && Txq_int == Tx) {
+        if (allowBcast && state.useBDPAS && xqGroupMN > 1)
+            bcast = strategy.unroll[isA ? LoopM : LoopN] / mn;
+        else if (allowBcast && qCopies > 1 && Txq_int == Tx) {
             bcast = qCopies;
             (isA ? tR : tC) = qCopies;
             (isA ? tC : tR) = kRow;
@@ -254,8 +260,8 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         }
     };
 
-    if (xo2D) makeQRepack(Txo, Txo_int, Xr_offsetLayout, X_offsetLayout, ro,     co,     cpo, false,     !lateOffset);
-    if (xs2D) makeQRepack(Txs, Txs_int, Xr_scaleLayout,  X_scaleLayout,  rs,     cs,     cps, lateScale, !lateScale);
+    if (xo2D) makeQRepack(Txo, Txo_int, Xr_offsetLayout, X_offsetLayout, ro,     co,     cpo, false,     !lateOffset && !state.useBDPAS);
+    if (xs2D) makeQRepack(Txs, Txs_int, Xr_scaleLayout,  X_scaleLayout,  rs,     cs,     cps, lateScale, !lateScale || state.useBDPAS);
     if (xg2D) makeQRepack(Txg, Txg_int, Xgr_layout,      Xg_layout,      rNoSLM, cNoSLM, 1,   true,      false);
 
     if (xoTo2D) {

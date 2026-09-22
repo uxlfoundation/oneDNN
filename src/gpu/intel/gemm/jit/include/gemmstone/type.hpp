@@ -35,6 +35,8 @@ public:
         f64      = 0x01020803,
         u4       = 0x21120100,
         s4       = 0x21130100,
+        u2       = 0x41120100,
+        s2       = 0x41130100,
         u8       = 0x01140100,
         s8       = 0x01150100,
         u16      = 0x01160201,
@@ -66,6 +68,7 @@ public:
     constexpr int components()        const { return 1; }
     constexpr bool isInteger()        const { return uint32_t(val) & 0x100000; }
     constexpr bool isFP()             const { return !isInteger(); }
+    constexpr bool is2()              const { return uint32_t(val) & 0x40000000; }
     constexpr bool is4()              const { return uint32_t(val) & 0x20000000; }
     constexpr bool isInt4()           const { return is4() && isInteger(); }
     constexpr bool isInt8()           const { return (val == Type::u8)  || (val == Type::s8);  }
@@ -78,7 +81,7 @@ public:
     int log2Size()                    const { subByteCheck(); return uint32_t(val) & 0xFF; }
     int size()                        const { subByteCheck(); return paddedSize(); }
     constexpr int log2PerByte()       const { return int(is4()); }
-    constexpr int perByte()           const { return is4() ? 2 : 1; }
+    constexpr int perByte()           const { return is2() ? 4 : is4() ? 2 : 1; }
     void subByteCheck()               const { if (is4()) stub(); }
 
     constexpr Type arithmetic() const {

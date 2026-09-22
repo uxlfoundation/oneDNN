@@ -626,6 +626,10 @@ void MatrixAddressingStrategy::preflight(HW hw)
     newDP |= isBlock2D(accessType) || (hw >= HW::Xe2);
     padded |= (base.getModel() == ModelSLM);
 
+    // Xe3p uses sendg[x] instructions: downgrade surface accesses to a64
+    if (hw == HW::Xe3p && base.getModel() == ModelBTS)
+        forceA64();
+
     if (prefetch && newDP && cachingR == CacheSettingsLSC::Default)
         cachingR = CacheSettingsLSC::L1C_L3C;
 

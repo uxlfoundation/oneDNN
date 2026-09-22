@@ -67,9 +67,11 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
             const auto src_dt = src_d.data_type();
             const auto wei_dt = weights_d.data_type();
             const auto dst_dt = dst_d.data_type();
-            // Drive the impl name by the low-precision operand: src for the
-            // symmetric paths, weights for weight compression (f32 src).
-            const auto name_dt = src_dt == data_type::f32 ? wei_dt : src_dt;
+            // Account for f16 destination narrowing; otherwise use src for
+            // symmetric paths or weights for weight compression (f32 src).
+            const auto name_dt = dst_dt == data_type::f16
+                    ? data_type::f16
+                    : (src_dt == data_type::f32 ? wei_dt : src_dt);
             isa_ = name_dt == data_type::bf16
                     ? zvfbfwma
                     : (name_dt == data_type::f16 ? zvfh : v);

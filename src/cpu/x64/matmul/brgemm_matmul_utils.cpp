@@ -244,6 +244,8 @@ bool dims_adjacent(const memory_desc_wrapper &mdw, const int outer_dim,
     return strides[outer_dim] == dims[inner_dim] * inner_stride;
 }
 
+// Keep the per data type ISA lists below in sync with `set_isa_impl()` in
+// `brgemm/brgemm_utils.cpp`, which matches `brg->isa_user` by equality.
 status_t check_isa_with_datatype(
         const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     const bool ok
@@ -255,7 +257,7 @@ status_t check_isa_with_datatype(
                             || is_superset(isa, avx2_vnni))
             && IMPLICATION(bm_conf_utils.is_bf16(),
                     one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2,
-                            avx10_2, avx10_2_ace))
+                            avx10_2, avx10_2_ace, avx10_2_amx_2))
             && IMPLICATION(bm_conf_utils.is_f16(),
                     one_of(isa, avx10_2, avx10_2_amx_2, avx512_core_amx_fp16,
                             avx512_core_fp16, avx2_vnni_2))
@@ -278,9 +280,10 @@ status_t check_isa_with_datatype(
             && IMPLICATION(bm_conf_utils.is_f32_with_int_wei(),
                     one_of(isa, avx512_core, avx2))
             && IMPLICATION(bm_conf_utils.is_bf16_fp8(),
-                    one_of(isa, avx512_core_amx, avx512_core_amx_fp16, avx10_2))
+                    one_of(isa, avx512_core_amx, avx10_2_amx_2,
+                            avx512_core_amx_fp16, avx10_2))
             && IMPLICATION(bm_conf_utils.is_f16_fp8(),
-                    one_of(isa, avx512_core_amx_fp16, avx10_2))
+                    one_of(isa, avx10_2_amx_2, avx512_core_amx_fp16, avx10_2))
             && IMPLICATION(bm_conf_utils.is_f8(),
                     is_superset(isa, avx512_core_amx_fp16)
                             || is_superset(isa, avx10_2))

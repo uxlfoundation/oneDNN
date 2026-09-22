@@ -284,6 +284,35 @@ static void compute_fwd(const prb_t *prb, dnnl_engine_t eng, dnnl_stream_t strm,
     }
 }
 
+// Peak host memory the reference path allocates on top of the sizes
+// `check_total_size` derives from the primitive memory descriptors. Keep in
+// sync with the `make_3d` calls below.
+size_t get_ref_extra_size(const prb_t *prb, dir_t dir) {
+    const size_t MB = prb->mb;
+    const size_t SQ = prb->n_queries;
+    const size_t SK = prb->n_keys;
+    const size_t H = prb->head_size;
+    const size_t V = prb->n_values;
+    constexpr size_t f32_sz = sizeof(float);
+
+    const size_t q_sz = MB * SQ * H * f32_sz; // q_ref, dQ, q_t
+    const size_t k_sz = MB * H * SK * f32_sz; // k_ref, k_t, dK_full
+    const size_t v_sz = MB * SK * V * f32_sz; // v_ref, v_t, dV_full, abs_v
+    const size_t o_sz = MB * SQ * V * f32_sz; // out, dO, absmag
+    // score, score2, score2_dp, dS2, s2_t, dS
+    const size_t s_sz = MB * SQ * SK * f32_sz;
+
+    // Q/K/V copies plus the absmag buffer `doit` adds to `ref_mem_map`.
+    const size_t base = q_sz + k_sz + v_sz + o_sz;
+
+    // Backward keeps every buffer allocated after `compute_fwd` returns.
+    if (dir & FLAG_BWD)
+        return base + 5 * s_sz + o_sz + 2 * v_sz + 2 * k_sz + 2 * q_sz;
+
+    // Forward peaks either inside `compute_fwd` or in the absmag block.
+    return base + MAX2(3 * s_sz + o_sz, 2 * s_sz + 2 * o_sz + v_sz);
+}
+
 void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         dnnl_primitive_t) {
     const prb_t *prb = prb_t::from(base_prb);

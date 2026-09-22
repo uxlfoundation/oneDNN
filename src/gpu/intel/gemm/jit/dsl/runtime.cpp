@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gemmstone/runtime.hpp"
+#include "dsl/utils/utils.hpp"
 #include "gemmstone/dsl/hw.hpp"
 #include "gemmstone/dsl/runtime.hpp"
 #include "generator_dsl/builder.hpp"
@@ -168,6 +169,7 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
     auto product
             = ngen::LevelZeroCodeGenerator<ngen::HW::Unknown>::detectHWInfo(
                     context, device);
+    ngen::HW hw = ngen::getCore(product.family);
 
     ze_result_t status;
     size_t eu_count = 0;
@@ -217,7 +219,6 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
     }
 
     dsl::hw::attr_t attr = {};
-    ngen::HW hw = ngen::getCore(product.family);
     if (hw >= ngen::HW::XeHPC) attr |= dsl::hw::attr_t::large_grf;
 
     {

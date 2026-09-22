@@ -16,10 +16,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "dnnl_types.h"
-
-#include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
+#include "common/convolution_pd.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
 #include "common/memory_tracking.hpp"
@@ -31,7 +29,6 @@
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_brgemm_conv_utils.hpp"
-#include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/platform.hpp"
 
 namespace dnnl {
@@ -46,15 +43,6 @@ using namespace dnnl::impl::utils;
 
 using namespace prop_kind;
 using namespace data_type;
-
-namespace {
-bool allow_perf_heuristics(const jit_brgemm_conv_conf_t &jcp) {
-    // Disable performance heuristics for plain weights as there are no other
-    // optimized implementations.
-    if (jcp.wei_plain) return false;
-    return true;
-}
-} // namespace
 
 namespace brgemm_convolution_utils {
 
@@ -1723,24 +1711,6 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     brg_blocking_t::last_ic_block_size = data_type_vnni_granularity(jcp.wei_dt);
 
-    // TODO: optimize depthwise convolutions (for now direct approach is faster)
-    const bool is_depthwise
-            = with_groups && jcp.ngroups > 1 && everyone_is(1, jcp.ic, jcp.oc);
-    if (is_depthwise)
-        if (allow_perf_heuristics(jcp)) return status::unimplemented;
-
-    // TODO: optimize grouped convolutions with small ic
-    const bool is_grouped_small_ic
-            = jcp.prop_kind != prop_kind::backward_weights && with_groups
-            && jcp.ngroups > 1
-            && jcp.ic <= jcp.acc_simd_w
-            // Enable the shapes not supported in direct convs
-            && IMPLICATION(with_groups, is_groups_ok(jcp));
-    if (is_grouped_small_ic)
-        if (allow_perf_heuristics(jcp)) return status::unimplemented;
-
-    // TODO: optimize the perf of 3d shape with small ic and large spatial
-
     const bool is_signed_input = jcp.src_dt == s8;
     jcp.s8s8_compensation_required = is_signed_input && !isa_has_s8s8(jcp.isa);
     jcp.has_int8_vnni = isa_has_s8s8(jcp.isa);
@@ -1821,8 +1791,6 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     CHECK(init_jcp(
             jcp, isa, cd, src_md, weights_md, dst_md, bias_md, attr, nthreads));
 
-    if (jcp.is_1x1)
-        if (allow_perf_heuristics(jcp)) return status::unimplemented;
     const memory_desc_wrapper src_d(&src_md);
     const memory_desc_wrapper weights_d(&weights_md);
     const memory_desc_wrapper dst_d(&dst_md);
@@ -2009,18 +1977,6 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             || !wei_scales.has_default_values()
             || jcp.scale_adjust_factor != 1.0f;
     jcp.is_oc_scale = wei_scales.get_mask() > 0;
-
-    // disables the shape with small ic but large spatial
-    // or specific large spatial shapes for int8 conv
-    const auto is_ok_large_spatial
-            = IMPLICATION(jcp.ic <= 128,
-                      jcp.od * jcp.oh < 100
-                              || jcp.ic * jcp.oc_block * jcp.ow_block > 8192)
-            && !(jcp.oc == 1024
-                    && utils::everyone_is(1, jcp.od, jcp.oh, jcp.kd, jcp.kh)
-                    && jcp.ow >= 595 && jcp.kw <= 5);
-    if (one_of(jcp.src_dt, u8, s8) && !is_ok_large_spatial)
-        if (allow_perf_heuristics(jcp)) return status::unimplemented;
 
     // For padding shapes, we calculate the comp along with the computation
     // inside brgemm kernel when output size is small to get optimal perf

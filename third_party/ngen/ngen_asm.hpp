@@ -1967,6 +1967,8 @@ void AsmCodeGenerator::opX(Opcode op, DataType defaultType, const InstructionMod
     src1.fixup(hardware, esize, ewidth, defaultType, 1, arity);
     src2.fixup(hardware, esize, ewidth, defaultType, 2, arity);
 
+    checkXe3pFPRegion(hardware, op, dst, src0, src1, src2);
+
     streamStack.back()->append(op, ext, emod, &labelManager, dst, src0, src1, src2);
 }
 

@@ -365,6 +365,12 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
                 e.binary.tag = "ab";
             }
         }
+        else if (e.is_prelu_kind()) {
+            if (e.prelu.mask_input == attr_t::mask_input_t::none) {
+                e.prelu.mask_input = attr_t::mask_input_t::policy;
+                e.prelu.policy = policy_t::COMMON;
+            }
+        }
     }
 
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
@@ -707,27 +713,31 @@ void init_memory_args(
                 dnn_mem_t(scratchpad_md, test_engine, /* prefill = */ true));
     }
 
-    // Binary post-op.
+    // Post-ops Binary and PReLU
     const auto &po = prb->attr.post_ops;
+    const auto po_masks = po.get_po_masks(prb->ndims, dnnl_matmul);
+
     for (int idx = 0; idx < po.len(); ++idx) {
         const auto &e = po.entry[idx];
-        if (!e.is_binary_kind()) continue;
+        if (!e.is_binary_kind() && !e.is_prelu_kind()) continue;
 
-        int po_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
-        const auto &b = e.binary;
-        int ndims = 2;
-
-        const int mask = b.mask_input == attr_t::mask_input_t::mask
-                ? b.mask
-                : attr_t::policy2mask(po_arg, b.policy, ndims, dnnl_matmul);
+        int po_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx);
+        po_arg |= e.is_binary_kind() ? DNNL_ARG_SRC_1 : DNNL_ARG_WEIGHTS;
+        
+        const int mask = po_masks[idx].second;
+        
+        dnnl_data_type_t dt = dnnl_f32;
+        if (e.is_binary_kind()) {
+            dt = e.binary.src1_dt;
+        } else {
+            dt = dnnl_f32;
+        }
 
         dims_t dims = md2dims(dst_md, mask);
-
-        auto po_md
-                = dnn_mem_t::init_md(ndims, dims.data(), b.src1_dt, tag::abx);
-        mem_map.emplace(
-                po_arg, dnn_mem_t(po_md, test_engine, /* prefill = */ true));
+        auto po_md = dnn_mem_t::init_md(prb->ndims, dims.data(), dt, tag::abx);
+        mem_map.emplace(po_arg, dnn_mem_t(po_md, test_engine, /* prefill = */ true));
     }
+
 
     if (!prb->attr.scales.is_def()) {
         const auto &sc = prb->attr.scales;

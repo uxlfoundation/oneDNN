@@ -267,8 +267,6 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");
         def_data_type(kernel_ctx, pd()->dst_dt_, "DST");
         def_data_type(kernel_ctx, pd()->bia_dt_, "BIA");
-        kernel_ctx.define_int(
-                "U3_CONTIGUOUS_LAYOUT", DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT);
         data_type_t acc_type = pd()->desc()->accum_data_type;
         data_type_t seed_type = pd()->attr()->dropout_.seed_dt_;
         switch (pd()->attr()->acc_mode_) {

@@ -838,23 +838,14 @@ void __attribute__((overloadable)) set_double_half_byte(
 }
 
 // u3 is packed 8 values / 3 bytes; decode matches impl::uint3_unpack (int3.hpp).
-// U3_CONTIGUOUS_LAYOUT selects the same layout the weights were packed with.
 #define GET_U3(x, y) get_u3(x, y)
 
 uchar __attribute__((overloadable)) get_u3(const __global uchar *x, off_t y) {
-#if U3_CONTIGUOUS_LAYOUT
     const off_t bit = y * 3, byte = bit >> 3;
     const int sh = (int)(bit & 7);
     uchar v = x[byte] >> sh;
     if (sh > 5) v |= x[byte + 1] << (8 - sh); // straddle into next byte
     return v & 0x7;
-#else
-    const off_t base = (y / 8) * 3;
-    const int pos = (int)(y % 8);
-    const int low2 = (x[base + pos / 4] >> (6 - 2 * (pos % 4))) & 0x3;
-    const int msb = (x[base + 2] >> (7 - pos)) & 0x1;
-    return (uchar)(low2 | (msb << 2));
-#endif
 }
 
 u3 __attribute__((overloadable)) get_u3(const __global u3 *x, off_t y) {

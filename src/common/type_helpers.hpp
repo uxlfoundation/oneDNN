@@ -128,11 +128,7 @@ inline size_t elements_to_bytes(data_type_t data_type, size_t count) {
         case s4:
         case u4: return (count + 1) >> 1;
         case u2: return (count + 3) >> 2;
-#if !DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
-        case u3: return 3 * utils::div_up(count, (size_t)8);
-#else
         case u3: return utils::div_up(count * 3, (size_t)8);
-#endif
         default: return data_type_size(data_type) * count;
     }
 }
@@ -144,11 +140,7 @@ inline size_t bytes_to_elements(data_type_t data_type, size_t bytes) {
         case s4:
         case u4: return bytes * 2;
         case u2: return bytes * 4;
-#if !DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
-        case u3: return (bytes / 3) * 8;
-#else
         case u3: return bytes * 8 / 3;
-#endif
         default: return utils::div_up(bytes, data_type_size(data_type));
     }
 }

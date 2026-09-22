@@ -104,7 +104,6 @@ TEST(test_uint3_conversion, uint3) {
 TEST(test_uint3_sizing, byte_conversions) {
     using namespace impl;
     const auto u3 = data_type::u3;
-#if DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
     // contiguous packing
     EXPECT_EQ(types::elements_to_bytes(u3, 1), size_t(1));
     EXPECT_EQ(types::elements_to_bytes(u3, 8), size_t(3));
@@ -114,17 +113,6 @@ TEST(test_uint3_sizing, byte_conversions) {
     EXPECT_EQ(types::bytes_to_elements(u3, 1), size_t(2));
     EXPECT_EQ(types::bytes_to_elements(u3, 2), size_t(5));
     EXPECT_EQ(types::bytes_to_elements(u3, 3), size_t(8));
-#else
-    // transposed (OV) packing: whole 3-byte groups only (MSB plane in byte 2)
-    EXPECT_EQ(types::elements_to_bytes(u3, 1), size_t(3));
-    EXPECT_EQ(types::elements_to_bytes(u3, 8), size_t(3));
-    EXPECT_EQ(types::elements_to_bytes(u3, 9), size_t(6));
-    EXPECT_EQ(types::elements_to_bytes(u3, 16), size_t(6));
-    // fewer than a full 3-byte group cannot decode any element
-    EXPECT_EQ(types::bytes_to_elements(u3, 1), size_t(0));
-    EXPECT_EQ(types::bytes_to_elements(u3, 2), size_t(0));
-    EXPECT_EQ(types::bytes_to_elements(u3, 3), size_t(8));
-#endif
     EXPECT_EQ(types::data_type_bits(u3), size_t(3));
 }
 

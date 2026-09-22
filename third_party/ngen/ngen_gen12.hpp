@@ -883,6 +883,59 @@ static inline bool checkSrc1Scalar(Opcode op, ExtendedReg r, ExtendedReg dst, Ta
     return checkSrc1Scalar(op, r.getBase(), dst.getBase(), tag);
 }
 
+// Xe3p: a non-scalar FP source must occupy the same byte positions within a GRF as the destination.
+static inline bool isXe3pFPPipeType(DataType dt)
+{
+    switch (dt) {
+        case DataType::df:
+        case DataType::f:
+        case DataType::hf:
+        case DataType::bf: return true;
+        default: return false;
+    }
+}
+
+static inline void checkXe3pFPRegionSrc(HW hw, Opcode op, const RegData &dst, const RegData &src)
+{
+#ifdef NGEN_SAFE
+    if (hw < HW::Xe3p) return;
+    switch (op) {
+        case Opcode::bdpas:
+        case Opcode::dpas:
+        case Opcode::shfl:
+        case Opcode::send:
+        case Opcode::sendc:
+        case Opcode::sends:
+        case Opcode::sendsc: return;
+        default: break;
+    }
+    if (dst.isNull() || dst.isIndirect() || dst.isARF()) return;
+    if (src.isNull() || src.isIndirect() || src.isARF() || src.isScalar()) return;
+    if (!isXe3pFPPipeType(dst.getType()) || !isXe3pFPPipeType(src.getType())) return;
+    if (dst.getBytes() != src.getBytes()) return;      /* mixed-width rule not covered */
+
+    int grfBytes = GRF::bytes(hw);
+    if ((dst.getByteOffset() % grfBytes) != (src.getByteOffset() % grfBytes))
+        throw invalid_region_exception();
+#else
+    (void) hw; (void) op; (void) dst; (void) src;
+#endif
+}
+
+// Other operand types (ExtendedReg math-macro operands, Immediate, NoOperand): nothing to check.
+template <typename D, typename S>
+static inline void checkXe3pFPRegionSrc(HW, Opcode, const D &, const S &) {}
+
+template <typename D>
+static inline void checkXe3pFPRegion(HW, Opcode, const D &) {}
+
+template <typename D, typename S, typename... Srcs>
+static inline void checkXe3pFPRegion(HW hw, Opcode op, const D &dst, const S &src, const Srcs &... srcs)
+{
+    checkXe3pFPRegionSrc(hw, op, dst, src);
+    checkXe3pFPRegion(hw, op, dst, srcs...);
+}
+
 static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTag12 tag)
 {
     Instruction12 i2;   /* separate variable to avoid gcc13 bug */

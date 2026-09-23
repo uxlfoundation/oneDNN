@@ -148,12 +148,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
     auto *C_base = reinterpret_cast<char *>(ptr_C);
     const auto *bias_base = reinterpret_cast<const char *>(ptr_bias);
 
-    // K-blocking: split the reduction dimension into chunks of BK to keep
-    // the A working-set inside the L1D cache.
-    // f16 output must be rounded only once after the full f32 accumulation.
-    // Splitting K would store f16 after every block and widen the rounded
-    // value again for the next block.
-    const dim_t BK = brg.store_f16 ? K : BRGEMM_BK;
+    const dim_t BK = brg.get_k_block();
 
     for (dim_t kb = 0; kb < K; kb += BK) {
         const dim_t K_inner = nstl::min(BK, K - kb);

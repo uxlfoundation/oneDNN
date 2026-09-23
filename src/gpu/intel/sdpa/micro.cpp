@@ -1251,7 +1251,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             ss >> strat.unroll[1];
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
-            parseStrategy(strategyString, hw, problem_kq, strat);
+            parseStrategy(strategyString, problem_kq, strat);
             adjustStrategy(hw, problem_kq, strat);
         }
     };
@@ -1280,7 +1280,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             ss >> strat.unroll[1];
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
-            parseStrategy(strategyString, hw, problem_vs, strat);
+            parseStrategy(strategyString, problem_vs, strat);
             adjustStrategy(hw, problem_vs, strat);
         }
     };

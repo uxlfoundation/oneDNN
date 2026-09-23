@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,30 +14,35 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "cpu/reorder/cpu_reorder.hpp"
+#ifndef CPU_REORDER_REF_REORDER_HPP
+#define CPU_REORDER_REF_REORDER_HPP
+
+#include "cpu/reorder/cpu_reorder_pd.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 
-// clang-format off
+struct ref_reorder_t : public primitive_t {
+    struct pd_t : public cpu_reorder_pd_t {
+        using cpu_reorder_pd_t::cpu_reorder_pd_t;
 
-const impl_list_map_t &regular_fp4_impl_list_map() {
-    static const impl_list_map_t the_map = REG_REORDER_P({
-        {{f32, f4_e2m1, 0}, {
-            CPU_INSTANCE(ref_reorder_t)
-            nullptr,
-        }},
-        {{f4_e2m1, data_type::undef, 0}, {
-            CPU_INSTANCE(ref_reorder_t)
-            nullptr,
-        }},
-    });
-    return the_map;
-}
+        DECLARE_COMMON_PD_T("ref:any", ref_reorder_t);
 
-// clang-format on
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine);
+    };
+
+    ref_reorder_t(const pd_t *apd) : primitive_t(apd) {}
+
+    status_t execute(const exec_ctx_t &ctx) const override;
+
+private:
+    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+};
 
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
+
+#endif

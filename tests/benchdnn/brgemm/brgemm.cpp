@@ -353,6 +353,7 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
 
     attr_args_t attr_args;
 
+    // Fall back to default policy and format tag for post-ops when unspecified.
     auto &post_ops = const_cast<attr_t &>(prb->attr).post_ops;
     for (int idx = 0; idx < post_ops.len(); ++idx) {
         auto &e = post_ops.entry[idx];
@@ -715,25 +716,19 @@ void init_memory_args(
 
     // Post-ops Binary and PReLU
     const auto &po = prb->attr.post_ops;
-    const auto po_masks = po.get_po_masks(prb->ndims, dnnl_matmul);
-
+    const auto po_arg_masks = po.get_po_masks(prb->ndims, dnnl_matmul);
+    int arg_mask_idx = 0;
     for (int idx = 0; idx < po.len(); ++idx) {
         const auto &e = po.entry[idx];
         if (!e.is_binary_kind() && !e.is_prelu_kind()) continue;
 
-        int po_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx);
-        po_arg |= e.is_binary_kind() ? DNNL_ARG_SRC_1 : DNNL_ARG_WEIGHTS;
-        
-        const int mask = po_masks[idx].second;
-        
-        dnnl_data_type_t dt = dnnl_f32;
-        if (e.is_binary_kind()) {
-            dt = e.binary.src1_dt;
-        } else {
-            dt = dnnl_f32;
-        }
-
+        const int po_arg = po_arg_masks[arg_mask_idx].first;
+        const int mask = po_arg_masks[arg_mask_idx++].second;
         dims_t dims = md2dims(dst_md, mask);
+
+        dnnl_data_type_t dt = dnnl_f32;
+        if (e.is_binary_kind()) { dt = e.binary.src1_dt; }
+
         auto po_md = dnn_mem_t::init_md(prb->ndims, dims.data(), dt, tag::abx);
         mem_map.emplace(po_arg, dnn_mem_t(po_md, test_engine, /* prefill = */ true));
     }

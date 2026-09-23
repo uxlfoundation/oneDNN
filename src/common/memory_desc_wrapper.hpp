@@ -480,6 +480,22 @@ struct memory_desc_wrapper {
         return non_unit_dims <= n;
     }
 
+    int innermost_dim() const {
+        const auto &bd = blocking_desc();
+        if (bd.inner_nblks > 0)
+            return static_cast<int>(bd.inner_idxs[bd.inner_nblks - 1]);
+
+        dim_t min_stride = bd.strides[0];
+        int inner_dim = 0;
+        for (int d = 1; d < ndims(); d++) {
+            if (bd.strides[d] < min_stride) {
+                min_stride = bd.strides[d];
+                inner_dim = d;
+            }
+        }
+        return inner_dim;
+    }
+
     /** returns true if data is dense in memory */
     bool is_dense(bool with_padding = false) const {
         if (utils::one_of(format_kind(), format_kind::undef, format_kind::any))

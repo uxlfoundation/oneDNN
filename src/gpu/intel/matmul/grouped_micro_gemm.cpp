@@ -246,7 +246,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
             Scalar alpha((int)a), beta((int)b);
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
-            parseStrategy(strategyString, hw, problem, strat);
+            parseStrategy(strategyString, problem, strat);
             adjustStrategy(hw, problem, strat);
         }
         if (newStrat.empty()

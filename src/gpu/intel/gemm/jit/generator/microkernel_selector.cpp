@@ -297,7 +297,7 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
         GEMMStrategy strategy(hw, stepping);
         strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
         strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
-        parseStrategy(e->strategy, hw, problem, strategy);
+        parseStrategy(e->strategy, problem, strategy);
         return (!kParallelLocal && strategy.kParallelLocal) ||
             // named barriers are not supported by generateShim
             (strategy.namedBarriers[LoopM] > 0 ||
@@ -307,12 +307,15 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
     if(!reqs.empty())
         entries.push_back(nullptr); // Try heuristics if no kernel found
     if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 4) {
+        auto problemVerbose = problemMatch;
         for(const kcatalog::Entry *e : entries) {
             if(e) {
                 GEMMStrategy strategy(hw, stepping);
                 strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
                 strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
-                parseStrategy(e->strategy, hw, problem, strategy);
+                problemVerbose.A.setAlignment(e->driverInfo.alignment[0]);
+                problemVerbose.B.setAlignment(e->driverInfo.alignment[1]);
+                parseStrategy(e->strategy, problemVerbose, strategy);
                 std::cout << "entry candidate: "
                           << e->selector.hw << " "
                           << strategyToString(hw, problem, strategy) << std::endl;
@@ -392,7 +395,7 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
             /* Prepare strategy parameters */
             strategy.unroll[LoopM] = entry->driverInfo.unroll[LoopM];
             strategy.unroll[LoopN] = entry->driverInfo.unroll[LoopN];
-            parseStrategy(entry->strategy, hw, problem, strategy);
+            parseStrategy(entry->strategy, problem, strategy);
             adjustStrategy(hw, problem, strategy);
             modifyStrategy(strategy, auxParams);
 

@@ -171,7 +171,7 @@ status_t gen_desc_t::finalize(const char *tags) {
         problem_.beta = stringToScalar(val);
 
         ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
-        parseStrategy(ovr_strategy, hw_, problem_, strategy_);
+        parseStrategy(ovr_strategy, problem_, strategy_);
 
         // TODO: override derived values in aux_params_ in a way that's
         // consistent with the kernel evaluator (typically requires extra
@@ -192,7 +192,7 @@ status_t gen_desc_t::finalize(const char *tags) {
 #endif
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
         strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
-        parseStrategy(entry_->strategy, hw_, problem_, strategy_);
+        parseStrategy(entry_->strategy, problem_, strategy_);
 #ifdef DNNL_DEV_MODE
     }
 #endif

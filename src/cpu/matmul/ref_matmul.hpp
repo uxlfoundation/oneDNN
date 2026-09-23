@@ -67,8 +67,7 @@ struct ref_matmul_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             /* int weights decompression support */
             VDISPATCH_MATMUL(
-                    IMPLICATION(
-                            utils::one_of(wei_type, u8, s8, u4, s4, u2, u3),
+                    IMPLICATION(utils::one_of(wei_type, u8, s8, u4, s4, u2, u3),
                             attr_.mayiconvert(wei_type, src_type)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(IMPLICATION(src_type == f16,

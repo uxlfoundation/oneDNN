@@ -101,8 +101,8 @@ struct cpu_stream_t : public stream_t {
         threadpool_utils::deactivate_threadpool();
     }
 
-    status_t run_verbose_profiler(
-            const std::string &pd_info, double start_ms, uint64_t component) {
+    status_t run_verbose_profiler(const std::string &pd_info, double start_ms,
+            uint64_t component) override {
         if (!is_verbose_profiler_enabled()) {
             VERROR(primitive, exec,
                     "running verbose profiler while it is not enabled");

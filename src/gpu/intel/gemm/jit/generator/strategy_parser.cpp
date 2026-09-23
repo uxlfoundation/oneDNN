@@ -147,8 +147,9 @@ CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw)
     }
 }
 
-void getCaching(std::stringstream &s, HW hw, MatrixAddressingStrategy &astrategy, bool leaveDefault = false)
+void getCaching(std::stringstream &s, ProductFamily family, MatrixAddressingStrategy &astrategy, bool leaveDefault = false)
 {
+    auto hw = getCore(family);
     auto &cachingR = astrategy.cachingR;
     auto &cachingW = astrategy.cachingW;
 
@@ -193,8 +194,9 @@ struct ParserContext {
     bool gotSR = false;
 };
 
-void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GEMMStrategy &strategy)
+void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrategy &strategy)
 {
+    auto hw = getCore(problem.product.family);
     std::stringstream s(str);
     s.imbue(std::locale::classic());
 
@@ -209,7 +211,7 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
         if (s.peek() == '/') s >> eat >> strategy.ka_load_masked;
         getTiling(s, strategy.A);
         if (s.peek() == 'x') s >> eat >> strategy.A_copies;
-        getCaching(s, hw, strategy.A);
+        getCaching(s, problem.product.family, strategy.A);
     if (s.peek() == '+') {
         s >> eat;
         if (s.peek() != '+') {
@@ -219,14 +221,14 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
             if (s.peek() == '@') s >> eat >> strategy.prefetchA;
             if (s.peek() == '/') s >> eat >> strategy.prefetchAMasked;
             else strategy.prefetchAMasked = strategy.prefetchA;
-            getCaching(s, hw, strategy.A_prefetch);
+            getCaching(s, problem.product.family, strategy.A_prefetch);
         }
     }
     if (s.peek() == '+') {
         strategy.l3PrefetchA = true;
         s >> eat >> accessABPrefetchL3 >> strategy.ka_prefetchL3;
         if (s.peek() == '@') s >> eat >> strategy.prefetchABL3;
-        getCaching(s, hw, strategy.AB_prefetchL3, true);
+        getCaching(s, problem.product.family, strategy.AB_prefetchL3, true);
     }
     s >> std::ws >> asB >> accessB;
         if (s.peek() == '/') s >> eat >> accessBUnaligned;
@@ -234,7 +236,7 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
         if (s.peek() == '/') s >> eat >> strategy.kb_load_masked;
         getTiling(s, strategy.B);
         if (s.peek() == 'x') s >> eat >> strategy.B_copies;
-        getCaching(s, hw, strategy.B);
+        getCaching(s, problem.product.family, strategy.B);
     if (s.peek() == '+') {
         s >> eat;
         if (s.peek() != '+') {
@@ -244,23 +246,23 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
             if (s.peek() == '@') s >> eat >> strategy.prefetchB;
             if (s.peek() == '/') s >> eat >> strategy.prefetchBMasked;
             else strategy.prefetchBMasked = strategy.prefetchB;
-            getCaching(s, hw, strategy.B_prefetch);
+            getCaching(s, problem.product.family, strategy.B_prefetch);
         }
     }
     if (s.peek() == '+') {
         strategy.l3PrefetchB = true;
         s >> eat >> accessABPrefetchL3 >> strategy.kb_prefetchL3;
         if (s.peek() == '@') s >> eat >> strategy.prefetchABL3;
-        getCaching(s, hw, strategy.AB_prefetchL3, true);
+        getCaching(s, problem.product.family, strategy.AB_prefetchL3, true);
     }
     s >> std::ws >> asC >> accessC;
         getTiling(s, strategy.C);
-        getCaching(s, hw, strategy.C);
+        getCaching(s, problem.product.family, strategy.C);
     if (s.peek() == '+') {
         strategy.prefetchC = 1;
         s >> eat >> accessCPrefetch;
         if (s.peek() == '@') s >> eat >> strategy.prefetchC;
-        getCaching(s, hw, strategy.C_prefetch);
+        getCaching(s, problem.product.family, strategy.C_prefetch);
     }
 
     auto A64 = AddressBase::createA64(true);
@@ -654,6 +656,15 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
 
     strategy.AO.newDP = strategy.A_scale.newDP = strategy.Ag.newDP = (hw >= HW::XeHPG);
     strategy.BO.newDP = strategy.B_scale.newDP = strategy.Bg.newDP = (hw >= HW::XeHPG);
+}
+
+void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GEMMStrategy &strategy)
+{
+    if (getCore(problem.product.family) == hw)
+        return parseStrategy(str, problem, strategy);
+    auto problemHW = problem;
+    problemHW.product = Product(genericProductFamily(hw), 0, PlatformType::Unknown);
+    parseStrategy(str, problemHW, strategy);
 }
 
 void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, const char *tags)

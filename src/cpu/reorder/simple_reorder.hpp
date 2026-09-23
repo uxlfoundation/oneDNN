@@ -2706,7 +2706,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         && order_keep == fmt_order::any
                         // sub-byte types require a special implementation
                         && !utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::u2, data_type::u3)
+                                data_type::f4_e2m1, data_type::u2,
+                                data_type::u3)
                         && !utils::one_of(type_o, data_type::s4, data_type::u4,
                                 data_type::f4_e2m1, data_type::u2,
                                 data_type::u3),

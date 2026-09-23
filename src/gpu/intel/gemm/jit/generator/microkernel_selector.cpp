@@ -299,7 +299,7 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
         GEMMStrategy strategy(hw, stepping);
         strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
         strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
-        parseStrategy(e->strategy, hw, problem, strategy);
+        parseStrategy(e->strategy, problem, strategy);
         return (!kParallelLocal && strategy.kParallelLocal) ||
             // named barriers are not supported by generateShim
             (strategy.namedBarriers[LoopM] > 0 ||
@@ -317,7 +317,7 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
                 strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
                 problemVerbose.A.setAlignment(e->driverInfo.alignment[0]);
                 problemVerbose.B.setAlignment(e->driverInfo.alignment[1]);
-                parseStrategy(e->strategy, hw, problemVerbose, strategy);
+                parseStrategy(e->strategy, problemVerbose, strategy);
                 std::cout << "entry candidate: "
                           << gemmstone::evaluate(*e, evalParams, auxParams) << " "
                           << e->selector.hw << " "
@@ -398,7 +398,7 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
             /* Prepare strategy parameters */
             strategy.unroll[LoopM] = entry->driverInfo.unroll[LoopM];
             strategy.unroll[LoopN] = entry->driverInfo.unroll[LoopN];
-            parseStrategy(entry->strategy, hw, problem, strategy);
+            parseStrategy(entry->strategy, problem, strategy);
             adjustStrategy(hw, problem, strategy);
             modifyStrategy(strategy, auxParams);
 

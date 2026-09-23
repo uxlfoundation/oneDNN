@@ -326,19 +326,24 @@ public:
             current_event_ = std::make_shared<threadpool_event_t>();
         }
 
+        // current_event_ is a data member and cannot be captured directly by
+        // the lambda. A local copy is necessary to capture the shared_ptr by
+        // value, keeping the ref count alive for the lifetime of the parallel
+        // work.
+        auto event = current_event_;
+
         // If we are using oneDNN with async support, we need to schedule the
         // parallel loop using the done_event_. This allows us to return
         // immediately and not block the caller thread.
-        auto parallelize = [this, n, fn, current_event_](tsl::Chain) {
+        auto parallelize = [this, n, fn, event](tsl::Chain) {
             return xla::cpu::Worker::Parallelize(thread_pool_.get(),
-                    thread_pool_->NumThreads(), n,
-                    [fn, n, current_event_](size_t i) {
-                if (current_event_) {
-                    current_event_->stamp_start(std::chrono::duration_cast<
-                                                std::chrono::nanoseconds>(
+                    thread_pool_->NumThreads(), n, [fn, n, event](size_t i) {
+                if (event) {
+                    event->stamp_start(std::chrono::duration_cast<
+                                       std::chrono::nanoseconds>(
                             std::chrono::high_resolution_clock::now()
                                     .time_since_epoch())
-                                                        .count());
+                                               .count());
                 }
                 fn(static_cast<int>(i), n);
             });

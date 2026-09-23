@@ -17,6 +17,11 @@
 #include "graph/backend/dnnl/kernels/sdp_decomp_reorder.hpp"
 
 #include "common/primitive_attr.hpp"
+#include "common/verbose.hpp"
+
+#define VDISPATCH_SDP_DECOMP(msg, ...) \
+    VINFO(graph, create, dispatch, sdp_decomp_reorder, msg, ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -29,6 +34,12 @@ status_t sdp_decomp_reorder_t::init(const dnnl::engine &engine,
             = src_md.get_data_type() != dst_md.get_data_type()
             || !attr.get()->has_default_values();
     is_alias_ = src_md == dst_md && !has_value_transform;
+    VDISPATCH_SDP_DECOMP(
+            "reorder %s: src_dt:%s dst_dt:%s has_value_transform:%d",
+            is_alias_ ? "eliminated" : "materialized",
+            dnnl_dt2str(static_cast<dnnl_data_type_t>(src_md.get_data_type())),
+            dnnl_dt2str(static_cast<dnnl_data_type_t>(dst_md.get_data_type())),
+            static_cast<int>(has_value_transform));
     if (is_alias_) return status::success;
 
     primitive_attr reorder_attr = attr;

@@ -21,6 +21,7 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "gemmstone/../../generator/pieces/compute_utils.hpp"
+#include "gemmstone/../../generator/pieces/ngen_object_helpers.hpp"
 #include "gemmstone/../../generator_dsl/builder.hpp"
 #include "gemmstone/../../generator_dsl/kernel_desc.hpp"
 #include "gemmstone/dsl/dsl.hpp"
@@ -171,7 +172,7 @@ status_t gen_desc_t::finalize(const char *tags) {
         problem_.beta = stringToScalar(val);
 
         ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
-        parseStrategy(ovr_strategy, hw_, problem_, strategy_);
+        parseStrategy(ovr_strategy, problem_, strategy_);
 
         // TODO: override derived values in aux_params_ in a way that's
         // consistent with the kernel evaluator (typically requires extra
@@ -192,11 +193,13 @@ status_t gen_desc_t::finalize(const char *tags) {
 #endif
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
         strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
-        parseStrategy(entry_->strategy, hw_, problem_, strategy_);
+        parseStrategy(entry_->strategy, problem_, strategy_);
 #ifdef DNNL_DEV_MODE
     }
 #endif
     modifyStrategy(strategy_, aux_params_);
+    if (l1_flush_wa_)
+        strategy_.C.cachingW = makeL1Uncacheable(strategy_.C.cachingW);
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
 
@@ -397,6 +400,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     arch_ = convert_ngen_arch_to_dnnl(hw_);
     stepping_ = dev_info.stepping_id();
     problem_.product = product_;
+    l1_flush_wa_ = dev_info.has_l1_flush_bug();
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);
@@ -627,6 +631,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     arch_ = convert_ngen_arch_to_dnnl(hw_);
     stepping_ = dev_info.stepping_id();
     problem_.product = product_;
+    l1_flush_wa_ = dev_info.has_l1_flush_bug();
     m_ = into<int>(m);
     n_ = into<int>(n);
     k_ = into<int>(k);

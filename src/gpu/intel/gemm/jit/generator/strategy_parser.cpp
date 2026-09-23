@@ -155,6 +155,7 @@ void getCaching(std::stringstream &s, ProductFamily family, MatrixAddressingStra
 
     if (!leaveDefault) {
         cachingR = CacheSettingsLSC::L1C_L3C;
+        // L1 uncached writes perform better on PVC.
         cachingW = (hw == HW::XeHPC) ? CacheSettingsLSC::L1UC_L3WB
                                      : CacheSettingsLSC::L1WB_L3WB;
     }
@@ -658,6 +659,7 @@ void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrat
     strategy.BO.newDP = strategy.B_scale.newDP = strategy.Bg.newDP = (hw >= HW::XeHPG);
 }
 
+// Deprecated, kept for backward compatibility.
 void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GEMMStrategy &strategy)
 {
     if (getCore(problem.product.family) == hw)

@@ -17,6 +17,7 @@
 #ifndef XPU_UTILS_HPP
 #define XPU_UTILS_HPP
 
+#include <cstring>
 #include <tuple>
 #include <vector>
 
@@ -42,13 +43,16 @@ struct runtime_version_t {
     int major;
     int minor;
     int build;
+    int revision; // Optional 4th field, e.g. 32.0.101.<revision> on Windows.
 
-    runtime_version_t(int major = 0, int minor = 0, int build = 0)
-        : major {major}, minor {minor}, build {build} {}
+    runtime_version_t(
+            int major = 0, int minor = 0, int build = 0, int revision = 0)
+        : major {major}, minor {minor}, build {build}, revision {revision} {}
 
     bool operator==(const runtime_version_t &other) const {
-        return (major == other.major) && (minor == other.minor)
-                && (build == other.build);
+        return std::tie(major, minor, build, revision)
+                == std::tie(
+                        other.major, other.minor, other.build, other.revision);
     }
 
     bool operator!=(const runtime_version_t &other) const {
@@ -56,11 +60,8 @@ struct runtime_version_t {
     }
 
     bool operator<(const runtime_version_t &other) const {
-        if (major < other.major) return true;
-        if (major > other.major) return false;
-        if (minor < other.minor) return true;
-        if (minor > other.minor) return false;
-        return (build < other.build);
+        return std::tie(major, minor, build, revision) < std::tie(
+                       other.major, other.minor, other.build, other.revision);
     }
 
     bool operator>(const runtime_version_t &other) const {
@@ -92,11 +93,23 @@ struct runtime_version_t {
         minor = atoi(&s[i_minor]);
         build = atoi(&s[i_build]);
 
+        revision = 0;
+        i += (int)strspn(&s[i], "0123456789");
+        if (s[i] != '.') return status::success;
+
+        // Expect a 1-5 digit revision, e.g. 32.0.101.8970 on Windows.
+        auto len = strspn(&s[++i], "0123456789");
+        bool ok = len >= 1 && len <= 5 && s[i + len] != '.';
+        assert(ok && "unexpected driver version format");
+        if (ok) revision = atoi(&s[i]);
+
         return status::success;
     }
 
     std::string str() const {
-        return utils::format("%d.%d.%d", major, minor, build);
+        auto s = utils::format("%d.%d.%d", major, minor, build);
+        if (revision) s += utils::format(".%d", revision);
+        return s;
     }
 };
 

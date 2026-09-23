@@ -102,6 +102,15 @@ bool device_info_t::is_integrated() const {
     return product_->type == ngen::PlatformType::Integrated;
 }
 
+// LNL drivers before NEO 39167 (Windows 101.8970) miss L1 flushes.
+bool device_info_t::has_l1_flush_bug() const {
+    if (!product_ || product_->family != ngen::ProductFamily::LNL) return false;
+    const auto &v = runtime_version_;
+    // Windows OpenCL reports 32.0.101.<revision>.
+    if (v.minor == 0 && v.build == 101) return v.revision < 8970;
+    return v.build < 39167;
+}
+
 std::string device_info_t::get_cl_ext_options() const {
     using namespace compute;
 
@@ -389,6 +398,7 @@ status_t device_info_t::init_serialized_device_info(
     serialized_device_info_.append(runtime_version_.major);
     serialized_device_info_.append(runtime_version_.minor);
     serialized_device_info_.append(runtime_version_.build);
+    serialized_device_info_.append(runtime_version_.revision);
     serialized_device_info_.append(eu_count_);
     serialized_device_info_.append(max_eus_per_wg_);
     serialized_device_info_.append(max_subgroup_size_);
@@ -428,6 +438,7 @@ status_t device_info_t::init_from_cache_blob(
     d.pop(runtime_version_.major);
     d.pop(runtime_version_.minor);
     d.pop(runtime_version_.build);
+    d.pop(runtime_version_.revision);
     d.pop(eu_count_);
     d.pop(max_eus_per_wg_);
     d.pop(max_subgroup_size_);

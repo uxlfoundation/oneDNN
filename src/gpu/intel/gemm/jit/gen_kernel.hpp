@@ -105,6 +105,7 @@ protected:
     ngen::HW hw_ = ngen::HW::Unknown;
     ngen::Product product_;
     int stepping_ = 0;
+    bool l1_flush_wa_ = false;
     gemmstone::GEMMProblem problem_ = {};
     gemmstone::GEMMStrategy strategy_;
     const gemmstone::kcatalog::Entry *entry_ = nullptr;

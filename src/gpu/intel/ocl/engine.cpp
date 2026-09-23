@@ -464,6 +464,7 @@ status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
     sstream.append(device_info()->runtime_version().major);
     sstream.append(device_info()->runtime_version().minor);
     sstream.append(device_info()->runtime_version().build);
+    sstream.append(device_info()->runtime_version().revision);
 
     return status::success;
 }

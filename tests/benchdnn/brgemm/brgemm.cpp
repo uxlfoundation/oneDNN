@@ -362,11 +362,11 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
                 e.binary.mask_input = attr_t::mask_input_t::policy;
                 e.binary.policy = policy_t::COMMON;
             }
-            if (e.binary.tag.empty() || e.binary.tag == "any" || e.binary.tag == "none") {
+            if (e.binary.tag.empty() || e.binary.tag == "any"
+                    || e.binary.tag == "none") {
                 e.binary.tag = "ab";
             }
-        }
-        else if (e.is_prelu_kind()) {
+        } else if (e.is_prelu_kind()) {
             if (e.prelu.mask_input == attr_t::mask_input_t::none) {
                 e.prelu.mask_input = attr_t::mask_input_t::policy;
                 e.prelu.policy = policy_t::COMMON;
@@ -730,9 +730,9 @@ void init_memory_args(
         if (e.is_binary_kind()) { dt = e.binary.src1_dt; }
 
         auto po_md = dnn_mem_t::init_md(prb->ndims, dims.data(), dt, tag::abx);
-        mem_map.emplace(po_arg, dnn_mem_t(po_md, test_engine, /* prefill = */ true));
+        mem_map.emplace(
+                po_arg, dnn_mem_t(po_md, test_engine, /* prefill = */ true));
     }
-
 
     if (!prb->attr.scales.is_def()) {
         const auto &sc = prb->attr.scales;

@@ -64,41 +64,28 @@ status_t fill_blocked(memory_desc_t &md, std::initializer_list<int> perm,
                 : utils::rnd_up(md.dims[d], blocks[d]);
 
     // tracks max stride for integral overflow checks
-    dim_t max_stride = 1;
-    int max_stride_d = 0;
+    const auto dt_size = (dim_t)types::data_type_size(md.data_type);
+    constexpr auto runtime_value = runtime_value_for<dim_t>();
+    constexpr auto max_offset = std::numeric_limits<dim_t>::max();
 
     // setting the strides
-    {
-        dim_t stride = block_size;
-        auto iter_d = perm.end(); // reverse iterator over perm
-        do {
-            const int d = *(--iter_d);
-            blk.strides[d] = stride;
+    dim_t stride = block_size;
+    for (auto it = perm.end(); it-- != perm.begin();) {
+        auto d = *it;
+        const auto pdim = md.padded_dims[d];
+        blk.strides[d] = stride;
 
-            const dim_t pdim = md.padded_dims[d];
-            if (any_runtime_value(stride, pdim))
-                stride = runtime_value_for(stride);
-            else if (pdim != 0)
-                stride *= pdim / blocks[d];
+        if (stride == runtime_value) continue;
 
-            if (max_stride <= stride) {
-                max_stride = stride;
-                max_stride_d = d;
-            }
-
-        } while (iter_d != perm.begin());
-    }
-
-    const size_t dt_size = types::data_type_size(md.data_type);
-
-    // guard against integral overflow due to strides exceeding numeric limits
-    if (!is_runtime_value(md.padded_dims[max_stride_d])) {
-        size_t dim_val = static_cast<size_t>(
-                md.padded_dims[max_stride_d] / blocks[max_stride_d]);
-        dim_val = dim_val == (size_t)max_stride ? 1 : dim_val;
-        if (dim_val > SIZE_MAX / max_stride) return status::invalid_arguments;
-        if (dt_size && ((dim_val * max_stride) > SIZE_MAX / dt_size))
-            return status::invalid_arguments;
+        if (pdim == runtime_value) {
+            stride = runtime_value;
+        } else if (pdim != 0) {
+            auto dim = pdim / blocks[d];
+            if (dim > max_offset / stride) return status::invalid_arguments;
+            if (dt_size && ((dim * stride) > max_offset / dt_size))
+                return status::invalid_arguments;
+            stride *= dim;
+        }
     }
 
     return status::success;

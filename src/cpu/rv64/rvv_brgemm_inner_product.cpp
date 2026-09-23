@@ -196,8 +196,7 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
         // MB < nthr: not enough rows for 1D parallelism.
         // Distribute work across M (OC) tiles so all cores are utilized.
         // Each thread processes ALL MB rows for its assigned M tile range.
-        // Keep f32 accumulation until the final f16 store.
-        const dim_t BK = brg.store_f16 ? K : BRGEMM_BK;
+        const dim_t BK = brg.get_k_block();
 
         parallel(0, [&](int ithr, int nthr_actual) {
             dim_t mt_start {0}, mt_end {0};

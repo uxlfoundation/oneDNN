@@ -1343,7 +1343,8 @@ status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
     return infer_shape(sg);
 }
 
-status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
+static status_t fuse_src_scales_impl(
+        std::shared_ptr<subgraph_t> &sg, bool keep_sdpa_probs_scales) {
 
     std::vector<op_t *> scales_ops;
 
@@ -1372,6 +1373,26 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
         auto &next_op = consumers[0].get_op();
         auto offset = consumers[0].get_offset();
         if (offset == 0 || offset == 1) {
+            // fuse_sdpa turns the softmax probability quantize/dequantize pair
+            // into sdpa attributes, so leave the dynamic pair in the graph
+            if (keep_sdpa_probs_scales && offset == 0
+                    && scale_op->get_input_value(0)->has_producer()
+                    && scale_op->get_input_op(0)->get_kind()
+                            == op_kind::_mul_scales
+                    && scale_op->get_input_op(0)->num_inputs() > 1
+                    && scale_op->get_input_op(0)
+                               ->get_input_value(1)
+                               ->has_producer()
+                    && is_reciprocal(&scale_op->get_input_op(0)
+                                              ->get_input_value(1)
+                                              ->get_producer())
+                    && scale_op->get_input_op(0)
+                               ->get_input_value(0)
+                               ->has_producer()
+                    && scale_op->get_input_op(0)->get_input_op(0)->get_kind()
+                            == op_kind::_softmax) {
+                continue;
+            }
             if (!next_op.has_attr(op_attr::fusion_info)) {
                 fusion_info_t fusion_info;
                 next_op.set_attr<fusion_info_t>(
@@ -1403,6 +1424,14 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
     }
     rewriter.run();
     return infer_shape(sg);
+}
+
+status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
+    return fuse_src_scales_impl(sg, false);
+}
+
+status_t fuse_src_scales_sdpa(std::shared_ptr<subgraph_t> &sg) {
+    return fuse_src_scales_impl(sg, true);
 }
 
 status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
@@ -4587,7 +4616,8 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         op_ptr walker = cur_op;
         bool valid_pattern = true;
         bool has_scale = false, has_mask = false, has_softmax = false,
-             has_dropout = false;
+             has_dropout = false, has_probs_quant = false,
+             has_probs_dequant = false;
         bool finished = false;
         while (walker && !finished) {
             pattern_ops.push_back(walker);
@@ -4623,6 +4653,24 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                 case op_kind::_softmax: {
                     if (has_softmax) valid_pattern = false;
                     has_softmax = true;
+                    break;
+                }
+                case op_kind::_mul_scales: {
+                    const auto consumers
+                            = walker->get_output_value(0)->get_consumers();
+                    if (!has_softmax || consumers.size() != 1) {
+                        valid_pattern = false;
+                    } else if (!has_probs_quant
+                            && consumers[0].get_op().get_kind()
+                                    == op_kind::_mul_scales) {
+                        has_probs_quant = true;
+                    } else if (has_probs_quant && !has_probs_dequant
+                            && consumers[0].get_op().get_kind()
+                                    == op_kind::_matmul) {
+                        has_probs_dequant = true;
+                    } else {
+                        valid_pattern = false;
+                    }
                     break;
                 }
                 case op_kind::_dropout: {
@@ -4739,6 +4787,33 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
     }
 
+    op_ptr probs_quant, probs_dequant;
+    for (const auto &op : candidates) {
+        if (op->get_kind() != op_kind::_mul_scales) continue;
+        if (!probs_quant)
+            probs_quant = op;
+        else
+            probs_dequant = op;
+    }
+    if (probs_quant && probs_dequant) {
+        auto quant_scale = probs_quant->get_input_value(1);
+        quant_scale->remove_consumer(*probs_quant, 1);
+        // DynamicQuantize lowers to a multiply by the reciprocal of the scale
+        if (quant_scale->has_producer()
+                && quant_scale->get_producer().get_kind()
+                        == op_kind::_eltwise) {
+            auto inv_op = quant_scale->get_producer().shared_from_this();
+            quant_scale = inv_op->get_input_value(0);
+            quant_scale->remove_consumer(*inv_op, 0);
+            rewriter.to_remove(inv_op);
+        }
+        sdpa_op->connect_input(input_idx++, quant_scale);
+
+        auto dequant_scale = probs_dequant->get_input_value(1);
+        dequant_scale->remove_consumer(*probs_dequant, 1);
+        sdpa_op->connect_input(input_idx++, dequant_scale);
+    }
+
     // Handle QK and VS accumulation modes
     const std::string qk_acc_mode = qk->has_attr(op_attr::accumulation_mode)
             ? qk->get_attr<std::string>(op_attr::accumulation_mode)
@@ -4754,6 +4829,12 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     if (qk->has_attr(op_attr::fusion_info)) {
         auto mm1_fusion_info
                 = qk->get_attr<fusion_info_t>(op_attr::fusion_info);
+        if (mm1_fusion_info.get_mutable_scales(true, 0)) {
+            sdpa_fusion_info.set_runtime_scales(
+                    mm1_fusion_info.get_mutable_scales(true, 0)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_QUERIES);
+        }
         if (mm1_fusion_info.get_mutable_scales(true, 1)) {
             sdpa_fusion_info.set_runtime_scales(
                     mm1_fusion_info.get_mutable_scales(true, 1)
@@ -4783,6 +4864,11 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                             ->shared_from_this(),
                     true, DNNL_ARG_VALUES);
         }
+    }
+    if (probs_quant && probs_dequant) {
+        sdpa_fusion_info.set_runtime_scales(
+                probs_quant, true, DNNL_ARG_PROBABILITIES);
+        sdpa_fusion_info.set_runtime_scales(probs_dequant, false, 0);
     }
     sdpa_op->set_attr<fusion_info_t>(op_attr::fusion_info, sdpa_fusion_info);
 

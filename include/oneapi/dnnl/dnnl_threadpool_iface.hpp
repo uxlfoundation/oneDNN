@@ -78,6 +78,12 @@ struct threadpool_iface {
     // Does nothing if SYNCHRONOUS, waits for all jobs for ASYNCHRONOUS
     virtual void wait() = 0;
 
+    /// If set, parallel_for() returns immediately and oneDNN needs implement
+    /// waiting for the submitted closures to finish execution on its own.
+    static constexpr uint64_t ASYNCHRONOUS = 1;
+
+    virtual ~threadpool_iface() = default;
+
     /// Returns a single completion event for the most recently submitted
     /// primitive dispatch, or nullptr if profiling is disabled or
     /// unsupported.
@@ -89,12 +95,6 @@ struct threadpool_iface {
     virtual std::shared_ptr<threadpool_event_iface_t> get_event() {
         return nullptr;
     }
-
-    /// If set, parallel_for() returns immediately and oneDNN needs implement
-    /// waiting for the submitted closures to finish execution on its own.
-    static constexpr uint64_t ASYNCHRONOUS = 1;
-
-    virtual ~threadpool_iface() = default;
 };
 
 } // namespace threadpool_interop

@@ -80,6 +80,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     };
 
     GEMMProblem problem;
+    problem.product = product;
     problem.Ta_ext = convert_dnnl_to_kernel_type(wei_mdw.data_type());
     problem.Tb_ext = convert_dnnl_to_kernel_type(src_mdw.data_type());
     problem.Tc_ext = problem.Ts = problem.Tc = Type::f32;

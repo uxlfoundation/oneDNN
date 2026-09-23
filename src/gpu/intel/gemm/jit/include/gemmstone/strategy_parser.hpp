@@ -25,6 +25,7 @@
 
 GEMMSTONE_NAMESPACE_START
 
+void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrategy &strategy);
 void parseStrategy(const std::string &str, ngen::HW hw, const GEMMProblem &problem, GEMMStrategy &strategy);
 
 void adjustStrategy(ngen::HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, const char *tags = nullptr);

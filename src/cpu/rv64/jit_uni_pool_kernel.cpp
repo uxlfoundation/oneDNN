@@ -1492,6 +1492,11 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
     const bool use_wide_f16 = !is_bf16 && is_max_pool_
             && jpp_.tag_kind == jit_pool_tag_kind_t::nspc
             && get_platform_vlen() == 256;
+    // Keep the channel count unchanged across widening and narrowing.
+    const int f32_group_stride = use_wide_f16 ? 4 : 2;
+    const auto f32_lmul = pool_lmul_to_enum(f32_group_stride);
+    const auto f16_lmul = pool_lmul_to_enum(f32_group_stride / 2);
+    const auto u8_lmul = use_wide_f16 ? LMUL::m1 : LMUL::mf2;
     const VReg v_wide(24);
     const bool acc_is_f32 = !is_max_pool_ || is_bf16;
     const VReg v_res = (is_max_pool_ && !is_bf16) ? v_acc : v_tmp;
@@ -1635,10 +1640,7 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vmv_v_x(v_acc, t1);
             vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         } else {
-            if (use_wide_f16)
-                vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-            else
-                vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+            vsetvli(t0, s2, SEW::e16, f16_lmul, VTA::ta, VMA::ma);
             li(t1, 0xFBFF); // f16 lowest (-65504.0)
             vmv_v_x(v_acc, t1);
         }
@@ -1775,21 +1777,11 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
         if (mt_bin) {
             slli(a6, s9, 1); // f32 rhs channel stride (= 2 * f16 dst stride)
         }
-        if (use_wide_f16)
-            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-        else
-            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vsetvli(t0, s2, SEW::e16, f16_lmul, VTA::ta, VMA::ma);
         vfwcvt_f_f_v(VReg(24), v_acc);
-        if (use_wide_f16)
-            vsetvli(t0, s2, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-        else
-            vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-        po_inj.compute_vector(
-                24, rhs_dyn, use_wide_f16 ? 4 : 2 /*group_stride*/);
-        if (use_wide_f16)
-            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-        else
-            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vsetvli(t0, s2, SEW::e32, f32_lmul, VTA::ta, VMA::ma);
+        po_inj.compute_vector(24, rhs_dyn, f32_group_stride);
+        vsetvli(t0, s2, SEW::e16, f16_lmul, VTA::ta, VMA::ma);
         vfncvt_f_f_w(v_acc, VReg(24));
     }
 
@@ -1810,10 +1802,7 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
         ld(t2, reg_param, GET_OFF_P(ws_vec_byte_stride));
         li(t1, static_cast<int>(ind_sz));
         if (ind_u8) {
-            if (use_wide_f16)
-                vsetvli(t3, s2, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
-            else
-                vsetvli(t3, s2, SEW::e8, LMUL::mf2, VTA::ta, VMA::ma);
+            vsetvli(t3, s2, SEW::e8, u8_lmul, VTA::ta, VMA::ma);
             vnsrl_wi(v_tmp, v_ind, 0);
             Label u8_unit, u8_done;
             beq(t2, t1, u8_unit);
@@ -1823,10 +1812,7 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vse8_v(v_tmp, s10);
             L(u8_done);
         } else {
-            if (use_wide_f16)
-                vsetvli(t3, s2, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-            else
-                vsetvli(t3, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+            vsetvli(t3, s2, SEW::e32, f32_lmul, VTA::ta, VMA::ma);
             vzext_vf2(v28, v_ind);
             Label s32_unit, s32_done;
             beq(t2, t1, s32_unit);
@@ -1836,10 +1822,7 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vse32_v(v28, s10);
             L(s32_done);
         }
-        if (use_wide_f16)
-            vsetvli(t0, s2, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-        else
-            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vsetvli(t0, s2, SEW::e16, f16_lmul, VTA::ta, VMA::ma);
     }
 
     // Advance src/dst by vl * stride (f16 unit stride = vl * 2).

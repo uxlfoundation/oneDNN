@@ -19,7 +19,11 @@
 #include <cstring>
 
 #include "common/primitive_attr.hpp"
+#include "common/verbose.hpp"
 #include "graph/utils/utils.hpp"
+
+#define VDISPATCH_SDP_DECOMP(msg, ...) \
+    VINFO(graph, create, dispatch, sdp_decomp_matmul, msg, ##__VA_ARGS__)
 
 namespace dnnl {
 namespace impl {
@@ -54,7 +58,8 @@ status_t sdp_decomp_matmul_base_t::init_matmul(const dnnl::engine &engine,
         const primitive_attr &attr) {
     auto pd = matmul::primitive_desc(engine, direct_src_md, direct_weights_md,
             direct_dst_md, attr, /*allow_empty=*/true);
-    if (is_brg_matmul(pd)) {
+    const bool use_direct = is_brg_matmul(pd);
+    if (use_direct) {
         src_md_ = direct_src_md;
         weights_md_ = direct_weights_md;
         dst_md_ = direct_dst_md;
@@ -68,6 +73,8 @@ status_t sdp_decomp_matmul_base_t::init_matmul(const dnnl::engine &engine,
 
     matmul_prim_ = matmul(pd);
     scratchpad_md_ = pd.scratchpad_desc();
+    VDISPATCH_SDP_DECOMP("matmul %s layout: impl:%s",
+            use_direct ? "direct" : "dense", pd.impl_info_str());
     return status::success;
 }
 
@@ -89,6 +96,8 @@ status_t sdp_decomp_bmm1_t::init(const dnnl::engine &engine,
     const auto &direct_query_md
             = requires_dense_q ? query_dense_md : query_user_md;
     const auto &direct_key_md = requires_dense_k ? key_dense_md : key_user_md;
+    VDISPATCH_SDP_DECOMP("bmm1: requires_dense query:%d key:%d",
+            requires_dense_q, requires_dense_k);
 
     CHECK(init_matmul(engine, direct_query_md, direct_key_md, scores_md,
             query_dense_md, key_dense_md, scores_md, matmul_attr));
@@ -112,6 +121,8 @@ status_t sdp_decomp_bmm2_t::init(const dnnl::engine &engine,
             = requires_dense_v ? value_dense_md : value_user_md;
     const auto &direct_output_md
             = requires_dense_o ? output_dense_md : output_user_md;
+    VDISPATCH_SDP_DECOMP("bmm2: requires_dense value:%d output:%d",
+            requires_dense_v, requires_dense_o);
 
     CHECK(init_matmul(engine, src_md, direct_value_md, direct_output_md, src_md,
             value_dense_md, output_dense_md, matmul_attr));

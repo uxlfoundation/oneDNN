@@ -32,7 +32,7 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg);
 
 // Creates an IR-based GEMV kernel. Caller owns the pointer.
 // Returns `nullptr` on failure.
-brgemm_kernel_t *create_brgemv_ir_kernel(const brgemm_desc_t &brg);
+brgemm_kernel_t DNNL_API *create_brgemv_ir_kernel(const brgemm_desc_t &brg);
 
 } // namespace x64
 } // namespace cpu

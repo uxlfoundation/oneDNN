@@ -815,6 +815,10 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
 
     bool aoVector = aOffset && (problem.aoPtrDims == 1);
     bool boVector = bOffset && (problem.boPtrDims == 1);
+    // Host-scalar ao/bo are raw (non-negated), unlike vector/device-memory
+    // scalars which are pre-negated on load.
+    bool a_host_scalar = problem.aOffsetHostScalar();
+    bool b_host_scalar = problem.bOffsetHostScalar();
     GRFRange aoData, boData;
 
     auto temp = [&]() {
@@ -822,7 +826,9 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
 
         auto ret = state.ra.alloc_sub(problem.Tc.ngen());
         if (!boVector)
-            mul(1, ret, state.k, state.inputs.bo);
+            mul(1, ret, state.k,
+                    (aoVector && b_host_scalar) ? -state.inputs.bo
+                                                 : state.inputs.bo);
         else
             mov(1, ret, state.k);
 
@@ -865,7 +871,8 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
 
         if (bOffset) {
             boVector ? gemmRank1UpdateC(state.As_regs, boData, problem, strategy, state)
-                     : gemmVectorBinaryOpC(BinaryOp::Add, false, state.As_regs, state.inputs.bo,
+                     : gemmVectorBinaryOpC(b_host_scalar ? BinaryOp::Sub : BinaryOp::Add, false,
+                                           state.As_regs, state.inputs.bo,
                                            problem, strategy, state, problem.Tc, state.As_layout);
         }
 
@@ -880,14 +887,13 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
 
         if (aOffset) {
             aoVector ? gemmRank1UpdateC(aoData, state.Bs_regs, problem, strategy, state)
-                     : gemmVectorBinaryOpC(BinaryOp::Add, true,  state.Bs_regs, state.inputs.ao,
+                     : gemmVectorBinaryOpC(a_host_scalar ? BinaryOp::Sub : BinaryOp::Add, true,
+                                           state.Bs_regs, state.inputs.ao,
                                            problem, strategy, state, problem.Tc, state.Bs_layout);
         }
     } else {
         // Scalar offset path.
         // TODO: combine C adds into add3 on XeHP+.
-        bool a_host_scalar = problem.aOffsetHostScalar();
-        bool b_host_scalar = problem.bOffsetHostScalar();
         if (aOffset && bOffset) {
             mul(1, temp, temp, b_host_scalar ? -state.inputs.ao : state.inputs.ao);
             map(hw, Tc, state.Bs_regs, state.Bs_layout, strategy, [&](int ne, RegData r) {

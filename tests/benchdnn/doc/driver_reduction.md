@@ -39,6 +39,7 @@ the end to specify fewer dimensions.
 ## Floating point arguments
 Some operations support `p` and `eps` arguments such as
 `norm_lp_max`, `norm_lp_sum`, `norm_lp_power_p_max`, `norm_lp_power_p_sum`.
+`dynamic_quantize` requires both values to be zero.
 
 ## Essence of Testing
 
@@ -56,6 +57,13 @@ Run a specific reduction primitive problem:
 - The reduce operation is sum.
 ``` sh
     ./benchdnn --reduction --sdt=f32 --ddt=f32 --stag=acb --alg=sum 1x2x3:1x1x3
+```
+
+Run fused symmetric per-token dynamic quantization. The `1x128` groups divide
+the two source dimensions and therefore produce one `f32` scale per row:
+``` sh
+    ./benchdnn --reduction --alg=dynamic_quantize --p=0 --sdt=f32 --ddt=s8 \
+        --attr-scales=dst:dynamic_fp:f32:1x128 8x128:8x128
 ```
 
 More examples with different driver options can be found at

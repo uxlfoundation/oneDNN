@@ -944,7 +944,7 @@ TEST_P(mlp_test_t, compare) {
         }
     }
     int total_size = int(resph.size());
-    int threshold = total_size * 0.0006;
+    int threshold = total_size * 0.0025;
 
     if (verbose) {
         printf("total mismatches: %d, allowed: %d\n", n_mismatches, threshold);

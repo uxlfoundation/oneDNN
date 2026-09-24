@@ -19,8 +19,8 @@
 
 #include "src/common/float4.hpp"
 #include "src/common/int4.hpp"
-#include "src/common/nibble.hpp"
 #include "src/common/nstl.hpp"
+#include "src/common/sub_byte.hpp"
 
 namespace dnnl {
 
@@ -51,9 +51,9 @@ void test_conversions() {
         // Each uint8_t contains a pair of 4-bit numbers.
         // Convert T -> f32 and back again,
         // expecting bitwise identical values.
-        impl::nibble2_t T_pair(u8);
-        float num1 = static_cast<T>(T_pair.get(0));
-        float num2 = static_cast<T>(T_pair.get(1));
+        const uint8_t byte = u8;
+        float num1 = static_cast<T>(impl::sub_byte_get<4>(&byte, 0));
+        float num2 = static_cast<T>(impl::sub_byte_get<4>(&byte, 1));
         // Check that the all numbers are in the range
         float T_lowest
                 = static_cast<float>(impl::nstl::numeric_limits<T>::lowest());
@@ -69,9 +69,12 @@ void test_conversions() {
             ASSERT_TRUE(num2 != 0 || num2 == -num2);
 
         // The target value must be initialized
-        impl::nibble2_t new_T_pair(static_cast<T>(T_pair.get(0)).raw_bits_,
-                static_cast<T>(T_pair.get(1)).raw_bits_);
-        ASSERT_EQ(T_pair.get(), new_T_pair.get());
+        uint8_t rebuilt = 0;
+        impl::sub_byte_set<4>(&rebuilt, 0,
+                static_cast<T>(impl::sub_byte_get<4>(&byte, 0)).raw_bits_);
+        impl::sub_byte_set<4>(&rebuilt, 1,
+                static_cast<T>(impl::sub_byte_get<4>(&byte, 1)).raw_bits_);
+        ASSERT_EQ(byte, rebuilt);
     });
 }
 

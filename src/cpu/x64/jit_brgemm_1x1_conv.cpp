@@ -580,8 +580,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
     const auto jcp_ptr = std::make_shared<jit_brgemm_conv_conf_t>(pd()->jcp_);
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
 
-    parallel(jcp_ptr->nthr,
-            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
+    parallel(jcp_ptr->nthr, [&](const int ithr, const int nthr) {
         const auto &jcp = *jcp_ptr;
         const dim_t os_chunks = div_up(jcp.nb_os, jcp.nb_os_blocking);
         const int work_amount = static_cast<int>(
@@ -679,8 +678,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
     const auto jcp_ptr = std::make_shared<jit_brgemm_conv_conf_t>(pd()->jcp_);
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
 
-    parallel(jcp_ptr->nthr,
-            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
+    parallel(jcp_ptr->nthr, [&](const int ithr, const int nthr) {
         const auto &jcp = *jcp_ptr;
         const int work_amount = static_cast<int>(
                 jcp.mb * jcp.ngroups * jcp.nb_oc * OD * OH * jcp.nb_ow);

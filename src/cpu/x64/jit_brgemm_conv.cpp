@@ -1424,8 +1424,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     // or made ic_chunks = 1 if use_buffer
     // or (looks more general) increase buffer size to store several rows
 
-    parallel(jcp_ptr->nthr,
-            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
+    parallel(jcp_ptr->nthr, [&](const int ithr, const int nthr) {
         const auto &jcp = *jcp_ptr;
         const dim_t work_amount = static_cast<dim_t>(jcp.mb) * jcp.ngroups
                 * jcp.nb_oc * jcp.nb_od * jcp.nb_oh * jcp.nb_ow;

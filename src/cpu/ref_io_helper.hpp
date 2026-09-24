@@ -21,7 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_traits.hpp"
-#include "common/nibble.hpp"
+#include "common/sub_byte.hpp"
 #include "common/type_helpers.hpp"
 
 #include "cpu/simple_q10n.hpp"
@@ -38,33 +38,24 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
         return static_cast<int>( \
                 reinterpret_cast<const typename prec_traits_t<dt>::type *>( \
                         ptr)[idx]);
+#define CASE_SUB_BYTE(dt) \
+    case dt: \
+        return static_cast<int>(typename prec_traits_t<dt>::type( \
+                sub_byte_get<sub_byte_bits(dt)>( \
+                        static_cast<const uint8_t *>(ptr), idx)));
 
     using namespace data_type;
     switch (dt) {
         CASE(s32);
         CASE(s8);
         CASE(u8);
-        case s4: {
-            const nibble2_t nibble_pair(
-                    reinterpret_cast<const uint8_t *>(ptr)[idx / 2]);
-            int4_t val(nibble_pair.get(idx % 2));
-            return static_cast<int>(val);
-        }
-        case u4: {
-            const nibble2_t nibble_pair(
-                    reinterpret_cast<const uint8_t *>(ptr)[idx / 2]);
-            uint4_t val(nibble_pair.get(idx % 2));
-            return static_cast<int>(val);
-        }
-        case u2: {
-            const nibble4_t nibble_quartet(
-                    reinterpret_cast<const uint8_t *>(ptr)[idx / 4]);
-            uint2_t val(nibble_quartet.get(idx % 4));
-            return static_cast<int>(val);
-        }
+        CASE_SUB_BYTE(s4);
+        CASE_SUB_BYTE(u4);
+        CASE_SUB_BYTE(u2);
         default: assert(!"bad data_type");
     }
 
+#undef CASE_SUB_BYTE
 #undef CASE
     return INT_MAX;
 }
@@ -84,6 +75,11 @@ ALWAYS_INLINE float load_float_value(
         return static_cast<float>( \
                 reinterpret_cast<const typename prec_traits_t<dt>::type *>( \
                         ptr)[idx]);
+#define CASE_SUB_BYTE(dt) \
+    case dt: \
+        return static_cast<float>(typename prec_traits_t<dt>::type( \
+                sub_byte_get<sub_byte_bits(dt)>( \
+                        static_cast<const uint8_t *>(ptr), idx)));
 
     using namespace data_type;
     switch (dt) {
@@ -96,33 +92,14 @@ ALWAYS_INLINE float load_float_value(
         CASE(s8);
         CASE(u8);
         CASE(e8m0);
-        case s4: {
-            const nibble2_t nibble_pair(
-                    static_cast<const uint8_t *>(ptr)[idx / 2]);
-            int4_t val(nibble_pair.get(idx % 2));
-            return static_cast<float>(val);
-        }
-        case u4: {
-            const nibble2_t nibble_pair(
-                    static_cast<const uint8_t *>(ptr)[idx / 2]);
-            uint4_t val(nibble_pair.get(idx % 2));
-            return static_cast<float>(val);
-        }
-        case f4_e2m1: {
-            const nibble2_t nibble_pair
-                    = reinterpret_cast<const nibble2_t *>(ptr)[idx / 2];
-            float4_e2m1_t val(nibble_pair.get(idx % 2), true);
-            return static_cast<float>(val);
-        }
-        case u2: {
-            const nibble4_t nibble_quartet(
-                    static_cast<const uint8_t *>(ptr)[idx / 4]);
-            uint2_t val(nibble_quartet.get(idx % 4));
-            return static_cast<float>(val);
-        }
+        CASE_SUB_BYTE(s4);
+        CASE_SUB_BYTE(u4);
+        CASE_SUB_BYTE(u2);
+        CASE_SUB_BYTE(f4_e2m1);
         default: assert(!"bad data_type");
     }
 
+#undef CASE_SUB_BYTE
 #undef CASE
     return NAN;
 }
@@ -148,11 +125,8 @@ inline void store_float_value(data_type_t dt, float val, void *ptr, dim_t idx) {
         CASE(u8);
         CASE(e8m0);
         case f4_e2m1: {
-            auto dst_ = reinterpret_cast<nibble2_t *>(ptr);
-            nibble2_t nibble_pair = dst_[idx / 2];
             float4_e2m1_t f4_val(val);
-            nibble_pair.set(f4_val.raw_bits_, idx % 2);
-            dst_[idx / 2] = nibble_pair;
+            sub_byte_set<4>(static_cast<uint8_t *>(ptr), idx, f4_val.raw_bits_);
             break;
         }
         default: assert(!"bad data_type");

@@ -22,9 +22,9 @@
 #include "common/memory_desc.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/memory_tracking.hpp"
-#include "common/nibble.hpp"
 #include "common/primitive_desc.hpp"
 #include "common/primitive_exec_types.hpp"
+#include "common/sub_byte.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
@@ -159,9 +159,9 @@ status_t f32_to_int4_plain(const void *src, void *dst, int64_t K, int64_t N,
     // NOTE: io::store_float_value() has no s4/u4 case (it hits default:
     // assert(!"bad data_type") in debug builds), so convert with the
     // reference reorder's saturate-and-round semantics, then pack the
-    // resulting 4-bit value directly via nibble2_t.
+    // resulting 4-bit value directly via sub_byte_set<4>.
     const float *s = static_cast<const float *>(src);
-    auto *d = reinterpret_cast<nibble2_t *>(dst);
+    auto *d = reinterpret_cast<uint8_t *>(dst);
     for (int64_t k = 0; k < K; k++) {
         for (int64_t n = 0; n < N; n++) {
             const int64_t soff = src_is_ab ? (k * ldb + n) : (k + n * ldb);
@@ -171,13 +171,10 @@ status_t f32_to_int4_plain(const void *src, void *dst, int64_t K, int64_t N,
                     ? q10n::saturate_and_round<uint4_t>(v).raw_bits_
                     : q10n::saturate_and_round<int4_t>(v).raw_bits_;
             const int64_t oidx = k * N + n;
-            const int nibble = static_cast<int>(oidx % 2);
-            nibble2_t pair(0);
             // An even element starts a new byte. Preserve the existing low
             // nibble only when writing the following odd element.
-            if (nibble != 0) pair = d[oidx / 2];
-            pair.set(raw, nibble);
-            d[oidx / 2] = pair;
+            if (oidx % 2 == 0) d[oidx / 2] = 0;
+            sub_byte_set<4>(d, oidx, raw);
         }
     }
     return status::success;
@@ -299,11 +296,9 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     // when every slice starts on a byte boundary. An odd logical-element batch
     // stride starts the next slice in the high nibble, which this direct
     // prepack interface cannot represent.
-    const size_t src_sub_byte_multiplier = id.sub_byte_data_type_multiplier();
-    VDISPATCH_REORDER(!batched || src_sub_byte_multiplier == 1
-                    || static_cast<size_t>(src_strides[0])
-                                    % src_sub_byte_multiplier
-                            == 0,
+    const int src_bits = sub_byte_bits(id.data_type());
+    VDISPATCH_REORDER(
+            !batched || src_strides[0] % sub_byte_nelems(src_bits) == 0,
             VERBOSE_UNSUPPORTED_TAG_S, "src");
 
     // src and dst logical dims must agree (oneDNN reorder API contract).
@@ -437,12 +432,10 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
     // Per-batch advance: source strides are expressed in logical elements.
     // Convert to bytes explicitly because s4/u4 store two elements per byte.
     // pd_t::init() rejects a sub-byte stride that starts on a high nibble.
-    const size_t src_elem = src_d.data_type_size();
-    const size_t src_sub_byte_multiplier
-            = src_d.sub_byte_data_type_multiplier();
-    const size_t src_slice_bytes = batched ? static_cast<size_t>(src_strides[0])
-                    * src_elem / src_sub_byte_multiplier
-                                           : 0;
+    const size_t src_slice_bytes = batched
+            ? types::elements_to_bytes(
+                      src_dt, static_cast<size_t>(src_strides[0]))
+            : 0;
     const size_t dst_slice_bytes = dst_d.zen_packed_desc().per_slice_size;
 
     const auto *src_base = CTX_IN_MEM(const uint8_t *, DNNL_ARG_FROM);

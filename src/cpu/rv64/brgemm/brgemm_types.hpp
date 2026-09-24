@@ -92,6 +92,15 @@ struct brgemm_desc_t {
 
     bool is_f32;
     bool is_int8;
+    // Narrow the f32 accumulators to f16 on C store (Zvfh). Only meaningful
+    // for the f16 kernel; the f32/bf16 kernels always store f32.
+    bool store_f16;
+
+    dim_t get_k_block() const {
+        // Round f16 output only once after the full f32 accumulation;
+        // other outputs retain cache-friendly K blocking.
+        return store_f16 ? reduce_dim : BRGEMM_BK;
+    }
 };
 
 // Runtime parameters passed to the JIT micro-kernel for one M-tile.

@@ -41,7 +41,7 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     // Supported:
     //   f32  × f32  → f32  (always)
     //   bf16 × bf16 → f32  (Zvfbfwma widening FMA)
-    //   f16  × f16  → f32  (Zvfh widening FMA)
+    //   f16  × f16  → f32  (Zvfh widening FMA; store_f16 narrows to f16)
     //   s8   × s8   → s32  (always)
     const bool is_f32 = everyone_is(data_type::f32, dt_a, dt_b);
     const bool is_bf16
@@ -148,9 +148,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
     auto *C_base = reinterpret_cast<char *>(ptr_C);
     const auto *bias_base = reinterpret_cast<const char *>(ptr_bias);
 
-    // K-blocking: split the reduction dimension into chunks of BK to keep
-    // the A working-set inside the L1D cache.
-    const dim_t BK = BRGEMM_BK;
+    const dim_t BK = brg.get_k_block();
 
     for (dim_t kb = 0; kb < K; kb += BK) {
         const dim_t K_inner = nstl::min(BK, K - kb);

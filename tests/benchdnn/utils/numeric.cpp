@@ -18,8 +18,8 @@
 #include "src/common/float16.hpp"
 #include "src/common/float4.hpp"
 #include "src/common/float8.hpp"
-#include "src/common/nibble.hpp"
 #include "src/common/nstl.hpp"
+#include "src/common/sub_byte.hpp"
 
 #include "common.hpp"
 
@@ -280,24 +280,18 @@ float get_element(dnnl_data_type_t dt, int64_t idx, void *ptr) {
         CASE(dnnl_f8_e5m2);
         CASE(dnnl_f8_e4m3);
         case dnnl_f64: elem = static_cast<double *>(ptr)[idx]; break;
-        case dnnl_s4: {
-            dnnl::impl::nibble2_t nibble_pair(
-                    reinterpret_cast<uint8_t *>(ptr)[idx / 2]);
-            elem = dnnl::impl::int4_t(nibble_pair.get(idx % 2));
+        case dnnl_s4:
+            elem = dnnl::impl::int4_t(dnnl::impl::sub_byte_get<4>(
+                    reinterpret_cast<uint8_t *>(ptr), idx));
             break;
-        }
-        case dnnl_u4: {
-            dnnl::impl::nibble2_t nibble_pair(
-                    reinterpret_cast<uint8_t *>(ptr)[idx / 2]);
-            elem = dnnl::impl::uint4_t(nibble_pair.get(idx % 2));
+        case dnnl_u4:
+            elem = dnnl::impl::uint4_t(dnnl::impl::sub_byte_get<4>(
+                    reinterpret_cast<uint8_t *>(ptr), idx));
             break;
-        }
-        case dnnl_f4_e2m1: {
-            dnnl::impl::nibble2_t nibble_pair(
-                    reinterpret_cast<uint8_t *>(ptr)[idx / 2]);
-            elem = dnnl::impl::float4_e2m1_t(nibble_pair.get(idx % 2));
+        case dnnl_f4_e2m1:
+            elem = dnnl::impl::float4_e2m1_t(dnnl::impl::sub_byte_get<4>(
+                    reinterpret_cast<uint8_t *>(ptr), idx));
             break;
-        }
         default: assert(!"bad data type");
     }
 #undef CASE
@@ -321,24 +315,18 @@ void set_element(dnnl_data_type_t dt, int64_t idx, void *ptr, float value) {
         CASE(dnnl_f8_e5m2);
         CASE(dnnl_f8_e4m3);
         case dnnl_f64: ((double *)ptr)[idx] = value; break;
-        case dnnl_s4: {
-            auto dst_val = ((dnnl::impl::nibble2_t *)ptr)[idx / 2];
-            dst_val.set(dnnl::impl::int4_t(value).raw_bits_, idx % 2);
-            ((dnnl::impl::nibble2_t *)ptr)[idx / 2] = dst_val;
+        case dnnl_s4:
+            dnnl::impl::sub_byte_set<4>(reinterpret_cast<uint8_t *>(ptr), idx,
+                    dnnl::impl::int4_t(value).raw_bits_);
             break;
-        }
-        case dnnl_u4: {
-            auto dst_val = ((dnnl::impl::nibble2_t *)ptr)[idx / 2];
-            dst_val.set(dnnl::impl::uint4_t(value).raw_bits_, idx % 2);
-            ((dnnl::impl::nibble2_t *)ptr)[idx / 2] = dst_val;
+        case dnnl_u4:
+            dnnl::impl::sub_byte_set<4>(reinterpret_cast<uint8_t *>(ptr), idx,
+                    dnnl::impl::uint4_t(value).raw_bits_);
             break;
-        }
-        case dnnl_f4_e2m1: {
-            auto dst_val = ((dnnl::impl::nibble2_t *)ptr)[idx / 2];
-            dst_val.set(dnnl::impl::float4_e2m1_t(value).raw_bits_, idx % 2);
-            ((dnnl::impl::nibble2_t *)ptr)[idx / 2] = dst_val;
+        case dnnl_f4_e2m1:
+            dnnl::impl::sub_byte_set<4>(reinterpret_cast<uint8_t *>(ptr), idx,
+                    dnnl::impl::float4_e2m1_t(value).raw_bits_);
             break;
-        }
         default: assert(!"bad data type");
     }
 #undef CASE

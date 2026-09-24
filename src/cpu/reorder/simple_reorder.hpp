@@ -2271,7 +2271,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                             = need_transform ? idx + e : input_d.off_l(idx + e);
                     auto val
                             = _qz_a1b0<data_type::f32, type_o>()(wspace[i_off]);
-                    sub_byte_set<bits>(&o_val, e, val.raw_bits_);
+                    sub_byte_set<sub_byte_bits(type_o)>(
+                            &o_val, e, val.raw_bits_);
                 }
                 reinterpret_cast<uint8_t *>(output)[o_off / ne] = o_val;
             }

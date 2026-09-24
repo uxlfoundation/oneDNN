@@ -49,6 +49,17 @@ def print_to_github_out(message):
 def normalize_problem_key(key):
     """Normalize equivalent benchdnn repro lines for comparison."""
     tokens = key.replace("_", "-").split()
+    # Reorder repro lines changed from --sdt/--ddt to --dt=src:dst
+    # with PR #5962.
+    if "--reorder" in tokens and not any(
+        token.startswith("--dt=") for token in tokens
+    ):
+        src = [token for token in tokens if token.startswith("--sdt=")]
+        dst = [token for token in tokens if token.startswith("--ddt=")]
+        if len(src) == 1 and len(dst) == 1:
+            tokens.remove(src[0])
+            tokens.remove(dst[0])
+            tokens.append(f"--dt={src[0][6:]}:{dst[0][6:]}")
     options = sorted(token for token in tokens if token.startswith("--"))
     operands = [token for token in tokens if not token.startswith("--")]
     return " ".join(options + operands)

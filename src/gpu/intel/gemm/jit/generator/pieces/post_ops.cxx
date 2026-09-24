@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-
 #include "alloc_utils.hpp"
 #include "gemmstone/generator.hpp"
 #include "layout_utils.hpp"
@@ -662,22 +661,33 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
 
     jmpi(1 | state.flagAP, lSkip);
 
-    int C_grfs[GRF::maxRegs()];
-    int C_ngrf = state.C_regs[0].getLen();
-    for (int r = 0; r < C_ngrf; r++)
-        C_grfs[r] = state.C_regs[0][r].getBase();
-
-    auto unrollM = strategy.unroll[LoopM];
     auto unrollN = strategy.unroll[LoopN];
-    int n_elems = (unrollN / problem.cqGroupN) * (unrollM / problem.cqGroupM);
-    int m_stride = state.C_scaleLayout[0].ld / 4;
-    int n_regs = std::max(1, (n_elems * m_stride) / GRF::bytes(hw));
-    auto tmpCScales = state.ra.alloc_range(n_regs);
+    int groupsN = unrollN / problem.cqGroupN;
+    auto tmpCScales = state.ra.alloc_range(state.C_scaleLayout.regs());
     vector<MaskAssignment> masks;
-    assignMasks(state.C_scaleLayout, LoopNone, LoopN, masks, strategy, state);
+    assignMasks(state.C_scaleLayout, LoopM, LoopN, masks, strategy, state);
     loadMasks(masks, state.remainders, strategy, state);
 
-    problem.postOps.injectMXScale(this, state.ra, C_grfs, C_ngrf, tmpCScales.sub(hw, 0, ngen::DataType::ub), problem.Tc_ext.ngen(), unrollN);
+    for (const auto &scaleBlock : state.C_scaleLayout) {
+        int groups = scaleBlock.nr * scaleBlock.nc;
+        int blockCGrfs[GRF::maxRegs()];
+        for (int r = 0, group = 0; r < scaleBlock.nr; r++) {
+            int cRegOffset = (scaleBlock.offsetR + r) * 2 * groupsN
+                    + scaleBlock.offsetC;
+            for (int c = 0; c < scaleBlock.nc; c++, group++) {
+                blockCGrfs[group]
+                        = state.C_regs[0][cRegOffset + c].getBase();
+                blockCGrfs[groups + group]
+                        = state.C_regs[0][cRegOffset + groupsN + c].getBase();
+            }
+        }
+
+        auto scaleDst = tmpCScales.sub(
+                hw, scaleBlock.offsetBytes, ngen::DataType::ub);
+        problem.postOps.injectMXScale(this, state.ra, blockCGrfs,
+                2 * groups,
+                scaleDst, problem.Tc_ext.ngen(), groups);
+    }
     storeMatrix(tmpCScales, state.C_scaleLayout, state.C_scaleAddrs, strategy, state);
     state.ra.safeRelease(tmpCScales);
     safeReleaseMaskAssignments(masks, state);

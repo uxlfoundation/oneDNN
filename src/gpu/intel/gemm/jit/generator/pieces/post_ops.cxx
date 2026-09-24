@@ -808,6 +808,9 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
 {
     bool aOffset = (problem.aOffset != ABOffset::None) && !problem.earlyDequantizeA() && !problem.quantized2DA();
     bool bOffset = (problem.bOffset != ABOffset::None) && !problem.earlyDequantizeB() && !problem.quantized2DB();
+    bool a_host_scalar = problem.aOffsetHostScalar();
+    bool b_host_scalar = problem.bOffsetHostScalar();
+
     if (!aOffset && !bOffset)
         return;
 
@@ -865,7 +868,7 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
 
         if (bOffset) {
             boVector ? gemmRank1UpdateC(state.As_regs, boData, problem, strategy, state)
-                     : gemmVectorBinaryOpC(BinaryOp::Add, false, state.As_regs, state.inputs.bo,
+                     : gemmVectorBinaryOpC(b_host_scalar ? BinaryOp::Sub : BinaryOp::Add, false, state.As_regs, state.inputs.bo,
                                            problem, strategy, state, problem.Tc, state.As_layout);
         }
 
@@ -873,21 +876,19 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
             auto ne = elementsPerGRF(hw, Tc);
             auto Bs = state.Bs_regs[r].retype(Tc.ngen());
             boVector ? emad(ne, Bs, Bs, boData[r].retype(Tc.ngen()), temp, strategy, state)
-                     : add(ne, Bs, Bs, temp);
+                     : add(ne, Bs, Bs, b_host_scalar ? -temp : temp);
         };
 
         state.ra.safeRelease(temp);
 
         if (aOffset) {
             aoVector ? gemmRank1UpdateC(aoData, state.Bs_regs, problem, strategy, state)
-                     : gemmVectorBinaryOpC(BinaryOp::Add, true,  state.Bs_regs, state.inputs.ao,
+                     : gemmVectorBinaryOpC(a_host_scalar ? BinaryOp::Sub : BinaryOp::Add, true,  state.Bs_regs, state.inputs.ao,
                                            problem, strategy, state, problem.Tc, state.Bs_layout);
         }
     } else {
         // Scalar offset path.
         // TODO: combine C adds into add3 on XeHP+.
-        bool a_host_scalar = problem.aOffsetHostScalar();
-        bool b_host_scalar = problem.bOffsetHostScalar();
         if (aOffset && bOffset) {
             mul(1, temp, temp, b_host_scalar ? -state.inputs.ao : state.inputs.ao);
             map(hw, Tc, state.Bs_regs, state.Bs_layout, strategy, [&](int ne, RegData r) {

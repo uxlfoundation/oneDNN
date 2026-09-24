@@ -352,6 +352,28 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
     if (res->state == SKIPPED) return OK;
 
     attr_args_t attr_args;
+
+    // Fall back to default policy and format tag for post-ops when unspecified.
+    auto &post_ops = const_cast<attr_t &>(prb->attr).post_ops;
+    for (int idx = 0; idx < post_ops.len(); ++idx) {
+        auto &e = post_ops.entry[idx];
+        if (e.is_binary_kind()) {
+            if (e.binary.mask_input == attr_t::mask_input_t::none) {
+                e.binary.mask_input = attr_t::mask_input_t::policy;
+                e.binary.policy = policy_t::COMMON;
+            }
+            if (e.binary.tag.empty() || e.binary.tag == "any"
+                    || e.binary.tag == "none") {
+                e.binary.tag = "ab";
+            }
+        } else if (e.is_prelu_kind()) {
+            if (e.prelu.mask_input == attr_t::mask_input_t::none) {
+                e.prelu.mask_input = attr_t::mask_input_t::policy;
+                e.prelu.policy = policy_t::COMMON;
+            }
+        }
+    }
+
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
     const auto &wei_scale = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
     if (wei_scale.policy == policy_t::PER_OC) {
@@ -692,31 +714,22 @@ void init_memory_args(
                 dnn_mem_t(scratchpad_md, test_engine, /* prefill = */ true));
     }
 
-    // Binary post-op.
+    // Post-ops Binary and PReLU
     const auto &po = prb->attr.post_ops;
+    const auto po_arg_masks = po.get_po_masks(prb->ndims, dnnl_matmul);
+    int arg_mask_idx = 0;
     for (int idx = 0; idx < po.len(); ++idx) {
         const auto &e = po.entry[idx];
-        if (!e.is_binary_kind()) continue;
+        if (!e.is_binary_kind() && !e.is_prelu_kind()) continue;
 
-        int po_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
-        const auto &b = e.binary;
-        int ndims = 2;
-        dims_t dims = prb->dst_dims;
+        const int po_arg = po_arg_masks[arg_mask_idx].first;
+        const int mask = po_arg_masks[arg_mask_idx++].second;
+        dims_t dims = md2dims(dst_md, mask);
 
-        const int mask = b.mask_input == attr_t::mask_input_t::mask
-                ? b.mask
-                : attr_t::policy2mask(po_arg, b.policy, ndims, dnnl_matmul);
+        dnnl_data_type_t dt = dnnl_f32;
+        if (e.is_binary_kind()) { dt = e.binary.src1_dt; }
 
-        switch (mask) {
-            case 0: dims = {1, 1}; break;
-            case 1: dims = {dims[0], 1}; break;
-            case 2: dims = {1, dims[1]}; break;
-            // Masks can be bigger than values above depending on the policy.
-            default: break;
-        }
-
-        auto po_md
-                = dnn_mem_t::init_md(ndims, dims.data(), b.src1_dt, tag::abx);
+        auto po_md = dnn_mem_t::init_md(prb->ndims, dims.data(), dt, tag::abx);
         mem_map.emplace(
                 po_arg, dnn_mem_t(po_md, test_engine, /* prefill = */ true));
     }

@@ -139,6 +139,22 @@ void prb_t::skip_invalid(res_t *res) const {
         res->reason = reason_t::skip_not_supported;
         return;
     }
+
+    // Skip unsupported binary and prelu post-op masks. Benchdnn's BRGeMM is
+    // 2D and supports only mask 0 (scalar), 2 (per_oc), and 3 (no_broadcast).
+    const auto &po = prb->attr.post_ops;
+    const auto po_masks = po.get_po_masks(prb->ndims, dnnl_matmul);
+    for (const auto &p : po_masks) {
+        const int mask = p.second;
+        if (mask != 0 && mask != 2 && mask != 3) {
+            BENCHDNN_PRINT(2, "%s%d\n",
+                    "Unsupported post-op mask for 2D BRGeMM: ", mask);
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_not_supported;
+            return;
+        }
+    }
+
 #else
     if (!prb->attr.is_def()) {
         bool non_def_zps = !prb->attr.zero_points.is_def();

@@ -21,6 +21,7 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_desc.hpp"
 #include "common/opdesc.hpp"
+#include "common/sub_byte.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -79,13 +80,13 @@ struct gemm_desc_t : public op_desc_t {
         if (!md.ndims) return transpose::notrans; // arbitrary
 
         // Leading dimension must be byte-aligned
-        using namespace data_type;
-        bool is_4bit = utils::one_of(md.data_type, f4_e2m1, s4, u4);
+        const int bits = sub_byte_bits(md.data_type);
         dim_t last_dim = md.dims[md.ndims - 1];
         auto strides = md.format_desc.blocking.strides;
         dim_t notranspose_ld
                 = md.dims[md.ndims - 2] > 1 ? strides[md.ndims - 2] : last_dim;
-        if (is_4bit && notranspose_ld % 2 != 0) return transpose::trans;
+        if (notranspose_ld % sub_byte_nelems(bits) != 0)
+            return transpose::trans;
 
         return last_dim != 1 && strides[md.ndims - 1] != 1 ? transpose::trans
                                                            : transpose::notrans;

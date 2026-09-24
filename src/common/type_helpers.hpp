@@ -32,6 +32,7 @@
 #include "nstl.hpp"
 #include "opdesc.hpp"
 #include "sdpa_types.hpp"
+#include "sub_byte.hpp"
 #include "utils.hpp"
 #include "verbose.hpp"
 
@@ -119,29 +120,20 @@ inline size_t data_type_size(data_type_t data_type) {
 }
 
 inline size_t elements_to_bytes(data_type_t data_type, size_t count) {
-    using namespace data_type;
-    switch ((int)data_type) {
-        case f4_e2m1:
-        case s4:
-        case u4: return (count + 1) >> 1;
-        case u2: return (count + 3) >> 2;
-        default: return data_type_size(data_type) * count;
-    }
+    const int bits = sub_byte_bits(data_type);
+    if (bits > 0) return utils::div_up(count * bits, (size_t)8);
+    return data_type_size(data_type) * count;
 }
 
 inline size_t bytes_to_elements(data_type_t data_type, size_t bytes) {
-    using namespace data_type;
-    switch ((int)data_type) {
-        case f4_e2m1:
-        case s4:
-        case u4: return bytes * 2;
-        case u2: return bytes * 4;
-        default: return utils::div_up(bytes, data_type_size(data_type));
-    }
+    const int bits = sub_byte_bits(data_type);
+    if (bits > 0) return bytes * 8 / bits;
+    return utils::div_up(bytes, data_type_size(data_type));
 }
 
 inline size_t data_type_bits(data_type_t data_type) {
-    return elements_to_bytes(data_type, 8);
+    const int bits = sub_byte_bits(data_type);
+    return bits > 0 ? bits : 8 * data_type_size(data_type);
 }
 
 template <typename T>

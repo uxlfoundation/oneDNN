@@ -256,11 +256,11 @@ struct reusable_fwd_t : public primitive_t {
                             "softmax axis size too large");
 
                     CHECK(init_dispatch_workgroup_per_reduction(
-                            intel_engine, num_workers_per_workgroup));
+                            intel_engine, num_workers_per_workgroup, 0));
                     break;
                 case one_reduction_per_subgroup:
-                    CHECK(init_dispatch_workgroup_per_reduction(
-                            intel_engine, conf.subgroup_size));
+                    CHECK(init_dispatch_workgroup_per_reduction(intel_engine,
+                            conf.subgroup_size, conf.subgroup_size));
                     break;
                 case vectorized:
                 case small:
@@ -274,7 +274,8 @@ struct reusable_fwd_t : public primitive_t {
         status_t init_dispatch_default_reusable(const gpu::engine_t *engine);
         status_t init_dispatch_workgroup_per_reduction(
                 const gpu::engine_t *engine,
-                const size_t num_workers_per_workgroup);
+                const size_t num_workers_per_workgroup,
+                const int subgroup_size);
         status_t init_dispatch_subgroup_per_reduction(
                 const gpu::engine_t *engine);
 

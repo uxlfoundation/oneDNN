@@ -19,6 +19,7 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "common/c_types_map.hpp"
+#include "common/math_utils.hpp"
 #include "common/memory_desc.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/type_helpers.hpp"
@@ -166,6 +167,8 @@ status_t memory_desc_strides_check(
     int max_stride_d = 0;
 
     dim_t min_stride = block_size;
+    const int dt_bits = types::data_type_bits(md.data_type);
+
     for (int idx = 0; idx < md.ndims; ++idx) {
         const int d = perm[idx];
 
@@ -183,16 +186,23 @@ status_t memory_desc_strides_check(
                     status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
                     "strides", d);
 
-        using namespace data_type;
-        if (utils::one_of(md.data_type, s4, u4, f4_e2m1)) {
+        if (dt_bits < 8) {
+            constexpr int bits_in_byte = 8;
+            int elems_in_bytes = math::lcm(dt_bits, bits_in_byte) / dt_bits;
             VCONDCHECK(common, create, check, memory,
-                    IMPLICATION(strides[d] > 1, strides[d] % 2 == 0),
+                    IMPLICATION(
+                            strides[d] > 1, strides[d] % elems_in_bytes == 0),
                     status::invalid_arguments, VERBOSE_BAD_DIM, "strides", d);
-        }
-        if (md.data_type == u2) {
-            VCONDCHECK(common, create, check, memory,
-                    IMPLICATION(strides[d] > 1, strides[d] % 4 == 0),
-                    status::invalid_arguments, VERBOSE_BAD_DIM, "strides", d);
+
+            // The innermost block must hold whole storage units, otherwise a
+            // unit straddles two blocks and cannot be owned by a single thread.
+            if (blk.inner_nblks > 0
+                    && d == blk.inner_idxs[blk.inner_nblks - 1]) {
+                VCONDCHECK(common, create, check, memory,
+                        blk.inner_blks[blk.inner_nblks - 1] % elems_in_bytes
+                                == 0,
+                        status::invalid_arguments, VERBOSE_BAD_DIM, "", d);
+            }
         }
 
         // update min_stride for next iteration

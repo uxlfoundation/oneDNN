@@ -2169,8 +2169,7 @@ template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any && type_i == data_type::f32
-                        && utils::one_of(type_o, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::u2),
+                        && sub_byte_bits(type_o) != 0,
                 spec::reference>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
@@ -2286,8 +2285,7 @@ template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
-                        && utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::u2)
+                        && sub_byte_bits(type_i) != 0
                         && utils::one_of(type_o, data_type::f32,
                                 data_type::bf16, data_type::f16),
                 spec::reference>::type> {
@@ -2524,11 +2522,9 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any
-                        // u4/s4 requires a special implementation
-                        && !utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::u2)
-                        && !utils::one_of(type_o, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::u2),
+                        // sub-byte types require a special implementation
+                        && sub_byte_bits(type_i) == 0
+                        && sub_byte_bits(type_o) == 0,
                 spec::reference>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {

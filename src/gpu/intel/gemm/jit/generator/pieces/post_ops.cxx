@@ -665,8 +665,20 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
     int groupsN = unrollN / problem.cqGroupN;
     auto tmpCScales = state.ra.alloc_range(state.C_scaleLayout.regs());
     vector<MaskAssignment> masks;
+    Subregister scaleRemainders[3] = {state.remainders[LoopM],
+            state.remainders[LoopN], state.remainders[LoopK]};
+    if (problem.cqGroupM > 1) {
+        scaleRemainders[LoopM] = state.ra.alloc_sub<uint32_t>();
+        divUp(scaleRemainders[LoopM], state.remainders[LoopM],
+                problem.cqGroupM, strategy, state);
+    }
+    if (problem.cqGroupN > 1) {
+        scaleRemainders[LoopN] = state.ra.alloc_sub<uint32_t>();
+        divUp(scaleRemainders[LoopN], state.remainders[LoopN],
+                problem.cqGroupN, strategy, state);
+    }
     assignMasks(state.C_scaleLayout, LoopM, LoopN, masks, strategy, state);
-    loadMasks(masks, state.remainders, strategy, state);
+    loadMasks(masks, scaleRemainders, strategy, state);
 
     for (const auto &scaleBlock : state.C_scaleLayout) {
         int groups = scaleBlock.nr * scaleBlock.nc;
@@ -691,6 +703,10 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
     storeMatrix(tmpCScales, state.C_scaleLayout, state.C_scaleAddrs, strategy, state);
     state.ra.safeRelease(tmpCScales);
     safeReleaseMaskAssignments(masks, state);
+    if (scaleRemainders[LoopM] != state.remainders[LoopM])
+        state.ra.safeRelease(scaleRemainders[LoopM]);
+    if (scaleRemainders[LoopN] != state.remainders[LoopN])
+        state.ra.safeRelease(scaleRemainders[LoopN]);
 
     mark(lSkip);
 }

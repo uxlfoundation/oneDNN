@@ -6,7 +6,6 @@ Fusion Patterns
    :maxdepth: 1
    :hidden:
 
-   dev_guide_graph_gated_mlp
    dev_guide_graph_gqa
    dev_guide_graph_sdpa_compressed_kv
    dev_guide_graph_sdpa
@@ -62,8 +61,6 @@ details about the programming model.
      - This pattern is widely in LLM models like llama2 70b and llama3 to reduce the memory usage of the kv cache during inference. Refer to `Grouped Query Attention (GQA) <dev_guide_graph_gqa.html>`_ for more details.
    * - Scaled Dot-Product Attention with Compressed Key/Value
      - This pattern is used for memory-efficient attention mechanisms. Refer to `Scaled Dot-Product Attention with Compressed Key/Value <dev_guide_graph_sdpa_compressed_kv.html>`_ for more details.
-   * - Gated Multi-Layer Perceptron (Gated-MLP)
-     - This pattern is widely used for enhancing feedforward layers in transformer models, e.g., Vision Transformers (ViT). Refer to `Gated Multi-Layer Perceptron (Gated-MLP) <dev_guide_graph_gated_mlp.html>`_ for more details.
    * - MatMul Fusion Patterns
      - This pattern is widely used in language models and recommendation models, for example BERT, DLRM, etc. Refer to `MatMul Fusion Patterns <dev_guide_graph_matmul_fusion_patterns.html>`_ for more details.
    * - Quantized MatMul Fusion Patterns

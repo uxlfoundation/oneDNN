@@ -61,7 +61,6 @@ run_balanced_ci_tests() {
         [test_graph_unit_dnnl_sdp_decomp_cpu]=3815
         [test_graph_unit_dnnl_mqa_decomp_cpu]=3784
         [test_benchdnn_modeC_zeropad_ci_cpu]=11797
-        [cpu-graph-gated-mlp-int4-cpp]=3281
         [test_gemm_u8s8s32]=1585
         [test_benchdnn_modeC_lnorm_ci_cpu]=5358
         [test_benchdnn_modeC_conv_ci_cpu]=2073
@@ -115,14 +114,12 @@ run_balanced_ci_tests() {
         [cpu-tutorials-matmul-matmul-with-weight-only-quantization-cpp]=11
         [test_convolution_forward_u8s8s32]=22
         [cpu-graph-getting-started-cpp]=29
-        [cpu-graph-gated-mlp-wei-combined-cpp]=734
         [test_benchdnn_modeC_prelu_ci_cpu]=104
         [test_benchdnn_modeC_resampling_ci_cpu]=75
         [test_softmax]=39
         [cpu-graph-sdpa-quantized-cpp]=64
         [cpu-graph-sdpa-stacked-qkv-cpp]=331
         [test_eltwise]=130
-        [cpu-graph-gated-mlp-cpp]=1098
         [cpu-primitives-group-normalization-cpp]=32
         [test_inner_product_forward]=14
         [cpu-graph-mqa-cpp]=364
@@ -247,7 +244,6 @@ run_balanced_ci_tests() {
         [test_iface_sparse]=2
         [test_iface_weights_format]=2
         [test_internals_env_vars_onednn]=2
-        [test_internals_gmlp]=1
         [test_matmul]=3
         [test_persistent_cache_api]=2
         [test_primitive_cache_mt]=2

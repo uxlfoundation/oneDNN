@@ -29,11 +29,12 @@ using namespace Xbyak_riscv;
 using namespace dnnl::impl::utils;
 
 jit_rvv_gemm_f16_kernel_t::jit_rvv_gemm_f16_kernel_t(
-        dim_t n_cols, bool isTransA, data_type_t in_dt)
+        dim_t n_cols, bool isTransA, data_type_t in_dt, bool has_bias)
     : jit_generator_t("rv64_gemm_kernel_f16_jit")
     , n_cols_(n_cols)
     , isTransA_(isTransA)
-    , is_bf16_(in_dt == data_type::bf16) {
+    , is_bf16_(in_dt == data_type::bf16)
+    , has_bias_(has_bias) {
     assert(utils::one_of(in_dt, data_type::f16, data_type::bf16));
     create_kernel();
 }
@@ -54,6 +55,7 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
     const Reg reg_k = a4; // current k counter
     const Reg reg_B0_ptr = a6; // running pointer into B
     const Reg reg_tmp0 = a7;
+    const Reg reg_bias = t4; // bias pointer (f32 per accumulator lane)
     const FReg freg_b[6] = {fa2, fa3, fa4, fa5, fa6, fa7};
 
     const VReg v_c[6]
@@ -70,6 +72,7 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
     //   40 : dim_t ldc
     //   48 : dim_t K
     //   56 : dim_t m
+    //   64 : const float *bias (only when has_bias_)
     ld(reg_A_ptr, reg_param, 0);
     ld(reg_B0_ptr, reg_param, 8);
     ld(reg_C_base, reg_param, 16);
@@ -78,6 +81,7 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
     ld(reg_ldc_bytes, reg_param, 40);
     ld(reg_K, reg_param, 48);
     ld(reg_m, reg_param, 56);
+    if (has_bias_) ld(reg_bias, reg_param, 64);
 
     // A, B and C elements are 2 bytes.
     slli(reg_lda_bytes, reg_lda_bytes, 1);
@@ -179,16 +183,22 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
 
     L(label_k_done);
 
-    // C store: narrow the f32 accumulators in place to the input data type and
-    // store (overwrite-only; the driver rejects beta != 0). Stays at e16/m2,
-    // the configuration of the narrowing destination.
+    // The output-N dimension is held in the accumulator lanes. Load its f32
+    // bias vector once and broadcast it over all output-M columns.
+    if (has_bias_) {
+        vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+        vle32_v(v_a0, reg_bias);
+        for (dim_t c = 0; c < n_cols_; c++)
+            vfadd_vv(v_c[c], v_c[c], v_a0);
+        vsetvli(x0, reg_m, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+    }
+
+    // Narrow the f32 accumulators in place and store (overwrite-only).
     for (dim_t c = 0; c < n_cols_; c++) {
         if (c == 0) {
             mv(reg_tmp3, reg_C_base);
         } else {
-            li(reg_tmp0, c);
-            mul(reg_tmp3, reg_ldc_bytes, reg_tmp0);
-            add(reg_tmp3, reg_C_base, reg_tmp3);
+            add(reg_tmp3, reg_tmp3, reg_ldc_bytes);
         }
         if (is_bf16_) {
             vfncvtbf16_f_f_w(v_c[c], v_c[c]);
@@ -206,23 +216,24 @@ void jit_rvv_gemm_f16_kernel_t::generate() {
 
 namespace {
 
-template <bool isTransA, bool isBf16>
+template <bool isTransA, bool isBf16, bool hasBias>
 struct jit_rvv_gemm_f16_kernel_storage_t {
-    std::array<std::unique_ptr<jit_rvv_gemm_f16_kernel_t>, 8> nb;
+    std::array<std::unique_ptr<jit_rvv_gemm_f16_kernel_t>, 8> kernels;
     jit_rvv_gemm_f16_kernel_table_t table;
 };
 
-template <bool isTransA, bool isBf16>
-jit_rvv_gemm_f16_kernel_storage_t<isTransA, isBf16> &
+template <bool isTransA, bool isBf16, bool hasBias>
+jit_rvv_gemm_f16_kernel_storage_t<isTransA, isBf16, hasBias> &
 get_jit_rvv_gemm_f16_kernel_storage() {
-    static jit_rvv_gemm_f16_kernel_storage_t<isTransA, isBf16> storage;
+    static jit_rvv_gemm_f16_kernel_storage_t<isTransA, isBf16, hasBias> storage;
     static std::once_flag initialized;
 
     std::call_once(initialized, [] {
         for (dim_t n_cols = 1; n_cols <= 6; n_cols++) {
-            storage.nb[n_cols].reset(new jit_rvv_gemm_f16_kernel_t(n_cols,
-                    isTransA, isBf16 ? data_type::bf16 : data_type::f16));
-            storage.table.nb[n_cols] = storage.nb[n_cols].get();
+            storage.kernels[n_cols].reset(new jit_rvv_gemm_f16_kernel_t(n_cols,
+                    isTransA, isBf16 ? data_type::bf16 : data_type::f16,
+                    hasBias));
+            storage.table.kernels[n_cols] = storage.kernels[n_cols].get();
         }
     });
 
@@ -232,15 +243,27 @@ get_jit_rvv_gemm_f16_kernel_storage() {
 } // namespace
 
 const jit_rvv_gemm_f16_kernel_table_t &get_jit_rvv_gemm_f16_kernel_table(
-        bool isTransA, data_type_t in_dt) {
+        bool isTransA, data_type_t in_dt, bool has_bias) {
     if (isTransA) {
-        return in_dt == data_type::bf16
-                ? get_jit_rvv_gemm_f16_kernel_storage<true, true>().table
-                : get_jit_rvv_gemm_f16_kernel_storage<true, false>().table;
+        if (in_dt == data_type::bf16)
+            return has_bias
+                    ? get_jit_rvv_gemm_f16_kernel_storage<true, true, true>()
+                              .table
+                    : get_jit_rvv_gemm_f16_kernel_storage<true, true, false>()
+                              .table;
+        return has_bias
+                ? get_jit_rvv_gemm_f16_kernel_storage<true, false, true>().table
+                : get_jit_rvv_gemm_f16_kernel_storage<true, false, false>()
+                          .table;
     }
-    return in_dt == data_type::bf16
-            ? get_jit_rvv_gemm_f16_kernel_storage<false, true>().table
-            : get_jit_rvv_gemm_f16_kernel_storage<false, false>().table;
+    if (in_dt == data_type::bf16)
+        return has_bias
+                ? get_jit_rvv_gemm_f16_kernel_storage<false, true, true>().table
+                : get_jit_rvv_gemm_f16_kernel_storage<false, true, false>()
+                          .table;
+    return has_bias
+            ? get_jit_rvv_gemm_f16_kernel_storage<false, false, true>().table
+            : get_jit_rvv_gemm_f16_kernel_storage<false, false, false>().table;
 }
 
 } // namespace gemm_utils

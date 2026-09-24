@@ -35,7 +35,8 @@ struct rvv_matmul_t : public primitive_t {
     struct pd_t : public ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t {
         using ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
 
-        DECLARE_COMMON_PD_T("jit:rvv", rvv_matmul_t)
+        DECLARE_COMMON_PD_T(
+                JIT_IMPL_NAME_HELPER("jit:", isa_, ""), rvv_matmul_t)
 
         // Bias is always f32: the f32 path uses it directly, the int8 path
         // converts it inside the JIT kernel before adding to the s32 acc.
@@ -96,10 +97,12 @@ struct rvv_matmul_t : public primitive_t {
             if (is_hp_path_) {
                 VDISPATCH_MATMUL(mayiuse(src_dt == f16 ? zvfh : zvfbfwma),
                         VERBOSE_UNSUPPORTED_ISA);
-                // The half-precision GEMM kernel has no fused bias / post-ops
-                // yet.
-                VDISPATCH_MATMUL(
-                        bias_mdw.is_zero(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+                // The JIT currently implements the common f32 1xN bias. More
+                // general matmul bias broadcasts fall back to another path.
+                VDISPATCH_MATMUL(bias_mdw.is_zero()
+                                || (bias_mdw.data_type() == data_type::f32
+                                        && is_bias_1xN()),
+                        VERBOSE_UNSUPPORTED_BIAS_CFG);
             }
             // The int8 path rejects per-oc / per-tensor scales, zero-points,
             // and post-ops in this MVP; only optional f32 bias is supported.
@@ -158,6 +161,10 @@ struct rvv_matmul_t : public primitive_t {
 
             init_gemm_conf(src_mdw, weights_mdw);
             init_scratchpad();
+
+            // Include half-precision output conversion on the int8 path.
+            // This field describes the implementation; ISA checks stay above.
+            isa_ = dst_dt == f16 ? zvfh : (dst_dt == bf16 ? zvfbfwma : v);
 
             return status::success;
         }
@@ -269,6 +276,7 @@ struct rvv_matmul_t : public primitive_t {
         bool is_f32_path_ = false;
         bool is_int8_path_ = false;
         bool is_hp_path_ = false;
+        cpu_isa_t isa_ = isa_undef;
 
         int nthr_m_ = 1;
         int nthr_n_ = 1;

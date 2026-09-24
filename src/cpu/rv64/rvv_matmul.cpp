@@ -306,9 +306,12 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     if (pd()->is_hp_path_) {
         // Half-precision dispatch: (f16|bf16) weights * (f16|bf16) src ->
-        // same-dtype dst with f32 accumulation inside the GEMM kernel. No
-        // bias / post-ops on this path (rejected in pd_t::init).
+        // same-dtype dst with f32 accumulation inside the GEMM kernel. An
+        // optional f32 1xN bias is fused in the GEMM epilogue.
         const data_type_t hp_dt = src_d.data_type();
+        const float *bias = bias_d.is_zero()
+                ? nullptr
+                : CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
 
         if (pd()->weights_are_broadcast_) {
             //   C(N x (batch * M)) = A(N x K) * B(K x (batch * M))
@@ -318,7 +321,7 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
             status_t st = rvv_gemm_f16(&g.transa, &g.transb, &M_gemm_all,
                     &N_gemm_all, &g.K_gemm, &alpha, wei_bytes, &g.lda,
                     src_bytes, &g.ldb, &beta, dst_bytes, &g.ldc, hp_dt,
-                    ws_bytes, &part);
+                    ws_bytes, &part, bias);
             assert(st == status::success || st == status::unimplemented);
             MAYBE_UNUSED(st);
         } else {
@@ -330,7 +333,7 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
                         &g.N_gemm, &g.K_gemm, &alpha, wei_base(b), &g.lda,
                         src_bytes + b * src_batch_stride_bytes, &g.ldb, &beta,
                         dst_bytes + b * dst_batch_stride_bytes, &g.ldc, hp_dt,
-                        ws, p);
+                        ws, p, bias);
                 assert(st == status::success || st == status::unimplemented);
                 MAYBE_UNUSED(st);
             });

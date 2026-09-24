@@ -27,9 +27,11 @@ namespace intel {
 
 status_t subbyte_pack_desc_t::init(const memory_desc_t &dst_md) {
     const memory_desc_wrapper mdw(dst_md);
-    const dim_t elems_per_byte
-            = into<dim_t>(mdw.sub_byte_data_type_multiplier());
-    if (elems_per_byte == 1) return status::success;
+    const int bits = sub_byte_bits(dst_md.data_type);
+    // No packing
+    if (bits == 0) return status::success;
+
+    const dim_t elems_per_byte = 8 / bits;
     if (dst_md.format_kind != format_kind::blocked || dst_md.offset0 != 0)
         return status::unimplemented;
     if (mdw.has_runtime_dims_or_strides()) return status::unimplemented;
@@ -41,7 +43,7 @@ status_t subbyte_pack_desc_t::init(const memory_desc_t &dst_md) {
 
     if (layout.empty()) return status::success;
 
-    conf_.bits = into<int>(8 / elems_per_byte);
+    conf_.bits = bits;
     span_ = mdw.span();
     conf_.use_int32_offset = span_ <= INT32_MAX;
     conf_.require_stateless_addressing = span_ > UINT32_MAX;

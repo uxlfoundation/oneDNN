@@ -182,7 +182,19 @@ const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &c
         }
     }
 
+    bool preferSmallGRF = false;
+    for (int ipattern = 0; ipattern < npatterns && !preferSmallGRF; ipattern++)
+        preferSmallGRF = patterns[ipattern].preferSmallGRF;
+
+
+
     auto less = [&](const EntryData &lhs, const EntryData &rhs){
+                      // Small-GRF strategies are unaffected by register pressure from MX-scale post-ops.
+                      if (preferSmallGRF) {
+                          bool lhsSmall = (lhs.entry->driverInfo.grfCount <= 256);
+                          bool rhsSmall = (rhs.entry->driverInfo.grfCount <= 256);
+                          if (lhsSmall != rhsSmall) return lhsSmall;
+                      }
                       bool lhsFallback = (lhs.entry->restrictions.tags[0] == kcatalog::ReqAlignFallback);
                       int  lhsAlignA = std::max(lhs.entry->restrictions.alignment[0], 4);
                       int  lhsAlignB = std::max(lhs.entry->restrictions.alignment[1], 4);
@@ -344,6 +356,7 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen
     if (ReqBDPASDims) {
         unrollReq[LoopM] = 8;
         unrollReq[LoopN] = 8;
+        preferSmallGRF = true;    // MX-scale post-op temporaries push grf256 strategies over budget.
     }
  
     if(problem.hasCMXScale()){

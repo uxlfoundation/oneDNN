@@ -153,9 +153,9 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
     bool is_binary_po_per_hw_bcast {};
     bool is_binary_po_batch_bcast {};
     std::tie(is_binary_po_per_oc_sp_bcast, is_binary_po_per_oc_d_bcast,
-            is_binary_po_channel_bcast, is_binary_po_per_mb_bcast,
-            is_binary_po_per_mb_w_bcast, is_binary_po_per_w_bcast,
-            is_binary_po_per_hw_bcast, is_binary_po_batch_bcast)
+            is_binary_po_per_mb_bcast, is_binary_po_channel_bcast,
+            is_binary_po_per_mb_w_bcast, is_binary_po_per_hw_bcast,
+            is_binary_po_per_w_bcast, is_binary_po_batch_bcast)
             = binary_injector_utils::bcast_strategies_present_tup(
                     post_ops.entry_, dst_d,
                     broadcasting_strategy_t::per_oc_spatial,

@@ -58,6 +58,9 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
             | skip_mask_t::zero_points;
     if (one_of(src_type, u8, s8)) skip_mask |= skip_mask_t::scales;
 
+    VDISPATCH_CONV(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && expect_data_types(src_type, wei_type, data_type::undef, dst_type,
                     data_type::undef)

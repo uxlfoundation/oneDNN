@@ -450,6 +450,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         // operand's load for mixed-precision inputs. Preserve floating-point defaults.
         s.ka_load = problem.Ta_ext.isInteger() ? 8 / problem.Ta_ext : 4;
         s.kb_load = problem.Tb_ext.isInteger() ? 8 / problem.Tb_ext : 4;
+        if (hw <= HW::XeHP) { s.ka_load = s.kb_load = std::min(s.ka_load, s.kb_load); }
     }
 
     if (problem.A.layout == MatrixLayout::Pc) {

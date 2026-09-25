@@ -2170,6 +2170,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
             i.binaryXe3pImm.src0Reg8 = 0;
         i.binaryXe3p.dstReg8 = getHighBit(dst);
         i.binaryXe3p.src0Reg8 = getHighBit(src0);
+        checkXe3pFPRegion(hw, op, dst, src0);
     }
 
     db(i, loc);
@@ -2338,6 +2339,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
         i.binaryXe3p.src0Reg8 = getHighBit(src0);
         i.binaryXe3p.src1Reg8 = getHighBit(src1);
         i.binaryXe3p.src1Scalar = checkSrc1Scalar(op, src1, dst, tag);
+        checkXe3pFPRegion(hw, op, dst, src0, src1);
     }
 
     db(i, loc);
@@ -2419,6 +2421,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     if (hw >= HW::Xe3p) {
         i.binaryXe3pImm.dstReg8 = getHighBit(dst);
         i.binaryXe3pImm.src0Reg8 = getHighBit(src0);
+        checkXe3pFPRegion(hw, op, dst, src0);
     }
 
     db(i, loc);
@@ -2537,6 +2540,8 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
 
     encodeTernary512GRF(i, dst, src0, src1, src2, tag);
 
+    checkXe3pFPRegion(hw, op, dst, src0, src1, src2);
+
     db(i, loc);
 }
 
@@ -2590,6 +2595,8 @@ void BinaryCodeGenerator<hw>::opBfn(Opcode op, DataType defaultType, const Instr
     i.bfn.bfnCtrl47 = (bfnCtrl >> 4);
 
     encodeTernary512GRF(i, dst, src0, src1, src2, tag);
+
+    checkXe3pFPRegion(hw, op, dst, src0, src1, src2);
 
     db(i, loc);
 }

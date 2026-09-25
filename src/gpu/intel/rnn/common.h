@@ -54,7 +54,6 @@
 #define DIFF_BIAS_DATA_T DIFF_DATA_T
 #endif
 
-#define OFFTYPE ulong
 #define TO_WS_STATE(x) TO_SRC(x)
 
 #define OFF6(i0, D0, i1, D1, i2, D2, i3, D3, i4, D4, i5, D5) \
@@ -66,8 +65,6 @@
             + (i4))
 #define OFF4(i0, D0, i1, D1, i2, D2, i3, D3) \
     (((((off_t)(i0)) * (D1) + (i1)) * (D2) + (i2)) * (D3) + (i3))
-#define OFF3(i0, D0, i1, D1, i2, D2) \
-    ((((off_t)(i0)) * (D1) + (i1)) * (D2) + (i2))
 #define OFF2(i0, D0, i1, D1) (((off_t)(i0)) * (D1) + (i1))
 
 const int vanilla_rnn_n_gates = 1;

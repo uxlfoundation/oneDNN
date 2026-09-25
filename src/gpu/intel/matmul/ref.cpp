@@ -306,6 +306,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, a);
     arg_list.set(arg_idx++, b);
     arg_list.set(arg_idx++, dyn_scales ? *tmp_ds : (pack_ ? *tmp : c));
+    if (pd()->attr_info_.with_sum) arg_list.set(arg_idx++, c);
     arg_list.set(arg_idx++, bias);
     arg_list.set(arg_idx++, a0);
     arg_list.set(arg_idx++, src_zp_stride_k);

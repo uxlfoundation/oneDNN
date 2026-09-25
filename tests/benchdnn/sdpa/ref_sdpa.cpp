@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -193,11 +194,18 @@ static void scale_scores(
         p[i] *= sv;
 }
 
+// Post-dropout probabilities. `score2_dp` is materialized only when dropout is
+// configured, otherwise the clean probabilities are used as is.
+static const dnn_mem_t &probs_dp(
+        const dnn_mem_t &score2, const dnn_mem_t &score2_dp) {
+    return score2_dp.nelems() > 0 ? score2_dp : score2;
+}
+
 // Shared forward computation: computes score, applies scale/mask/causal,
 // softmax, optional dropout, and optionally the final matmul.
 // Returns `score2` = softmax probs (pre-dropout, for backward softmax_bwd)
 // and `score2_dp` = post-dropout probs (for BMM2 and backward dV).
-// When dropout is not configured, score2_dp == score2.
+// `score2_dp` stays empty unless dropout is configured; use `probs_dp()`.
 static void compute_fwd(const prb_t *prb, dnnl_engine_t eng, dnnl_stream_t strm,
         const dnn_mem_t &q_ref, const dnn_mem_t &k_ref, const dnn_mem_t &v_ref,
         const args_t &args, dnn_mem_t &score2, dnn_mem_t &score2_dp,
@@ -256,21 +264,17 @@ static void compute_fwd(const prb_t *prb, dnnl_engine_t eng, dnnl_stream_t strm,
     }
 
     // Step 4: Softmax over K dimension (axis = 2 of the 3-D score tensor).
-    // Copy to score2 and run softmax in-place there; the pre-softmax score
-    // is not used further.
-    score2 = make_3d(eng, MB, SQ, SK);
-    std::memcpy(static_cast<float *>(score2), static_cast<float *>(score),
-            MB * SQ * SK * sizeof(float));
+    // Runs in place; the pre-softmax score is not used further.
+    score2 = std::move(score);
     exec_softmax(eng, strm, score2, /* axis = */ 2);
 
-    // Step 4b: Dropout (optional). score2_dp starts as a copy of score2;
-    // when dropout is configured, dropped elements are zeroed and the rest
-    // scaled by 1/(1-p).  score2 keeps the clean probs for backward.
-    const int64_t score_n = MB * SQ * SK;
-    score2_dp = make_3d(eng, MB, SQ, SK);
-    std::memcpy(static_cast<float *>(score2_dp), static_cast<float *>(score2),
-            score_n * sizeof(float));
+    // Step 4b: Dropout (optional). Dropped elements are zeroed and the rest
+    // scaled by 1/(1-p); score2 keeps the clean probs for backward.
     if (!prb->attr.dropout.is_def()) {
+        const int64_t score_n = MB * SQ * SK;
+        score2_dp = make_3d(eng, MB, SQ, SK);
+        std::memcpy(static_cast<float *>(score2_dp),
+                static_cast<float *>(score2), score_n * sizeof(float));
         float *sp = static_cast<float *>(score2_dp);
         const dnn_mem_t &dropout_mask = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
         for (int64_t i = 0; i < score_n; i++)
@@ -280,7 +284,7 @@ static void compute_fwd(const prb_t *prb, dnnl_engine_t eng, dnnl_stream_t strm,
     // Step 5: output = prob_dp x V  (matmul primitive).
     if (out) {
         *out = make_3d(eng, MB, SQ, V);
-        exec_matmul(eng, strm, score2_dp, v_ref, *out);
+        exec_matmul(eng, strm, probs_dp(score2, score2_dp), v_ref, *out);
     }
 }
 
@@ -299,18 +303,20 @@ size_t get_ref_extra_size(const prb_t *prb, dir_t dir) {
     const size_t k_sz = MB * H * SK * f32_sz; // k_ref, k_t, dK_full
     const size_t v_sz = MB * SK * V * f32_sz; // v_ref, v_t, dV_full, abs_v
     const size_t o_sz = MB * SQ * V * f32_sz; // out, dO, absmag
-    // score, score2, score2_dp, dS2, s2_t, dS
+    // score (softmaxed in place into score2), dS2, s2_t, dS
     const size_t s_sz = MB * SQ * SK * f32_sz;
+    // causal_buf, freed before `out` is allocated
+    const size_t c_sz = prb->with_causal_mask() ? SQ * SK * f32_sz : 0;
 
     // Q/K/V copies plus the absmag buffer `doit` adds to `ref_mem_map`.
     const size_t base = q_sz + k_sz + v_sz + o_sz;
 
     // Backward keeps every buffer allocated after `compute_fwd` returns.
     if (dir & FLAG_BWD)
-        return base + 5 * s_sz + o_sz + 2 * v_sz + 2 * k_sz + 2 * q_sz;
+        return base + 4 * s_sz + o_sz + 2 * v_sz + 2 * k_sz + 2 * q_sz;
 
-    // Forward peaks either inside `compute_fwd` or in the absmag block.
-    return base + MAX2(3 * s_sz + o_sz, 2 * s_sz + 2 * o_sz + v_sz);
+    // Forward peaks either at the causal mask buffer or in the absmag block.
+    return base + s_sz + MAX2(c_sz, 2 * o_sz + v_sz);
 }
 
 void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
@@ -379,7 +385,7 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
                 avp[i] = std::fabs(vp[i]);
 
             auto absmag = make_3d(eng, MB, SQ, V);
-            exec_matmul(eng, strm, score2_dp, abs_v, absmag);
+            exec_matmul(eng, strm, probs_dp(score2, score2_dp), abs_v, absmag);
             std::memcpy(static_cast<float *>(absmag_m),
                     static_cast<float *>(absmag), MB * SQ * V * sizeof(float));
         }
@@ -409,7 +415,7 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         exec_matmul(eng, strm, dO, v_t, dS2);
 
         // B2: dV = S2_dp^T × dO  →  [MB, SK, V]  (uses post-dropout probs)
-        auto s2_t = transpose_2d(eng, score2_dp, MB, SQ, SK);
+        auto s2_t = transpose_2d(eng, probs_dp(score2, score2_dp), MB, SQ, SK);
         auto dV_full = make_3d(eng, MB, SK, V);
         exec_matmul(eng, strm, s2_t, dO, dV_full);
 

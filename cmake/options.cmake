@@ -201,8 +201,8 @@ onednn_option(EXPERIMENTAL_SYCL_KERNEL_COMPILER OFF
     works independently from DNNL_EXPERIMENTAL.")
 
 onednn_option(EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG OFF
-    "Enable use of the experimental sycl_ext_oneapi_profiling_tag extension 
-    for verbose profiling. When disabled, verbose profiling requires a 
+    "Enable use of the experimental sycl_ext_oneapi_profiling_tag extension
+    for verbose profiling. When disabled, verbose profiling requires a
     profiling-enabled SYCL queue to function.")
 
 # -------------------

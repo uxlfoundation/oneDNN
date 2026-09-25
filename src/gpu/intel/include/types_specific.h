@@ -156,6 +156,8 @@
 #define WEI_TO_REF(x) cvt_u4_to_s32(x)
 #elif WEI_DT_U2
 #define WEI_TO_REF(x) cvt_u2_to_s32(x)
+#elif WEI_DT_U3
+#define WEI_TO_REF(x) cvt_u3_to_s32(x)
 #else
 #define WEI_TO_REF(x) (x)
 #define REF_TO_WEI(x) (x)
@@ -806,6 +808,8 @@
 #define WEI_ZP_TO_REF(zp, off) cvt_s4_to_s32(GET_HALF_BYTE(zp, off))
 #elif WEI_ZP_DT_U4
 #define WEI_ZP_TO_REF(zp, off) cvt_u4_to_s32(GET_HALF_BYTE(zp, off))
+#elif WEI_ZP_DT_U3
+#define WEI_ZP_TO_REF(zp, off) cvt_u3_to_s32(GET_U3(zp, off))
 #else
 #define WEI_ZP_TO_REF(zp, off) (zp[off])
 #endif

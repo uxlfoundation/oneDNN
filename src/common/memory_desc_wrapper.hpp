@@ -439,8 +439,7 @@ struct memory_desc_wrapper {
                 switch (index) {
                     case 0:
                         // Return size for values.
-                        return utils::div_up(nnz() * data_type_size(),
-                                sub_byte_data_type_multiplier());
+                        return types::elements_to_bytes(data_type(), nnz());
                     case 1: {
                         // Return size for offsets (group_count offsets).
                         const auto offsets_dt = metadata_type(0);

@@ -64,6 +64,10 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     hw_info.systolicAvailable = use_systolic_ukernel;
     hw_info.isEfficient64Bit = dev_info->is_efficient_64bit();
 
+    auto product = dev_info->product();
+    auto hw = getCore(product.family);
+    auto stepping = hw_info.gmdid & 0xFF;
+
     if (hw_info.gmdid == 0) return status::unimplemented;
 
     memory_desc_wrapper src_mdw(src_md(0));

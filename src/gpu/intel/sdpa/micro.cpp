@@ -1199,6 +1199,8 @@ status_t micro_fwd_params_t::get_kernel_ctx(
 
     deserialize_config_to_gemmstone(hw_info, problem_kq, problem_vs, opts_kq,
             opts_vs, sizes_kq, sizes_vs, ukernel_config);
+    problem_kq.product = problem_vs.product
+            = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
 
     /* Survives the ugemm calls, so their GRF mode must leave room for it. */
     const int kq_c_bytes = ukernel_config.unroll_m_kq
@@ -1249,7 +1251,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             ss >> strat.unroll[1];
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
-            parseStrategy(strategyString, hw, problem_kq, strat);
+            parseStrategy(strategyString, problem_kq, strat);
             adjustStrategy(hw, problem_kq, strat);
         }
     };
@@ -1278,7 +1280,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             ss >> strat.unroll[1];
             std::string strategyString;
             std::getline(ss >> std::ws, strategyString);
-            parseStrategy(strategyString, hw, problem_vs, strat);
+            parseStrategy(strategyString, problem_vs, strat);
             adjustStrategy(hw, problem_vs, strat);
         }
     };

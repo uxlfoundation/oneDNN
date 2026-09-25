@@ -125,8 +125,8 @@ struct ref_t : public primitive_t {
             CHECK(pack_desc_.init(*dst_md(0)));
             dynamic_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
             VDISPATCH_MATMUL(
-                    IMPLICATION(bool(pack_desc_) || dynamic_scales_,
-                            attr()->post_ops_.find(primitive_kind::sum) == -1),
+                    IMPLICATION(bool(pack_desc_),
+                            attr()->post_ops_.get_sum_dt(dst_dt_) == dst_dt_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(IMPLICATION(dynamic_scales_,
                                      !memory_desc_wrapper(dst_md(0))
@@ -239,6 +239,7 @@ struct ref_t : public primitive_t {
 
         bool dyn_scales = pd()->attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
         kernel_ctx.define_int("DYN_SCALES", dyn_scales);
+        kernel_ctx.define_int("DST_PACKED", bool(pd()->pack_desc_));
 
         const memory_desc_wrapper src_d(pd()->src_md(0));
         const memory_desc_wrapper wei_d(pd()->weights_md(0));

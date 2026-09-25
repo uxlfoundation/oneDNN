@@ -305,6 +305,9 @@ struct Product {
     ProductFamily family = ProductFamily::Unknown;
     int stepping = 0;
     PlatformType type = PlatformType::Unknown;
+
+    int grfPerEU() const;
+    int threadsPerEU(int grfCount) const;
 };
 static_assert(std::is_trivially_copyable<Product>(), "Product must be trivially copyable");
 
@@ -378,6 +381,32 @@ static inline constexpr14 Core getCore(ProductFamily family)
     if (family >= ProductFamily::GenericGen10) return Core::Gen10;
     if (family >= ProductFamily::GenericGen9)  return Core::Gen9;
     return Core::Unknown;
+}
+
+inline int Product::grfPerEU() const
+{
+    switch (getCore(family)) {
+        case HW::XeLP: return 128 * 7;    // 128 GRF/thread, 7 threads/EU.
+        case HW::XeHP:
+        case HW::XeHPG:
+        case HW::XeHPC:
+        case HW::Xe2:
+        case HW::Xe3:
+        case HW::Xe3p:
+            return (family == ProductFamily::CRI) ? 2048 : 1024;
+        default: return 1024;
+    }
+}
+
+inline int Product::threadsPerEU(int grfCount) const
+{
+    if (getCore(family) <= HW::XeLP)
+        return 7;
+    // CRI: 256 GRF/thread is restricted to 4 threads/EU (no accumulators).
+    if (family == ProductFamily::CRI && grfCount == 256)
+        return 4;
+    int maxThreads = (family == ProductFamily::NVLP) ? 10 : 8;
+    return std::min(maxThreads, grfPerEU() / grfCount);
 }
 
 static inline constexpr14 bool hasSystolic(ProductFamily family)

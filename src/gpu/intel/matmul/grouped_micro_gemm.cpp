@@ -85,12 +85,11 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
 
     problem.Ta = problem.Ta_ext;
     problem.Tb = problem.Tb_ext;
-
     problem.A.setAlignment(
-            alignmentForLD(static_cast<int>(gemm_desc_t::get_ld(*wei_mdw.md_))
-                    * problem.Ta_ext));
-    problem.B.setAlignment(
-            alignmentForLD(static_cast<int>(K()) * problem.Tb_ext));
+            alignmentForLD(static_cast<int>(types::elements_to_bytes(
+                    wei_mdw.data_type(), gemm_desc_t::get_ld(*wei_mdw.md_)))));
+    problem.B.setAlignment(alignmentForLD(static_cast<int>(
+            types::elements_to_bytes(src_mdw.data_type(), K()))));
     problem.C.setAlignment(problem.Tc.size());
 
     problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
@@ -121,7 +120,11 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         problem.AO.setAlignment(
                 static_cast<int>(types::data_type_size(wei_zp_dt)));
         problem.AO.layout = MatrixLayout::N;
-        problem.aoPtrDims = 2;
+        problem.aoPtrDims = (wei_quant_.zp_mask() == 5
+                                    && attr()->zero_points_.has_default_groups(
+                                            DNNL_ARG_WEIGHTS))
+                ? 1
+                : 2;
         problem.aOffset = ABOffset::Calc;
     }
 
@@ -191,6 +194,10 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         } else {
             problem.Tb = ctype;
         }
+    } else if (problem.Ta.isInteger() && problem.Tb.isInteger() && !opts.scaleA
+            && !opts.scaleB) {
+        problem.Tc = problem.Ts = problem.Tc_ext = Type::s32;
+        ugemm_result_dt_ = data_type::s32;
     }
 
     SizeParams sizes;
@@ -256,14 +263,14 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
                 auto product = dev_info->product();
                 bool is_xelpg = (product.family == ngen::ProductFamily::ARL
                         || product.family == ngen::ProductFamily::MTL);
-                if (!dev_info->mayiuse_systolic()) max_wg_n = 2;
                 max_n_unroll = (problem.Ta_ext.bits() <= 8
                                        && problem.Ta_ext.isInteger())
                         ? sg_size_ * problem.Ta_ext
                         : 16;
-                if (is_xelpg && problem.Ta_ext.bits() <= 8
-                        && problem.Ta_ext.isFP())
-                    min_n_unroll = sg_size_;
+                if (is_xelpg && problem.Ta_ext.bits() <= 8) {
+                    min_n_unroll = (opts.scaleA || opts.scaleB) ? sg_size_ : 4;
+                }
+                if (!dev_info->mayiuse_systolic()) max_wg_n = 2;
                 if (problem.Ta_ext.bits() <= 8) min_wg_n = 2;
             } break;
             case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
@@ -449,9 +456,16 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
         VDISPATCH_MATMUL(utils::one_of(wei_zp_mask, 7, 5),
                 VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points mask(%d)",
                 wei_zp_mask);
-        VDISPATCH_MATMUL(utils::one_of(wei_quant_.zp_dt(), u8, s8, u4, s4),
-                VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points dt(%s)",
-                dnnl_dt2str(wei_quant_.zp_dt()));
+        if (wei_zp_mask == 5) {
+            VDISPATCH_MATMUL(
+                    utils::one_of(wei_quant_.zp_dt(), s32, u8, s8, u4, s4),
+                    VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points dt(%s)",
+                    dnnl_dt2str(wei_quant_.zp_dt()));
+        } else {
+            VDISPATCH_MATMUL(utils::one_of(wei_quant_.zp_dt(), u8, s8, u4, s4),
+                    VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points dt(%s)",
+                    dnnl_dt2str(wei_quant_.zp_dt()));
+        }
     }
 
     if (wei_quant_.with_scale() && wei_quant_.with_zp()) {
@@ -483,6 +497,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     src_quant_.define_macros(kernel_ctx_, "SRC");
     wei_quant_.define_macros(kernel_ctx_, "WEI");
+    def_data_type(kernel_ctx_, ugemm_result_dt_, "UGEMM_RESULT");
 
     kernel_ctx_.set_data_type(dst_dt);
 

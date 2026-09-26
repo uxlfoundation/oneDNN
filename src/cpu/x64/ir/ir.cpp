@@ -169,6 +169,8 @@ void ir_t::vmul(vreg_t dst, vreg_t src) {
 }
 
 void ir_t::vhreduce(vreg_t dst, vreg_t workspace) {
+    assert(dst != workspace && "vhreduce: workspace must differ from dst");
+
     op_t op;
     op.kind = op_kind_t::vhreduce;
     op.dst = dst;

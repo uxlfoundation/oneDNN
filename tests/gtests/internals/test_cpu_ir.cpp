@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <set>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -150,6 +151,41 @@ void expect_no_reg_conflicts(const ir_t &ir, const reg_pools_t &pools,
                         << " overlap but share physical register " << aa.phys;
             }
         }
+    }
+}
+
+// Check the allocator rule for spilled values. At every operation, the temps
+// and the registers of the values live there are all distinct, and each
+// spilled operand has exactly one temp.
+void expect_valid_temps(const ir_t &ir, const reg_pools_t &pools,
+        const reg_alloc_result_t &res) {
+    const auto iv = linear_code_intervals(ir);
+    std::vector<int> defs, uses;
+    for (int i = 0; i < ir.n_ops(); i++) {
+        std::set<std::pair<int, int>> held; // (file, physical register)
+        auto hold = [&](int v, int phys) {
+            const int file = pools.kind_to_file[(int)ir.vreg_info()[v].kind];
+            EXPECT_TRUE(held.insert({file, phys}).second)
+                    << "op " << i << ": register " << phys << " held twice";
+        };
+
+        std::set<int> spilled_operands, temp_vregs;
+        ir.def_use(ir.ops()[i], defs, uses);
+        for (int v : defs)
+            if (res.assignments[v].spilled) spilled_operands.insert(v);
+        for (int v : uses)
+            if (res.assignments[v].spilled) spilled_operands.insert(v);
+        for (const temp_reg_t &t : res.temps[i]) {
+            temp_vregs.insert((int)t.vreg);
+            hold((int)t.vreg, t.phys);
+        }
+        EXPECT_EQ(temp_vregs, spilled_operands) << "op " << i;
+        EXPECT_EQ(temp_vregs.size(), res.temps[i].size()) << "op " << i;
+
+        for (int v = 0; v < ir.n_vregs(); v++)
+            if (iv[v].start <= i && i <= iv[v].end
+                    && !res.assignments[v].spilled)
+                hold(v, res.assignments[v].phys);
     }
 }
 
@@ -667,8 +703,10 @@ TEST(AllocatorTests, SpillsUnderRegisterPressure) {
     EXPECT_TRUE(res.any_spill);
     EXPECT_GT(res.frame_bytes, 0u);
 
-    // Check that non-spilled registers do not share the same register.
+    // Check that non-spilled registers do not share the same register, and that
+    // every spilled operand gets a temp that clobbers nothing.
     expect_no_reg_conflicts(ir, pools, res);
+    expect_valid_temps(ir, pools, res);
 
     // Collect spill slots and check that they are unique, slot-aligned, and
     // inside the reserved frame.
@@ -742,6 +780,43 @@ TEST(AllocatorTests, SpillsByWeightAndBreaksTiesByEnd) {
         EXPECT_FALSE(res.assignments[(int)early].spilled);
         EXPECT_FALSE(res.assignments[(int)acc].spilled);
     }
+}
+
+// Checks that a mask is never spilled, since no operation gets a temp for one.
+// On AVX2* masks share the vector file, cut here to 3 registers. When the
+// vectors run out of registers, the mask and the vectors each have one def and
+// one use, so they weigh the same, and the mask ends last. By weight and end
+// alone, the mask is therefore the expected spill, and the test checks that a
+// vector is spilled instead.
+TEST(AllocatorTests, NeverSpillsMasks) {
+    ir_t ir;
+    const vreg_t ptr = ir.new_gpr();
+    ir.load_param(ptr, 0);
+
+    const vreg_t mask = ir.new_mask();
+    ir.set_mask_imm(mask, 3);
+
+    std::vector<vreg_t> v(4, vreg_t::none);
+    for (int r = 0; r < 4; r++) {
+        v[r] = ir.new_vec(data_type::f32);
+        ir.vload(v[r], ptr, 32 * r, data_type::f32);
+    }
+    for (int r = 0; r < 4; r++)
+        ir.vstore(ptr, 32 * r, v[r], data_type::f32);
+
+    const vreg_t x = ir.new_vec(data_type::f32);
+    ir.vload_masked(x, ptr, 0, mask, data_type::f32);
+    ir.vstore(ptr, 0, x, data_type::f32);
+
+    reg_pools_t pools = make_reg_config(avx2, /*param_reg=*/0,
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*gpr_scratch=*/ {},
+            /*vec_scratch=*/ {}, /*mask_scratch=*/ {})
+                                .pools;
+    pools.files[1].regs.resize(3);
+    const reg_alloc_result_t res = allocate_registers(ir, pools);
+
+    EXPECT_TRUE(res.any_spill);
+    EXPECT_FALSE(res.assignments[(int)mask].spilled);
 }
 
 // Checks that allocation depends only on its inputs. The same IR and register

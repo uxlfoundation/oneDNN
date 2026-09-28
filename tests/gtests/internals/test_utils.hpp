@@ -240,7 +240,7 @@ void fill_value(std::vector<T> &out, const dnnl::memory::desc &desc, T value) {
 }
 
 void dynamic_iterate_alldims(const std::vector<int64_t> &dims,
-        const std::function<void(std::vector<int64_t> idxs)> &fn);
+        const std::function<void(const std::vector<int64_t> &idxs)> &fn);
 
 template <typename T>
 std::vector<float> dequantize(const std::vector<float> &input,
@@ -277,7 +277,7 @@ std::vector<float> dequantize(const std::vector<float> &input,
             }
         }
 
-        dynamic_iterate_alldims(dims, [&](std::vector<int64_t> idxs) {
+        dynamic_iterate_alldims(dims, [&](const std::vector<int64_t> &idxs) {
             size_t offset = 0;
             size_t scale_offset = 0;
             size_t zp_offset = 0;

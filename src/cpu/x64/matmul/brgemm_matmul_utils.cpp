@@ -1916,9 +1916,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_DT_CFG);
         // dst scales groups: 1 along M, 32 along N, over the full (M, N)
         // plane.
-        const int dst_mn_mask
-                = (1 << (bgmmc.ndims - 1)) | (1 << (bgmmc.ndims - 2));
-        VCONDCHECK_BG(asc.get(DNNL_ARG_DST).get_mask() == dst_mn_mask
+
+        const int dst_full_mask = (1 << bgmmc.ndims) - 1;
+        VCONDCHECK_BG(asc.get(DNNL_ARG_DST).get_mask() == dst_full_mask
                         && asc.get(DNNL_ARG_DST).get_group(0) == 1
                         && asc.get(DNNL_ARG_DST).get_group(1) == 32,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -2233,18 +2233,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
-    VCONDCHECK_BG(IMPLICATION(bgmmc.is_mxfp8, bgmmc.batch == 1),
-            VERBOSE_UNSUPPORTED_FEATURE, "MXFP8 does not support batch > 1");
-
     if (bgmmc.is_mxfp8_dst) {
         // The dst scales relayout kernels are generated for the static M/N
-        // tails, and the write pointer into the user dst scales has no batch
-        // term.
+        // tails.
         VCONDCHECK_BG(!bgmmc.is_runtime_M && !bgmmc.is_runtime_N
                         && !bgmmc.is_runtime_K,
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-        VCONDCHECK_BG(bgmmc.batch == 1, VERBOSE_UNSUPPORTED_FEATURE,
-                "MXFP8 dst quantization does not support batch > 1");
+
         VCONDCHECK_BG(bgmmc.N % 32 == 0, VERBOSE_UNSUPPORTED_FEATURE,
                 "MXFP8 dst quantization requires N % 32 == 0");
     }

@@ -110,10 +110,10 @@ private:
     // Repacks the MXFP8 A block scales of the (m_blk_idx, k_blk_idx) block
     // into the layout the micro-kernel reads.
     void copy_a_scales_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
-            int ithr, dim_t m_blk_idx, dim_t k_blk_idx) const;
+            dim_t b_idx, int ithr, dim_t m_blk_idx, dim_t k_blk_idx) const;
     void copy_dst_scales_chunk_from_buffer(
-            const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t m_blk_idx,
-            dim_t n_blk_idx) const;
+            const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t b_idx,
+            dim_t m_blk_idx, dim_t n_blk_idx) const;
     void copy_b_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *B_data_batch_ptr, int ithr, dim_t b_idx,
             dim_t n_blk_idx, dim_t k_blk_idx) const;

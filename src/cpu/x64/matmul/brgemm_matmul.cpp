@@ -864,7 +864,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                             // chunk, exactly like the A data above.
                             if (bgmmc.is_mxfp8 && nb == n_start)
                                 copy_a_scales_chunk_in_buffer(
-                                        brgmm_ctx, ithr, mb, kb);
+                                        brgmm_ctx, b, ithr, mb, kb);
 
                             compute_kernel(brgmm_ctx, a_batch_ptr, b_batch_ptr,
                                     ithr, b, mb, nb, kb,
@@ -877,7 +877,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                             if (bgmmc.is_mxfp8_dst
                                     && brgmm_ctx.is_last_K_blk(kb))
                                 copy_dst_scales_chunk_from_buffer(
-                                        brgmm_ctx, ithr, mb, nb);
+                                        brgmm_ctx, ithr, b, mb, nb);
                         }
                     }
                     kc_prev = kc;
@@ -1630,8 +1630,8 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::copy_a_scales_chunk_in_buffer(
-        const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t m_blk_idx,
-        dim_t k_blk_idx) const {
+        const brg_matmul_exec_ctx_t &brgmm_ctx, dim_t b_idx, int ithr,
+        dim_t m_blk_idx, dim_t k_blk_idx) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     assert(bgmmc.is_mxfp8);
 
@@ -1650,11 +1650,18 @@ void brgemm_matmul_t<isa>::copy_a_scales_chunk_in_buffer(
     const dim_t k_scale_idx
             = div_up(k_blk_idx * bgmmc.K_blk, bgmmc.src_scales_k_gsize);
 
+    // The src scales follow the src shape, so the dst batch index must be
+    // mapped to the (possibly broadcast) src batch index. The batch stride is
+    // derived from the scales mask: it is 0 when the mask has no batch bits,
+    // i.e. one [M][K / group_size] plane shared by all batches.
+    const dim_t src_b = brgmm_ctx.get_bb_idx(b_idx, bgmmc.bcast_A_desc);
+
     auto ctx = jit_brgemm_matmul_copy_a_scales_t::ctx_t();
     // e8m0 is one byte per scale, so the element offset is the byte offset.
     ctx.src_scales
             = reinterpret_cast<const uint8_t *>(brgmm_ctx.get_src_scales_ptr())
-            + m * k_scales_count + k_scale_idx;
+            + src_b * bgmmc.src_scales_batch_stride + m * k_scales_count
+            + k_scale_idx;
     ctx.tr_src_scales
             = brgmm_ctx.get_tr_src_scales_ptr(m_blk_idx, k_blk_idx, ithr);
     (*copy_A_scales_kernel_[ker_idx])(&ctx);
@@ -1662,8 +1669,8 @@ void brgemm_matmul_t<isa>::copy_a_scales_chunk_in_buffer(
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::copy_dst_scales_chunk_from_buffer(
-        const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t m_blk_idx,
-        dim_t n_blk_idx) const {
+        const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t b_idx,
+        dim_t m_blk_idx, dim_t n_blk_idx) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     assert(bgmmc.is_mxfp8_dst);
 
@@ -1675,7 +1682,7 @@ void brgemm_matmul_t<isa>::copy_dst_scales_chunk_from_buffer(
     assert(copy_D_scales_kernel_[ker_idx] != nullptr);
 
     auto ctx = jit_brgemm_matmul_copy_dst_scales_t::ctx_t();
-    ctx.d_scales = brgmm_ctx.get_dst_scales_wr_ptr(m_blk_idx, n_blk_idx);
+    ctx.d_scales = brgmm_ctx.get_dst_scales_wr_ptr(b_idx, m_blk_idx, n_blk_idx);
     ctx.tr_d_scales = brgmm_ctx.get_tr_dst_scales_ptr(ithr);
     (*copy_D_scales_kernel_[ker_idx])(&ctx);
 }
@@ -2653,7 +2660,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     // @p nb. The scales are laid out as [m = M][n = N / group_size], and the
     // dst scales copy kernel writes the block through this pointer, hence it
     // is not const.
-    void *get_dst_scales_wr_ptr(dim_t mb, dim_t nb) const {
+    // The scales tensor is [batch][M][N / group_size] (dense, dst is never
+    // broadcast), so @p b_idx is the flat dst batch index.
+    void *get_dst_scales_wr_ptr(dim_t b_idx, dim_t mb, dim_t nb) const {
         assert(bgmmc_.is_mxfp8_dst);
         const dim_t group_size = bgmmc_.dst_scales_n_gsize;
         const dim_t N_scales = div_up(bgmmc_.N, group_size);
@@ -2662,7 +2671,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         const dim_t m = mb * bgmmc_.M_blk;
         assert(n % group_size == 0);
         // e8m0 scales are 1 byte each, so the offset is in elements
-        const dim_t offset = n / group_size + m * N_scales;
+        const dim_t offset
+                = b_idx * bgmmc_.M * N_scales + m * N_scales + n / group_size;
         return const_cast<char *>(static_cast<const char *>(dst_scales_))
                 + offset;
     }

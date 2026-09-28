@@ -464,11 +464,11 @@ void Generator<hw>::outerProductSystolic(int h, int ha_period, int hb_period, in
                 if (rc != 8 && strategy.extendedAtomicFMA) hw_unsupported();
             }
 
-            const bool canFwd = (hw == ngen::HW::Xe3p)
-                && (getProductFamily() >= ngen::ProductFamily::CRI)
+            const bool canFwd = (hw == HW::Xe3p)
+                && (problem.product.family >= ProductFamily::CRI)
                 && (rc == 8)
                 && mod.isAtomic()
-                && (Tc != Type::f16);
+                && (problem.Tc != Type::f16);
             if (hhbase + ksys < opCount && canFwd) mod |= Fwd;
 
             if (startRepackC && hhbase == 0)
@@ -654,6 +654,7 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
         if (offsetTime) {
             if (doAO2DLate) applyLateABOffset(true,  h, problem, strategy, state, x0, xr0, nx);
             if (doBO2DLate) applyLateABOffset(false, h, problem, strategy, state, x0, xr0, nx);
+            if (doAO2DLate && doBO2DLate) stub("Simultaneous late A/B offsets not supported");
         }
     }
 

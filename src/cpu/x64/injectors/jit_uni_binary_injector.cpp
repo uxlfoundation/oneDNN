@@ -425,26 +425,20 @@ static bool rhs_arg_params_differ(int vmm_idx1, int vmm_idx2,
 }
 
 template <typename Vmm>
-int jit_uni_binary_injector_t<Vmm>::adjust_temp_vmm_hint(
-        int user_hint, int start_idx, int end_idx, int max_vmm_idx) const {
-    const bool user_hint_in_vector_range
-            = user_hint >= start_idx && user_hint <= end_idx;
+int jit_uni_binary_injector_t<Vmm>::adjust_temp_vmm_hint(int user_hint,
+        const injector_utils::vmm_index_set_t &vmm_idxs,
+        int max_vmm_idx) const {
+    const auto in_set = [&](int idx) { return vmm_idxs.count(idx) != 0; };
     const bool user_hint_exceeded_limit = user_hint > max_vmm_idx;
-    const bool user_hint_invalid
-            = user_hint_in_vector_range || user_hint_exceeded_limit;
+    if (!user_hint_exceeded_limit && !in_set(user_hint)) return user_hint;
 
-    if (user_hint_invalid) {
-        const bool max_vmm_idx_in_vector_range
-                = max_vmm_idx >= start_idx && max_vmm_idx <= end_idx;
+    const int replacement
+            = in_set(max_vmm_idx) || user_hint_exceeded_limit ? 0 : max_vmm_idx;
+    if (!in_set(replacement)) return replacement;
 
-        if (max_vmm_idx_in_vector_range || user_hint_exceeded_limit
-                || user_hint == max_vmm_idx)
-            return 0;
-        else
-            return max_vmm_idx;
-    }
-
-    return user_hint;
+    for (int idx = max_vmm_idx; idx >= 0; idx--)
+        if (!in_set(idx)) return idx;
+    return -1;
 }
 
 template <typename Vmm>
@@ -483,19 +477,6 @@ static void restore_stack(jit_generator_t *host, const Vmm &vmm) {
 }
 
 template <typename Vmm>
-std::pair<bool, int> jit_uni_binary_injector_t<Vmm>::should_preserve_vmm(
-        int curr_idx, int vmm_hint, int max_vmm_idx,
-        bool dt_helper_vmm_needed) const {
-    if (dt_helper_vmm_needed && vmm_hint == curr_idx) {
-        if (curr_idx == 0)
-            return std::make_pair(true, max_vmm_idx);
-        else
-            return std::make_pair(true, 0);
-    }
-    return std::make_pair(false, vmm_hint);
-}
-
-template <typename Vmm>
 void jit_uni_binary_injector_t<Vmm>::compute_vector_range(int start_idx,
         int end_idx, int rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
@@ -513,12 +494,6 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
 
     if (vmm_idxs.empty()) return;
     const auto start_idx = *(vmm_idxs.begin());
-    const auto end_idx = *(vmm_idxs.rbegin());
-
-    // Phase 1 Validate temporary vmm user hint
-    const int max_vmm_idx = isa_num_vregs(isa_) - 1;
-    auto &vmm_hint = rhs_arg_static_params_.rhs_dt_helper_vmm_idx;
-    vmm_hint = adjust_temp_vmm_hint(vmm_hint, start_idx, end_idx, max_vmm_idx);
 
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const auto src1_desc = get_src1_desc(post_op, dst_d);
@@ -543,6 +518,19 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
             = !binary_op_with_unaligned_mem_operand_allowed_
             || rhs_arg_data_type != data_type::f32 || bcast_f32_non_avx512
             || should_preserve_vmm_tail || post_op.is_prelu();
+
+    // Phase 1 Validate temporary vmm user hint
+    // The temporary vmm must be outside `vmm_idxs`. Inside, it would overwrite
+    // a vmm the post-op is applied to. A set covering every register leaves no
+    // such vmm, which is a caller error.
+    const int max_vmm_idx = isa_num_vregs(isa_) - 1;
+    auto &vmm_hint = rhs_arg_static_params_.rhs_dt_helper_vmm_idx;
+    const int free_vmm_idx
+            = adjust_temp_vmm_hint(vmm_hint, vmm_idxs, max_vmm_idx);
+    JIT_ASSERT(IMPLICATION(dt_helper_vmm_needed, free_vmm_idx >= 0)
+            && "binary injector: every vmm is in the set");
+    if (free_vmm_idx >= 0) vmm_hint = free_vmm_idx;
+
     const auto tail_load_mode = rhs_arg_params.tail_load_mode;
     const int simd_w = static_cast<int>(
             isa_max_vlen(isa_) / types::data_type_size(dst_d.data_type()));
@@ -677,8 +665,6 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
         return;
     }
 
-    bool vmm0_was_preserved = false;
-    static const Vmm zero_vmm(0);
     if (post_op.is_prelu() && has_avx512_core_)
         push_opmask(host_, get_aux_kmask());
 
@@ -694,9 +680,6 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
                                 == broadcasting_strategy_t::scalar,
                         rhs_arg_static_params_.use_exact_tail_scalar_bcast);
         const Vmm tern_tmp_vmm(rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
-        const auto local_vmm_preservation = should_preserve_vmm(
-                vmm_idx, vmm_hint, max_vmm_idx, dt_helper_vmm_needed);
-        const bool &vmm_preservation_needed = local_vmm_preservation.first;
         const Vmm dst_vmm(vmm_idx);
 
         // For binary ops with ternary inputs, a temporary vmm will be needed
@@ -740,32 +723,13 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
                     rhs_arg_params, rhs_broadcasting_strategy, is_first, false);
         }
 
-        if (vmm_preservation_needed) {
-            const Vmm vmm_to_preserve(local_vmm_preservation.second);
-            push_vmm(host_, vmm_to_preserve);
-            if (needs_ternary_input)
-                inject_binary_with_ternary_op(post_op, dst_vmm, rhs1_arg_addr,
-                        tern_tmp_vmm, with_tail, tail_load_mode);
-            else
-                inject_binary(post_op, dst_vmm, rhs1_arg_addr, with_tail,
-                        tail_load_mode);
-            pop_vmm(host_, vmm_to_preserve);
-            // in case all Vmm are occupied, Vmm(0) is chosen for tmp by default,
-            // so it's content needs to be preserved...
-
-            push_vmm(host_, zero_vmm);
-            vmm0_was_preserved = true;
-        } else {
-            if (needs_ternary_input)
-                inject_binary_with_ternary_op(post_op, dst_vmm, rhs1_arg_addr,
-                        tern_tmp_vmm, with_tail, tail_load_mode);
-            else
-                inject_binary(post_op, dst_vmm, rhs1_arg_addr, with_tail,
-                        tail_load_mode);
-        }
+        if (needs_ternary_input)
+            inject_binary_with_ternary_op(post_op, dst_vmm, rhs1_arg_addr,
+                    tern_tmp_vmm, with_tail, tail_load_mode);
+        else
+            inject_binary(
+                    post_op, dst_vmm, rhs1_arg_addr, with_tail, tail_load_mode);
     }
-    // ...and restored afterwards
-    if (vmm0_was_preserved) pop_vmm(host_, zero_vmm);
     if (post_op.is_prelu() && has_avx512_core_)
         pop_opmask(host_, get_aux_kmask());
 }

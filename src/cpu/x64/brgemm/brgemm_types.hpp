@@ -218,6 +218,14 @@ struct DNNL_API brgemm_attr_t {
     // specified on brgemm creation.
     // Supported by brgemm unrolled kernel for now.
     dim_t LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
+
+    // Leading dimension (stride) of the B scales tensor. MX B scales are
+    // stored in a flat mathematical layout [K / group_size][N], so the
+    // distance between consecutive K scale groups for a given N is N.
+    // `brgemm_desc_t::LDB_scales` is initialized from this value on
+    // descriptor finalization.
+    dim_t LDB_scales {0};
+
     // If "true" then batchsize is allowed to change on each kernel call
     // and there is no unrolling by batchsize in kernel
     bool var_bs {false};
@@ -257,6 +265,11 @@ struct DNNL_API brgemm_attr_t {
     // request the ACE compute path; honored only when the descriptor resolves
     // to an ACE ISA, see brgemm_desc_t::is_ace()
     bool use_ace = false;
+    // Request the MXFP8 compute path: the e8m0 block scales of A and B are
+    // applied by the ACE outer product itself (through the BSR register)
+    // instead of being applied to the accumulators in post-ops. Honored only
+    // on an fp8 x fp8 ACE descriptor, see brgemm_desc_t::is_mxfp8_ace.
+    bool use_mxfp8_compute {false};
 };
 
 struct brgemm_desc_t {
@@ -273,6 +286,11 @@ struct brgemm_desc_t {
     dim_t LDB = 0;
     dim_t LDC = 0;
     dim_t LDD = 0;
+    // Leading dimension (stride) of the B scales tensor. MX B scales are
+    // stored in a flat mathematical layout [K / group_size][N], so the
+    // distance between consecutive K scale groups for a given N is N.
+    // Initialized from `brgattr.LDB_scales` on descriptor finalization.
+    dim_t LDB_scales = 0;
 
     bool fused_copy_a = false;
 
@@ -385,6 +403,11 @@ struct brgemm_desc_t {
     bool is_f16 = false, is_f16_tmm = false;
     bool is_f32 = false;
     bool is_bf32 = false;
+    // MXFP8 compute on ACE: fp8 x fp8 with e8m0 block scales applied by the
+    // outer product itself. Set in brgemm_desc_set_attr() from
+    // `brgattr.use_mxfp8_compute`, and only there, so that it is final before
+    // blocking runs.
+    bool is_mxfp8_ace = false;
 
     bool has_int8_vnni = false;
 

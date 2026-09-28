@@ -2402,7 +2402,243 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
 template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Zmm>;
 template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Ymm>;
 
-/** 
+// Repacks the e8m0 block scales of A for the MXFP8 micro-kernel.
+//
+// Source layout (the user one), one byte per scale:
+//     [m = M][k = K / group_size]
+//
+// Destination layout, per (M_blk, K_blk) block:
+//     [m2 = rnd_up(M_blk,32)/32][k1 = rnd_up(K_blk,64)/32]
+//             [m0 = 16][m1 = 2][k0 = 2]
+//
+// This is THE definition of that layout. Two other places depend on it and
+// must agree:
+//   * the micro-kernel reader, jit_brgemm_amx_uker_base_t::A_offset_scales();
+//   * the buffer booking, init_aux_values() /
+//     `buffer_a_scales_{k,m}_brgm_stride`.
+// The division of responsibility is deliberate: this kernel and the uker see
+// exactly one (M_blk, K_blk) slab, while brgemm_matmul owns the outer
+// [M_chunk][K_chunk] loops and the pointer arithmetic into them (see
+// get_tr_src_scales_ptr()). Hence the kernel is constructed with *block*
+// dimensions -- constructing it with chunk dimensions makes its m2 stride
+// disagree with the reader as soon as K_chunk_size > 1.
+//
+// Note on tiles: this kernel uses tmm0/tmm1 as a transpose staging area. It
+// is ACE-only (create_brgemm_matmul_copy_a_scales() checks the ISA), and ACE
+// defines a single valid tile configuration (palette 2), so there is no
+// ambiguity about the tile geometry. A live ACE tile configuration is a
+// precondition supplied by the caller, exactly as for the brgemm kernel it
+// feeds.
+struct jit_brgemm_matmul_copy_a_scales_impl_t
+    : public jit_brgemm_matmul_copy_a_scales_t,
+      public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_a_scales_impl_t)
+
+    jit_brgemm_matmul_copy_a_scales_impl_t(
+            const brgemm_matmul_conf_t *conf, dim_t M_blk, dim_t K_blk)
+        : jit_brgemm_matmul_copy_a_scales_t(conf)
+        , jit_generator_t(jit_name())
+        , M_blk_(M_blk)
+        , K_blk_(div_up(K_blk, 32))
+        , K_src_(div_up(conf->K, 32))
+        // Destination strides of one slab, in scales. They are derived from
+        // the *block* sizes, matching A_offset_scales() and the buffer
+        // booking.
+        , K_dst_(rnd_up(div_up(K_blk, 32), 2)) {
+        // Ties the destination stride to what the reader assumes. Both sides
+        // must round the K extent of a slab up to 64 elements == 2 groups.
+        assert(K_dst_ * 32 == rnd_up(K_blk, 64));
+        MAYBE_UNUSED(K_blk);
+    }
+
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
+
+private:
+    void generate() override;
+
+    // M and K (in scales) of the block currently handled by the kernel.
+    dim_t M_blk_, K_blk_;
+    // K extent (in scales) of the whole source tensor, used to compute source
+    // offsets: the source rows are K_src_ scales apart.
+    dim_t K_src_;
+    // K extent (in units of 32 scales) of one destination slab.
+    dim_t K_dst_;
+
+    Reg64 reg_a_src_ = r15;
+    Reg64 reg_a_dst_ = r14;
+
+    Reg64 reg_a_src_curr_ = r10;
+    Reg64 reg_a_dst_curr_ = r9;
+
+    Reg64 reg_k_ = r13;
+    Reg64 reg_m_ = r12;
+    Reg64 reg_tmp_ = r11;
+    // Guards the loads of a partial k block; only set when such a block is
+    // actually processed.
+    Opmask kmask = k1;
+
+    Xbyak::Label permute_table_low_;
+    Xbyak::Label permute_table_high_;
+};
+
+void jit_brgemm_matmul_copy_a_scales_impl_t::generate() {
+    preamble();
+
+    vmovdqa32(zmm30, ptr[rip + permute_table_low_]);
+    vmovdqa32(zmm31, ptr[rip + permute_table_high_]);
+
+    // Load ctx_t fields from param1
+    mov(reg_a_src_, ptr[param1 + GET_OFF(src_scales)]);
+    mov(reg_a_dst_, ptr[param1 + GET_OFF(tr_src_scales)]);
+
+    mov(reg_k_, 0);
+
+    // Handles one m = 32, k = 64 tile of scales. `m` and `k` are the valid
+    // extents of the current block, which are smaller on a tail.
+    auto handle_32x64 = [this](size_t m = 32, size_t k = 64) {
+        auto fill_tmm = [&](Tmm tmm, size_t offset, size_t num_cols) {
+            for (size_t coll = 0; coll < num_cols; coll++) {
+                if (k != 64) {
+                    vmovdqu8(zmm0 | kmask | T_z,
+                            ptr[reg_a_src_curr_ + (coll * K_src_ + offset)]);
+                } else {
+                    vmovdqu8(zmm0,
+                            ptr[reg_a_src_curr_ + (coll * K_src_ + offset)]);
+                }
+                assert(coll < 16);
+                tilemovcol(tmm, zmm0, (uint8_t)coll);
+            }
+        };
+
+        // reg_a_src_curr_ = reg_a_src_ + reg_m_ * K_src_ + reg_k_
+        imul(reg_a_src_curr_, reg_m_, K_src_);
+        add(reg_a_src_curr_, reg_k_);
+        add(reg_a_src_curr_, reg_a_src_);
+
+        // Destination, in terms of the layout documented on the class:
+        //     [m2][k1][m0 = 16][m1 = 2][k0 = 2]
+        // One call handles m = 32, k = 64, i.e. one (m2, k2) cell:
+        //     [m2][k2 = K_dst_/2] <[k1 = 32][m0 = 16][m1 = 2][k0 = 2]>
+        // reg_a_dst_curr_ = reg_a_dst_ + (reg_m_ / 32) * (32 * K_dst_)
+        //         + (reg_k_ / 64) * (64 * 32)
+        //         = reg_a_dst_ + reg_m_ * K_dst_ + reg_k_ * 32
+        // reg_m_ is always a multiple of 32 (the m loop steps by 32 and the
+        // tail starts at rnd_dn(M_blk_, 32)), so the first product is exact.
+        imul(reg_a_dst_curr_, reg_m_, K_dst_);
+        imul(reg_tmp_, reg_k_, 32);
+        add(reg_a_dst_curr_, reg_tmp_);
+        add(reg_a_dst_curr_, reg_a_dst_);
+
+        fill_tmm(tmm0, 0, m >= 16 ? 16 : m);
+        fill_tmm(tmm1, 16 * K_src_, m > 16 ? m - 16 : 0);
+
+        for (size_t line = 0; line < div_up(k, 4); line++) {
+            assert(line < 16);
+            tilemovrow(zmm0, tmm0, (uint8_t)line);
+            tilemovrow(zmm1, tmm1, (uint8_t)line);
+
+            vmovdqu8(zmm2, zmm30);
+            // permute to interleave scales for a better access pattern during
+            // the matmul
+            vpermi2w(zmm2, zmm0, zmm1);
+            vmovdqu8(ptr[reg_a_dst_curr_ + (line * 128)], zmm2);
+
+            // The upper half of the interleaved line is backed by source data
+            // only when the last processed line is full (k % 4 == 0) or holds
+            // at least 3 valid scales (k % 4 == 3). Otherwise storing it
+            // would write garbage past the valid part of the buffer.
+            const bool is_last_line = line == div_up(k, 4) - 1;
+            const bool upper_half_is_backed_by_src
+                    = !is_last_line || k % 4 == 0 || k % 4 == 3;
+            if (upper_half_is_backed_by_src) {
+                vmovdqu8(zmm3, zmm31);
+                vpermi2w(zmm3, zmm0, zmm1);
+                vmovdqu8(ptr[reg_a_dst_curr_ + (64 + line * 128)], zmm3);
+            }
+        }
+    };
+
+    auto k_loop_impl = [&](size_t m = 32) {
+        mov(reg_k_, 0);
+        if (K_blk_ >= 64) {
+            Label loop_k;
+            L(loop_k);
+            { handle_32x64(m, 64); }
+            add(reg_k_, 64);
+            cmp(reg_k_, rnd_dn(K_blk_, 64));
+            jl(loop_k, T_NEAR);
+        }
+
+        if (K_blk_ % 64) {
+            const size_t k_tail = K_blk_ % 64;
+            const size_t mask = (1ULL << k_tail) - 1;
+            mov(reg_tmp_, mask);
+            kmovq(kmask, reg_tmp_);
+            handle_32x64(m, k_tail);
+        }
+    };
+
+    Label loop_m;
+    mov(reg_m_, 0);
+    if (M_blk_ >= 32) {
+        L(loop_m);
+        {
+            k_loop_impl();
+            add(reg_m_, 32);
+            cmp(reg_m_, rnd_dn(M_blk_, 32));
+            jl(loop_m, T_NEAR);
+        }
+    }
+    if (M_blk_ % 32) {
+        // The tail block reads fewer than 32 rows; zero the tiles so that the
+        // padding the buffer is booked with is written as zeros rather than
+        // stale data.
+        tilezero(tmm0);
+        tilezero(tmm1);
+        k_loop_impl(M_blk_ % 32);
+    }
+
+    postamble();
+
+    // `vpermi2w` index tables. The index space is the concatenation of the two
+    // source registers: 0..31 are the words of the first (zmm0, i.e. tmm0,
+    // m rows 0-15 => m1 = 0) and 32..63 those of the second (zmm1, i.e. tmm1,
+    // m rows 16-31 => m1 = 1).
+    //
+    // After `tilemovrow` each source holds 16 dwords, dword `i` being the four
+    // k-scales of column m0 = i. So word 2i of a source is the k pair
+    // (4*line, 4*line+1) and word 2i+1 is the pair (4*line+2, 4*line+3).
+    //
+    // The destination line is [m0 = 16][m1 = 2][k0 = 2], so consecutive output
+    // words alternate between the two tiles for the same m0:
+    //     out.w[2i]     = m1 = 0 -> zmm0.w[2i]     -> index 2i
+    //     out.w[2i + 1] = m1 = 1 -> zmm1.w[2i]     -> index 32 + 2i
+    // giving {0, 32, 2, 34, ...} for the low k pair, and the same shifted by
+    // one word, {1, 33, 3, 35, ...}, for the high one.
+    //
+    // Note this is an *interleave* of the two tiles. Emitting the plain
+    // sequences {0, 2, ..., 62} / {1, 3, ..., 63} instead concatenates them
+    // (all of tmm0 followed by all of tmm1), which silently transposes the
+    // m1 dimension of every block.
+    align(64);
+    L(permute_table_low_);
+    for (int i = 0; i < 16; i++) {
+        dw(2 * i);
+        dw(32 + 2 * i);
+    }
+
+    align(64);
+    L(permute_table_high_);
+    for (int i = 0; i < 16; i++) {
+        dw(2 * i + 1);
+        dw(32 + 2 * i + 1);
+    }
+}
+
+/**
  * @brief Common class for BRGEMM B matrix copy operations
  * 
  * This class contains common methods and properties for all copy B kernels.
@@ -7221,6 +7457,40 @@ status_t create_brgemm_matmul_copy_a(
     }
 
     return copy_ker->create_kernel();
+}
+
+status_t create_brgemm_matmul_copy_a_scales(
+        std::unique_ptr<jit_brgemm_matmul_copy_a_scales_t>
+                *copy_A_scales_kernel,
+        const brgemm_matmul_conf_t *conf) {
+    // The kernel stages the transpose in tmm0/tmm1 and relies on the ACE tile
+    // configuration (palette 2) being live, which is only true on ACE. It is
+    // also the only ISA that has the MXFP8 outer product this repack feeds.
+    if (!(conf->is_ace && mayiuse(avx10_2_ace))) {
+        assert(!"copy_a_scales is an ACE-only kernel");
+        return status::unimplemented;
+    }
+
+    // Kernel index encodes which of the M/K dimensions uses the tail size:
+    // 0 - M no tail, K no tail
+    // 1 - M tail,    K no tail
+    // 2 - M no tail, K tail
+    // 3 - M tail,    K tail
+    for (int i = 0; i < 4; i++) {
+        const bool is_M_tail = i & 1;
+        const bool is_K_tail = i & 2;
+        if (is_M_tail && conf->M_tail <= 0) continue;
+        if (is_K_tail && conf->K_tail <= 0) continue;
+
+        const dim_t M_blk = is_M_tail ? conf->M_tail : conf->M_blk;
+        const dim_t K_blk = is_K_tail ? conf->K_tail : conf->K_blk;
+        CHECK(safe_ptr_assign(copy_A_scales_kernel[i],
+                new jit_brgemm_matmul_copy_a_scales_impl_t(
+                        conf, M_blk, K_blk)));
+        CHECK(copy_A_scales_kernel[i]->create_kernel());
+    }
+
+    return status::success;
 }
 
 } // namespace matmul

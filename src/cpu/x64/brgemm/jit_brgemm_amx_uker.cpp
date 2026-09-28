@@ -181,6 +181,10 @@ private:
     const reg64_savable_t reg_bias {regscratchpad_, rbx};
     const reg64_savable_t reg_bias_backup {regscratchpad_, rbx};
     const reg64_savable_t reg_src_scales {regscratchpad_, rbx};
+    // Copy of reg_src_scales taken before the bd loop and restored after it,
+    // so the per-bd-iteration advance (bd_iteration_t::A_scales_shift) does
+    // not leak into the next ld iteration when the bd loop is the inner one.
+    const reg64_savable_t reg_src_scales_bd_loop {regscratchpad_, rbx};
     const reg64_savable_t reg_wei_scales {regscratchpad_, rbx};
     const reg64_savable_t reg_wei_scales_backup {regscratchpad_, rbx};
     const reg64_savable_t reg_dst_scales {regscratchpad_, rbx};
@@ -326,6 +330,10 @@ private:
 
     struct bd_iteration_t : public dim_iteration_t {
         dim_t A_shift {0};
+        // MXFP8: advance of reg_src_scales between this and the previous bd
+        // iteration under ununroll_bd_loop (A_offset_scales() is then
+        // relative to the current iteration).
+        dim_t A_scales_shift {0};
         dim_t C_shift {0};
         dim_t D_shift {0};
         dim_t zp_comp_pad_a_shift {0};
@@ -336,6 +344,7 @@ private:
 
         bool operator==(const bd_iteration_t &rhs) const {
             return dim_iteration_t::operator==(rhs) && A_shift == rhs.A_shift
+                    && A_scales_shift == rhs.A_scales_shift
                     && C_shift == rhs.C_shift && D_shift == rhs.D_shift
                     && bd_mask == rhs.bd_mask
                     && zp_comp_pad_a_shift == rhs.zp_comp_pad_a_shift;
@@ -454,6 +463,9 @@ private:
     Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(7);
     Xbyak::Opmask fp_col_mask = Xbyak::Opmask(2);
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(3);
+    // Aliases rd_tail_mask: the only other writer of k3 is the AMX k-tail
+    // path, which MXFP8 never takes (asserted in init()).
+    Xbyak::Opmask ld_scale_tail_mask = Xbyak::Opmask(3);
     Xbyak::Opmask fp8_tmp_mask = Xbyak::Opmask(4);
 
     // The four constant masks below are set up once in generate(), so they
@@ -485,6 +497,28 @@ private:
     const Xbyak::Zmm zmm_zp_c = zmm7;
     const Xbyak::Zmm zmm_lbound = zmm8;
     const Xbyak::Zmm zmm_ubound = zmm9;
+
+    // MXFP8 only. The B scales are stored flat along the ld dimension in
+    // memory, while the Block Scale Register expects `b_scales_perm_groups`
+    // interleaved groups of `b_scales_perm_group_size` scales, so a `vpermb`
+    // is needed before moving them into the BSR. The permutation maps the
+    // memory layout
+    //     [ 0, 1, 2, ..., 63 ]
+    // to the BSR layout
+    //     [ 0, 16, 32, 48, 1, 17, 33, 49, ..., 15, 31, 47, 63 ]
+    // i.e. destination byte `b_scales_perm_groups * i + j` is taken from
+    // source byte `i + b_scales_perm_group_size * j`.
+    //
+    // zmm22 is free on this path: postop scale vectors (zmm18-23) are not
+    // used by MXFP8 (the scales are consumed by the outer product, see
+    // prepare_post_ops_registers()), and the A/B operand registers stay well
+    // below it -- asserted in init().
+    const Xbyak::Zmm zmm_wei_scale_permute = zmm22;
+    static constexpr int b_scales_perm_group_size = 16;
+    static constexpr int b_scales_perm_groups = 4;
+    Xbyak::Label b_scales_perm_index_table;
+    // MX block scale group size, in elements of the reduction dimension.
+    static constexpr int mx_group_size = 32;
 
     int store_bd_step() const {
         return brg.is_ace() ? 8 : 3; /*heuristic values*/
@@ -655,7 +689,28 @@ private:
 
     void ace_load_A(brgemm_iteration_t &bi, int bdb, dim_t offset);
     void ace_load_B(brgemm_iteration_t &bi, int ldb, dim_t offset, int rdstep);
-    void outer_product(const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm);
+    // `imm8` is the BSR selector: bits [2:0] pick the A scale sub-block and
+    // bits [5:3] the B one. It is meaningful on the MXFP8 path only; the
+    // unscaled fp8 path passes 0 against an all-ones BSR.
+    void outer_product(
+            const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm, int imm8 = 0);
+
+    // True when the block scales are applied by the outer product itself,
+    // i.e. this is an MXFP8 ACE descriptor.
+    bool is_mxfp8_compute() const noexcept { return brg.is_mxfp8_ace; }
+
+    // Loads the B block scales of the current (ldi, rdi) into zmm_tmp_2 and
+    // permutes them into the BSR order. Reads ld_scale_tail_mask, which
+    // set_b_scale_tail_mask() must have set for the same bi.
+    void load_b_scale(const brgemm_iteration_t &bi);
+    bool is_b_scale_tail(const brgemm_iteration_t &bi) const;
+    // Sets ld_scale_tail_mask. It depends on bi.ldi only, so it is emitted
+    // once above the rd loop rather than on every rd iteration.
+    void set_b_scale_tail_mask(const brgemm_iteration_t &bi);
+    // Refreshes the BSR for the rd window `bi.rdi` if that window starts a
+    // new BSR field; a no-op otherwise. See the implementation for the
+    // window-to-field mapping.
+    void maybe_load_mxfp8_scales(const brgemm_iteration_t &bi);
 
     void tdpbxxd(brgemm_iteration_t &bi, int bdb_idx, int ldb_idx,
             bool do_pre_tilestore, bool do_post_tilestore);
@@ -736,6 +791,17 @@ private:
     dim_t bias_offset(dim_t ldb) const noexcept;
 
     dim_t scales_offset(dim_t ldb) const noexcept;
+    // MXFP8 only. Offset, in bytes, of the A block scales of the given
+    // iteration inside the repacked A-scales slab of one (M_blk, K_blk)
+    // block. The layout is documented on A_offset_scales(m, k).
+    dim_t A_offset_scales(const brgemm_iteration_t &bi, int bdb, int rdb = 0,
+            int bd_elem_idx = 0) const noexcept;
+    dim_t A_offset_scales(dim_t m, dim_t k) const noexcept;
+    // MXFP8 only. Offset, in bytes, of the B block scales of the given
+    // iteration in the user tensor, whose layout is the plain mathematical
+    // [K / mx_group_size][N] with a row stride of brg.LDB_scales.
+    dim_t B_offset_scales(
+            const brgemm_iteration_t &bi, int ldb, int rdb = 0) const noexcept;
     dim_t zp_comp_a_offset(dim_t ldb) const noexcept;
     dim_t zp_comp_pad_a_offset(const brgemm_iteration_t &bi, int bdb,
             int inp_bd, dim_t ldb) const noexcept;
@@ -968,6 +1034,60 @@ dim_t jit_brgemm_amx_uker_t::bias_offset(dim_t ldb) const noexcept {
 
 dim_t jit_brgemm_amx_uker_t::scales_offset(dim_t ldb) const noexcept {
     return brg.is_per_n_wei_scales * ldb * ld_block_scales_size_;
+}
+dim_t jit_brgemm_amx_uker_t::A_offset_scales(const brgemm_iteration_t &bi,
+        int bdb, int rdb, int bd_elem_idx) const noexcept {
+    // One BSR A field covers 32 rows x 2 scale groups, and the selector
+    // encoded in the outer product picks the (16-row, 1-group) quarter of it,
+    // so the address is rounded down to that granularity here.
+    const auto bdb_pos
+            = ununroll_bd_loop ? bi.bdi->rel_pos(bdb) : bi.bdi->pos(bdb);
+    const dim_t m = rnd_dn(bdb_pos + bd_elem_idx, 32);
+    const dim_t k = rnd_dn(bi.rdi->pos(rdb) * brg.rd_block, 2 * mx_group_size);
+    return A_offset_scales(m, k);
+}
+
+dim_t jit_brgemm_amx_uker_t::A_offset_scales(dim_t m, dim_t k) const noexcept {
+    // Repacked A scales of a single (M_blk, K_blk) block, one byte per e8m0
+    // scale:
+    //     [m2 = rnd_up(M_blk, 32) / 32][k1 = rnd_up(K_blk, 64) / 64]
+    //             [m0 = 16][m1 = 2][k0 = 2]
+    // The innermost [m0][m1][k0] tile is exactly one 64-byte BSR A field.
+    // The same layout is produced by jit_brgemm_matmul_copy_a_scales_t and
+    // addressed by brgemm_matmul; all three are block-local, the driver owns
+    // the outer [M_chunk][K_chunk] indexing.
+    constexpr dim_t m0_size = 16;
+    constexpr dim_t m1_size = 2;
+    constexpr dim_t k0_size = 2;
+
+    const dim_t k_scales = div_up(brg.reduce_dim, mx_group_size);
+    const dim_t k1_count = div_up(k_scales, k0_size);
+    const dim_t k_scale_idx = k / mx_group_size;
+
+    const dim_t m2 = m / (m0_size * m1_size);
+    const dim_t m1 = (m % (m0_size * m1_size)) / m0_size;
+    const dim_t m0 = m % m0_size;
+    const dim_t k1 = k_scale_idx / k0_size;
+    const dim_t k0 = k_scale_idx % k0_size;
+
+    const dim_t m1_stride = k0_size;
+    const dim_t m0_stride = m1_stride * m1_size;
+    const dim_t k1_stride = m0_size * m0_stride;
+    const dim_t m2_stride = k1_count * k1_stride;
+
+    return m2 * m2_stride + k1 * k1_stride + m0 * m0_stride + m1 * m1_stride
+            + k0;
+}
+
+dim_t jit_brgemm_amx_uker_t::B_offset_scales(
+        const brgemm_iteration_t &bi, int ldb, int rdb) const noexcept {
+    // B scales in the plain mathematical layout [K / mx_group_size][N] with a
+    // row stride of brg.LDB_scales (== N), one byte per e8m0 scale. One BSR B
+    // field holds the 64 N values of a single scale group; the selector picks
+    // the 16-wide ldb slice of it, so the address is rounded down to 64.
+    const dim_t n = rnd_dn(bi.ldi->pos(ldb) * brg.ld_block, 64);
+    const dim_t k = rnd_dn(bi.rdi->pos(rdb) * brg.rd_block, mx_group_size);
+    return (k / mx_group_size) * brg.LDB_scales + n;
 }
 
 dim_t jit_brgemm_amx_uker_t::zp_comp_a_offset(dim_t ldb) const noexcept {
@@ -1295,9 +1415,16 @@ void jit_brgemm_amx_uker_t::prepare_post_ops_registers_ldb(
 void jit_brgemm_amx_uker_t::prepare_post_ops_registers(brgemm_iteration_t &bi) {
     const auto ldi = bi.ldi;
 
+    // MXFP8 consumes both scale tensors inside the outer product (they are
+    // staged in the BSR, see maybe_load_mxfp8_scales()), so none of the
+    // epilogue scale vectors below are loaded. They are also not merely
+    // redundant: the scales are e8m0 bytes, and the loaders here would read
+    // them as f32/bf16/f16.
+    const bool scales_in_epilogue = !is_mxfp8_compute();
+
     // Load wei_scales for per K-block application (is_per_k_wei_scales).
     // This must happen for both apply_postops and non-apply_postops paths.
-    if (brg.with_wei_scales && brg.is_per_k_wei_scales) {
+    if (scales_in_epilogue && brg.with_wei_scales && brg.is_per_k_wei_scales) {
         reg_wei_scales.restore();
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
@@ -1361,7 +1488,7 @@ void jit_brgemm_amx_uker_t::prepare_post_ops_registers(brgemm_iteration_t &bi) {
         }
     }
 
-    if (brg.with_src_scales && !brg.is_per_k_src_scales
+    if (scales_in_epilogue && brg.with_src_scales && !brg.is_per_k_src_scales
             && !brg.is_per_k_wei_scales) {
         reg_src_scales.restore();
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
@@ -1391,7 +1518,7 @@ void jit_brgemm_amx_uker_t::prepare_post_ops_registers(brgemm_iteration_t &bi) {
         }
     }
 
-    if (brg.with_wei_scales && !brg.is_per_k_wei_scales) {
+    if (scales_in_epilogue && brg.with_wei_scales && !brg.is_per_k_wei_scales) {
         reg_wei_scales.restore();
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
@@ -1721,7 +1848,10 @@ void jit_brgemm_amx_uker_t::process_output_range(
         // already done by per-MN compensation) and apply the current
         // K-group's scales BEFORE alpha_beta accumulation. Non-integer
         // accumulators (e.g. fp8/bf16 TMUL) are already f32.
-        if (brg.has_per_k_scales() && !bi.skip_accumulation) {
+        // MXFP8 is excluded: its per-K flags describe block scales that the
+        // outer product has already applied, so the accumulator is final.
+        if (brg.has_per_k_scales() && !is_mxfp8_compute()
+                && !bi.skip_accumulation) {
             if (brg.is_int8 && !brg.with_per_mn_compensation)
                 vcvtdq2ps(zmm, zmm);
 
@@ -1825,7 +1955,9 @@ void jit_brgemm_amx_uker_t::process_output_range(
     const bool wei_scales_in_postops
             = brg.with_wei_scales && !brg.is_per_k_wei_scales;
     const bool apply_scales_in_postops
-            = src_scales_in_postops || wei_scales_in_postops;
+            = (src_scales_in_postops || wei_scales_in_postops)
+            // MXFP8 applies both scale tensors in the outer product.
+            && !is_mxfp8_compute();
     if (apply_scales_in_postops) {
         for (auto bd = bd_start; bd < bd_finish; bd++) {
             if (!is_out_bd(bi.bdi, bdb, bd)) continue;
@@ -2878,14 +3010,75 @@ void jit_brgemm_amx_uker_t::ace_load_B(
     }
 }
 
+bool jit_brgemm_amx_uker_t::is_b_scale_tail(
+        const brgemm_iteration_t &bi) const {
+    // One BSR B field is 64 scales wide, so a tail exists whenever fewer than
+    // 64 N columns remain from the start of the field.
+    const dim_t n = rnd_dn(bi.ldi->pos(0) * brg.ld_block, 64);
+    return (brg.load_dim - n) < 64;
+}
+
+void jit_brgemm_amx_uker_t::set_b_scale_tail_mask(
+        const brgemm_iteration_t &bi) {
+    if (!is_b_scale_tail(bi)) return;
+    const dim_t n = rnd_dn(bi.ldi->pos(0) * brg.ld_block, 64);
+    const size_t remaining_n = static_cast<size_t>(brg.load_dim - n);
+    assert(remaining_n > 0 && remaining_n < 64);
+    const size_t tail_mask = (static_cast<size_t>(1) << remaining_n) - 1;
+    mov(reg_tmp_gpr, tail_mask);
+    kmovq(ld_scale_tail_mask, reg_tmp_gpr);
+}
+
+void jit_brgemm_amx_uker_t::load_b_scale(const brgemm_iteration_t &bi) {
+    const auto zmm_b_scales = zmm_tmp_2();
+    // Out-of-range N columns are zeroed rather than left undefined: an e8m0
+    // of 0 is a denormal scale, and the corresponding B elements are zero as
+    // well, so the products of the tail lanes stay zero.
+    const auto zmm_masked = is_b_scale_tail(bi)
+            ? (zmm_b_scales | ld_scale_tail_mask | T_z)
+            : zmm_b_scales;
+    reg_wei_scales.restore();
+    vmovdqu8(zmm_masked, ptr[reg_wei_scales + B_offset_scales(bi, 0, 0)]);
+    vpermb(zmm_b_scales, zmm_wei_scale_permute, zmm_b_scales);
+}
+
+void jit_brgemm_amx_uker_t::maybe_load_mxfp8_scales(
+        const brgemm_iteration_t &bi) {
+    if (!is_mxfp8_compute()) return;
+    // Four consecutive rd windows share one BSR state:
+    //   window 0: the A field (32 rows x 2 scale groups) and the high B field
+    //             (64 N columns of the first group) are written together by
+    //             bsrmovf;
+    //   window 2: only the low B field (the second group) changes, bsrmovl;
+    //   windows 1 and 3 reuse what the previous window wrote -- the outer
+    //   product selector, not the BSR contents, distinguishes them.
+    const int window = static_cast<int>(bi.rdi->pos(0) % 4);
+    if (window != 0 && window != 2) return;
+
+    const auto zmm_a_scales = zmm_tmp_1();
+    const auto zmm_b_scales = zmm_tmp_2();
+
+    load_b_scale(bi);
+    if (window == 0) {
+        reg_src_scales.restore();
+        vmovups(zmm_a_scales, ptr[reg_src_scales + A_offset_scales(bi, 0, 0)]);
+        bsrmovf(bsr0, zmm_a_scales, zmm_b_scales);
+    } else {
+        bsrmovl(bsr0, zmm_b_scales);
+    }
+}
+
 void jit_brgemm_amx_uker_t::outer_product(
-        const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
+        const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm, int imm8) {
     using namespace data_type;
     // ACE has no unscaled fp8 outer product: the TOP4MX*PS forms below are
-    // the MX-scaled ones, driven with selector 0 against the all-ones Block
-    // Scale Register that generate() sets up with bsrinit. Every scale the
-    // product then reads is 1.0, so the selector value is immaterial.
-    constexpr uint8_t unit_scale_selector = 0;
+    // always the MX-scaled ones. On the MXFP8 path `imm8` selects the block
+    // scales staged in the BSR register by load_mxfp8_scales(). On the plain
+    // fp8 path the caller passes 0 and generate() has primed the BSR with
+    // bsrinit, so every scale read is 1.0 and the selector is immaterial.
+    assert(IMPLICATION(brg.is_fp8, brg.is_ace())
+            && "fp8 outer products require the ACE BSR to be initialized");
+    assert(IMPLICATION(!is_mxfp8_compute(), imm8 == 0));
     if (brg.dt_a == bf16 && brg.dt_b == bf16) {
         top2bf16ps(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == u8 && brg.dt_b == u8) {
@@ -2897,13 +3090,13 @@ void jit_brgemm_amx_uker_t::outer_product(
     } else if (brg.dt_a == s8 && brg.dt_b == s8) {
         top4bssd(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
-        top4mxbf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+        top4mxbf8ps(accm, zmm_a, zmm_b, imm8);
     } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
-        top4mxbhf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+        top4mxbhf8ps(accm, zmm_a, zmm_b, imm8);
     } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
-        top4mxhf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+        top4mxhf8ps(accm, zmm_a, zmm_b, imm8);
     } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
-        top4mxhbf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+        top4mxhbf8ps(accm, zmm_a, zmm_b, imm8);
     } else {
         assert(!"Unsupported data type for outer product");
     }
@@ -2918,6 +3111,19 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
     prf1B.reset();
     prf2B.reset();
     prfntaB.reset();
+
+    // BSR selector of the current outer product. The A field of the BSR holds
+    // 32 rows x 2 scale groups; `bdb` picks the 16-row half (bd_block is 16)
+    // and the parity of the rd window picks the scale group. The B field
+    // holds 64 N columns, of which `ldb` picks the 16-wide slice.
+    // Both halves are addressed by the selector, so load_mxfp8_scales() only
+    // has to refresh the BSR once per pair of rd windows.
+    const auto bsr_selector = [&](int bdb, int ldb) {
+        if (!is_mxfp8_compute()) return 0;
+        assert(bdb < 2 && ldb < b_scales_perm_groups);
+        const int selector_a = (bdb % 2) * 2 + (bi.rdi->pos(0) % 4) / 2;
+        return selector_a | (ldb << 3);
+    };
 
     if (brg.n_bcast_1_load) {
         for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
@@ -2934,7 +3140,8 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
                 ace_load_B(bi, ldb, B_offset(bi, ldb), rds);
                 for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
                     const auto &accm = Tmm(get_C_tensor(bi, bdb, ldb));
-                    outer_product(ace_zmm_A(bdb, rds), ace_zmm_B(ldb, 0), accm);
+                    outer_product(ace_zmm_A(bdb, rds), ace_zmm_B(ldb, 0), accm,
+                            bsr_selector(bdb, ldb));
                 }
             }
         }
@@ -2957,8 +3164,8 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
             for (int rds = 0; rds < ace_rd_steps(bi.rdi->block(0)); rds++) {
                 for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
                     const auto &accm = Tmm(get_C_tensor(bi, bdb, ldb));
-                    outer_product(
-                            ace_zmm_A(bdb, rds), ace_zmm_B(ldb, rds), accm);
+                    outer_product(ace_zmm_A(bdb, rds), ace_zmm_B(ldb, rds),
+                            accm, bsr_selector(bdb, ldb));
                 }
             }
         }
@@ -3071,8 +3278,24 @@ void jit_brgemm_amx_uker_t::rdb_loop_call_based(brgemm_iteration_t &bi) {
 
     for (int rdb = 0; rdb < rdb_loop_count; rdb += rd_unroll) {
         const auto n_calls = nstl::min(rd_unroll, rdb_loop_count - rdb);
-        for (int v = 0; v < n_calls; v++)
+        for (int v = 0; v < n_calls; v++) {
+            // The BSR refresh has to stay in the caller: it restores the
+            // scale pointers from the register scratchpad, which is addressed
+            // relative to rsp and therefore off by the return address inside
+            // a called body.
+            //
+            // Note that it is indexed by the *real* rd window (rdb + v), not
+            // by the variant v: unlike reg_A / reg_B, the scale registers are
+            // not advanced by the rd loop (reg_src_scales moves only between
+            // bd iterations, in bs_loop()), so the offsets computed here are
+            // absolute within the current bd iteration. The
+            // shared body of variant v is still the right one, because the
+            // only thing that varies within a group is the BSR selector, and
+            // that depends on the window parity, which is v.
+            bi.rdi = &tloop.rdis[rdb + v];
+            maybe_load_mxfp8_scales(bi);
             call(*variant_labels[v]);
+        }
 
         add(reg_A, reg_A_increment * n_calls);
         add(reg_B, reg_B_increment * n_calls);
@@ -3088,6 +3311,7 @@ void jit_brgemm_amx_uker_t::rdb_loop_call_based(brgemm_iteration_t &bi) {
     // separate last iteration if needed
     if (separate_last_iteration) {
         bi.rdi = last_rdi;
+        maybe_load_mxfp8_scales(bi);
         rdb_loop_body(bi);
     } else {
         bi.rdi = last_rdi;
@@ -3110,12 +3334,16 @@ void jit_brgemm_amx_uker_t::emit_deferred_uk_bodies() {
 
 void jit_brgemm_amx_uker_t::rdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];
+    // The B-scale tail mask depends on bi.ldi only, so it is generated once
+    // here instead of on every rd window.
+    if (is_mxfp8_compute()) set_b_scale_tail_mask(bi);
     if (call_based_rd_loop) {
         rdb_loop_call_based(bi);
         return;
     }
     for (auto &rdi : tloop.rdis) {
         bi.rdi = &rdi;
+        maybe_load_mxfp8_scales(bi);
         rdb_loop_body(bi);
     }
 }
@@ -3145,7 +3373,14 @@ void jit_brgemm_amx_uker_t::bs_loop(brgemm_iteration_t &bi) {
 
     const auto &tloop = imap_[bi.apply_postops];
     if (ununroll_bd_loop && was_prev_bi_) {
-        if (bi.bdi->idx != prev_bi_.bdi->idx) add(reg_A, bi.bdi->A_shift);
+        if (bi.bdi->idx != prev_bi_.bdi->idx) {
+            add(reg_A, bi.bdi->A_shift);
+            if (is_mxfp8_compute()) {
+                reg_src_scales.restore();
+                add(reg_src_scales, bi.bdi->A_scales_shift);
+                reg_src_scales.save();
+            }
+        }
 
         const auto real_ils
                 = actual_ils(bi.apply_postops, bi.skip_accumulation);
@@ -3301,6 +3536,12 @@ void jit_brgemm_amx_uker_t::bdb_loop_body(brgemm_iteration_t &bi) {
 void jit_brgemm_amx_uker_t::bdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];
     Label iteration_pointers;
+    if (is_mxfp8_compute() && ununroll_bd_loop) {
+        // bs_loop() advances reg_src_scales per bd iteration; keep the
+        // start-of-loop value so the next ld iteration sees it again.
+        reg_src_scales.restore();
+        reg_src_scales_bd_loop.save();
+    }
     if (ununroll_bd_loop) {
         lea(reg_iter_labels_list, ptr[rip + iteration_pointers]);
         // shift to load address for jmp for next iteration
@@ -3323,6 +3564,10 @@ void jit_brgemm_amx_uker_t::bdb_loop(brgemm_iteration_t &bi) {
         }
         putL(loop_end);
         L(loop_end);
+    }
+    if (is_mxfp8_compute() && ununroll_bd_loop) {
+        reg_src_scales_bd_loop.restore();
+        reg_src_scales.save();
     }
 }
 
@@ -3424,6 +3669,16 @@ void jit_brgemm_amx_uker_t::fill_imap() {
                 const auto prev_bdi = &tloop.bdis[bdi.idx - 1];
                 const auto inp_shift = (bdi.pos(0) - prev_bdi->pos(0));
                 bdi.A_shift = inp_shift * LDA2_size_;
+                if (is_mxfp8_compute()) {
+                    // A_offset_scales(m, k) is the block-local repacked
+                    // layout, which is all a single kernel invocation sees;
+                    // the shift between two bd iterations is therefore the
+                    // difference of their 32-row-aligned starts.
+                    const dim_t m_prev = rnd_dn(prev_bdi->pos(0), 32);
+                    const dim_t m_curr = rnd_dn(bdi.pos(0), 32);
+                    bdi.A_scales_shift = A_offset_scales(m_curr, 0)
+                            - A_offset_scales(m_prev, 0);
+                }
 
                 const auto out_shift
                         = (get_out_bd(&bdi, 0, 0) - get_out_bd(prev_bdi, 0, 0));
@@ -3672,6 +3927,24 @@ void jit_brgemm_amx_uker_t::generate() {
         // the outer product, so the fp8 up-convert paths that would clobber
         // these opmasks are never taken.
         assert(!brg.is_fp8_via_convert());
+        // The fp8 post-op converters alias k2/k4 as well, but on ACE they
+        // only ever take their native branches (max_cpu_isa is avx10_2_ace,
+        // which is a superset of avx10_2_aux), and those touch no opmask.
+        assert(IMPLICATION(
+                brg.is_fp8, is_superset(max_cpu_isa(), avx10_2_aux)));
+        // ld_scale_tail_mask aliases rd_tail_mask, which only the AMX k-tail
+        // path writes. brgemm_desc_finalize() rejects that combination.
+        assert(IMPLICATION(brg.is_mxfp8_ace, !brg.amx_wary_k_tail()));
+        if (is_mxfp8_compute()) {
+            // The BSR selector has 3 bits per operand and the A field spans
+            // two bd blocks, so the blocking must stay within these bounds.
+            // brgemm_blocking() caps ld_block2 accordingly.
+            assert(brg.bd_block2 <= 2 && brg.ld_block2 <= b_scales_perm_groups);
+            // The repacked A scales and the B scales are addressed per
+            // (M_blk, K_blk) block with no batch term, so a batch of more
+            // than one would read the same scales for every batch element.
+            assert(brg.brgattr.max_bs == 1 && !brg.brgattr.var_bs);
+        }
         mov(reg_mask, 0xf);
         kmovq(ace_load_A_mask_f, reg_mask);
         mov(reg_mask, 0xf0);
@@ -3752,14 +4025,22 @@ void jit_brgemm_amx_uker_t::generate() {
             = !are_post_ops_applicable_ || !brg.brgattr.postops_only;
     brgemm_iteration_t bi;
 
-    // ACE expresses an unscaled fp8 product as the MX one over an all-ones
-    // Block Scale Register, so BSR0 has to be primed with bsrinit (which sets
-    // every byte to 0x7F, i.e. an e8m0 exponent of 1.0). It is emitted per
-    // compute path rather than once up front because the skip-accumulation
-    // path performs no outer product at all, and its caller is not required
-    // to have brought the tile/ACE state up.
-    auto maybe_init_bsr = [&]() {
-        if (brg.is_fp8 && brg.is_ace()) bsrinit(bsr0);
+    // Per-compute-path ACE fp8 setup. It is emitted here rather than once up
+    // front because the skip-accumulation path performs no outer product at
+    // all, and its caller is not required to have brought the ACE state up.
+    //  * unscaled fp8 expresses its product as the MX one over an all-ones
+    //    Block Scale Register, so BSR0 is primed with bsrinit (every byte
+    //    0x7F, i.e. an e8m0 exponent of 1.0). MXFP8 overwrites BSR0 on every
+    //    K window, so priming it there would be dead work.
+    //  * MXFP8 needs the B-scale permutation constant, which stays live for
+    //    the whole compute path.
+    auto init_ace_fp8_regs = [&]() {
+        if (!brg.is_fp8 || !brg.is_ace()) return;
+        if (is_mxfp8_compute())
+            vmovdqu8(zmm_wei_scale_permute,
+                    ptr[rip + b_scales_perm_index_table]);
+        else
+            bsrinit(bsr0);
     };
 
     Label label_to_ret;
@@ -3783,7 +4064,7 @@ void jit_brgemm_amx_uker_t::generate() {
 
             L(label_do_not_skip_acc);
         }
-        maybe_init_bsr();
+        init_ace_fp8_regs();
         top_loop(bi);
         if (non_postops_generate) jmp(label_to_ret, T_NEAR);
         transform_buf_map_A_.clear();
@@ -3792,7 +4073,7 @@ void jit_brgemm_amx_uker_t::generate() {
     }
     if (non_postops_generate) {
         bi.apply_postops = false;
-        maybe_init_bsr();
+        init_ace_fp8_regs();
         top_loop(bi);
     }
     L(label_to_ret);
@@ -3821,6 +4102,14 @@ void jit_brgemm_amx_uker_t::generate() {
                 15, 31};
         for (size_t i = 0; i < 32; ++i)
             dw(_idx[i]);
+    }
+
+    if (is_mxfp8_compute()) {
+        align(64);
+        L(b_scales_perm_index_table);
+        for (int i = 0; i < b_scales_perm_group_size; ++i)
+            for (int j = 0; j < b_scales_perm_groups; ++j)
+                db(i + b_scales_perm_group_size * j);
     }
 }
 

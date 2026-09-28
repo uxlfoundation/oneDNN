@@ -639,9 +639,27 @@ status_t brgemm_desc_set_attr(
     if (!IMPLICATION(brgattr.use_ace, brg->is_ace()))
         return status::unimplemented;
 
-    // The ACE kernels cover bf16, int8 and fp8, see set_isa_impl(). Reject
-    // the remaining types so that dispatch falls through to an implementation
-    // that supports them.
+    if (brgattr.use_mxfp8_compute) {
+        // MX block scales are consumed by the ACE outer product itself, so
+        // the request is only meaningful for an fp8 x fp8 ACE descriptor.
+        if (!(brgattr.use_ace && brg->is_ace() && brg->is_fp8))
+            return status::unimplemented;
+        // The kernel addresses the scales of A and B per (M, K) / (K, N)
+        // block with no batch term, so every batch element would read the
+        // same scales.
+        if (brgattr.max_bs != 1 || brgattr.var_bs) return status::unimplemented;
+        // The B scales are read straight from the user tensor and need its
+        // row stride.
+        if (brgattr.LDB_scales <= 0) return status::unimplemented;
+        brg->LDB_scales = brgattr.LDB_scales;
+        brg->is_mxfp8_ace = true;
+        // ACE accumulates fp8 into tiles, like the TMUL fp8 path does.
+        brg->is_fp8_tmm = true;
+    }
+
+    // The ACE kernels cover bf16, int8 and fp8 (MX-scaled or not), see
+    // set_isa_impl(). Reject the remaining types so that dispatch falls
+    // through to an implementation that supports them.
     if (brgattr.use_ace
             && !utils::one_of(true, brg->is_int8, brg->is_bf16, brg->is_fp8))
         return status::unimplemented;
@@ -679,6 +697,17 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (brg->is_tmm && !brg->can_dispatch_uker()
             && (brg->has_per_k_scales() || brg->with_per_mn_compensation))
         return status::unimplemented;
+
+    if (brg->is_mxfp8_ace) {
+        // The block scales are staged in the BSR by the unrolled kernel only.
+        if (!brg->can_dispatch_uker()) return status::unimplemented;
+        // The B-scale tail opmask aliases the AMX k-tail one.
+        if (brg->amx_wary_k_tail()) return status::unimplemented;
+        // The BSR selector encodes the bd block in 1 bit and the ld block in
+        // 2, and one BSR A field spans a pair of rd windows.
+        if (brg->bd_block2 > 2 || brg->ld_block2 > 4)
+            return status::unimplemented;
+    }
 
     // Required for EVEX encoding for offsets
     // The kernel jit_brgemm_amx_uker_t has support of large offsets in
@@ -947,6 +976,8 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.hint_load_nt_B);
     CMP_BRGEMM_FIELD(brgattr.K_koef);
     CMP_BRGEMM_FIELD(brgattr.use_ace);
+    CMP_BRGEMM_FIELD(brgattr.use_mxfp8_compute);
+    CMP_BRGEMM_FIELD(brgattr.LDB_scales);
 
     if (lhs.brgattr.bd_mask_level > 0)
         for (int i = 0; i < lhs.bcast_dim; i++) {

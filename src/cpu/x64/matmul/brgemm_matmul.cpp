@@ -212,8 +212,31 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     auto check_attr_scales = [&]() -> status_t {
         const std::vector<int> supported_args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-        CHECK(attr_scales_ok(engine, supported_args));
         const auto &asc = attr()->scales_;
+
+        const int ndims = src_md()->ndims;
+        const bool src_is_mx = is_mx_block_scale(asc, DNNL_ARG_SRC, ndims);
+        const bool wei_is_mx = is_mx_block_scale(asc, DNNL_ARG_WEIGHTS, ndims);
+
+        const bool dst_is_mx = !asc.has_default_values(DNNL_ARG_DST)
+                && asc.get(DNNL_ARG_DST).get_quantization_mode()
+                        == quantization_mode::dynamic_mx;
+
+        // Dst quantization is a separate feature this impl does not have.
+        VDISPATCH_MATMUL(!dst_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        // MX must be present on both operands or on neither.
+        VDISPATCH_MATMUL(
+                src_is_mx == wei_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
+        // ... and only on fp8 x fp8, which only ACE can compute.
+        VDISPATCH_MATMUL(IMPLICATION(src_is_mx, is_f8 && mayiuse(avx10_2_ace)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        const bool is_mxfp8 = is_f8 && src_is_mx && wei_is_mx;
+
+        // Dynamic modes are rejected on every argument.
+        CHECK(attr_scales_ok(
+                engine, supported_args, {quantization_mode::static_sazp}));
         if (!asc.has_default_values(DNNL_ARG_SRC)
                 && !asc.has_default_values(DNNL_ARG_WEIGHTS)
                 && asc.get_mask(DNNL_ARG_WEIGHTS) > 0) {
@@ -221,9 +244,12 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             VDISPATCH_MATMUL(
                     !is_runtime_value(N()), VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
-        // Impl suppports f32 scales only for non-weight decompression
-        if (!(is_bf16_with_int_wei || is_f16_with_int_wei || is_f32_with_int_wei
-                    || with_int8_grouped_quantization)) {
+
+        if (!is_mxfp8
+                && !(is_bf16_with_int_wei || is_f16_with_int_wei
+                        || is_f32_with_int_wei
+                        || with_int8_grouped_quantization)) {
+            // Impl suppports f32 scales only for non-weight decompression
             VDISPATCH_MATMUL(
                     one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -493,6 +519,10 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         brgattr.mem_advice = bgmmc_.mem_advice;
         brgattr.max_bs = bs;
         brgattr.hint_prefetchw = bgmmc_.hint_prefetchw;
+        brgattr.use_mxfp8_compute = bgmmc_.is_mxfp8;
+        // The B scales are read straight from the user tensor, whose K rows
+        // are N scales apart.
+        if (bgmmc_.is_mxfp8) brgattr.LDB_scales = bgmmc_.N;
         if (is_superset(kernel_isa, avx512_core_amx)
                 || is_superset(kernel_isa, avx10_2_ace)) {
             // For ACE the kernel flavor comes from a single policy helper.
@@ -597,6 +627,10 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
 
     if (bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only)
         CHECK(create_brgemm_matmul_copy_a(copy_A_kernel_, &bgmmc));
+
+    if (bgmmc.is_mxfp8)
+        CHECK(create_brgemm_matmul_copy_a_scales(
+                copy_A_scales_kernel_, &bgmmc));
 
     // C-buffer dtype for cross-K reduction: by default this is acc_dt
     // (f32 / s32). When relaxed accumulation is enabled and nthr_k > 1
@@ -805,6 +839,13 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                                 copy_a_chunk_in_buffer(
                                         brgmm_ctx, a_batch_ptr, ithr, mb, kb);
 
+                            // The A block scales are repacked once per
+                            // (mb, kb) and reused by every N block of the
+                            // chunk, exactly like the A data above.
+                            if (bgmmc.is_mxfp8 && nb == n_start)
+                                copy_a_scales_chunk_in_buffer(
+                                        brgmm_ctx, ithr, mb, kb);
+
                             compute_kernel(brgmm_ctx, a_batch_ptr, b_batch_ptr,
                                     ithr, b, mb, nb, kb,
                                     kc == kc_start && kb == kb_start,
@@ -888,14 +929,18 @@ void brgemm_matmul_t<isa>::compute_kernel(
     };
 
     // Execute the kernel for one K-block. Pure accumulation into C goes through
-    // the plain execute API. Accumulation-time scales / grouped s8s8
-    // compensation and the final-block epilogue go through the post-ops API.
-    // The `do_only_*` flags map to {do_post_ops, do_apply_comp} as {0,1} (comp
-    // only) and {1,1} (epilogue).
+    // the plain execute API. Accumulation-time scales / per-MN compensation and
+    // the final-block epilogue both go through the post-ops API, which is the
+    // only entry point that carries the scale pointers: `do_only_zp_a_val`
+    // maps to {do_post_ops, do_apply_comp} = {0,0} (carrier only), a plain
+    // post-ops call to {1,1} (epilogue).
     auto execute_brgemm = [&](const brgemm_kernel_t *kernel, const int brg_idx,
                                   const dim_t bs, const bool need_postops,
                                   const bool is_tail) {
-        const bool per_k_scales = bgmmc.is_src_scale_per_k
+        // MXFP8 is listed explicitly: it always needs its block scales during
+        // accumulation, and `is_wei_scale_per_k` may have been downgraded to
+        // per-N when a single scale group spans the whole K.
+        const bool per_k_scales = bgmmc.is_mxfp8 || bgmmc.is_src_scale_per_k
                 || (bgmmc.is_wei_scale_per_k
                         && !bgmmc.apply_scales_in_buffer_b);
         const auto k = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size;
@@ -923,15 +968,21 @@ void brgemm_matmul_t<isa>::compute_kernel(
                         scratch, &leading_dimensions);
                 return;
             }
-            const void *src_scales = bgmmc.is_src_scale_per_k
-                    ? brgmm_ctx.get_src_scales_ptr(b_idx, k, m)
-                    : (bgmmc.is_wei_scale_per_k && bgmmc.with_src_scales
-                                      ? brgmm_ctx.get_src_scales_ptr(b_idx)
-                                      : nullptr);
-            const void *wei_scales = bgmmc.is_wei_scale_per_k
-                            && !bgmmc.apply_scales_in_buffer_b
-                    ? brgmm_ctx.get_wei_scales_ptr(b_idx, k, n)
-                    : nullptr;
+
+            const void *src_scales = nullptr;
+            const void *wei_scales = nullptr;
+            if (bgmmc.is_mxfp8) {
+                src_scales = brgmm_ctx.get_tr_src_scales_ptr(
+                        m_blk_idx, k_blk_idx, ithr);
+                wei_scales = brgmm_ctx.get_wei_scales_ptr(b_idx, k, n);
+            } else {
+                if (bgmmc.is_src_scale_per_k)
+                    src_scales = brgmm_ctx.get_src_scales_ptr(b_idx, k, m);
+                else if (bgmmc.is_wei_scale_per_k && bgmmc.with_src_scales)
+                    src_scales = brgmm_ctx.get_src_scales_ptr(b_idx);
+                if (bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b)
+                    wei_scales = brgmm_ctx.get_wei_scales_ptr(b_idx, k, n);
+            }
             void *scratch = is_brg_amx(brg_idx) ? (void *)wsp_tile : nullptr;
             const brgemm_post_ops_data_t post_ops_data {/*bias=*/nullptr,
                     /*binary_post_ops_rhs=*/nullptr, /*oc_logical_off=*/0,
@@ -951,9 +1002,12 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
         // Final K-block: apply scales, compensation and post-ops. Per-K scales
         // take precedence over the common ones.
-        const void *src_scales = bgmmc.is_src_scale_per_k
-                ? brgmm_ctx.get_src_scales_ptr(b_idx, k, m)
-                : brgmm_ctx.get_src_scales_ptr(b_idx);
+
+        const void *src_scales = bgmmc.is_mxfp8
+                ? brgmm_ctx.get_tr_src_scales_ptr(m_blk_idx, k_blk_idx, ithr)
+                : (bgmmc.is_src_scale_per_k
+                                  ? brgmm_ctx.get_src_scales_ptr(b_idx, k, m)
+                                  : brgmm_ctx.get_src_scales_ptr(b_idx));
         const void *wei_scales
                 = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b
                 ? brgmm_ctx.get_wei_scales_ptr(b_idx, k, n)
@@ -1545,6 +1599,38 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
 }
 
 template <cpu_isa_t isa>
+void brgemm_matmul_t<isa>::copy_a_scales_chunk_in_buffer(
+        const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t m_blk_idx,
+        dim_t k_blk_idx) const {
+    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+    assert(bgmmc.is_mxfp8);
+
+    const bool is_K_tail
+            = brgmm_ctx.is_last_K_blk(k_blk_idx) && bgmmc.K_tail > 0;
+    const bool is_M_tail
+            = (m_blk_idx == bgmmc.num_M_blocks - 1) && bgmmc.M_tail > 0;
+    const int ker_idx = (is_M_tail ? 1 : 0) | (is_K_tail ? 2 : 0);
+    assert(copy_A_scales_kernel_[ker_idx] != nullptr);
+
+    // The source scales are the user tensor in the plain [M][K / group_size]
+    // layout, advanced to the first scale of this (M_blk, K_blk) block. The
+    // kernel resolves the in-block coordinates itself.
+    const dim_t k_scales_count = div_up(bgmmc.K, bgmmc.src_scales_k_gsize);
+    const dim_t m = m_blk_idx * bgmmc.M_blk;
+    const dim_t k_scale_idx
+            = div_up(k_blk_idx * bgmmc.K_blk, bgmmc.src_scales_k_gsize);
+
+    auto ctx = jit_brgemm_matmul_copy_a_scales_t::ctx_t();
+    // e8m0 is one byte per scale, so the element offset is the byte offset.
+    ctx.src_scales
+            = reinterpret_cast<const uint8_t *>(brgmm_ctx.get_src_scales_ptr())
+            + m * k_scales_count + k_scale_idx;
+    ctx.tr_src_scales
+            = brgmm_ctx.get_tr_src_scales_ptr(m_blk_idx, k_blk_idx, ithr);
+    (*copy_A_scales_kernel_[ker_idx])(&ctx);
+}
+
+template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
         const brg_matmul_exec_ctx_t &brgmm_ctx, const char *B_data_batch_ptr,
         int ithr, dim_t b_idx, dim_t n_blk_idx, dim_t k_blk_idx) const {
@@ -1737,6 +1823,11 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
         buf_A_ptr_ = (use_buffer_a)
                 ? scratchpad.template get<char>(key_brgemm_primitive_buffer_a)
+                : nullptr;
+
+        buf_A_scales_ptr_ = bgmmc.is_mxfp8
+                ? scratchpad.template get<char>(
+                          key_brgemm_matmul_copy_a_scales_buffer)
                 : nullptr;
 
         buf_B_ptr_ = (bgmmc.use_buffer_b)
@@ -2457,6 +2548,21 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return ((const char *)src_scales_ + offset);
     }
 
+    // Returns a pointer to the repacked MXFP8 A block scales of the
+    // (@p mb, @p kb) block within the current chunk. The slab layout is
+    // documented on jit_brgemm_matmul_copy_a_scales_impl_t; this accessor
+    // owns only the outer [M_chunk][K_chunk] indexing, which is why the
+    // repack kernel and the micro-kernel are both block-local.
+    const void *get_tr_src_scales_ptr(dim_t mb, dim_t kb, int ithr) const {
+        assert(bgmmc_.is_mxfp8);
+        const dim_t k_blk_local = kb % bgmmc_.K_chunk_size;
+        const dim_t m_blk_local = mb % bgmmc_.M_chunk_size;
+
+        return buf_A_scales_ptr_ + ithr * bgmmc_.buffer_a_scales_per_thread_sz
+                + m_blk_local * bgmmc_.buffer_a_scales_m_brgm_stride
+                + k_blk_local * bgmmc_.buffer_a_scales_k_brgm_stride;
+    }
+
     // Returns a pointer to the weights scales for the correspondent block based
     // on @p b_idx, @p k and @p n.
     const void *get_wei_scales_ptr(
@@ -2905,6 +3011,7 @@ private:
     brgemm_batch_element_t *batch_element_ptr_;
 
     char *buf_A_ptr_;
+    char *buf_A_scales_ptr_;
     char *buf_B_ptr_;
     char *buf_C_ptr_;
     char *buf_D_ptr_;

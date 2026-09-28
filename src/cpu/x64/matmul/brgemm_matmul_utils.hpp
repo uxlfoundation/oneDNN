@@ -211,6 +211,13 @@ struct brgemm_matmul_conf_t {
     dim_t buffer_a_m_stride;
     dim_t buffer_a_per_thread_sz;
 
+    // Strides of the repacked MXFP8 A scales buffer. The slab of one
+    // (M_blk, K_blk) block is `buffer_a_scales_k_brgm_stride` bytes; see the
+    // layout comment on jit_brgemm_matmul_copy_a_scales_impl_t.
+    dim_t buffer_a_scales_k_brgm_stride;
+    dim_t buffer_a_scales_m_brgm_stride;
+    dim_t buffer_a_scales_per_thread_sz;
+
     dim_t buffer_b_k_stride;
     dim_t buffer_b_gb_stride;
     dim_t buffer_b_k_brg_stride;
@@ -249,6 +256,9 @@ struct brgemm_matmul_conf_t {
     bool is_xf16_fp8 = false;
     bool is_int4_weights = false;
     bool is_f4_via_convert = false;
+    // MXFP8: fp8 x fp8 with e8m0 block scales on both SRC and WEIGHTS,
+    // computed natively by the ACE outer product.
+    bool is_mxfp8 = false;
     bool with_int8_grouped_quantization = false;
     // Enables the driver-side per-(M, N) f32 compensation tile that captures
     // the symmetric src/wei zero-point + 128-shift correction in the grouped
@@ -549,6 +559,28 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
 void init_aux_values(brgemm_matmul_conf_t &bgmmc,
         const memory_desc_wrapper &src_d, const memory_desc_wrapper &wei_d,
         const memory_desc_wrapper &dst_d);
+
+// Returns true if the scales of @p arg (DNNL_ARG_SRC or DNNL_ARG_WEIGHTS) are
+// MX block scales: static (user-provided) e8m0 scales, one per group of 32
+// elements along K. SRC groups are (1, 32) and WEIGHTS groups are (32, 1); the
+// mask must cover the M/K (SRC) or K/N (WEIGHTS) dimensions.
+//
+// Input MX scales are static: `dynamic_mx` only describes scales computed by
+// the library, i.e. DST quantization.
+inline bool is_mx_block_scale(const scales_t &asc, int arg, int ndims) {
+    if (!utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS)) return false;
+    if (asc.has_default_values(arg)) return false;
+    const auto &e = asc.get(arg);
+    if (e.get_quantization_mode() != quantization_mode::static_sazp)
+        return false;
+    if (e.get_data_type() != data_type::e8m0) return false;
+    if (e.has_default_groups()) return false;
+    const int mask = e.get_mask();
+    const int k_n_bits = (1 << (ndims - 1)) | (1 << (ndims - 2));
+    if ((mask & k_n_bits) != k_n_bits) return false;
+    if (arg == DNNL_ARG_SRC) return e.get_group(0) == 1 && e.get_group(1) == 32;
+    return e.get_group(0) == 32 && e.get_group(1) == 1;
+}
 
 status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const matmul_desc_t &mmd, memory_desc_t &src_md,

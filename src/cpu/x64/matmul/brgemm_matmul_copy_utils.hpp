@@ -78,12 +78,43 @@ struct jit_brgemm_matmul_copy_a_t {
     const brgemm_matmul_conf_t *conf_;
 };
 
+// Repacks the e8m0 block scales of A from the user layout [M][K / group_size]
+// into the blocked layout the MXFP8 micro-kernel reads. See the layout comment
+// on jit_brgemm_matmul_copy_a_scales_impl_t, which is the single source of
+// truth for it.
+struct jit_brgemm_matmul_copy_a_scales_t {
+    struct ctx_t {
+        // Base of the user scales, already advanced to the (M_blk, K_blk)
+        // block by the caller.
+        const void *src_scales = nullptr;
+        // Base of the repacked slab of this (M_blk, K_blk) block.
+        const void *tr_src_scales = nullptr;
+    };
+
+    virtual void operator()(ctx_t *ctx) = 0;
+    virtual status_t create_kernel() = 0;
+
+    jit_brgemm_matmul_copy_a_scales_t(const brgemm_matmul_conf_t *conf)
+        : conf_(conf) {}
+    virtual ~jit_brgemm_matmul_copy_a_scales_t() = default;
+
+    const brgemm_matmul_conf_t *conf_;
+};
+
 status_t create_brgemm_matmul_copy_b(
         std::unique_ptr<jit_brgemm_matmul_copy_b_t> &copy_ker,
         const brgemm_matmul_conf_t *conf);
 
 status_t create_brgemm_matmul_copy_a(
         std::unique_ptr<jit_brgemm_matmul_copy_a_t> &copy_ker,
+        const brgemm_matmul_conf_t *conf);
+
+// Creates the four tail flavors of the copy-A-scales kernel, indexed as
+// [is_M_tail | (is_K_tail << 1)]. Entries whose tail does not exist are left
+// null.
+status_t create_brgemm_matmul_copy_a_scales(
+        std::unique_ptr<jit_brgemm_matmul_copy_a_scales_t>
+                *copy_A_scales_kernel,
         const brgemm_matmul_conf_t *conf);
 
 } // namespace matmul

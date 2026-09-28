@@ -161,6 +161,7 @@ enum {
     key_brgemm_primitive_batch,
     key_brgemm_primitive_buffer,
     key_brgemm_primitive_buffer_a,
+    key_brgemm_matmul_copy_a_scales_buffer,
     key_brgemm_primitive_buffer_b,
     key_brgemm_primitive_buffer_comp,
     key_brgemm_primitive_buffer_d,

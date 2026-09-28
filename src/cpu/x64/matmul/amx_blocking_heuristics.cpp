@@ -116,10 +116,10 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
         const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils) {
 
-    bool a_dt_ok
-            = one_of(bgmmc.orig_src_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16);
-    bool b_dt_ok
-            = one_of(bgmmc.orig_wei_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16)
+    bool a_dt_ok = one_of(bgmmc.orig_src_dt, dnnl_s8, dnnl_u8, dnnl_bf16,
+            dnnl_f16, dnnl_f8_e4m3, dnnl_f8_e5m2);
+    bool b_dt_ok = one_of(bgmmc.orig_wei_dt, dnnl_s8, dnnl_u8, dnnl_bf16,
+                           dnnl_f16, dnnl_f8_e4m3, dnnl_f8_e5m2)
             || bgmmc.is_xf16_fp8;
 
     bool a_tag_ok = bgmmc.src_tag == dnnl_format_tag_any
@@ -129,10 +129,22 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
             bm_conf_utils.check_b_layout_blocked_by_n(bgmmc.wei_tag),
             bm_conf_utils.check_b_layout_blocked_32_by_n(bgmmc.wei_tag));
 
-    return bgmmc.orig_src_dt == bgmmc.src_dt
+    bool isa_ok = bgmmc.is_ace || bgmmc.is_amx;
+
+    bool native_fp8 = mayiuse(avx10_2_amx_2) || mayiuse(avx10_2_ace);
+
+    // An fp8 operand needs either a native fp8 outer product or, for the
+    // weights only, the xf16 up-convert path.
+    bool a_fp8_ok = IMPLICATION(
+            one_of(bgmmc.orig_src_dt, dnnl_f8_e4m3, dnnl_f8_e5m2), native_fp8);
+    bool b_fp8_ok
+            = IMPLICATION(one_of(bgmmc.orig_wei_dt, dnnl_f8_e4m3, dnnl_f8_e5m2),
+                    native_fp8 || bgmmc.is_xf16_fp8);
+
+    return isa_ok && a_fp8_ok && b_fp8_ok && bgmmc.orig_src_dt == bgmmc.src_dt
             && (bgmmc.orig_wei_dt == bgmmc.wei_dt || bgmmc.is_xf16_fp8)
-            && bgmmc.is_amx && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M
-            && a_dt_ok && a_tag_ok && b_dt_ok && b_tag_ok
+            && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M && a_dt_ok && a_tag_ok
+            && b_dt_ok && b_tag_ok
             && (bgmmc.reduce_kind == matmul_reduce_kind::undef)
             && !bgmmc.packed_sparse_weights;
 }

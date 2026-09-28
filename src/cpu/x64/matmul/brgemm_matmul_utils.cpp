@@ -1634,8 +1634,9 @@ status_t compute_amx_blocking_candidate(brgemm_matmul_conf_t &bgmmc,
 
         if (best_blocking.get_blocking_scores() != 0.0f) {
             best_blocking.update_configuration(bgmmc);
-            per_k_requires_buffer_c
-                    = apply_per_k_constraints(bgmmc, k_group, actual_ldd);
+            if (!(bgmmc.is_ace && bgmmc.is_mxfp8))
+                per_k_requires_buffer_c
+                        = apply_per_k_constraints(bgmmc, k_group, actual_ldd);
             return status::success;
         }
     }
@@ -1877,8 +1878,38 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const bool is_wei_any = weights_d.format_kind() == format_kind::any
             || weights_d.is_sparse_packed_desc();
+
+    const auto &asc = attr.scales_;
+    const bool is_f8_x_f8
+            = brgemm_utils::ace_fp8_dt_ok(bgmmc.src_dt, bgmmc.wei_dt);
+    const int ndims = src_d.ndims();
+    const bool src_is_mx = is_mx_block_scale(asc, DNNL_ARG_SRC, ndims);
+    const bool wei_is_mx = is_mx_block_scale(asc, DNNL_ARG_WEIGHTS, ndims);
+    // Dynamic MX on inputs is not a valid configuration.
+    VCONDCHECK_BG(asc.get(DNNL_ARG_SRC).get_quantization_mode()
+                            != quantization_mode::dynamic_mx
+                    && asc.get(DNNL_ARG_WEIGHTS).get_quantization_mode()
+                            != quantization_mode::dynamic_mx,
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    const bool dst_is_mx = !asc.get(DNNL_ARG_DST).has_default_values()
+            && asc.get(DNNL_ARG_DST).get_quantization_mode()
+                    == quantization_mode::dynamic_mx;
+
+    VCONDCHECK_BG(!dst_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
+    // One-sided MX is not a supported configuration, see above.
+    VCONDCHECK_BG(src_is_mx == wei_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
+    // MX is only defined for fp8 x fp8 here.
+    VCONDCHECK_BG(IMPLICATION(src_is_mx, is_f8_x_f8), VERBOSE_UNSUPPORTED_DT);
+
+    bgmmc.is_mxfp8 = is_f8_x_f8 && src_is_mx && wei_is_mx;
+
     bgmmc.is_ace = is_superset(isa, avx10_2_ace)
             && brgemm_utils::ace_dt_ok(bgmmc.src_dt, bgmmc.wei_dt);
+
+    if (bgmmc.is_mxfp8) {
+        // Only ACE has the MX outer product.
+        VCONDCHECK_BG(bgmmc.is_ace, VERBOSE_UNSUPPORTED_ISA);
+    }
 
     brgemm_matmul_conf_utils_t bm_conf_utils(bgmmc, isa, attr,
             src_d.format_kind() == format_kind::any, is_wei_any,
@@ -2026,12 +2057,20 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         if (bgmmc.is_src_scale_per_k) {
             bgmmc.src_scales_k_gsize = src_scales.get_group(1);
         }
+        // MX block scales are static, K-grouped scales whose mask has the K
+        // bit set (validated by is_mx_block_scale()).
+        assert(IMPLICATION(bgmmc.is_mxfp8,
+                bgmmc.is_src_scale_per_k && bgmmc.src_scales_k_gsize == 32));
     }
     if (bgmmc.with_wei_scales) {
         const auto &wei_scale_mask = wei_scales.get_mask();
         bgmmc.is_wei_scale_common = wei_scale_mask == 0;
         bgmmc.is_wei_scale_per_k = wei_scale_mask & 1 << (bgmmc.ndims - 2);
         bgmmc.is_wei_scale_per_n = wei_scale_mask & 1 << (bgmmc.ndims - 1);
+        // MX block scales have both K and N bits set (validated by
+        // is_mx_block_scale()).
+        assert(IMPLICATION(bgmmc.is_mxfp8,
+                bgmmc.is_wei_scale_per_k && bgmmc.is_wei_scale_per_n));
         bgmmc.apply_scales_in_buffer_b = bgmmc.is_wei_scale_per_k
                 && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1;
         bgmmc.wei_scales_dt = wei_scales.get_data_type();
@@ -2519,6 +2558,18 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils, dst_d, attr),
             VERBOSE_BLOCKING_FAIL, "");
 
+    // The batch (bs) dimension is not applied to the scale pointers on either
+    // side: the micro-kernel offsets (A_offset_scales/B_offset_scales) have no
+    // bs term, and the A-scales repack runs per (M_blk, K_blk) only. Fixing
+    // one side alone would desynchronize the repacked buffer from what the
+    // micro-kernel reads, so both are blocked here until they are implemented
+    // together. This is a software restriction, not a hardware one.
+    // Note the placement: `brgemm_batch_size` is derived from the K chunking,
+    // so this must run after blocking, otherwise it reads a stale value.
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_mxfp8, bgmmc.brgemm_batch_size == 1),
+            VERBOSE_UNSUPPORTED_FEATURE,
+            "MXFP8 does not support brgemm_batch_size > 1");
+
     if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk) {
         assert(!bgmmc.is_runtime_N
                 && "N_blk should not be adjusted for runtime N");
@@ -2863,6 +2914,29 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.buffer_a_per_thread_sz = bgmmc.buffer_a_m_stride * bgmmc.M_chunk_size;
 
+    if (bgmmc.is_mxfp8) {
+        // Repacked A scales, one byte per e8m0 scale. The slab of a single
+        // (M_blk, K_blk) block is the layout documented on
+        // jit_brgemm_matmul_copy_a_scales_impl_t:
+        //     [m2 = rnd_up(M_blk,32)/32][k1 = rnd_up(K_blk,64)/32]
+        //             [m0 = 16][m1 = 2][k0 = 2]
+        // whose size is rnd_up(K_blk, 2 * gsize) / gsize * rnd_up(M_blk, 32).
+        // The kernel and the micro-kernel both address one such slab; the
+        // outer [M_chunk][K_chunk] indexing is applied by the driver, hence
+        // the two strides below.
+        bgmmc.buffer_a_scales_k_brgm_stride
+                = rnd_up(bgmmc.K_blk, 2 * bgmmc.src_scales_k_gsize)
+                / bgmmc.src_scales_k_gsize * rnd_up(bgmmc.M_blk, 32);
+        bgmmc.buffer_a_scales_m_brgm_stride
+                = bgmmc.buffer_a_scales_k_brgm_stride * bgmmc.K_chunk_size;
+        bgmmc.buffer_a_scales_per_thread_sz
+                = bgmmc.buffer_a_scales_m_brgm_stride * bgmmc.M_chunk_size;
+    } else {
+        bgmmc.buffer_a_scales_k_brgm_stride = 0;
+        bgmmc.buffer_a_scales_m_brgm_stride = 0;
+        bgmmc.buffer_a_scales_per_thread_sz = 0;
+    }
+
     // Layout of a single GB in packed format:
     //     [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
 
@@ -3028,6 +3102,11 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
     if (bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only)
         scratchpad.book(key_brgemm_primitive_buffer_a,
                 bgmmc.nthr * bgmmc.buffer_a_per_thread_sz, default_data_align);
+
+    if (bgmmc.is_mxfp8)
+        scratchpad.book(key_brgemm_matmul_copy_a_scales_buffer,
+                bgmmc.nthr * bgmmc.buffer_a_scales_per_thread_sz,
+                default_data_align);
 
     if (bgmmc.use_buffer_b) {
         scratchpad.book(key_brgemm_primitive_buffer_b,

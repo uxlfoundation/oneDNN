@@ -28,25 +28,15 @@ namespace cpu {
 namespace x64 {
 namespace ir {
 
-// A few physical registers are selected before the emitter runs and passed in.
-// The register allocator avoids using them, so they are always available for
-// these specific purposes:
-//  - param_reg: stores a pointer to the kernel's input arguments.
-//  - gpr_scratch / vec_scratch: kept out of the pools but unused. Spilled
-//    values go through the temps the allocator hands out (see `temp_reg_t`).
+// One physical register is selected before the emitter runs and passed in.
+// The register allocator avoids using it, so it is always available:
+//  - `param_reg`: stores a pointer to the kernel's input arguments.
 //
 // `pools` contains the registers that are available for allocation for each
 // register kind, along with the stack space needed when a value for that
 // kind is spilled.
-//
-// TODO: Consider adding a second pass. The first pass could determine how many
-// registers need to be spilled, giving a more accurate estimate of the register
-// scratch size. Now we always book a constant size during the `generate()`
-// call.
 struct reg_config_t {
     reg_pools_t pools;
-    std::vector<int> gpr_scratch; // >= 2 entries
-    std::vector<int> vec_scratch; // >= 3 entries
     int param_reg = 0;
 };
 
@@ -63,23 +53,19 @@ struct reg_config_t {
 // Some registers are reserved and are not included in the allocatable pools:
 // - `rsp_reg` (stack pointer)
 // - `param_reg` (parameter pointer)
-// - `gpr_scratch` registers
-// - `vec_scratch` registers
-// - `mask_scratch` opmasks, on AVX-512 only
+// - `reserved_masks` opmasks, on AVX-512 only
 //
-// `gpr_scratch` and `vec_scratch` are unused, since spilled values go through
-// temps (see `temp_reg_t`).
+// Spilled values need no reserved register. The allocator gives each operation
+// a temp register for every spilled operand (see `temp_reg_t`).
 //
-// `mask_scratch` names the opmasks a kernel hands to code outside the IR that
+// `reserved_masks` names the opmasks a kernel hands to code outside the IR that
 // writes them without restoring them. The JIT post-ops injector is the one such
 // consumer today (see `postops_injector_t`). On AVX2* a mask is a vector
-// register, so `mask_scratch` is ignored there.
+// register, so `reserved_masks` is ignored there.
 //
 // Export for testing.
 reg_config_t DNNL_API make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
-        const std::vector<int> &gpr_scratch,
-        const std::vector<int> &vec_scratch,
-        const std::vector<int> &mask_scratch);
+        const std::vector<int> &reserved_masks);
 
 } // namespace ir
 } // namespace x64

@@ -270,6 +270,7 @@ struct DNNL_API brgemm_attr_t {
     // instead of being applied to the accumulators in post-ops. Honored only
     // on an fp8 x fp8 ACE descriptor, see brgemm_desc_t::is_mxfp8_ace.
     bool use_mxfp8_compute {false};
+    bool quantize_dst_to_mxfp8 {false};
 };
 
 struct brgemm_desc_t {
@@ -408,6 +409,7 @@ struct brgemm_desc_t {
     // `brgattr.use_mxfp8_compute`, and only there, so that it is final before
     // blocking runs.
     bool is_mxfp8_ace = false;
+    bool quantize_dst_to_mxfp8 = false;
 
     bool has_int8_vnni = false;
 
@@ -734,9 +736,7 @@ struct brgemm_desc_t {
     dim_t get_wsp_buffer_kind_size(int kind) const noexcept {
         switch (kind) {
             case wsp_c_tiles:
-                return is_ace()
-                        ? 0
-                        : static_cast<dim_t>(get_num_C_tiles()) * tilesize;
+                return static_cast<dim_t>(get_num_C_tiles()) * tilesize;
             case wsp_a_transform:
                 return ace_save_transform_A()
                         ? static_cast<dim_t>(ace_transformed_A_bd_block2_size())

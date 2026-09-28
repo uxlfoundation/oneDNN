@@ -524,12 +524,16 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
 
     const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
     brg->with_dst_scales = !dst_scales.has_default_values();
+
+    const bool dst_scales_mx = brg->with_dst_scales
+            && dst_scales.get_quantization_mode()
+                    == quantization_mode::dynamic_mx;
     const bool scales_ok = attr->scales_.has_default_values({DNNL_ARG_SRC,
                                    DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
             && IMPLICATION(!src_scales.has_default_values(),
                     src_scales.get_mask() == 0 || brg->is_per_k_src_scales)
             && IMPLICATION(!dst_scales.has_default_values(),
-                    dst_scales.get_mask() == 0);
+                    dst_scales.get_mask() == 0 || dst_scales_mx);
     if (!scales_ok) return status::unimplemented;
 
     auto init_zp_type
@@ -664,6 +668,13 @@ status_t brgemm_desc_set_attr(
             && !utils::one_of(true, brg->is_int8, brg->is_bf16, brg->is_fp8))
         return status::unimplemented;
 
+    if (brgattr.quantize_dst_to_mxfp8) {
+        if (!(brgattr.use_ace && brg->is_ace() && brg->is_fp8))
+            return status::unimplemented;
+        if (brgattr.max_bs != 1 || brgattr.var_bs) return status::unimplemented;
+    }
+    brg->quantize_dst_to_mxfp8 = brgattr.quantize_dst_to_mxfp8;
+
     return status::success;
 }
 
@@ -707,6 +718,27 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
         // 2, and one BSR A field spans a pair of rd windows.
         if (brg->bd_block2 > 2 || brg->ld_block2 > 4)
             return status::unimplemented;
+    }
+
+    // MXFP8 dst quantization is computed by the ACE micro-kernel itself and
+    // requires a dst scales buffer to write the computed e8m0 scales to.
+    if (brg->quantize_dst_to_mxfp8) {
+        const bool mxfp8_dst_ok = brg->with_dst_scales && brg->is_ace()
+                && utils::one_of(
+                        brg->dt_d, data_type::f8_e5m2, data_type::f8_e4m3)
+                && brg->can_dispatch_uker() && !brg->amx_wary_k_tail()
+                && brg->brgattr.bd_mask_level == 0 && brg->ld_block == 16
+                && brg->load_dim % 32 == 0 && !brg->interleave_tilestores_
+                && !brg->with_sum && brg->zp_type_c == brgemm_broadcast_t::none;
+        if (!mxfp8_dst_ok) return status::unimplemented;
+        // The staged scales of one (bd, ld) iteration are stored as a single
+        // 32 rows x 64 columns group, so every iteration must start at such a
+        // group boundary: either full bd/ld groups, or a single iteration.
+        const bool mxfp8_dst_blocking_ok
+                = (brg->bdb == 1
+                          || (brg->bd_block == 16 && brg->bd_block2 == 2))
+                && (brg->ld_block2 == 4 || brg->ldb <= brg->ld_block2);
+        if (!mxfp8_dst_blocking_ok) return status::unimplemented;
     }
 
     // Required for EVEX encoding for offsets
@@ -978,6 +1010,7 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.use_ace);
     CMP_BRGEMM_FIELD(brgattr.use_mxfp8_compute);
     CMP_BRGEMM_FIELD(brgattr.LDB_scales);
+    CMP_BRGEMM_FIELD(brgattr.quantize_dst_to_mxfp8);
 
     if (lhs.brgattr.bd_mask_level > 0)
         for (int i = 0; i < lhs.bcast_dim; i++) {

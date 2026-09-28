@@ -2206,6 +2206,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_mxfp8, bgmmc.batch == 1),
+            VERBOSE_UNSUPPORTED_FEATURE, "MXFP8 does not support batch > 1");
+
     // Downgrade to per-N to avoid the expensive K-scales JIT path which
     // is not needed for this case.
     if (bgmmc.is_wei_scale_per_k && !bgmmc.is_runtime_K

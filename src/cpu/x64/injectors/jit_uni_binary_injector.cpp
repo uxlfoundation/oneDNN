@@ -424,6 +424,14 @@ static bool rhs_arg_params_differ(int vmm_idx1, int vmm_idx2,
     return false;
 }
 
+// Compare ops write their result through the helper vmm on every ISA (see
+// `execute_cmp_binary()`).
+static bool is_cmp_alg(alg_kind_t alg) {
+    return utils::one_of(alg, alg_kind::binary_ge, alg_kind::binary_gt,
+            alg_kind::binary_le, alg_kind::binary_lt, alg_kind::binary_eq,
+            alg_kind::binary_ne);
+}
+
 template <typename Vmm>
 int jit_uni_binary_injector_t<Vmm>::adjust_temp_vmm_hint(int user_hint,
         const injector_utils::vmm_index_set_t &vmm_idxs,
@@ -514,10 +522,13 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
                             broadcasting_strategy_t::scalar,
                             broadcasting_strategy_t::per_oc_spatial)
                     || rhs_arg_data_type != data_type::f32);
+    // Compare ops and ternary inputs always go through the helper vmm.
     const bool dt_helper_vmm_needed
             = !binary_op_with_unaligned_mem_operand_allowed_
             || rhs_arg_data_type != data_type::f32 || bcast_f32_non_avx512
-            || should_preserve_vmm_tail || post_op.is_prelu();
+            || should_preserve_vmm_tail || post_op.is_prelu()
+            || (post_op.is_binary() && is_cmp_alg(post_op.binary.alg))
+            || needs_ternary_input;
 
     // Phase 1 Validate temporary vmm user hint
     // The temporary vmm must be outside `vmm_idxs`. Inside, it would overwrite
@@ -2848,9 +2859,7 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary(
 
     const bool is_prelu = post_op.is_prelu();
     const auto alg = is_prelu ? alg_kind::undef : post_op.binary.alg;
-    const bool cmp_op = utils::one_of(alg, alg_kind::binary_ge,
-            alg_kind::binary_gt, alg_kind::binary_le, alg_kind::binary_lt,
-            alg_kind::binary_eq, alg_kind::binary_ne);
+    const bool cmp_op = is_cmp_alg(alg);
     const auto rhs_arg_data_type
             = get_src1_desc(post_op, rhs_arg_static_params_.dst_d).data_type;
     const bool scalar_f32

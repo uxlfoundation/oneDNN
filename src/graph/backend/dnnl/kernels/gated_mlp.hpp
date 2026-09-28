@@ -23,7 +23,6 @@
 #include <utility>
 #include <vector>
 
-#include "graph/backend/dnnl/kernels/gated_mlp_primitive.hpp"
 #include "graph/backend/dnnl/kernels/kernel_base.hpp"
 #include "graph/backend/dnnl/kernels/large_partition.hpp"
 
@@ -46,19 +45,7 @@ public:
     status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *engine,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override {
-        const engine_kind_t ekind = engine->kind();
-        bool enable_ukernel = false;
-
-        if (ekind == engine_kind::gpu) { enable_ukernel = !force_primitive(); }
-
         status_t ret = status::unimplemented;
-
-        // TODO: quantized fused gated mlp is not supported yet.
-        if (enable_ukernel && !quantized) {
-            kernel = std::make_shared<
-                    gated_mlp_primitive_kernel_t<quantized>>();
-            ret = kernel->compile_impl(part, engine, inputs, outputs);
-        }
 
         if (ret != status::success) {
             kernel = std::make_shared<larger_partition_kernel_t>();
@@ -70,12 +57,6 @@ public:
         else
             VDISPATCH_GRAPH_GATED_MLP("gated_mlp is failed to dispatch");
         return ret;
-    }
-
-    bool force_primitive() const {
-        const int force = graph::utils::getenv_int_internal(
-                "GRAPH_GATED_MLP_FORCE_PRIMITIVE", 0);
-        return force > 0;
     }
 
     status_t execute_impl(stream_t *stream, const std::vector<tensor_t> &inputs,

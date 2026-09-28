@@ -304,9 +304,6 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg);
 /// This pass will transform the sdpa bwd subgraph into a dnnl_sdpa_bwd op.
 status_t fuse_sdpa_bwd(std::shared_ptr<subgraph_t> &sg);
 
-/// This pass will transform the gated mlp subgraph into a _gated_mlp op.
-status_t fuse_gated_mlp(std::shared_ptr<subgraph_t> &sg);
-
 /// This pass will decompose the softmax with stats output into a normal softmax
 /// without stats output and some small ops to compute the stats.
 /// The main reason for this pass is that the current implementation

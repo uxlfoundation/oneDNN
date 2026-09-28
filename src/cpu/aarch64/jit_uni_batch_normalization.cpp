@@ -2253,14 +2253,25 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(
 
     VDISPATCH_BNORM(src_tag != format_tag::undef, VERBOSE_UNSUPPORTED_TAG);
 
-    if (is_fwd() ? with_relu_post_op(is_training()) || fuse_norm_relu()
-                 : fuse_norm_relu())
-        if (!(is_superset(isa, sve) && simd_bytes(isa) == 64))
-            return status::unimplemented; // TODO
+    const bool need_relu_support
+            = fuse_norm_relu() || with_relu_post_op(is_training());
 
-    if (is_training() && fuse_norm_relu()) {
-        if (!is_superset(isa, sve)) return status::unimplemented;
-        init_default_ws(1);
+    if (need_relu_support) {
+        const bool is_sve = is_superset(isa, sve);
+        const bool is_sve_512 = is_sve && simd_bytes(isa) == 64;
+
+        VDISPATCH_BNORM(
+                is_sve, "relu fusion/post-op is unsupported for this isa");
+
+        if (is_training()) {
+            // Training with relu is only supported on SVE-512.
+            VDISPATCH_BNORM(is_sve_512,
+                    "training with relu fusion/post-op is not supported for "
+                    "this isa");
+
+            // Fused relu needs to output a workspace for training
+            if (fuse_norm_relu()) { init_default_ws(1); }
+        }
     }
 
     VDISPATCH_BNORM(
@@ -2271,7 +2282,7 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(
     // Only IC % 16 == 0 is supported for now
     VDISPATCH_BNORM(IMPLICATION(src_d.matches_one_of_tag(nc, nwc, nhwc, ndhwc),
                             src_d.padded_dims()[1] % 16 == 0),
-            VERBOSE_SHAPE_RESTRICTION);
+            "padded input channels must be divisible by 16");
 
     nthr_ = dnnl_get_max_threads();
     auto scratchpad = scratchpad_registry().registrar();
@@ -2399,7 +2410,8 @@ status_t jit_uni_batch_normalization_bwd_t<isa>::pd_t::init(
             VERBOSE_SHAPE_RESTRICTION);
 
     if (fuse_norm_relu()) {
-        if (!is_superset(isa, sve)) return status::unimplemented;
+        VDISPATCH_BNORM(is_superset(isa, sve) && simd_bytes(isa) == 64,
+                "relu fusion is not supported on this isa");
         init_default_ws(1);
         if (!compare_ws(hint_fwd_pd_)) return status::unimplemented;
     }

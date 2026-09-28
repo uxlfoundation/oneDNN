@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2025 FUJITSU LIMITED
+* Copyright 2025-2026 FUJITSU LIMITED
 * Copyright 2025-2026 Arm Ltd. and affiliates
 * Copyright 2026 Intel Corporation
 * Copyright 2026 Ampere Computing LLC
@@ -50,9 +50,11 @@ struct jit_int8_matmul_t : public primitive_t {
         int get_idx(bool is_zp_cal, bool is_m_tail, bool is_k_tail,
                 bool is_n_tail, const brg_int8_t &brg) const;
 
-        int m_block_sz = 32;
-        int n_block_sz;
-        int mm_parallel_work;
+        int mtile_sz, ntile_sz, mm_parallel_work;
+        int thr_M; // M dimension handled by one thread
+        int thr_N; // N dimension handled by one thread
+        int res_thr_M; // Residual M dimension handled by the last thread
+        int res_thr_N; // Residual N dimension handled by the last thread
 
         brg_int8_t brg_int8_conf;
         dyn_vals_t dyn_vals;

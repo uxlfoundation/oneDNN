@@ -2543,7 +2543,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     if (matmul_amx_blocking_params_macro_t::is_supported(bgmmc, bm_conf_utils))
         if (postops_estimator_t::estimate_insts_per_cacheline(
-                    dst_md, attr, bgmmc.postops_inst_count)
+                    dst_md, attr, isa, bgmmc.postops_inst_count)
                 != status::success) {
             // Failed to estimate postops length. Assumption is no impact on
             // gemm execution.

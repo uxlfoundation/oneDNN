@@ -163,6 +163,8 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     auto &barrierReady = state.barrierReady;
 
     auto getFenceTemp = [&]() {
+        if (getEfficient64Bit())
+            return GRF();
         auto temp = state.ra.try_alloc();
         if (temp.isValid())
             return temp;

@@ -2311,6 +2311,7 @@ void Generator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMMStrategy &
     safeReleaseRanges(state.Br_offsetRegs, state);
     safeReleaseRanges(state.Br_scaleRegs, state);
     safeReleaseRanges(state.Bgr_regs, state);
+    safeReleaseRanges(state.Cr_regs, state);
     safeReleaseRanges(state.tempMul_regs, state);
     clearTokenAllocations(hw, state);
     releaseCoopRemainders(state);

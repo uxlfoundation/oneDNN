@@ -222,9 +222,11 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
                 && asc.get(DNNL_ARG_DST).get_quantization_mode()
                         == quantization_mode::dynamic_mx;
 
-        // Dst quantization is a separate feature this impl does not have.
-        VDISPATCH_MATMUL(!dst_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
-
+        // MX dst quantization requires MX inputs and an fp8 destination.
+        VDISPATCH_MATMUL(IMPLICATION(dst_is_mx,
+                                 src_is_mx && wei_is_mx
+                                         && one_of(dst_dt, f8_e4m3, f8_e5m2)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
         // MX must be present on both operands or on neither.
         VDISPATCH_MATMUL(
                 src_is_mx == wei_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -234,9 +236,22 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
 
         const bool is_mxfp8 = is_f8 && src_is_mx && wei_is_mx;
 
-        // Dynamic modes are rejected on every argument.
-        CHECK(attr_scales_ok(
-                engine, supported_args, {quantization_mode::static_sazp}));
+        // Input scales are always static; `dynamic_mx` describes
+        // library-computed scales and is only meaningful on DST.
+        VDISPATCH_MATMUL(!asc.get(DNNL_ARG_SRC).is_mx()
+                        && !asc.get(DNNL_ARG_WEIGHTS).is_mx(),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+        // MX dst scales are e8m0.
+        VDISPATCH_MATMUL(
+                IMPLICATION(dst_is_mx, asc.get_data_type(DNNL_ARG_DST) == e8m0),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        // `dynamic_mx` is advertised only when it is on DST of an MXFP8
+        // problem (validated above); every other dynamic mode is rejected.
+        std::vector<int> supported_qmodes = {quantization_mode::static_sazp};
+        if (dst_is_mx)
+            supported_qmodes.push_back(quantization_mode::dynamic_mx);
+        CHECK(attr_scales_ok(engine, supported_args, supported_qmodes));
         if (!asc.has_default_values(DNNL_ARG_SRC)
                 && !asc.has_default_values(DNNL_ARG_WEIGHTS)
                 && asc.get_mask(DNNL_ARG_WEIGHTS) > 0) {
@@ -520,6 +535,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         brgattr.max_bs = bs;
         brgattr.hint_prefetchw = bgmmc_.hint_prefetchw;
         brgattr.use_mxfp8_compute = bgmmc_.is_mxfp8;
+        brgattr.quantize_dst_to_mxfp8 = bgmmc_.is_mxfp8_dst;
         // The B scales are read straight from the user tensor, whose K rows
         // are N scales apart.
         if (bgmmc_.is_mxfp8) brgattr.LDB_scales = bgmmc_.N;
@@ -632,6 +648,10 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
         CHECK(create_brgemm_matmul_copy_a_scales(
                 copy_A_scales_kernel_, &bgmmc));
 
+    if (bgmmc.is_mxfp8_dst)
+        CHECK(create_brgemm_matmul_copy_d_scales(
+                copy_D_scales_kernel_, &bgmmc));
+
     // C-buffer dtype for cross-K reduction: by default this is acc_dt
     // (f32 / s32). When relaxed accumulation is enabled and nthr_k > 1
     // the per-thread brgemm writes bf16/f16 into the C buffer, so the
@@ -740,7 +760,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         brgemm_palettes_.maybe_tile_configure(
                 is_amx, prev_ker_idx, brgmm_ctx.get_base_brgemm_kernel_idx());
 
-        if (bgmmc.with_dst_scales) {
+        if (bgmmc.with_dst_scales && !bgmmc.is_mxfp8_dst) {
             const float *dst_scales_ptr = static_cast<const float *>(
                     brgmm_ctx.get_dst_scales_ptr());
             float *dst_scales_inv_ptr = static_cast<float *>(
@@ -850,6 +870,14 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                                     ithr, b, mb, nb, kb,
                                     kc == kc_start && kb == kb_start,
                                     prev_ker_idx, prefetch);
+
+                            // The micro-kernel stages the mxfp8 dst scales of
+                            // the block in a buffer, relayout them into the
+                            // user layout once the block is complete.
+                            if (bgmmc.is_mxfp8_dst
+                                    && brgmm_ctx.is_last_K_blk(kb))
+                                copy_dst_scales_chunk_from_buffer(
+                                        brgmm_ctx, ithr, mb, nb);
                         }
                     }
                     kc_prev = kc;
@@ -1012,7 +1040,9 @@ void brgemm_matmul_t<isa>::compute_kernel(
                 = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b
                 ? brgmm_ctx.get_wei_scales_ptr(b_idx, k, n)
                 : brgmm_ctx.get_wei_scales_ptr(b_idx, /*k=*/0, n);
-        const void *dst_scales = brgmm_ctx.get_dst_scales_inv_ptr(ithr);
+        const void *dst_scales = bgmmc.is_mxfp8_dst
+                ? brgmm_ctx.get_tr_dst_scales_ptr(ithr)
+                : brgmm_ctx.get_dst_scales_inv_ptr(ithr);
         void *scratch = is_brg_amx(brg_idx)
                 ? (void *)wsp_tile
                 : (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
@@ -1628,6 +1658,26 @@ void brgemm_matmul_t<isa>::copy_a_scales_chunk_in_buffer(
     ctx.tr_src_scales
             = brgmm_ctx.get_tr_src_scales_ptr(m_blk_idx, k_blk_idx, ithr);
     (*copy_A_scales_kernel_[ker_idx])(&ctx);
+}
+
+template <cpu_isa_t isa>
+void brgemm_matmul_t<isa>::copy_dst_scales_chunk_from_buffer(
+        const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t m_blk_idx,
+        dim_t n_blk_idx) const {
+    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+    assert(bgmmc.is_mxfp8_dst);
+
+    const bool is_N_tail
+            = (n_blk_idx == bgmmc.num_N_blocks - 1) && bgmmc.N_tail > 0;
+    const bool is_M_tail
+            = (m_blk_idx == bgmmc.num_M_blocks - 1) && bgmmc.M_tail > 0;
+    const int ker_idx = mx_scales_kernel_idx(is_M_tail, is_N_tail);
+    assert(copy_D_scales_kernel_[ker_idx] != nullptr);
+
+    auto ctx = jit_brgemm_matmul_copy_dst_scales_t::ctx_t();
+    ctx.d_scales = brgmm_ctx.get_dst_scales_wr_ptr(m_blk_idx, n_blk_idx);
+    ctx.tr_d_scales = brgmm_ctx.get_tr_dst_scales_ptr(ithr);
+    (*copy_D_scales_kernel_[ker_idx])(&ctx);
 }
 
 template <cpu_isa_t isa>
@@ -2598,6 +2648,24 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     const void *get_dst_scales_ptr() const { return dst_scales_; }
+
+    // Returns a writable pointer to the mxfp8 dst scales of the block @p mb,
+    // @p nb. The scales are laid out as [m = M][n = N / group_size], and the
+    // dst scales copy kernel writes the block through this pointer, hence it
+    // is not const.
+    void *get_dst_scales_wr_ptr(dim_t mb, dim_t nb) const {
+        assert(bgmmc_.is_mxfp8_dst);
+        const dim_t group_size = bgmmc_.dst_scales_n_gsize;
+        const dim_t N_scales = div_up(bgmmc_.N, group_size);
+
+        const dim_t n = nb * bgmmc_.N_blk;
+        const dim_t m = mb * bgmmc_.M_blk;
+        assert(n % group_size == 0);
+        // e8m0 scales are 1 byte each, so the offset is in elements
+        const dim_t offset = n / group_size + m * N_scales;
+        return const_cast<char *>(static_cast<const char *>(dst_scales_))
+                + offset;
+    }
 
     // Since `dst_scales_inv_` is a scratchpad memory, @p ithr points to the
     // correspondent piece of that memory.

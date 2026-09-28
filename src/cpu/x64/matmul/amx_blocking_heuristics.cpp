@@ -170,6 +170,9 @@ bool matmul_amx_blocking_params_macro_t::divs_are_acceptable() const {
         // we cannot split K dimension
         unacceptable_k_div = true;
     }
+    // MXFP8 dst quantization happens in the last-K brgemm call and is not
+    // supported by the parallel reduction epilogue.
+    if (nthr_k_ > 1 && is_mxfp8_dst) unacceptable_k_div = true;
 
     return !unacceptable_m_div && !unacceptable_k_div && !unacceptable_n_div
             && !unacceptable_b_div;
@@ -1391,7 +1394,10 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
 
     const bool runtime_dims
             = bgmmc.is_runtime_M || bgmmc.is_runtime_N || bgmmc.is_runtime_K;
+    // MXFP8 dst quantization is not supported by the parallel reduction
+    // epilogue, see divs_are_acceptable().
     const int max_nthr_k = !runtime_dims && is_amx_xf16 && bgmmc.batch == 1
+                    && !bgmmc.is_mxfp8_dst
             ? nstl::min<int>(
                       saturate<int>(1, 7, bgmmc.nthr / 8), max_k_parallel_work)
             : 1;

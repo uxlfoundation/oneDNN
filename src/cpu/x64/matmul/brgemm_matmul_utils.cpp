@@ -1895,7 +1895,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             && asc.get(DNNL_ARG_DST).get_quantization_mode()
                     == quantization_mode::dynamic_mx;
 
-    VCONDCHECK_BG(!dst_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
     // One-sided MX is not a supported configuration, see above.
     VCONDCHECK_BG(src_is_mx == wei_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
     // MX is only defined for fp8 x fp8 here.
@@ -1903,6 +1902,30 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.is_mxfp8 = is_f8_x_f8 && src_is_mx && wei_is_mx;
 
+    // MX on DST (dst quantization) is supported only on top of MXFP8 inputs
+    // and with an fp8 destination. Anything else must not reach the generic
+    // `with_dst_scales` path, which would apply the e8m0 array as an f32
+    // scale.
+    const bool is_f8_dst = one_of(bgmmc.dst_dt, f8_e5m2, f8_e4m3);
+    VCONDCHECK_BG(IMPLICATION(dst_is_mx, bgmmc.is_mxfp8 && is_f8_dst),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    bgmmc.is_mxfp8_dst = dst_is_mx;
+
+    if (bgmmc.is_mxfp8_dst) {
+        VCONDCHECK_BG(asc.get_data_type(DNNL_ARG_DST) == e8m0,
+                VERBOSE_UNSUPPORTED_DT_CFG);
+        // dst scales groups: 1 along M, 32 along N, over the full (M, N)
+        // plane.
+        const int dst_mn_mask
+                = (1 << (bgmmc.ndims - 1)) | (1 << (bgmmc.ndims - 2));
+        VCONDCHECK_BG(asc.get(DNNL_ARG_DST).get_mask() == dst_mn_mask
+                        && asc.get(DNNL_ARG_DST).get_group(0) == 1
+                        && asc.get(DNNL_ARG_DST).get_group(1) == 32,
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+
+    // fp8 x fp8 is ACE-capable on its own, MX scaling or not, so this needs
+    // no extra MXFP8 term.
     bgmmc.is_ace = is_superset(isa, avx10_2_ace)
             && brgemm_utils::ace_dt_ok(bgmmc.src_dt, bgmmc.wei_dt);
 
@@ -2100,9 +2123,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
     bgmmc.with_dst_scales = !dst_scales.has_default_values();
-    // only common scales are supported
-    VCONDCHECK_BG(!(bgmmc.with_dst_scales && dst_scales.get_mask() > 0),
-            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    if (bgmmc.is_mxfp8_dst) {
+        bgmmc.dst_scales_n_gsize = dst_scales.get_group(1);
+    } else {
+        // if not mxfp, only common scales are supported
+        VCONDCHECK_BG(!(bgmmc.with_dst_scales && dst_scales.get_mask() > 0),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
 
     const auto &src_zp = attr.zero_points_.get(DNNL_ARG_SRC);
     const auto has_src_zp = !src_zp.has_default_values();
@@ -2208,6 +2235,19 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     VCONDCHECK_BG(IMPLICATION(bgmmc.is_mxfp8, bgmmc.batch == 1),
             VERBOSE_UNSUPPORTED_FEATURE, "MXFP8 does not support batch > 1");
+
+    if (bgmmc.is_mxfp8_dst) {
+        // The dst scales relayout kernels are generated for the static M/N
+        // tails, and the write pointer into the user dst scales has no batch
+        // term.
+        VCONDCHECK_BG(!bgmmc.is_runtime_M && !bgmmc.is_runtime_N
+                        && !bgmmc.is_runtime_K,
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VCONDCHECK_BG(bgmmc.batch == 1, VERBOSE_UNSUPPORTED_FEATURE,
+                "MXFP8 dst quantization does not support batch > 1");
+        VCONDCHECK_BG(bgmmc.N % 32 == 0, VERBOSE_UNSUPPORTED_FEATURE,
+                "MXFP8 dst quantization requires N % 32 == 0");
+    }
 
     // Downgrade to per-N to avoid the expensive K-scales JIT path which
     // is not needed for this case.
@@ -3179,7 +3219,7 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_brgemm_primitive_buffer_d,
                 bgmmc.M_blk * bgmmc.N_blk * bgmmc.c_dt_sz * bgmmc.nthr,
                 default_data_align);
-    if (bgmmc.with_dst_scales) {
+    if (bgmmc.with_dst_scales && !bgmmc.is_mxfp8_dst) {
         // See brgemm_types.hpp comment for `with_dst_scales`.
         scratchpad.book(key_matmul_dst_scales,
                 static_cast<size_t>(bgmmc.nthr) * sizeof(float),

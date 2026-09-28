@@ -2402,6 +2402,276 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
 template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Zmm>;
 template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Ymm>;
 
+// Relayouts the e8m0 dst scales computed by the MXFP8 micro-kernel.
+//
+// Source layout (the per-thread staging buffer written by the micro-kernel,
+// see jit_brgemm_amx_uker_base_t::D_scales_offset()), one byte per scale,
+// for one (M, N) block handled by a brgemm kernel:
+//     [n1 = rnd_up(N, 2 * group_size) / (2 * group_size)]
+//             [m = rnd_up(M, 32)][n0 = 2]
+// The n1 stride is 2 * rnd_up(M, 32), where M is the M extent of *this*
+// kernel (M_blk or M_tail), exactly as the producing brgemm kernel computes
+// it from its bcast_dim.
+//
+// Destination layout (the user one):
+//     [m = M][n = N / group_size]
+//
+// The buffer booking (init_aux_values() / `buffer_dst_scales_brgm_size`) is
+// sized for the full M block, which covers an M tail as well.
+//
+// Note on tiles: this kernel uses tmm0/tmm1 as a transpose staging area. It
+// is ACE-only (create_brgemm_matmul_copy_d_scales() checks the ISA), and ACE
+// defines a single valid tile configuration (palette 2), so there is no
+// ambiguity about the tile geometry. A live ACE tile configuration is a
+// precondition supplied by the caller, as for the copy-A-scales kernel.
+struct jit_brgemm_matmul_copy_dst_scales_impl_t
+    : public jit_brgemm_matmul_copy_dst_scales_t,
+      public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_dst_scales_impl_t)
+
+    jit_brgemm_matmul_copy_dst_scales_impl_t(
+            const brgemm_matmul_conf_t *conf, dim_t M_ker, dim_t N_ker)
+        : jit_brgemm_matmul_copy_dst_scales_t(conf)
+        , jit_generator_t(jit_name())
+        , M_blk_(M_ker)
+        , n_groups_(div_up(N_ker, mx_group_size))
+        , M_src_(rnd_up(M_ker, 32))
+        , N_dst_(div_up(conf->N, mx_group_size)) {}
+
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
+
+private:
+    void generate() override;
+
+    // Emits the permutation tables used to split the rows of a tile pair
+    // into consecutive destination rows.
+    void emit_permute_tables();
+
+    // Number of scale groups stored by a single vector store, i.e. the number
+    // of e8m0 values held by a zmm register.
+    static constexpr size_t n_step_ = 64;
+    // Number of destination rows produced per iteration of the m loop.
+    static constexpr size_t m_step_ = 32;
+
+    // M extent and number of N scale groups of the block handled by the
+    // kernel.
+    dim_t M_blk_, n_groups_;
+    // Rounded-up M extent of the source slab; the n1 stride is 2 * M_src_.
+    dim_t M_src_;
+    // Number of scale groups in a destination row.
+    dim_t N_dst_;
+
+    Reg64 reg_d_src_ = r15;
+    Reg64 reg_d_dst_ = r14;
+
+    Reg64 reg_d_src_curr_ = r10;
+    Reg64 reg_d_dst_curr_ = r9;
+
+    Reg64 reg_n_ = r13;
+    Reg64 reg_m_ = r12;
+    Reg64 reg_tmp_ = r11;
+    // Guards the stores of a partial n block, only set when such a block is
+    // actually processed.
+    Opmask kmask = k1;
+
+    Xbyak::Label permute_table_low_;
+    Xbyak::Label permute_table_high_;
+};
+
+void jit_brgemm_matmul_copy_dst_scales_impl_t::emit_permute_tables() {
+    // After `tilemovrow` of row `line`, each source register holds one dword
+    // per source column n1: the two n0 scales of m = 2 * line (word 2 * n1)
+    // followed by those of m = 2 * line + 1 (word 2 * n1 + 1). The index
+    // space is the concatenation of the two registers (tmm0: n1 = 0..15,
+    // tmm1: n1 = 16..31).
+    //
+    // The even words therefore form destination row m = 2 * line and the odd
+    // words row m = 2 * line + 1, each with 64 consecutive scale groups.
+    align(64);
+    L(permute_table_low_);
+    for (int i = 0; i < 32; i++)
+        dw(2 * i);
+
+    align(64);
+    L(permute_table_high_);
+    for (int i = 0; i < 32; i++)
+        dw(2 * i + 1);
+}
+
+void jit_brgemm_matmul_copy_dst_scales_impl_t::generate() {
+    preamble();
+
+    vmovdqa32(zmm30, ptr[rip + permute_table_low_]);
+    vmovdqa32(zmm31, ptr[rip + permute_table_high_]);
+
+    // Load ctx_t fields from param1
+    mov(reg_d_src_, ptr[param1 + GET_OFF(tr_d_scales)]);
+    mov(reg_d_dst_, ptr[param1 + GET_OFF(d_scales)]);
+
+    mov(reg_n_, 0);
+
+    auto zero_tiles = [this]() {
+        tilezero(tmm0);
+        tilezero(tmm1);
+    };
+
+    // Sets `kmask` to cover the `n` lowest scale groups. Only needed for a
+    // partial n block, a full one is stored without a mask.
+    auto prepare_n_tail_mask = [this](size_t n) {
+        assert(n > 0 && n < n_step_);
+        mov(reg_tmp_, (1ULL << n) - 1);
+        kmovq(kmask, reg_tmp_);
+    };
+
+    zero_tiles();
+
+    // Handles up to m = 32 rows and n = 64 scale groups.
+    auto handle_32x64 = [this](size_t m, size_t n) {
+        auto fill_tmm = [&](Tmm tmm, size_t offset, size_t num_cols) {
+            for (size_t coll = 0; coll < num_cols; coll++) {
+                vmovdqu8(zmm0,
+                        ptr[reg_d_src_curr_ + (coll * 2 * M_src_ + offset)]);
+                tilemovcol(tmm, zmm0, static_cast<uint8_t>(coll));
+            }
+        };
+
+        // A single store covers `n_step_` scale groups, so a partial n block
+        // has to be masked to avoid writing over the next destination row.
+        // `kmask` is only initialized on that path, hence it must not be
+        // referenced otherwise.
+        const bool use_mask = n < n_step_;
+        auto maybe_mask = [&](const Xbyak::Address &addr) {
+            return use_mask ? addr | kmask : addr;
+        };
+
+        // Source layout: [n1 = N/2][m = M_src_][n0 = 2], hence:
+        // reg_d_src_curr_ = reg_d_src_ + (reg_n_ / 2) * (M_src_ * 2)
+        //         + reg_m_ * 2
+        //         = reg_d_src_ + reg_n_ * M_src_ + reg_m_ * 2
+        imul(reg_d_src_curr_, reg_n_, M_src_);
+        imul(reg_tmp_, reg_m_, 2);
+        add(reg_d_src_curr_, reg_tmp_);
+        add(reg_d_src_curr_, reg_d_src_);
+
+        // Destination layout: [m = M][n = N_dst_], hence:
+        // reg_d_dst_curr_ = reg_d_dst_ + reg_m_ * N_dst_ + reg_n_
+        imul(reg_d_dst_curr_, reg_m_, N_dst_);
+        add(reg_d_dst_curr_, reg_n_);
+        add(reg_d_dst_curr_, reg_d_dst_);
+
+        // Every source column holds 2 scale groups, so a tile of 16 columns
+        // covers `n_step_ / 2` groups and the second tile is only needed past
+        // that point.
+        const size_t cols_per_tile = n_step_ / 4;
+        fill_tmm(tmm0, 0, nstl::min(div_up(n, 2), cols_per_tile));
+        fill_tmm(tmm1, 32 * M_src_,
+                n > n_step_ / 2 ? div_up(n, 2) - cols_per_tile : 0);
+
+        for (size_t line = 0; line < div_up(m, 2); line++) {
+            tilemovrow(zmm0, tmm0, static_cast<uint8_t>(line));
+            tilemovrow(zmm1, tmm1, static_cast<uint8_t>(line));
+
+            // Destination row m = 2 * line: the even words.
+            vmovdqu8(zmm2, zmm30);
+            vpermi2w(zmm2, zmm0, zmm1);
+            vmovdqu8(maybe_mask(ptr[reg_d_dst_curr_ + (2 * N_dst_ * line)]),
+                    zmm2);
+
+            // Destination row m = 2 * line + 1: the odd words. It exists only
+            // when the last processed line is full (`m % 2 == 0`); otherwise
+            // storing it would write past the valid rows of the block.
+            const bool is_last_line = line == div_up(m, 2) - 1;
+            if (m % 2 == 0 || !is_last_line) {
+                vmovdqu8(zmm3, zmm31);
+                vpermi2w(zmm3, zmm0, zmm1);
+                vmovdqu8(maybe_mask(ptr[reg_d_dst_curr_
+                                 + (N_dst_ + 2 * N_dst_ * line)]),
+                        zmm3);
+            }
+        }
+    };
+
+    // Loop order: m-outer / n-inner (default) or n-outer / m-inner. Both
+    // produce identical output; the choice only affects the access pattern
+    // and is intended to be selected by the matmul blocking heuristics.
+    const bool m_first = false;
+    if (m_first) {
+        auto m_loop_impl = [&](size_t n) {
+            Label loop_m;
+            mov(reg_m_, 0);
+            if (M_blk_ >= (dim_t)m_step_) {
+                L(loop_m);
+                {
+                    handle_32x64(m_step_, n);
+                    add(reg_m_, m_step_);
+                    cmp(reg_m_, rnd_dn(M_blk_, m_step_));
+                    jl(loop_m, T_NEAR);
+                }
+            }
+            if (M_blk_ % m_step_) {
+                zero_tiles();
+                handle_32x64(M_blk_ % m_step_, n);
+            }
+        };
+
+        if (n_groups_ >= (dim_t)n_step_) {
+            Label loop_n;
+            L(loop_n);
+            m_loop_impl(n_step_);
+            add(reg_n_, n_step_);
+            cmp(reg_n_, rnd_dn(n_groups_, n_step_));
+            jl(loop_n, T_NEAR);
+        }
+
+        if (n_groups_ % n_step_) {
+            const size_t n_tail = n_groups_ % n_step_;
+            prepare_n_tail_mask(n_tail);
+            m_loop_impl(n_tail);
+        }
+    } else {
+        auto n_loop_impl = [&](size_t m) {
+            mov(reg_n_, 0);
+            if (n_groups_ >= (dim_t)n_step_) {
+                Label loop_n;
+                L(loop_n);
+                handle_32x64(m, n_step_);
+                add(reg_n_, n_step_);
+                cmp(reg_n_, rnd_dn(n_groups_, n_step_));
+                jl(loop_n, T_NEAR);
+            }
+
+            if (n_groups_ % n_step_) {
+                const size_t n_tail = n_groups_ % n_step_;
+                prepare_n_tail_mask(n_tail);
+                handle_32x64(m, n_tail);
+            }
+        };
+
+        Label loop_m;
+        mov(reg_m_, 0);
+        if (M_blk_ >= (dim_t)m_step_) {
+            L(loop_m);
+            {
+                n_loop_impl(m_step_);
+                add(reg_m_, m_step_);
+                cmp(reg_m_, rnd_dn(M_blk_, m_step_));
+                jl(loop_m, T_NEAR);
+            }
+        }
+        if (M_blk_ % m_step_) {
+            zero_tiles();
+            n_loop_impl(M_blk_ % m_step_);
+        }
+    }
+
+    postamble();
+
+    emit_permute_tables();
+}
+
 // Repacks the e8m0 block scales of A for the MXFP8 micro-kernel.
 //
 // Source layout (the user one), one byte per scale:
@@ -7479,6 +7749,7 @@ status_t create_brgemm_matmul_copy_a_scales(
     for (int i = 0; i < 4; i++) {
         const bool is_M_tail = i & 1;
         const bool is_K_tail = i & 2;
+        assert(mx_scales_kernel_idx(is_M_tail, is_K_tail) == i);
         if (is_M_tail && conf->M_tail <= 0) continue;
         if (is_K_tail && conf->K_tail <= 0) continue;
 
@@ -7488,6 +7759,42 @@ status_t create_brgemm_matmul_copy_a_scales(
                 new jit_brgemm_matmul_copy_a_scales_impl_t(
                         conf, M_blk, K_blk)));
         CHECK(copy_A_scales_kernel[i]->create_kernel());
+    }
+
+    return status::success;
+}
+
+status_t create_brgemm_matmul_copy_d_scales(
+        std::unique_ptr<jit_brgemm_matmul_copy_dst_scales_t>
+                *copy_D_scales_kernel,
+        const brgemm_matmul_conf_t *conf) {
+    // The relayout transposes through tmm0/tmm1 under the ACE tile
+    // configuration (palette 2), which the caller keeps live. It is also the
+    // only ISA whose micro-kernel produces the staged MXFP8 dst scales.
+    if (!(conf->is_ace && mayiuse(avx10_2_ace))) {
+        assert(!"copy_d_scales is an ACE-only kernel");
+        return status::unimplemented;
+    }
+    assert(conf->dst_scales_n_gsize == mx_group_size);
+
+    // Kernel index encodes which of the M/N dimensions uses the tail size:
+    // 0 - M no tail, N no tail
+    // 1 - M tail,    N no tail
+    // 2 - M no tail, N tail
+    // 3 - M tail,    N tail
+    for (int i = 0; i < 4; i++) {
+        const bool is_M_tail = i & 1;
+        const bool is_N_tail = i & 2;
+        assert(mx_scales_kernel_idx(is_M_tail, is_N_tail) == i);
+        if (is_M_tail && conf->M_tail <= 0) continue;
+        if (is_N_tail && conf->N_tail <= 0) continue;
+
+        const dim_t M_ker = is_M_tail ? conf->M_tail : conf->M_blk;
+        const dim_t N_ker = is_N_tail ? conf->N_tail : conf->N_blk;
+        CHECK(safe_ptr_assign(copy_D_scales_kernel[i],
+                new jit_brgemm_matmul_copy_dst_scales_impl_t(
+                        conf, M_ker, N_ker)));
+        CHECK(copy_D_scales_kernel[i]->create_kernel());
     }
 
     return status::success;

@@ -2940,6 +2940,19 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
         bgmmc.buffer_a_scales_per_thread_sz = 0;
     }
 
+    if (bgmmc.is_ace && bgmmc.is_mxfp8_dst) {
+        // Staged MXFP8 dst scales of one (M_blk, N_blk) block, one byte per
+        // e8m0 scale, in the layout documented on
+        // jit_brgemm_matmul_copy_dst_scales_impl_t. Sized for the full M
+        // block, which also covers the smaller footprint of an M tail.
+        assert(bgmmc.dst_scales_n_gsize == mx_group_size);
+        bgmmc.buffer_dst_scales_brgm_size
+                = rnd_up(bgmmc.N_blk, 2 * mx_group_size) / mx_group_size
+                * rnd_up(bgmmc.M_blk, mx_group_size);
+    } else {
+        bgmmc.buffer_dst_scales_brgm_size = 0;
+    }
+
     // Layout of a single GB in packed format:
     //     [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
 
@@ -3109,6 +3122,11 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
     if (bgmmc.is_mxfp8)
         scratchpad.book(key_brgemm_matmul_copy_a_scales_buffer,
                 bgmmc.nthr * bgmmc.buffer_a_scales_per_thread_sz,
+                default_data_align);
+
+    if (bgmmc.is_ace && bgmmc.is_mxfp8_dst)
+        scratchpad.book(key_brgemm_matmul_copy_dst_scales_buffer,
+                bgmmc.nthr * bgmmc.buffer_dst_scales_brgm_size,
                 default_data_align);
 
     if (bgmmc.use_buffer_b) {

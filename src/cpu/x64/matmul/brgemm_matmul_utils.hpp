@@ -33,6 +33,9 @@ namespace matmul {
 
 constexpr int max_batch_ndims = DNNL_MAX_NDIMS - 2;
 
+// Number of elements sharing one e8m0 scale in the MX formats.
+constexpr dim_t mx_group_size = 32;
+
 /**
  * GEMV strategy used by matmul when M or N dimension is 1.
  *
@@ -218,6 +221,11 @@ struct brgemm_matmul_conf_t {
     dim_t buffer_a_scales_m_brgm_stride;
     dim_t buffer_a_scales_per_thread_sz;
 
+    // Size of the per-thread MXFP8 dst scales staging buffer, i.e. of the
+    // slab of one (M_blk, N_blk) block; see the layout comment on
+    // jit_brgemm_matmul_copy_dst_scales_impl_t.
+    dim_t buffer_dst_scales_brgm_size = 0;
+
     dim_t buffer_b_k_stride;
     dim_t buffer_b_gb_stride;
     dim_t buffer_b_k_brg_stride;
@@ -259,6 +267,8 @@ struct brgemm_matmul_conf_t {
     // MXFP8: fp8 x fp8 with e8m0 block scales on both SRC and WEIGHTS,
     // computed natively by the ACE outer product.
     bool is_mxfp8 = false;
+    // MXFP8 dst: fp8 dst with e8m0 per-group scales computed by the kernel.
+    bool is_mxfp8_dst = false;
     bool with_int8_grouped_quantization = false;
     // Enables the driver-side per-(M, N) f32 compensation tile that captures
     // the symmetric src/wei zero-point + 128-shift correction in the grouped
@@ -283,6 +293,8 @@ struct brgemm_matmul_conf_t {
     bool is_wei_scale_per_k = false;
     bool is_wei_scale_common = false;
     dim_t wei_scales_k_gsize = 0;
+    // MXFP8 dst scales group size along N.
+    dim_t dst_scales_n_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
 
     // Src scales per-K

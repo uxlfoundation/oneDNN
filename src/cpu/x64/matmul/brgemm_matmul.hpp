@@ -135,6 +135,11 @@ private:
     // [is_M_tail | (is_K_tail << 1)]; see
     // create_brgemm_matmul_copy_a_scales().
     std::unique_ptr<jit_brgemm_matmul_copy_a_scales_t> copy_A_scales_kernel_[4];
+    // MXFP8 dst scales relayout kernels, indexed as
+    // mx_scales_kernel_idx(is_M_tail, is_N_tail); see
+    // create_brgemm_matmul_copy_d_scales().
+    std::unique_ptr<jit_brgemm_matmul_copy_dst_scales_t>
+            copy_D_scales_kernel_[4];
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_f32_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::s32>> acc_ker_s32_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::bf16>> acc_ker_bf16_;

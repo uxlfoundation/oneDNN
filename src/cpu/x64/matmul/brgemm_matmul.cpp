@@ -1609,7 +1609,7 @@ void brgemm_matmul_t<isa>::copy_a_scales_chunk_in_buffer(
             = brgmm_ctx.is_last_K_blk(k_blk_idx) && bgmmc.K_tail > 0;
     const bool is_M_tail
             = (m_blk_idx == bgmmc.num_M_blocks - 1) && bgmmc.M_tail > 0;
-    const int ker_idx = (is_M_tail ? 1 : 0) | (is_K_tail ? 2 : 0);
+    const int ker_idx = mx_scales_kernel_idx(is_M_tail, is_K_tail);
     assert(copy_A_scales_kernel_[ker_idx] != nullptr);
 
     // The source scales are the user tensor in the plain [M][K / group_size]
@@ -1828,6 +1828,11 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         buf_A_scales_ptr_ = bgmmc.is_mxfp8
                 ? scratchpad.template get<char>(
                           key_brgemm_matmul_copy_a_scales_buffer)
+                : nullptr;
+
+        buf_D_scales_ptr_ = (bgmmc.is_ace && bgmmc.is_mxfp8_dst)
+                ? scratchpad.template get<char>(
+                          key_brgemm_matmul_copy_dst_scales_buffer)
                 : nullptr;
 
         buf_B_ptr_ = (bgmmc.use_buffer_b)
@@ -2563,6 +2568,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 + k_blk_local * bgmmc_.buffer_a_scales_k_brgm_stride;
     }
 
+    // Returns a pointer to the per-thread MXFP8 dst scales staging buffer.
+    // It holds the scales of a single (M_blk, N_blk) block, in the layout
+    // documented on jit_brgemm_matmul_copy_dst_scales_impl_t.
+    const void *get_tr_dst_scales_ptr(int ithr) const {
+        assert(bgmmc_.is_mxfp8_dst);
+        return buf_D_scales_ptr_ + ithr * bgmmc_.buffer_dst_scales_brgm_size;
+    }
+
     // Returns a pointer to the weights scales for the correspondent block based
     // on @p b_idx, @p k and @p n.
     const void *get_wei_scales_ptr(
@@ -3012,6 +3025,7 @@ private:
 
     char *buf_A_ptr_;
     char *buf_A_scales_ptr_;
+    char *buf_D_scales_ptr_;
     char *buf_B_ptr_;
     char *buf_C_ptr_;
     char *buf_D_ptr_;

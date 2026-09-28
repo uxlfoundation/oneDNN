@@ -639,10 +639,11 @@ status_t brgemm_desc_set_attr(
     if (!IMPLICATION(brgattr.use_ace, brg->is_ace()))
         return status::unimplemented;
 
-    // The ACE kernels cover bf16 and int8 only, see set_isa_impl(). Reject the
-    // remaining types so that dispatch falls through to an implementation that
-    // supports them.
-    if (brgattr.use_ace && (brg->is_f16 || brg->is_fp8))
+    // The ACE kernels cover bf16, int8 and fp8, see set_isa_impl(). Reject
+    // the remaining types so that dispatch falls through to an implementation
+    // that supports them.
+    if (brgattr.use_ace
+            && !utils::one_of(true, brg->is_int8, brg->is_bf16, brg->is_fp8))
         return status::unimplemented;
 
     return status::success;

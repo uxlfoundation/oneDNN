@@ -2881,6 +2881,11 @@ void jit_brgemm_amx_uker_t::ace_load_B(
 void jit_brgemm_amx_uker_t::outer_product(
         const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
     using namespace data_type;
+    // ACE has no unscaled fp8 outer product: the TOP4MX*PS forms below are
+    // the MX-scaled ones, driven with selector 0 against the all-ones Block
+    // Scale Register that generate() sets up with bsrinit. Every scale the
+    // product then reads is 1.0, so the selector value is immaterial.
+    constexpr uint8_t unit_scale_selector = 0;
     if (brg.dt_a == bf16 && brg.dt_b == bf16) {
         top2bf16ps(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == u8 && brg.dt_b == u8) {
@@ -2891,6 +2896,14 @@ void jit_brgemm_amx_uker_t::outer_product(
         top4bsud(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == s8 && brg.dt_b == s8) {
         top4bssd(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+        top4mxbf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
+        top4mxbhf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+        top4mxhf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
+        top4mxhbf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
     } else {
         assert(!"Unsupported data type for outer product");
     }
@@ -3655,9 +3668,10 @@ void jit_brgemm_amx_uker_t::generate() {
     kmovq(ld_tail_mask, reg_mask);
 
     if (brg.is_ace()) {
-        // Constant row masks of the ACE A load. ACE emits bf16 and int8 only,
-        // so the fp8 paths that would clobber these opmasks are never taken.
-        assert(!brg.is_fp8);
+        // Constant row masks of the ACE A load. ACE fp8 goes straight into
+        // the outer product, so the fp8 up-convert paths that would clobber
+        // these opmasks are never taken.
+        assert(!brg.is_fp8_via_convert());
         mov(reg_mask, 0xf);
         kmovq(ace_load_A_mask_f, reg_mask);
         mov(reg_mask, 0xf0);
@@ -3738,6 +3752,16 @@ void jit_brgemm_amx_uker_t::generate() {
             = !are_post_ops_applicable_ || !brg.brgattr.postops_only;
     brgemm_iteration_t bi;
 
+    // ACE expresses an unscaled fp8 product as the MX one over an all-ones
+    // Block Scale Register, so BSR0 has to be primed with bsrinit (which sets
+    // every byte to 0x7F, i.e. an e8m0 exponent of 1.0). It is emitted per
+    // compute path rather than once up front because the skip-accumulation
+    // path performs no outer product at all, and its caller is not required
+    // to have brought the tile/ACE state up.
+    auto maybe_init_bsr = [&]() {
+        if (brg.is_fp8 && brg.is_ace()) bsrinit(bsr0);
+    };
+
     Label label_to_ret;
     if (are_post_ops_applicable_) {
         Label label_store_without_post_ops;
@@ -3759,6 +3783,7 @@ void jit_brgemm_amx_uker_t::generate() {
 
             L(label_do_not_skip_acc);
         }
+        maybe_init_bsr();
         top_loop(bi);
         if (non_postops_generate) jmp(label_to_ret, T_NEAR);
         transform_buf_map_A_.clear();
@@ -3767,6 +3792,7 @@ void jit_brgemm_amx_uker_t::generate() {
     }
     if (non_postops_generate) {
         bi.apply_postops = false;
+        maybe_init_bsr();
         top_loop(bi);
     }
     L(label_to_ret);

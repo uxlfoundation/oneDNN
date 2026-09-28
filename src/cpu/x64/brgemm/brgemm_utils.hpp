@@ -42,11 +42,12 @@ status_t brgemm_blocking(brgemm_desc_t *brg);
 
 status_t brdgmm_blocking(brgemm_desc_t *brg);
 
-/* The ACE kernels compute bf16 and int8 only, see set_isa_impl(). */
 inline bool ace_dt_ok(data_type_t dt_a, data_type_t dt_b) {
     using namespace data_type;
     return utils::everyone_is(bf16, dt_a, dt_b)
-            || (utils::one_of(dt_a, u8, s8) && utils::one_of(dt_b, u8, s8));
+            || (utils::one_of(dt_a, u8, s8) && utils::one_of(dt_b, u8, s8))
+            || (utils::one_of(dt_a, f8_e5m2, f8_e4m3)
+                    && utils::one_of(dt_b, f8_e5m2, f8_e4m3));
 }
 
 /* ACE picks the unrolled kernel by default; it is usually fastest, but its

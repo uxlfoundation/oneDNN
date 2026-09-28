@@ -3140,6 +3140,11 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::outer_product(
         const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
     using namespace data_type;
+    // ACE has no unscaled fp8 outer product: the TOP4MX*PS forms below are
+    // the MX-scaled ones, driven with selector 0 against the all-ones Block
+    // Scale Register that generate() sets up with bsrinit. Every scale the
+    // product then reads is 1.0, so the selector value is immaterial.
+    constexpr uint8_t unit_scale_selector = 0;
     if (brg.dt_a == bf16 && brg.dt_b == bf16) {
         top2bf16ps(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == u8 && brg.dt_b == u8) {
@@ -3150,6 +3155,14 @@ void jit_brgemm_kernel_t<Wmm>::outer_product(
         top4bsud(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == s8 && brg.dt_b == s8) {
         top4bssd(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+        top4mxbf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
+        top4mxbhf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+        top4mxhf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
+        top4mxhbf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
     } else {
         assert(!"Unsupported data type for outer product");
     }
@@ -4325,6 +4338,8 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     }
 
     read_params();
+
+    if (brg.is_fp8 && brg.is_ace()) bsrinit(bsr0);
 
     bdb_loop();
 

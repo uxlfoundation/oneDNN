@@ -74,7 +74,8 @@ void jit_uni_sum_injector_t<Vmm>::compute_vector_range(
         }
     }
 
-    assert(vmm_idxs.find(tmp_idx) == vmm_idxs.end()
+    // The caller must leave at least one register outside the set.
+    JIT_ASSERT(vmm_idxs.find(tmp_idx) == vmm_idxs.end()
             && "native sum could not find a free scratch vector register");
 
     // Preserve when the caller asked to or whenever we picked a new scratch.

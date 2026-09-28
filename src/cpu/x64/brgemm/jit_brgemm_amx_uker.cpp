@@ -865,13 +865,9 @@ dim_t jit_brgemm_amx_uker_t::skipped_bd_mask(dim_t inp_bd) noexcept {
 
 dim_t jit_brgemm_amx_uker_t::A_offset_wsp(
         const brgemm_iteration_t &bi, int bdb, int rdb) const noexcept {
-    // Full WSP buffer layout:
-    //   1. partial C results.
-    //   2. data type conversion.
-    //   3. Wary K: No need to reserve space since it is mutually exclusive with fused copy A.
-    //   4. Fused copy A with layout: [bs][k / rd_block][m][k = rd_block]
-    auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
-            + brg.get_convert_wsp_buffer_size();
+    // Fused copy A layout: [bs][k / rd_block][m][k = rd_block].
+    const auto transform_offset
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_fused_copy_a);
 
     const auto bs_offs = bi.bsi->pos * brg.bcast_dim
             * rnd_up(brg.reduce_dim, brg.max_rd_block()) * brg.typesize_A;
@@ -1697,7 +1693,11 @@ void jit_brgemm_amx_uker_t::process_output_range(
                             * prev_bi_.bdi->block(0) * ld_block_C_size_
                     : 0;
             const auto buf_offset = bd * ld_block_C_size_;
-            vmovups(vreg_acc, ptr[reg_buf + buf_offset + wsp_offset]);
+            vmovups(vreg_acc,
+                    ptr[reg_buf
+                            + brg.get_wsp_base_offset(
+                                    brgemm_desc_t::wsp_c_tiles)
+                            + buf_offset + wsp_offset]);
         }
 
         // Per-(M,N) compensation: convert int32->float and subtract the
@@ -2070,7 +2070,10 @@ void jit_brgemm_amx_uker_t::store_accumulators(brgemm_iteration_t &bi) {
                         ? (bdb * bi.ldi->block2() + ldb) * bi.bdi->block(0)
                                 * ld_block_C_size_
                         : 0;
-                tilestored(ptr[reg_buf + reg_stride_ld_block + wsp_offset],
+                tilestored(ptr[reg_buf + reg_stride_ld_block
+                                   + brg.get_wsp_base_offset(
+                                           brgemm_desc_t::wsp_c_tiles)
+                                   + wsp_offset],
                         Tmm(get_C_tensor(bi, bdb, ldb)));
             }
             if (real_ils) continue;
@@ -2314,7 +2317,10 @@ void jit_brgemm_amx_uker_t::maybe_tilestore(brgemm_iteration_t &bi, int bdb_idx,
                 ? (bdb_idx * bi.ldi->block2() + ldb_idx) * bi.bdi->block(0)
                         * ld_block_C_size_
                 : 0;
-        tilestored(ptr[reg_buf + reg_stride_ld_block + wsp_offset], acc);
+        tilestored(ptr[reg_buf + reg_stride_ld_block
+                           + brg.get_wsp_base_offset(brgemm_desc_t::wsp_c_tiles)
+                           + wsp_offset],
+                acc);
     } else {
         const auto store_ldb_ind
                 = do_pre_tilestore ? prev_bi_.ldi->pos(0) : bi.ldi->pos(0);
@@ -2560,16 +2566,21 @@ void jit_brgemm_amx_uker_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     const bool is_A = mk == matrix_A;
     auto &transform_buf = is_A ? transform_buf_map_A_ : transform_buf_map_B_;
 
-    const auto transform_offset
-            = use_ils_ ? brg.get_num_C_tiles() * brgemm_desc_t::tilesize : 0;
+    const auto convert_base
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_convert);
     const auto max_bdb2 = tloop.bdis[0].block2();
-    const auto max_rdb = tloop.rdis.size();
-    const auto matrix_a_offset = transform_offset;
-    const auto matrix_b_offset = transform_offset
-            + brgemm_desc_t::tilesize
-                    * nstl::max<dim_t>(should_save_transform(mk),
-                            should_save_transform(matrix_A) * brg.brgattr.max_bs
-                                    * max_bdb2 * static_cast<dim_t>(max_rdb));
+    const auto max_rdb = static_cast<dim_t>(tloop.rdis.size());
+    dim_t matrix_a_tiles;
+    if (should_save_transform(matrix_A))
+        matrix_a_tiles = brg.brgattr.max_bs * max_bdb2 * max_rdb;
+    else if (should_save_transform(matrix_B))
+        matrix_a_tiles = 1;
+    else
+        matrix_a_tiles = 0;
+
+    const auto matrix_a_offset = static_cast<dim_t>(convert_base);
+    const auto matrix_b_offset
+            = matrix_a_offset + brgemm_desc_t::tilesize * matrix_a_tiles;
     const auto matrix_offset = is_A ? matrix_a_offset : matrix_b_offset;
     const std::string key
             = std::to_string(bi.bsi->pos) + "_" + std::to_string(offset);
@@ -2646,8 +2657,8 @@ bool jit_brgemm_amx_uker_t::maybe_pre_process_k_tail(brgemm_iteration_t &bi,
 
     if (!need_k_tail_processing) return false;
 
-    auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
-            + brg.get_convert_wsp_buffer_size();
+    const auto transform_offset
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_wary_k_tail);
 
     if (transform_offset) add(reg_buf, transform_offset);
     mov(reg_converted_stride, zmm_width_in_bytes);
@@ -2758,7 +2769,8 @@ void jit_brgemm_amx_uker_t::ace_load_A(
     const auto a_zmm4 = Zmm(base_zmm_idx + 3);
 
     const auto transformed_data_base
-            = (bi.bsi->idx * brg.all_rdb() + bi.rdi->pos(0))
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_a_transform)
+            + (bi.bsi->idx * brg.all_rdb() + bi.rdi->pos(0))
                     * brg.ace_transformed_A_bd_block2_size()
             + bdb * brg.ace_transformed_A_bd_block_size();
     const auto transf_addr = [&](int i) {
@@ -2767,7 +2779,7 @@ void jit_brgemm_amx_uker_t::ace_load_A(
         return ptr[reg_buf + transformed_data_offset];
     };
 
-    if (brg.save_transform_A() && bi.ldi->idx > 0) {
+    if (brg.ace_save_transform_A() && bi.ldi->idx > 0) {
 
         vmovups(a_zmm1, transf_addr(0));
         vmovups(a_zmm2, transf_addr(1));
@@ -2819,7 +2831,7 @@ void jit_brgemm_amx_uker_t::ace_load_A(
     vpunpcklqdq(a_zmm3, tmp_zmm2, tmp_zmm4);
     vpunpckhqdq(a_zmm4, tmp_zmm2, tmp_zmm4);
 
-    if (brg.save_transform_A() && bi.ldi->idx == 0) {
+    if (brg.ace_save_transform_A() && bi.ldi->idx == 0) {
 
         vmovups(transf_addr(0), a_zmm1);
         vmovups(transf_addr(1), a_zmm2);
@@ -2924,7 +2936,7 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
             // loaded here and not inside the rd loop below: ace_load_A()
             // fills all ace_zmms_per_bd_block registers at once, so calling
             // it per rd step would redo the whole masked load + transpose
-            // (and, with save_transform_A(), the transform stores as well).
+            // (and, with ace_save_transform_A(), the transform stores too).
             ace_load_A(bi, bdb, A_offset(bi, bdb));
             // rd outside, ld inside: consecutive outer products write
             // different accumulator tiles, so the TMUL latency is hidden
@@ -3023,7 +3035,7 @@ void jit_brgemm_amx_uker_t::rdb_loop_call_based(brgemm_iteration_t &bi) {
     // save registers advanced by the loop below
     reg_A.save();
     reg_B.save();
-    if (brg.save_transform_A()) reg_buf.save();
+    if (brg.ace_save_transform_A()) reg_buf.save();
 
     // Defer the generation of the micro-kernel bodies: they are emitted out
     // of the hot path by top_loop(), which owns them.
@@ -3051,12 +3063,12 @@ void jit_brgemm_amx_uker_t::rdb_loop_call_based(brgemm_iteration_t &bi) {
 
         add(reg_A, reg_A_increment * n_calls);
         add(reg_B, reg_B_increment * n_calls);
-        if (brg.save_transform_A())
+        if (brg.ace_save_transform_A())
             add(reg_buf, brg.ace_transformed_A_bd_block2_size() * n_calls);
     }
 
     // restore registers
-    if (brg.save_transform_A()) reg_buf.restore();
+    if (brg.ace_save_transform_A()) reg_buf.restore();
     reg_B.restore();
     reg_A.restore();
 

@@ -2807,9 +2807,8 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(matrix_kind_t matrix_kind,
         const Tmm &t1, reg64_t reg_base, dim_t offset, reg64_t reg_stride,
         int num_rows, int num_col_bytes, bool is_rd_tail) {
-    const auto transform_offset = brg.brgattr.use_interleave_stores
-            ? brg.get_num_C_tiles() * brgemm_desc_t::tilesize
-            : 0;
+    const auto transform_offset
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_convert);
     add(reg_buf_aux, transform_offset);
 
     switch (matrix_kind) {
@@ -2909,8 +2908,8 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool is_rd_tail,
 
     const auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
 
-    auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
-            + brg.get_convert_wsp_buffer_size();
+    const auto transform_offset
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_wary_k_tail);
 
     //TODO: reuse transformed data from matrix A for ldi > 0
     const int max_tiles = amx::get_max_palette_size();

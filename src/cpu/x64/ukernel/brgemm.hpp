@@ -59,6 +59,10 @@ struct dnnl_brgemm {
 
     dnnl::impl::status_t finalize();
 
+    // True once finalize() has completed. The workspace size is only defined
+    // from that point on, see brgemm_desc_t::init_wsp_offsets().
+    bool is_finalized() const { return brgemm_desc_.is_wsp_initialized(); }
+
     static dnnl::impl::status_t get_B_pack_type(
             dnnl::impl::cpu::ukernel::pack_type_t *pack_type,
             dnnl::impl::data_type_t a_dt, dnnl::impl::data_type_t b_dt);

@@ -689,6 +689,16 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
             return status::unimplemented;
     }
 
+    // The workspace layout is derived from the blocking, so it can only be
+    // built once blocking is final. Nothing may query the workspace before
+    // this point; brgemm_desc_t::get_wsp_base_offset() and friends assert on
+    // that. Kernels fold the region offsets into EVEX displacements, which
+    // are signed 32-bit immediates, so a workspace that does not fit cannot
+    // be addressed -- reject it rather than truncate.
+    brg->init_wsp_offsets();
+    if (brg->get_wsp_buffer_size() > std::numeric_limits<int32_t>::max())
+        return status::unimplemented;
+
     return status::success;
 }
 

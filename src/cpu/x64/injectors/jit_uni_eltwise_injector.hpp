@@ -222,7 +222,9 @@ private:
     void injector_preamble(const injector_utils::vmm_index_set_t &vmm_idxs,
             injector_utils::vmm_index_set_iterator_t &start_idx_tail_it,
             const injector_utils::vmm_index_set_t &vmm_aux_indices);
-    void injector_preamble_tail(int n_vregs_not_preserved);
+    void injector_preamble_tail(
+            const injector_utils::vmm_index_set_iterator_t &start_idx_tail_it,
+            int n_vregs_not_preserved);
     void injector_postamble();
     void assign_regs();
     Wmm vmm_aux(int idx);

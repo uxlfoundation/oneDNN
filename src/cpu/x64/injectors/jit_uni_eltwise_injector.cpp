@@ -135,6 +135,10 @@ void jit_uni_eltwise_injector_t<Wmm>::injector_preamble(
     // to have legit generated code. This fact is saved through
     // `start_idx_tail_it` iterator and a second round of compute will happen.
     int n_vregs_not_preserved = n_vregs_to_preserve_ - n_vregs_preserved_;
+    // The second round borrows as many vmms from the accumulators the first
+    // round computes (see `injector_preamble_tail()`).
+    JIT_ASSERT(2 * n_vregs_not_preserved <= (int)vmm_compute_idxs.size()
+            && "eltwise injector: too few accumulators to borrow vmms from");
     for (int i = 0; i < n_vregs_not_preserved; i++) {
         preserved_vmm_indices_[n_vregs_preserved_ - need_vmm_mask_register_]
                 = *start_idx_tail_it;
@@ -212,6 +216,7 @@ void jit_uni_eltwise_injector_t<Wmm>::injector_preamble(
 
 template <typename Wmm>
 void jit_uni_eltwise_injector_t<Wmm>::injector_preamble_tail(
+        const injector_utils::vmm_index_set_iterator_t &start_idx_tail_it,
         int n_vregs_not_preserved) {
     // There was enough vmm registers to compute everything in one round.
     if (n_vregs_not_preserved == 0) return;
@@ -231,12 +236,12 @@ void jit_uni_eltwise_injector_t<Wmm>::injector_preamble_tail(
                             + (i - n_vregs_not_preserved) * vlen_]);
     }
 
-    // Update the rightmost indices. The injector uses vmms with indices coming
-    // after compute vmm indices.
-    // TODO: is it always a valid index?
-    for (int i = 0; i < n_vregs_not_preserved; ++i)
-        preserved_vmm_indices_[idx_off + i - need_vmm_mask_register_]
-                += n_vregs_not_preserved;
+    // The second round takes its auxiliary vmms from the first accumulators
+    // the first round computed. They follow the borrowed ones in the set,
+    // which need not be contiguous.
+    auto it = start_idx_tail_it;
+    for (int i = 0; i < n_vregs_not_preserved; ++i, ++it)
+        preserved_vmm_indices_[idx_off + i - need_vmm_mask_register_] = *it;
 
     if (save_state_ && preserve_vmm_) {
         for (int i = 0; i < n_vregs_not_preserved; ++i)
@@ -1962,7 +1967,7 @@ void jit_uni_eltwise_injector_t<Wmm>::compute_vector_range(
     // `injector_preamble_tail`.
     const int n_vregs_not_preserved
             = static_cast<int>(std::distance(start_idx_it, start_idx_tail_it));
-    injector_preamble_tail(n_vregs_not_preserved);
+    injector_preamble_tail(start_idx_tail_it, n_vregs_not_preserved);
     compute_body(start_idx_it, start_idx_tail_it);
     injector_postamble();
 }

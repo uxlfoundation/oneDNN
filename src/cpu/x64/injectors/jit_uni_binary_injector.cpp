@@ -501,6 +501,81 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
         const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
 
+    // The helper gprs are written before the output base registers are read.
+    // A base held in a helper gpr would be lost, so each such base is copied
+    // to its own free gpr for the call. Those gprs are saved and restored
+    // around it.
+    const auto &sp = rhs_arg_static_params_;
+    const auto is_helper_gpr = [&](const Xbyak::Reg64 &reg) {
+        return utils::one_of(
+                reg, sp.rhs_addr_reg, sp.rhs_helper_reg, sp.rhs_addr_cache_reg);
+    };
+
+    std::vector<int> aliased;
+    for (const auto &out : rhs_arg_params.vmm_idx_to_out_reg) {
+        const int idx = out.second.getIdx();
+        if (is_helper_gpr(out.second)
+                && std::find(aliased.begin(), aliased.end(), idx)
+                        == aliased.end())
+            aliased.push_back(idx);
+    }
+
+    if (aliased.empty()) {
+        compute_vector_range_impl(
+                vmm_idxs, rhs_arg_idx, post_op, rhs_arg_params);
+        return;
+    }
+
+    // A base held in a helper gpr moves to a gpr the call does not use. That
+    // rules out:
+    //   - the helper gprs
+    //   - rax, rdx, r8 and r9, used for offset conversions
+    //   - the tail size register
+    //   - rsp and the parameter pointer
+    //   - the output bases
+    std::vector<int> free_gprs;
+    for (int idx = 0; idx < 16; idx++) {
+        const Xbyak::Reg64 reg(idx);
+        bool is_out_reg = false;
+
+        for (const auto &out : rhs_arg_params.vmm_idx_to_out_reg) {
+            is_out_reg = is_out_reg || out.second == reg;
+        }
+
+        if (is_helper_gpr(reg) || is_out_reg
+                || utils::one_of(reg, host_->rax, host_->rdx, host_->r8,
+                        host_->r9, host_->rsp, sp.reg_tail_size, param1_)) {
+            continue;
+        }
+        free_gprs.push_back(idx);
+    }
+
+    JIT_ASSERT(free_gprs.size() >= aliased.size()
+            && "binary injector: no free gpr for an output base");
+
+    rhs_arg_dynamic_params_t params = rhs_arg_params;
+    for (size_t i = 0; i < aliased.size(); i++) {
+        const Xbyak::Reg64 base(aliased[i]), copy(free_gprs[i]);
+        host_->push(copy);
+        host_->mov(copy, base);
+        for (auto &out : params.vmm_idx_to_out_reg) {
+            if (out.second == base) out.second = copy;
+        }
+    }
+
+    compute_vector_range_impl(vmm_idxs, rhs_arg_idx, post_op, params);
+
+    for (size_t i = aliased.size(); i > 0; i--) {
+        host_->pop(Xbyak::Reg64(free_gprs[i - 1]));
+    }
+}
+
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::compute_vector_range_impl(
+        const injector_utils::vmm_index_set_t &vmm_idxs, int rhs_arg_idx,
+        const dnnl_post_ops::entry_t &post_op,
+        const rhs_arg_dynamic_params_t &rhs_arg_params) const {
+
     if (vmm_idxs.empty()) return;
     const auto start_idx = *(vmm_idxs.begin());
 
@@ -3055,11 +3130,18 @@ void jit_uni_binary_injector_t<Vmm>::load_acc_as_f32(const Vmm &dst,
     if (need_scratch_reg) {
         if (preserve_gpr) host_->push(addr_reg);
 
+        const auto tmp_reg = rhs_arg_static_params_.rhs_helper_reg;
         if (byte_off_fits) {
             host_->lea(addr_reg, host_->ptr[base + (int)byte_off]);
+        } else if (base == tmp_reg) {
+            // Writing `byte_off` to `tmp_reg` below would overwrite `base`.
+            // So `addr_reg` takes `byte_off` and `base` is added to it. A
+            // `base` in `addr_reg` needs no such care, since `lea` reads it
+            // before writing.
+            host_->mov(addr_reg, byte_off);
+            host_->add(addr_reg, base);
         } else {
             // Use a scratch register to handle large offsets.
-            const auto tmp_reg = rhs_arg_static_params_.rhs_helper_reg;
             if (preserve_gpr) host_->push(tmp_reg);
 
             host_->mov(tmp_reg, byte_off);

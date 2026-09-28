@@ -324,6 +324,14 @@ public:
 
 private:
     /*
+     * Like the set-based `compute_vector_range()`, but every output base
+     * register must differ from the helper gprs.
+     */
+    void compute_vector_range_impl(
+            const injector_utils::vmm_index_set_t &vmm_idxs, int rhs_arg_idx,
+            const dnnl_post_ops::entry_t &post_op,
+            const rhs_arg_dynamic_params_t &rhs_arg_params) const;
+    /*
      * Returns the temporary vmm index for one `compute_vector_range()` call.
      *
      * Tries these candidates in order and returns the first that qualifies:

@@ -41,7 +41,7 @@
 // - It does not do the same for opmasks. On AVX-512 the eltwise injector and
 //   the binary injector each take one as a fixed register and restore neither,
 //   so the kernel reserves both and keeps them out of the allocator's mask file
-//   (see `mask_scratch` in `make_reg_config()`):
+//   (see `reserved_masks` in `make_reg_config()`):
 //     eltwise_opmask     - scratch the eltwise injector overwrites. It is
 //                          written before it is read, so it needs no setup.
 //     binary_tail_opmask - active-element pattern the binary injector reads for

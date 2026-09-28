@@ -25,13 +25,9 @@ namespace x64 {
 namespace ir {
 
 reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
-        const std::vector<int> &gpr_scratch,
-        const std::vector<int> &vec_scratch,
-        const std::vector<int> &mask_scratch) {
+        const std::vector<int> &reserved_masks) {
     reg_config_t rc;
     rc.param_reg = param_reg;
-    rc.gpr_scratch = gpr_scratch;
-    rc.vec_scratch = vec_scratch;
 
     // TODO: enable Intel APX.
     const int n_gpr = 16;
@@ -41,25 +37,21 @@ reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
         return std::find(v.begin(), v.end(), i) != v.end();
     };
 
-    // GPR file includes every gpr except the stack pointer (`rsp`), the
-    // argument pointer, and the scratch registers. The spill slot size is
-    // 8 bytes.
+    // GPR file includes every gpr except the stack pointer (`rsp`) and the
+    // argument pointer. The spill slot size is 8 bytes.
     reg_file_t gpr_file;
     gpr_file.slot_size = 8;
     for (int i = 0; i < n_gpr; i++) {
-        if (i != rsp_reg && i != param_reg && !contains(gpr_scratch, i))
-            gpr_file.regs.push_back(i);
+        if (i != rsp_reg && i != param_reg) gpr_file.regs.push_back(i);
     }
 
-    // Vector file includes every vector register except the scratch registers.
-    // On AVX2* a mask is a vector register, so masks allocate from this same
-    // file (see `kind_to_file` below). Spill slot is the vector size 32 for
-    // ymm and 64 for zmm.
+    // Vector file includes every vector register. On AVX2* a mask is a vector
+    // register, so masks allocate from this same file (see `kind_to_file`
+    // below). Spill slot is the vector size 32 for ymm and 64 for zmm.
     reg_file_t vec_file;
     vec_file.slot_size = isa_max_vlen(isa);
-    for (int i = 0; i < n_vec; i++) {
-        if (!contains(vec_scratch, i)) vec_file.regs.push_back(i);
-    }
+    for (int i = 0; i < n_vec; i++)
+        vec_file.regs.push_back(i);
 
     rc.pools.files = {gpr_file, vec_file};
 
@@ -70,14 +62,14 @@ reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
     //  * mask: file 1 on AVX2*, where a mask is a vector register, and file 2
     //    on AVX-512, which has a dedicated k-register file.
     if (is_superset(isa, avx512_core)) {
-        // Mask file holds `k1` to `k7` minus `mask_scratch`. `k0` is excluded
+        // Mask file holds `k1` to `k7` minus `reserved_masks`. `k0` is excluded
         // because it cannot encode a write mask. A spill slot is 8 bytes, the
-        // width of an opmask, although the emitter never spills a mask (see
-        // `set_mask_imm` in `emitter.cpp`).
+        // width of an opmask, although masks are never spilled (see
+        // `max_temps_per_op`).
         reg_file_t mask_file;
         mask_file.slot_size = 8;
         for (int i = 1; i < 8; i++) {
-            if (!contains(mask_scratch, i)) mask_file.regs.push_back(i);
+            if (!contains(reserved_masks, i)) mask_file.regs.push_back(i);
         }
 
         rc.pools.files.push_back(mask_file);

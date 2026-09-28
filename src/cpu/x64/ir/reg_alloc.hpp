@@ -90,8 +90,8 @@ struct reg_alloc_result_t {
 // stack-slot size used when a spill is needed.
 //
 // `regs` holds the register indices available for allocation (for example, all
-// general-purpose registers except reserved ones such as `rsp`, the argument
-// pointer, and scratch registers).
+// general-purpose registers except reserved ones such as `rsp` and the argument
+// pointer).
 //
 // `slot_size` is how many bytes a spilled value needs on the stack
 // (8 for a GPR, 32 for a YMM, 64 for a ZMM).

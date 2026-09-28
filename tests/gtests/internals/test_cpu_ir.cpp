@@ -228,10 +228,11 @@ float ref_dot(const float *a, const float *b, int n) {
 // IR-based kernel.
 class ir_kernel_t : public impl::cpu::x64::jit_generator_t {
 public:
-    ir_kernel_t(ir_t ir, int vec_regs_limit = -1)
+    ir_kernel_t(ir_t ir, int vec_regs_limit = -1, int gpr_regs_limit = -1)
         : jit_generator_t("ir_run_kernel", test_isa())
         , ir_(std::move(ir))
-        , vec_regs_limit_(vec_regs_limit) {}
+        , vec_regs_limit_(vec_regs_limit)
+        , gpr_regs_limit_(gpr_regs_limit) {}
 
     const char *name() const override { return "ir_kernel"; }
     const char *source_file() const override { return __FILE__; }
@@ -290,13 +291,13 @@ protected:
                 {vec_scratch0, vec_scratch1, vec_scratch2},
                 {eltwise_opmask, binary_tail_opmask});
 
-        // Shrink the vector register pool to force spills when requested.
-        if (vec_regs_limit_ >= 0) {
-            const int vec_reg_pool_idx = 1;
-            auto &vec_regs = reg_cfg.pools.files[vec_reg_pool_idx].regs;
-            if ((int)vec_regs.size() > vec_regs_limit_)
-                vec_regs.resize(vec_regs_limit_);
-        }
+        // Shrink the register pools to force spills when requested.
+        const auto limit = [&](int file, int n) {
+            auto &regs = reg_cfg.pools.files[file].regs;
+            if (n >= 0 && (int)regs.size() > n) regs.resize(n);
+        };
+        limit(0, gpr_regs_limit_);
+        limit(1, vec_regs_limit_);
 
         // Run allocator.
         const reg_alloc_result_t alloc = allocate_registers(ir_, reg_cfg.pools);
@@ -338,6 +339,7 @@ protected:
 private:
     ir_t ir_ {};
     int vec_regs_limit_ = 0;
+    int gpr_regs_limit_ = 0;
     bool spilled_ = false;
     size_t stack_size_ = 0;
     postops_cfg_t postops_cfg_ {};
@@ -1104,15 +1106,17 @@ ir_t build_shared_vector_dot_ir(int n) {
 }
 
 // Validates that register allocator decisions never change results. The same
-// computation is run with a full register file and with one too small to avoid
-// spills. Both must produce identical results.
+// computation is run with full register files and with files only as large as
+// its widest operations (3 vec for `vdot`, 1 gpr). Spilled values need no
+// reserved registers, so both must produce identical results.
 TEST(IntegrationTests, SpillProducesEquivalentResults) {
     SKIP_IF_NO_AVX2();
 
     constexpr int n = 6;
 
     ir_kernel_t full(build_shared_vector_dot_ir(n));
-    ir_kernel_t limited(build_shared_vector_dot_ir(n), /*vec_regs_cap=*/4);
+    ir_kernel_t limited(build_shared_vector_dot_ir(n), /*vec_regs_limit=*/3,
+            /*gpr_regs_limit=*/1);
 
     ASSERT_TRUE(full.run_ir_pipeline());
     ASSERT_TRUE(limited.run_ir_pipeline());

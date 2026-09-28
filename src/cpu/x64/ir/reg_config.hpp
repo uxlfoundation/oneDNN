@@ -32,10 +32,8 @@ namespace ir {
 // The register allocator avoids using them, so they are always available for
 // these specific purposes:
 //  - param_reg: stores a pointer to the kernel's input arguments.
-//  - gpr_scratch / vec_scratch: temporary registers that the emitter can use
-//    whenever needed. If a value could not stay in a register and was spilled,
-//    the emitter loads it into one of these registers, performs the required
-//    work, and then stores it back.
+//  - gpr_scratch / vec_scratch: kept out of the pools but unused. Spilled
+//    values go through the temps the allocator hands out (see `temp_reg_t`).
 //
 // `pools` contains the registers that are available for allocation for each
 // register kind, along with the stack space needed when a value for that
@@ -69,8 +67,8 @@ struct reg_config_t {
 // - `vec_scratch` registers
 // - `mask_scratch` opmasks, on AVX-512 only
 //
-// The emitter uses `gpr_scratch` and `vec_scratch` when loading and storing
-// spilled values.
+// `gpr_scratch` and `vec_scratch` are unused, since spilled values go through
+// temps (see `temp_reg_t`).
 //
 // `mask_scratch` names the opmasks a kernel hands to code outside the IR that
 // writes them without restoring them. The JIT post-ops injector is the one such

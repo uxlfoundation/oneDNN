@@ -60,8 +60,8 @@ step. They are omitted above for clarity.
   when the access converts.
 * **Register configuration.** An ISA-aware step that produces ISA-agnostic
   register pools (integer indices per register kind) plus the reserved registers:
-  the stack pointer, the kernel-argument pointer, and a few scratch registers the
-  emitter uses for spilled values. It encodes per-ISA facts such as register
+  the stack pointer, the kernel-argument pointer, and a few scratch registers
+  that are reserved but unused. It encodes per-ISA facts such as register
   counts and whether the target has dedicated mask (k) registers.
 * **Register allocator.** Maps unlimited virtual registers onto physical ones,
   spilling to the stack under pressure. It knows only register kinds and control
@@ -78,7 +78,7 @@ step. They are omitted above for clarity.
 * **Emitter.** The only part aware of the ISA and data types, because it produces
   the code. It walks the allocated IR once and lowers each operation to
   instructions using the physical registers the allocator chose. Spilled values
-  are loaded into scratch registers around each use. There is one backend per ISA
+  are loaded into their temps around each use. There is one backend per ISA
   family (for example, AVX2\* and AVX-512\*), and a dispatch step selects the
   matching backend.
 * **Static data.** Some lowerings need constants, such as the AVX2 mask tables,

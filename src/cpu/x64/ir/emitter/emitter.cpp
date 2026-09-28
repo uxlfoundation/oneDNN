@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <cassert>
 #include <vector>
 #include <unordered_map>
 
@@ -60,15 +59,26 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     // Data type of a vec vreg.
     auto dt_of = [&](vreg_t vr) { return ir.vreg_info()[(int)vr].dt; };
 
-    // Reserve scratch registers for the spills.
-    const Xbyak::Reg64 gpr_scratch0(rc.gpr_scratch[0]);
-    const Xbyak::Reg64 gpr_scratch1(rc.gpr_scratch[1]);
-    const int vec_scratch0 = rc.vec_scratch[0];
-    const int vec_scratch1 = rc.vec_scratch[1];
-    const int vec_scratch2 = rc.vec_scratch[2];
+    // Temps of the operation being lowered (see `temp_reg_t`).
+    const std::vector<temp_reg_t> *op_temps = nullptr;
 
-    // Move a spilled vec value between its stack slot and a scratch register,
-    // as a vector load/store against the stack frame (rsp).
+    // Temp that holds the spilled `vr` during the current operation. There is
+    // none when the operation exceeds `max_temps_per_op` or needs more
+    // registers than the file holds. The kernel then cannot be emitted.
+    auto temp_of = [&](vreg_t vr) -> int {
+        for (const temp_reg_t &t : *op_temps)
+            if (t.vreg == vr) return t.phys;
+        JIT_ASSERT_RET(!"emit: spilled operand has no temp register", 0);
+        return 0;
+    };
+
+    // Physical register that holds `vr` during the current operation, without
+    // a reload. It is the temp when `vr` is spilled.
+    auto reg_of
+            = [&](vreg_t vr) { return spilled(vr) ? temp_of(vr) : phys(vr); };
+
+    // Move a spilled vec value between its stack slot and a register, as a
+    // vector load/store against the stack frame (`rsp`).
     const int rsp_idx = gen.rsp.getIdx();
     auto spill_reload
             = [&](vreg_t vr, int p) { be.vload_raw(p, rsp_idx, slot_off(vr)); };
@@ -80,51 +90,46 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     // concrete physical register, hiding whether the allocator spilled it:
     //   - not spilled: the value is already in a physical register, so just
     //     return that register (no extra instruction).
-    //   - spilled: the value lives on the stack slot, so emit a reload into the
-    //     caller-provided scratch register `scr` and return it.
-    // The caller picks `scr` (gpr_scratch0/1 for gpr, vec_scratch0/1/2 for
-    // vec) so that an instruction with several spilled operands reloads each
-    // into a different scratch and they do not clobber one another. The
-    // returned register is valid only until the next reload into the same
-    // scratch, so use it right away. These helpers handle only reads. Writing
-    // a spilled result back is done by the defining instruction (compute into
-    // scratch, then store to the slot).
+    //   - spilled: the value lives on the stack slot, so emit a reload into its
+    //     temp and return the temp.
+    // Each spilled operand of an operation has its own temp, so an instruction
+    // with several spilled operands reloads each into a different register.
+    // These helpers handle only reads. Writing a spilled result back is done
+    // by the defining instruction (compute into the temp, then store to the
+    // slot).
     //
     // gpr reloads are ISA-neutral (a plain `mov`), so `gpr_use` emits them
     // directly. A spilled vec source is reloaded through the backend, since the
     // reload instruction is ISA-specific. The `vec_use` returns a physical
     // index rather than a typed register.
-    auto gpr_use = [&](vreg_t vr, const Xbyak::Reg64 &scr) -> Xbyak::Reg64 {
-        if (!spilled(vr)) return Xbyak::Reg64(phys(vr));
+    auto gpr_use = [&](vreg_t vr) -> Xbyak::Reg64 {
+        const Xbyak::Reg64 r(reg_of(vr));
         // reload the spilled gpr from its stack slot
-        gen.mov(scr, slot(vr));
-        return scr;
+        if (spilled(vr)) gen.mov(r, slot(vr));
+        return r;
     };
 
-    auto vec_use = [&](vreg_t vr, int scr_idx) -> int {
-        if (!spilled(vr)) return phys(vr);
+    auto vec_use = [&](vreg_t vr) -> int {
+        const int r = reg_of(vr);
         // reload the spilled vector register from its stack slot
-        spill_reload(vr, scr_idx);
-        return scr_idx;
+        if (spilled(vr)) spill_reload(vr, r);
+        return r;
     };
 
     // Lower each IR instruction. Spilled operands are handled as follows:
     //
     // - Inputs that an instruction reads are accessed through gpr_use/vec_use.
     //   These return the register directly, or reload the value from its spill
-    //   slot into a scratch register if needed.
+    //   slot into its temp if needed.
     //
     // - The output that an instruction writes is handled separately inside each
     //   case. If the destination is spilled, we reload it first (for
-    //   read-modify-write operations), perform the operation, and then store
-    //   the result back to its spill slot.
+    //   read-modify-write operations), perform the operation in its temp, and
+    //   then store the result back to its spill slot.
     //
-    // Scratch register usage:
-    // - gpr_scratch0/vec_scratch0: scratch register for destinations
-    // - gpr_scratch1/vec_scratch1/vec_scratch2: scratch registers for sources
-    //
-    // This separation ensures that spilled source and destination values never
-    // use the same scratch register.
+    // The temps of an operation differ from each other and from every register
+    // that holds a value live across the operation, so a reload never clobbers
+    // another operand.
 
     // Fixed registers the injector reads are set up once, ahead of the IR,
     // rather than at every `inject_postops` operation. The pattern does not
@@ -134,19 +139,17 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
 
     for (int i = 0; i < ir.n_ops(); i++) {
         const op_t &op = ir.ops()[i];
+        op_temps = &alloc.temps[i];
         switch (op.kind) {
             // General-purpose register ops. ISA-neutral, emitted directly.
             case op_kind_t::mov_imm: {
-                if (!spilled(op.dst)) {
-                    gen.mov(Xbyak::Reg64(phys(op.dst)), op.imm);
-                } else {
-                    gen.mov(gpr_scratch0, op.imm);
-                    gen.mov(slot(op.dst), gpr_scratch0);
-                }
+                const Xbyak::Reg64 d(reg_of(op.dst));
+                gen.mov(d, op.imm);
+                if (spilled(op.dst)) gen.mov(slot(op.dst), d);
                 break;
             }
             case op_kind_t::mov_reg: {
-                Xbyak::Reg64 s = gpr_use(op.s0, gpr_scratch1);
+                Xbyak::Reg64 s = gpr_use(op.s0);
                 if (!spilled(op.dst))
                     gen.mov(Xbyak::Reg64(phys(op.dst)), s);
                 else
@@ -154,32 +157,22 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 break;
             }
             case op_kind_t::add_imm: {
-                if (!spilled(op.dst)) {
-                    gen.add(Xbyak::Reg64(phys(op.dst)), op.imm);
-                } else {
-                    gen.mov(gpr_scratch0, slot(op.dst));
-                    gen.add(gpr_scratch0, op.imm);
-                    gen.mov(slot(op.dst), gpr_scratch0);
-                }
+                const Xbyak::Reg64 d = gpr_use(op.dst);
+                gen.add(d, op.imm);
+                if (spilled(op.dst)) gen.mov(slot(op.dst), d);
                 break;
             }
             case op_kind_t::add_reg: {
-                Xbyak::Reg64 s = gpr_use(op.s0, gpr_scratch1);
-                if (!spilled(op.dst)) {
-                    gen.add(Xbyak::Reg64(phys(op.dst)), s);
-                } else {
-                    gen.mov(gpr_scratch0, slot(op.dst));
-                    gen.add(gpr_scratch0, s);
-                    gen.mov(slot(op.dst), gpr_scratch0);
-                }
+                const Xbyak::Reg64 s = gpr_use(op.s0);
+                const Xbyak::Reg64 d = gpr_use(op.dst);
+                gen.add(d, s);
+                if (spilled(op.dst)) gen.mov(slot(op.dst), d);
                 break;
             }
             case op_kind_t::load: {
-                Xbyak::Reg64 base = op.mem.is_param
-                        ? Xbyak::Reg64(rc.param_reg)
-                        : gpr_use(op.mem.base, gpr_scratch1);
-                Xbyak::Reg64 d = spilled(op.dst) ? gpr_scratch0
-                                                 : Xbyak::Reg64(phys(op.dst));
+                Xbyak::Reg64 base = op.mem.is_param ? Xbyak::Reg64(rc.param_reg)
+                                                    : gpr_use(op.mem.base);
+                const Xbyak::Reg64 d(reg_of(op.dst));
                 gen.mov(d, gen.ptr[base + (int)op.mem.disp]);
                 if (spilled(op.dst)) gen.mov(slot(op.dst), d);
                 break;
@@ -190,122 +183,119 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             // A read-modify-write (`rmw`) op also reloads a spilled dst before
             // the op. An op that overwrites dst does not.
             case op_kind_t::vzero: { // overwrites dst
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                int d = reg_of(op.dst);
                 be.vzero(d);
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vload: { // overwrites dst
-                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                int base = gpr_use(op.mem.base).getIdx();
+                int d = reg_of(op.dst);
                 be.vload(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vstore: {
-                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
-                int s = vec_use(op.s0, vec_scratch0);
+                int base = gpr_use(op.mem.base).getIdx();
+                int s = vec_use(op.s0);
                 be.vstore(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0));
                 break;
             }
             case op_kind_t::vload_scalar: { // overwrites dst
-                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                int base = gpr_use(op.mem.base).getIdx();
+                int d = reg_of(op.dst);
                 be.vload_scalar(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vstore_scalar: {
-                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
-                int s = vec_use(op.s0, vec_scratch0);
+                int base = gpr_use(op.mem.base).getIdx();
+                int s = vec_use(op.s0);
                 be.vstore_scalar(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0));
                 break;
             }
             case op_kind_t::vload_bcast: { // overwrites dst
-                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                int base = gpr_use(op.mem.base).getIdx();
+                int d = reg_of(op.dst);
                 be.vload_bcast(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vdot: { // rmw: reads and writes dst
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                if (spilled(op.dst)) spill_reload(op.dst, d);
-                int a = vec_use(op.s0, vec_scratch1);
-                int b = vec_use(op.s1, vec_scratch2);
+                int d = vec_use(op.dst);
+                int a = vec_use(op.s0);
+                int b = vec_use(op.s1);
                 be.vdot(d, a, b, dt_of(op.s0));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vadd: { // rmw: reads and writes dst
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                if (spilled(op.dst)) spill_reload(op.dst, d);
-                int s = vec_use(op.s0, vec_scratch1);
+                int d = vec_use(op.dst);
+                int s = vec_use(op.s0);
                 be.vadd(d, s, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vmul: { // rmw: reads and writes dst
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                if (spilled(op.dst)) spill_reload(op.dst, d);
-                int s = vec_use(op.s0, vec_scratch1);
+                int d = vec_use(op.dst);
+                int s = vec_use(op.s0);
                 be.vmul(d, s, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
-            case op_kind_t::vhreduce: { // reads and writes dst
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                if (spilled(op.dst)) spill_reload(op.dst, d);
-                int ws = vec_use(op.s0, vec_scratch1);
+            case op_kind_t::vhreduce: { // reads and writes dst, overwrites ws
+                int d = vec_use(op.dst);
+                int ws = reg_of(op.s0);
                 be.vhreduce(d, ws, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
+                if (spilled(op.s0)) spill_store(op.s0, ws);
                 break;
             }
 
-            // Lowers to the external JIT injector via the builder-provided
-            // callback. The injector does not participate in register
-            // allocation, so it is outside the allocation model. Reloading a
-            // spilled operand into a scratch register might work but is not
-            // guaranteed, so the operands must be in their allocated registers
-            // (asserted below).
+            // Lowers to the external JIT injector (see `postops_injector_t`).
+            // Spilled operands go through their temps like those of any other
+            // operation. The injector saves and restores every other register
+            // it borrows.
             case op_kind_t::inject_postops: {
                 const auto &args = ir.inject_postops_args()[(int)op.imm];
                 std::vector<int> acc_phys;
                 acc_phys.reserve(args.acc.size());
-                for (vreg_t v : args.acc) {
-                    JIT_ASSERT(!spilled(v)
-                            && "inject_postops: accumulator spilled");
-                    acc_phys.push_back(phys(v));
-                }
-                JIT_ASSERT(!spilled(args.base_ptr)
-                        && "inject_postops: base pointer spilled");
+                for (vreg_t v : args.acc)
+                    acc_phys.push_back(vec_use(v));
+                // An eltwise-only chain has no base pointer.
+                const int base_phys = args.base_ptr == vreg_t::none
+                        ? -1
+                        : gpr_use(args.base_ptr).getIdx();
                 JIT_ASSERT(postops && "inject_postops: missing injector");
-                postops->inject(
-                        acc_phys, phys(args.base_ptr), args.out_byte_off);
+                postops->inject(acc_phys, base_phys, args.out_byte_off);
+                for (size_t a = 0; a < args.acc.size(); a++)
+                    if (spilled(args.acc[a]))
+                        spill_store(args.acc[a], acc_phys[a]);
                 break;
             }
 
-            // Mask ops. Emitting the instruction is the backend's job.
-            // Spilling is not supported for mask vreg for now so we assert
-            // `no spills`.
+            // Mask ops. Emitting the instruction is the backend's job. The
+            // allocator does not spill masks to make room (see
+            // `max_temps_per_op`). A mask ends up spilled only when no register
+            // is left for it, which the asserts reject.
             case op_kind_t::set_mask_imm: {
-                assert(!spilled(op.dst) && "set_mask_imm: mask spilled");
+                JIT_ASSERT(!spilled(op.dst) && "set_mask_imm: mask spilled");
                 be.set_mask_imm(phys(op.dst), (int)op.imm, data);
                 break;
             }
             case op_kind_t::vload_masked: { // overwrites dst
-                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
-                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                assert(!spilled(op.s1) && "vload_masked: mask spilled");
+                int base = gpr_use(op.mem.base).getIdx();
+                int d = reg_of(op.dst);
+                JIT_ASSERT(!spilled(op.s1) && "vload_masked: mask spilled");
                 be.vload_masked(d, base, op.mem.disp, phys(op.s1), op.mem_dt,
                         dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vstore_masked: {
-                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
-                int s = vec_use(op.s0, vec_scratch0);
-                assert(!spilled(op.s1) && "vstore_masked: mask spilled");
+                int base = gpr_use(op.mem.base).getIdx();
+                int s = vec_use(op.s0);
+                JIT_ASSERT(!spilled(op.s1) && "vstore_masked: mask spilled");
                 be.vstore_masked(base, op.mem.disp, s, phys(op.s1), op.mem_dt,
                         dt_of(op.s0));
                 break;
@@ -313,17 +303,16 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
 
             // prefetcht0 is base x86-64, so emit it directly.
             case op_kind_t::prefetch: {
-                Xbyak::Reg64 base = gpr_use(op.mem.base, gpr_scratch0);
+                Xbyak::Reg64 base = gpr_use(op.mem.base);
                 gen.prefetcht0(gen.ptr[base + (int)op.mem.disp]);
                 break;
             }
 
             // Control flow. ISA-neutral, emitted directly.
             case op_kind_t::loop_begin: {
-                Xbyak::Reg64 c = spilled(op.dst) ? gpr_scratch0
-                                                 : Xbyak::Reg64(phys(op.dst));
+                const Xbyak::Reg64 c(reg_of(op.dst));
                 if (op.init_is_reg) {
-                    Xbyak::Reg64 iv = gpr_use(op.s0, gpr_scratch1);
+                    Xbyak::Reg64 iv = gpr_use(op.s0);
                     gen.mov(c, iv);
                 } else {
                     gen.mov(c, op.imm);
@@ -335,14 +324,9 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::loop_end: {
                 // dec sets ZF, so the back-edge is a plain jnz with no cmp. The
                 // counter starts >= 1 and lands on exactly 0, so jnz matches jg.
-                if (!spilled(op.dst)) {
-                    Xbyak::Reg64 c(phys(op.dst));
-                    gen.dec(c);
-                } else {
-                    gen.mov(gpr_scratch0, slot(op.dst));
-                    gen.dec(gpr_scratch0);
-                    gen.mov(slot(op.dst), gpr_scratch0);
-                }
+                const Xbyak::Reg64 c = gpr_use(op.dst);
+                gen.dec(c);
+                if (spilled(op.dst)) gen.mov(slot(op.dst), c);
                 gen.jnz(labels[op.match]); // back-edge to the matching loop_begin
                 break;
             }
@@ -356,7 +340,7 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 break;
             }
             case op_kind_t::jz: {
-                Xbyak::Reg64 c = gpr_use(op.s0, gpr_scratch0);
+                Xbyak::Reg64 c = gpr_use(op.s0);
                 gen.cmp(c, 0);
                 gen.jz(label_id_to_label[(int)op.label_id],
                         Xbyak::CodeGenerator::T_NEAR);

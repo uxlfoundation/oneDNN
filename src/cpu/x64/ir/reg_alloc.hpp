@@ -39,8 +39,8 @@ namespace ir {
 //
 // - If `spilled == true`, the value is stored on the stack at byte offset
 //   `slot` in the spill area. In this case, `phys` is not used.
-//   Whenever the value is needed, the emitter loads it into a scratch
-//   register before using it.
+//   The emitter moves the value through a temp register at each operation
+//   that reads or writes it (see `temp_reg_t`).
 struct assignment_t {
     bool spilled = false;
     int phys = -1;
@@ -61,6 +61,7 @@ constexpr int max_temps_per_op[] = {2, 3, 0};
 // at that operation, spilling another value to free one if needed. The operand
 // gets no temp when every register holds an operand of that operation or a
 // mask, or when the operation already has `max_temps_per_op` temps of its kind.
+// The emitter then fails the kernel.
 //
 //   vreg - the spilled virtual register
 //   phys - physical register that holds it during the operation

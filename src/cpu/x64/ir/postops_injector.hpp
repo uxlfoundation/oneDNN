@@ -106,7 +106,7 @@ struct postops_injector_t {
     // register indices). For binary and sum post-ops, `base_phys` and
     // `out_byte_off` give each accumulator's output address: binary reaches its
     // right-hand-side argument through it, sum reads the previous destination
-    // value from it.
+    // value from it. `base_phys` is -1 for a chain that needs neither.
     void DNNL_API inject(const std::vector<int> &acc_phys, int base_phys,
             const std::vector<dim_t> &out_byte_off);
 

@@ -98,6 +98,15 @@ struct gen_t : public primitive_t {
             const auto *intel_engine
                     = utils::downcast<const intel::engine_t *>(engine);
 
+            // Reject datatypes the jit kernel type map cannot represent.
+            auto dt_ok = [](data_type_t t) {
+                return utils::one_of(t, f64, f32, f16, bf16, f8_e5m2, f8_e4m3,
+                        e8m0, f4_e2m1, s32, u8, s8, u4, s4);
+            };
+            VDISPATCH_GEMM(dt_ok(desc()->a_type()) && dt_ok(desc()->b_type())
+                            && dt_ok(desc()->c_type()),
+                    VERBOSE_UNSUPPORTED_DT);
+
             CHECK(set_default_formats(false));
 
             dev_info_ = intel_engine->device_info();

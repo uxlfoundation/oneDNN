@@ -388,7 +388,8 @@ std::vector<int64_t> compute_spill_weights(
 // reference, step 2 counts it as a spilled operand and step 4 hands it a temp.
 //
 // When every register holds an operand of `i` or a mask, step 3 has nothing to
-// spill. An operand left without a register then gets no temp.
+// spill. An operand left without a register then gets no temp, which the
+// emitter reports by failing the kernel.
 //
 // Spilled values are assigned stack slots starting at `frame`, increasing by
 // `slot_size` per spill.
@@ -559,7 +560,7 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
 
         // 4. Hand out registers. They run short only when step 3 had nothing
         // to spill. A value left without a register is spilled. An operand
-        // left without a temp gets none.
+        // left without a temp is reported by the emitter.
         for (int v : pending) {
             if (free_regs.empty()) {
                 spill(v);

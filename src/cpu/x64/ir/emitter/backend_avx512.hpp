@@ -159,8 +159,8 @@ struct avx512_backend_t {
     // Create a mask with `n_elems` active elements. The mask is built inside
     // the k-register file: `kxnorq` sets all 64 bits and `kshiftrq` keeps the
     // low `n_elems` of them. The alternative, `kmov` from an immediate in a
-    // gpr, would put mask setup on the scratch registers, and those are meant
-    // to go away. `data` is unused for the same reason.
+    // gpr, would need a gpr the operation does not have. `data` is unused,
+    // since nothing is loaded from memory.
     //
     // The number of active bits is `n_elems` for every element size. A widening
     // load preserves the element count, so a narrower element type changes what

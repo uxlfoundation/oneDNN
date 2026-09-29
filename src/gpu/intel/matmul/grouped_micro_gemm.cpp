@@ -975,7 +975,9 @@ status_t grouped_micro_gemm_t::execute_m_axis(const exec_ctx_t &ctx) const {
     compute::range_t gws = lws;
     // Swap wg_tile_[mn]_ for col-major vs row-major representations
     gws[0] *= utils::div_up(n, wg_tile_m);
-    gws[1] *= utils::div_up(m_dispatch, wg_tile_n);
+    // Sparse (gemv) dispatch derives the M offset from the flat token index
+    // in dim 2, so dim 1 only needs a single work-group.
+    gws[1] *= pd()->is_gemv_ ? 1 : utils::div_up(m_dispatch, wg_tile_n);
     gws[2] *= pd()->is_gemv_ ? m_all : pd()->ngroups_;
 
     return parallel_for(ctx, compute::nd_range_t(gws, lws), kernel_, arg_list);

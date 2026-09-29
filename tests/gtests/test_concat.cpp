@@ -300,7 +300,6 @@ CPU_INSTANTIATE_TEST_SUITE_P(
         TestConcat_EF_f16, concat_test_float16, cases_EF());
 
 TEST(concat_test_axis_t, TestConcatOutOfRangeAxis) {
-    SKIP_IF_HIP(true, "Concat operator is not supported");
     auto eng = get_test_engine();
     SKIP_IF(is_amd_gpu(eng), "Concat operator is not supported");
 

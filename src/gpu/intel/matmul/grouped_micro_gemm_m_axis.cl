@@ -176,6 +176,9 @@ void find_sparse_batch(off_t *batch, int2 *src_range,
 
     *batch = *slm_batch;
     *src_range = (int2)(slm_src_offset[0], slm_src_offset[1]);
+#if WITH_SLM
+    work_group_barrier(CLK_LOCAL_MEM_FENCE);
+#endif
 }
 #else
 #define slm_sparse_total_size 0

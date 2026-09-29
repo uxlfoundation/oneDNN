@@ -3,11 +3,11 @@ DynamicQuantize {#dev_guide_op_dynamicquantize}
 
 ## General
 
-DynamicQuantize operation converts an `f32` tensor to a quantized (`s4`, `u4`,
-`s8`, `u8`, `f8_e4m3`, or `f8_e5m2`) tensor. It supports per-tensor,
-per-channel, and mask-based linear quantization. The target quantized data type
-is specified via the data type of the dst logical tensor. Rounding mode is
-library-implementation defined.
+DynamicQuantize operation converts an `f32` tensor to a quantized (`s8`, `u8`,
+`f8_e4m3`, or `f8_e5m2`) tensor. It supports per-tensor, per-channel, and
+mask-based linear quantization. The target quantized data type is specified via
+the data type of the dst logical tensor. Rounding mode is library-implementation
+defined.
 
 For per-tensor quantization
 
@@ -70,7 +70,5 @@ DynamicQuantize operation supports the following data type combinations.
 |:----|:-------|:------------|:----|
 | f32 | f32    | s8, u8, s32 | s8  |
 | f32 | f32    | s8, u8, s32 | u8  |
-| f32 | f32    | s8, u8, s32 | s4  |
-| f32 | f32    | s8, u8, s32 | u4  |
 | f32 | f32    | N/A         | f8_e4m3 |
 | f32 | f32    | N/A         | f8_e5m2 |

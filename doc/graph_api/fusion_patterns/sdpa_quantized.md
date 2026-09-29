@@ -9,9 +9,11 @@ computation throughput during inference. In quantized SDPA, the input Query,
 Key, and Value tensors are stored in lower precision data types such as
 `u8`/`s8` (INT8) or `f8_e4m3`/`f8_e5m2` (FP8) along with scales and zero-points
 data. Both INT8 and FP8 quantized SDPA share the same pattern structure,
-differing only in the data types used for the quantized tensors. This approach
-is commonly used in inference scenarios where reduced precision is acceptable
-for improved performance.
+differing only in the data types used for the quantized tensors. The
+quantization can be either static, where scales and zero-points are provided as
+operation attributes, or dynamic, where scales and zero-points are provided as
+runtime input tensors. This approach is commonly used in inference scenarios
+where reduced precision is acceptable for improved performance.
 
 The notations used in this topic are:
 
@@ -50,9 +52,17 @@ differences:
 5. The Scale and Mask nodes remain optional and follow the same definition
    as in the floating-point SDPA pattern.
 
-### Quantization Attributes
+The pattern also supports a dynamic quantization variant. In this variant, the
+Dequantize and Quantize operations described above are replaced by their dynamic
+counterparts, [DynamicDequantize](@ref dev_guide_op_dynamicdequantize) and
+[DynamicQuantize](@ref dev_guide_op_dynamicquantize), which take the scales and
+zero-points as runtime input tensors instead of operation attributes. INT8 and
+FP8 data types are supported in both the static and dynamic variants.
 
-Each Quantize and Dequantize operation requires the following attributes:
+### Quantization Attributes and Inputs
+
+For the static quantization variant, each Quantize and Dequantize operation
+requires the following attributes:
 
 - `qtype`: The quantization type. Currently `per_tensor` is supported for
   quantized SDPA.
@@ -61,6 +71,11 @@ Each Quantize and Dequantize operation requires the following attributes:
 - `zps`: A vector of zero-points used for the quantization. It is optional and
   can be specified when asymmetric quantization is needed. Once set, it must
   contain a single value when `qtype` is set to `per_tensor`.
+
+For the dynamic quantization variant, each DynamicQuantize and DynamicDequantize
+operation takes the scales and zero-points as runtime input tensors instead of
+attributes, and supports specifying the scale dimensions via the `mask`
+attribute.
 
 ## Data Types
 
@@ -82,6 +97,9 @@ Notes:
 - All Dequantize outputs and Quantize inputs use `f32` data type.
 - The Scale and Mask tensors use `f32` data type.
 - The final output can be `f32` by not specifying the last Quantize operation.
+- For the dynamic variant, the `scales` input is an `f32` tensor. The `zps`
+input is optional and, when present, is an integer tensor (`s8`, `u8`, or
+`s32`); it must be omitted for the FP8 data types (`f8_e4m3` and `f8_e5m2`).
 
 ## Implementation Limitations
 
@@ -96,9 +114,9 @@ Notes:
 2. The quantized SDPA patterns functionally support all input shapes meeting the
    shape requirements of each operation in the graph.
 3. CPU
-   - Optimized implementation for inference is available for 4D Q/K tensors with
-     shape defined as (N, H, S, D) and V tensor with shape defined as (N, H, S,
-     D).
+   - Optimized implementation for the static variant is available for 4D Q/K
+     tensors with shape defined as (N, H, S, D) and V tensor with shape defined
+     as (N, H, S, D).
    - Optimized implementation for inference is available for OpenMP runtime and
      Threadpool runtime on Intel Architecture Processors.
    - Specifically for OpenMP runtime, the optimized implementation requires
@@ -112,3 +130,7 @@ oneDNN provides a [quantized SDPA example](https://github.com/uxlfoundation/oneD
 demonstrating how to construct both INT8 and FP8 quantized SDPA patterns with
 oneDNN Graph API on CPU and GPU. The example covers `u8`, `s8`, `f8_e4m3`, and
 `f8_e5m2` data types.
+
+oneDNN also provides a [dynamic quantized SDPA example](https://github.com/uxlfoundation/oneDNN/tree/main/examples/graph/sdpa_dynamic_quantized.cpp)
+demonstrating how to construct the dynamic quantization variant with
+DynamicQuantize and DynamicDequantize operations.

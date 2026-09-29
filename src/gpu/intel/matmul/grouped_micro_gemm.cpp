@@ -331,8 +331,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
                     m_unroll = std::max<dim_t>(
                             sg_size_, sg_size_ / problem.Ta_ext);
                 }
-                max_n_unroll
-                        = problem.Ta.isInt4() ? sg_size_ * problem.Ta_ext : 32;
+                max_n_unroll = 32;
         }
 
         reqs.push_back(StrategyRequirement::UnrollM == m_unroll);

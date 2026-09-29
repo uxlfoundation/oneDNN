@@ -663,11 +663,13 @@ void scatter_send(const tensor_t &t, const global_tensor_t &g,
         }
         auto gmask = elems == 1 ? expr_t() : global_mask(coords);
         mask = mask.is_empty() ? gmask : gmask.is_empty() ? mask : mask & gmask;
-        auto buf = transposed ? dst.subvec({}, tile.elems())
-                              : dst.subvec(coord, tile.elems());
+        auto tile_elems = into<int>(tile.elems());
+        auto buf = transposed ? dst.subvec({}, tile_elems)
+                              : dst.subvec(coord, tile_elems);
         scatter_send(buf, g.buf(), g.offset(coords), mask, op_kind, hint);
         if (transposed) {
-            auto vec_elems = std::min(tile.elems(), elems - coord[0]);
+            auto vec_elems
+                    = into<int>(std::min(tile.elems(), elems - coord[0]));
             assign(dummy.subvec(coord, vec_elems),
                     extract(buf, 0, into<int>(vec_elems)));
         }
@@ -956,20 +958,20 @@ void get_mnk_dims(const tile_t &a, const tile_t &b, const tile_t &c, idx_t &m,
 void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B) {
     idx_t m_dim, n_dim, k_dim;
     get_mnk_dims(A.tile(), B.tile(), C.tile(), m_dim, n_dim, k_dim);
-    const int M = C.tile().get(m_dim);
-    const int N = C.tile().get(n_dim);
-    const int K = A.tile().get(k_dim);
+    const int64_t M = C.tile().get(m_dim);
+    const int64_t N = C.tile().get(n_dim);
+    const int64_t K = A.tile().get(k_dim);
     const int m_blk = simd();
     const int n_blk = simd();
     dsl_assert(is_blocked_by(A, m_dim, m_blk));
     dsl_assert(is_blocked_by(C, m_dim, m_blk));
-    for (int n = 0; n < N; n += n_blk) {
-        for (int k = 0; k < K; k++) {
+    for (int64_t n = 0; n < N; n += n_blk) {
+        for (int64_t k = 0; k < K; k++) {
             icoord_t b_coord {{{k_dim, k}, {n_dim, n}}};
             auto b_vec = def("b_vec", f32[n_blk], B.subvec(b_coord, n_blk));
             for (int n_inner = 0; n_inner < n_blk; n_inner++) {
                 auto b = b_vec[n_inner];
-                for (int m = 0; m < M; m += m_blk) {
+                for (int64_t m = 0; m < M; m += m_blk) {
                     icoord_t coord {
                             {{m_dim, m}, {n_dim, n + n_inner}, {k_dim, k}}};
                     auto a = A.subvec(coord, m_blk);
@@ -1110,7 +1112,7 @@ static tensor_t binary_impl(op::kind_t op, const tensor_t &a,
         type_t common = ir::common_type(a_type, b_type).with_mut();
         if (a_simd || b_simd) common = common.with_simd();
         tile_t tile = max(a_layout.tile(), b_layout.tile());
-        auto dst_buf_type = common[tile.elems()];
+        auto dst_buf_type = common[into<int>(tile.elems())];
         auto dst_layout = deduce_binary_layout(
                 dst_buf_type.scalar(), a_layout, b_layout, a_simd, b_simd);
         dst = def("res", dst_layout, dst_buf_type.attr());

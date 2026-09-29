@@ -642,16 +642,31 @@ inline int timeout(GeneralizedPipe pipe)
 
 // Extract dpas repeat count (rcount) from an assembled (in-memory string) instruction.
 template <typename Instruction>
-inline auto dpasRepeatCount(const Instruction &insn) -> decltype(insn.ext, int())
+inline auto dpasRepeatCountImpl(const Instruction &insn, int) -> decltype(insn.ext, int())
 {
     return int(unsigned(insn.ext) & 0xFFu);
 }
 
 // Extract dpas repeat count (rcount) from a binary-encoded instruction (Instruction12/InstructionXeHPC/...).
 template <typename Instruction>
-inline auto dpasRepeatCount(const Instruction &insn) -> decltype(insn.dpas.rcount, int())
+inline auto dpasRepeatCountImpl(const Instruction &insn, long) -> decltype(insn.dpas.rcount, int())
 {
     return 1 + int(insn.dpas.rcount);
+}
+
+template <typename Instruction>
+inline int dpasRepeatCountImpl(const Instruction &insn, ...)
+{
+#ifdef NGEN_SAFE
+    throw unsupported_instruction();
+#endif
+    return 1;
+}
+
+template <typename Instruction>
+inline int dpasRepeatCount(const Instruction &insn)
+{
+    return dpasRepeatCountImpl(insn, 0);
 }
 
 // Approximate upper bound on cycle count for an OOO instruction.

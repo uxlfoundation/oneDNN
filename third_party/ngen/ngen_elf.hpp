@@ -66,7 +66,7 @@ public:
 
     explicit ELFCodeGenerator(Product product_, DebugConfig debugConfig = {})  : BinaryCodeGenerator<hw>(product_, debugConfig) {}
     DEPRECATED explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
-    explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
+    explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator({genericProductFamily(hw), 0, PlatformType::Unknown}, debugConfig) {}
     ELFCodeGenerator(ELFCodeGenerator &&) = default;
 
     const NEOInterfaceHandler &getInterface()                            { return interface_; }

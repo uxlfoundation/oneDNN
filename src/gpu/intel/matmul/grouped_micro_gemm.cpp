@@ -319,7 +319,8 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
                                        && problem.Ta_ext.isInteger())
                         ? sg_size_ * problem.Ta_ext
                         : 16;
-                if (is_xelpg && problem.Ta_ext.bits() <= 8) {
+                if (is_xelpg && !hw_info.systolicAvailable
+                        && problem.Ta_ext.bits() <= 8) {
                     min_n_unroll = (opts.scaleA || opts.scaleB) ? sg_size_ : 4;
                 }
                 if (!dev_info->mayiuse_systolic()) max_wg_n = 2;

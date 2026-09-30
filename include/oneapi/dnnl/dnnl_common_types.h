@@ -243,7 +243,6 @@ typedef struct {
     const char *hash; ///< Git hash of the sources (may be absent)
     unsigned cpu_runtime; ///< CPU runtime
     unsigned gpu_runtime; ///< GPU runtime
-    unsigned abi_version; ///< ABI version of the library interface
 } dnnl_version_t;
 
 /// @} dnnl_api_service

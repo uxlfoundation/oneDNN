@@ -23,7 +23,12 @@
 TBD
 
 ## RISC-V Processors
-TBD
+* Improved performance of `f32` binary, eltwise, pooling, softmax, and logsoftmax on processors with `V` extension support.
+* Improved performance of `f16` matmul, eltwise, and softmax on processors with `Zvfh` extension support, including softmax with non-contiguous axes.
+* Extended RVV-optimized implementations to `bf16` binary, eltwise, pooling, softmax, batch normalization, and resampling, and improved `bf16` matmul performance on processors with `Zvfbfwma` extension support.
+* Introduced RVV-optimized forward resampling with nearest-neighbor and linear interpolation for `f32` and `f16` data types.
+* Introduced RVV-optimized shuffle for `f32`, `s32`, `f16`, and `bf16` data types.
+* Extended the RVV matmul implementation to support unsigned 8-bit source and weights.
 
 # Functionality
 

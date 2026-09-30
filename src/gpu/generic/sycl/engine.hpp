@@ -47,6 +47,8 @@ public:
         return impl()->mayiuse_system_memory_allocators();
     }
 
+    int get_buffer_alignment() const override { return 128; }
+
     DECLARE_COMMON_SYCL_ENGINE_FUNCTIONS();
 
 protected:

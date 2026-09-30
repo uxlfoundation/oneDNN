@@ -78,7 +78,7 @@ public:
 
     virtual int get_buffer_alignment() const {
         assert(!"unexpected");
-        return -1;
+        return 0;
     }
 
 private:

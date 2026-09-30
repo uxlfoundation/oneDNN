@@ -69,8 +69,8 @@ TBD
 [matmul primitive]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_matmul.html
 
 # Breaking changes
-* Removed optimizations for Intel Iris Xe MAX Graphics and Intel Graphics included with 11th-14th generation Intel Core processors. oneDNN remains functional on these platforms and dispatches generic OpenCL implementation.
-* Removed optimizations for processors with Intel SSE4.1 and Intel AVX instruction sets. oneDNN remains functional on these platforms and dispatches generic C++ implementation.
+* Removed optimizations for Intel Iris Xe MAX Graphics and Intel Graphics included with 11th-14th generation Intel Core processors. oneDNN remains functional on these platforms and dispatches a generic OpenCL implementation.
+* Removed optimizations for processors with Intel SSE4.1 and Intel AVX instruction sets. oneDNN remains functional on these platforms and dispatches a generic C++ implementation.
 * Removed optimizations for `tf32` `fpmath_mode` in matmul on future Intel Xeon processors with Intel AVX10.2 and Intel AMX instruction set support (codename Diamond Rapids).
 
 # Thanks to our Contributors

@@ -375,6 +375,9 @@ public:
     // Change data types.
     void cast(Type Tnew) { T = Tnew; }
 
+    // Repoint this layout at a different in-memory representation.
+    void retarget(const MatrixAddressing &atype_, const MatrixAddressingStrategy &astrategy_);
+
     // Re-order a layout so that registers appear in appropriate order (row or column major).
     void sort(bool reverse = false);
 

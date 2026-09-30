@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,28 +14,17 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_DSL_IR_PASS_CSE_HPP
-#define GEMMSTONE_DSL_IR_PASS_CSE_HPP
+#ifndef GEMMSTONE_DSL_FINALIZE_HPP
+#define GEMMSTONE_DSL_FINALIZE_HPP
 
-#include "gemmstone/dsl/ir/object.hpp"
+#include "gemmstone/dsl/decl.hpp"
 #include "gemmstone/dsl/kernel.hpp"
 
 GEMMSTONE_NAMESPACE_START
 namespace dsl {
-namespace ir {
-class ir_context_t;
 
-// Pass for common subexpression elimination (CSE).
-// memory_usage_limit - max amount of GRF memory in bytes allowed to
-//     use for IR allocations and variables.
-void eliminate_common_subexprs(kernel_t &kernel, int memory_usage_limit);
-stmt_t eliminate_common_subexprs(
-        const stmt_t &_stmt, ir_context_t &ir_ctx, int memory_usage_limit);
+void finalize(kernel_t &kernel);
 
-stmt_t eliminate_common_subexprs(const stmt_t &stmt, ir_context_t &ir_ctx,
-        int reserved_regs, int gmem_bufs);
-
-} // namespace ir
 } // namespace dsl
 GEMMSTONE_NAMESPACE_END
 

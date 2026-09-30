@@ -58,7 +58,7 @@ TBD
 
 ## Intel Graphics
 * **[experimental]** Refactoring verbose profiling implementation for Level Zero runtime to avoid spurious synchronizations.
-* **[experimental]** Introduced support for concurrent primitive execution with the Level Zero runtime on Intel GPUs.
+* Introduced support for concurrent primitive execution with the Level Zero runtime on Intel GPUs.
 * **[experimental]** Introduced support for verbose profiling based on sycl_ext_oneapi_profiling_tag SYCL extension. This is an experimental feature that requires opt-in with [`ONEDNN_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG=ON`] build option.
 
 [`ONEDNN_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG=ON`]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_experimental.html#onednn-experimental-enable-sycl-profiling-tag

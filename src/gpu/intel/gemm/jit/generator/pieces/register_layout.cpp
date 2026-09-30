@@ -1459,6 +1459,23 @@ bool RegisterLayout::append1DBlocks(int r, int c)
     return true;
 }
 
+// Repoint this layout at a different in-memory representation.
+void RegisterLayout::retarget(const MatrixAddressing &atype_, const MatrixAddressingStrategy &astrategy_)
+{
+    atype = atype_;
+    astrategy = astrategy_;
+
+    // Any previously-computed address-coalescing offsets were derived for the old
+    //   addressing scheme and may not be valid for the new one (e.g. a packed layout
+    //   with a different row/column pitch than the original memory layout). Clear them
+    //   before recomputing, so that blocks the new coalesceAddrs() pass doesn't touch
+    //   don't retain stale, incorrect offsets.
+    for (auto &block: list)
+        block.offsetAddr = 0;
+
+    coalesceAddrs();
+}
+
 // Return maximum immediate address offset for a send message.
 static inline int maxOffsetAddr(Type T, const MatrixAddressingStrategy &astrategy)
 {

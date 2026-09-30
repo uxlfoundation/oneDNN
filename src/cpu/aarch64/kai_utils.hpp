@@ -98,6 +98,11 @@ inline int threads_for_kernel_execute(double work, int max_threads) {
     return threads_for_work(work, min_kernel_work_per_thread, max_threads);
 }
 
+inline int threads_for_weight_reorder(double work, int max_threads) {
+    constexpr double min_reorder_work_per_thread = 4 * 1024;
+    return threads_for_work(work, min_reorder_work_per_thread, max_threads);
+}
+
 inline void parallel_pretranspose_B_array(kai::ops::IGemmCommon &kernel,
         void *out, const void *in, int row_stride, int multi_stride,
         bool transposed, int num_threads) {

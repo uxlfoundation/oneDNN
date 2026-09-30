@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2024 Intel Corporation
 * Copyright 2026 Advanced Micro Devices, Inc.
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,7 +40,10 @@ enum class wino_memory_format_t {
     // Tensor of weights for 4x3 convolution.
     //
     // Internal weights format for 4x3 Winograd.
-    wino_wei_OBaaIBOIio
+    wino_wei_OBaaIBOIio,
+    // Internal weights format for transformed Winograd weights with KAI
+    // fixed-format o/i channel blocking.
+    wino_wei_aaIOoi
 };
 
 enum class rnn_packed_memory_format_t { undef, ldigo_p, ldgoi_p, ldio_p };

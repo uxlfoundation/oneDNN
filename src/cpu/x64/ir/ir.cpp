@@ -293,8 +293,8 @@ void ir_t::jz(vreg_t cond, label_t label_id) {
 // - Operations that both read and write the same register (like add_imm,
 //   vdot) count as both a use and a def, because they read the old value
 //   and then overwrite it.
-// - vhreduce uses its temporary register (s0) as both read and written,
-//   so the register allocator keeps it separate from the accumulator.
+// - vhreduce only writes its workspace (s0). The lowering overwrites the
+//   workspace before reading it, so its old value is never needed.
 // - A base register used for memory access counts as a read (use),
 //   unless it's a fixed parameter register.
 // - Control operations like loop_end both read and write the loop counter.
@@ -353,9 +353,8 @@ void ir_t::def_use(
             u(op.s0);
             d(op.dst);
             break;
-        case op_kind_t::vhreduce: // dst and workspace are both read and written
+        case op_kind_t::vhreduce: // the workspace is only written
             u(op.dst);
-            u(op.s0);
             d(op.dst);
             d(op.s0);
             break;

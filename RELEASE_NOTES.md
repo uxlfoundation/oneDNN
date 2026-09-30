@@ -30,7 +30,7 @@ TBD
 ## Functional API
 * Introduced [`binary_mul_inplace`] algorithm for binary post-op. Unlike `binary_mul` new algorithm uses matmul destination tensor as one of the inputs. Optimized version is available in matmul on Intel GPUs.
 * **[experimental]** Extended eltwise post-ops support in grouped matmul with all supported algorithms. Optimized implementation is available on Intel GPUs.
-* **[experimental]** Extended grouped matmul with support for backpropagation cases (2D grouped by 3D dense and 2D grouped by 2D grouped) covering `f32` , `f16` and `bf16` data types. Optimized implementation is available for Intel GPUs. This is an experimental feature that requires opt-in with [`ONEDNN_EXPERIMENTAL_GROUPED_MEMORY=ON`] build option. 
+* **[experimental]** Extended grouped matmul with support for backpropagation cases (2D grouped by 3D dense and 2D grouped by 2D grouped) covering `f32`, `f16` and `bf16` data types. Optimized implementation is available for Intel GPUs. This is an experimental feature that requires opt-in with [`ONEDNN_EXPERIMENTAL_GROUPED_MEMORY=ON`] build option.
 
 [`ONEDNN_EXPERIMENTAL_GROUPED_MEMORY=ON`]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_experimental.html#onednn-experimental-grouped-memory
 

@@ -61,7 +61,9 @@ TBD
 # Validation
 * Updated benchdnn `smoke` and `CI` test sets for matmul using parameter space sampling approach.
 * **[experimental]** Extended benchdnn `--grouped` knob with `balanced`, `hot`, and `decode` strategies for offset generation to generate MoE-style group distributions in grouped matmul validation.
+* Extended [benchdnn graph driver]: operation attribute removal via `--op-attrs` knob, scalar tensor support via `--in-shapes` knob, tensor property rewriting via `--tensor-property` knob, operation removal via `--op-kind`.
 
+[benchdnn graph driver]: https://github.com/uxlfoundation/oneDNN/blob/rls-v3.14/tests/benchdnn/doc/driver_graph.md
 # Deprecated Functionality
 * [BLAS-like API] including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32` functions is deprecated and will be removed in future releases. If you are using this API consider switching to [matmul primitive].
 

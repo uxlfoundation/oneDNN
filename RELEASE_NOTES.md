@@ -35,6 +35,13 @@ TBD
 [`ONEDNN_EXPERIMENTAL_GROUPED_MEMORY=ON`]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_experimental.html#onednn-experimental-grouped-memory
 
 [`binary_mul_inplace`]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_attributes_post_ops.html#in-place-binary-post-ops
+## Graph API
+
+* Extended [DynamicQuantize] and [DynamicDequantize] operation to support the new `mask` attribute.
+* 
+
+[DynamicQuantize]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_op_dynamicquantize.html
+[DynamicDequantize]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_op_dynamicdequantize.html
 
 # Usability
 

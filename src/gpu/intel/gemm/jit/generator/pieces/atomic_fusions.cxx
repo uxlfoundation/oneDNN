@@ -397,6 +397,7 @@ void Generator<hw>::gemmRedirectToTempC(GEMMProblem &problem, GEMMStrategy &stra
 
     state.effC[0] = state.effTempC;
     state.C_layoutExt = state.C_layout;
+    state.C_layoutExt.retarget(problem.C, strategy.C);
     state.C_layoutExtUnmasked.clear();
     state.C_layoutExtNonatomicUnmasked.clear();
     state.inputs.ldc[0] = invalid;

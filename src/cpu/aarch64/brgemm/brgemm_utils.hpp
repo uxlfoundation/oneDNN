@@ -80,6 +80,31 @@ status_t init_kernel_datatype(
         brgemm_desc_t *brg, data_type_t dt_a, data_type_t dt_b);
 
 namespace brgemm_utils {
+inline constexpr int mmla_bd_blk() {
+    return 2;
+}
+inline constexpr int mmla_ld_blk() {
+    return 2;
+}
+inline constexpr int mmla_rd_chunk_bytes() {
+    return 8;
+}
+inline constexpr int mmla_rd_block() {
+    return 8;
+}
+
+inline constexpr int mmla_rd_chunk_elems(int dt_a_sz) {
+    return mmla_rd_chunk_bytes() / dt_a_sz;
+}
+inline constexpr int mmla_rd_chunks_per_block(int dt_a_sz) {
+    return mmla_rd_block() / mmla_rd_chunk_elems(dt_a_sz);
+}
+
+status_t validate_mmla_compute(const brgemm_desc_t &brg);
+
+inline bool is_mmla_ld_blocks_supported(dim_t ld_blocks) {
+    return ld_blocks >= 1 && ld_blocks <= 12;
+}
 
 bool can_dispatch_uker(const brgemm_desc_t *brg);
 

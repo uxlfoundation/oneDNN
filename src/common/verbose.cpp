@@ -1932,6 +1932,7 @@ dnnl_status_t dnnl_verbose_profiling_enabled(int *enabled) {
 const dnnl_version_t *dnnl_version(void) {
     static const dnnl_version_t ver
             = {DNNL_VERSION_MAJOR, DNNL_VERSION_MINOR, DNNL_VERSION_PATCH,
-                    DNNL_VERSION_HASH, DNNL_CPU_RUNTIME, DNNL_GPU_RUNTIME};
+                    DNNL_VERSION_HASH, DNNL_CPU_RUNTIME, DNNL_GPU_RUNTIME,
+                    DNNL_VERSION_MAJOR};
     return &ver;
 }

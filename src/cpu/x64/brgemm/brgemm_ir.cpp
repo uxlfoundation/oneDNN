@@ -32,6 +32,7 @@
 
 #include "cpu/x64/brgemm/brgemm_ir.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
+#include "cpu/x64/ir/dump.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
 #include "cpu/x64/ir/reg_alloc.hpp"
@@ -702,6 +703,9 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
         postamble();
 
         ir::emit_data_section(*this, data);
+
+        // Debug output (see `ir/dump.hpp`). Prints nothing unless enabled.
+        ir::print_kernel_dump(*this, ir, data);
     }
 
 private:

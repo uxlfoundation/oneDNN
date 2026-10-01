@@ -38,6 +38,7 @@
 #include "cpu/x64/brgemm/brgemv_ir.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
+#include "cpu/x64/ir/dump.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
 #include "cpu/x64/ir/postops_injector.hpp"
@@ -623,6 +624,9 @@ struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
         // Emit the injector's constant table (a no-op unless the chain has
         // eltwise or sum).
         if (postops_injector) postops_injector->maybe_prepare_table();
+
+        // Debug output (see `ir/dump.hpp`). Prints nothing unless enabled.
+        ir::print_kernel_dump(*this, ir, data);
     }
 
 private:

@@ -17,14 +17,21 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <regex>
+#include <set>
+#include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
 
 #include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_debug.h"
 
 #include "common/c_types_map.hpp"
 
+#include "cpu/x64/ir/dump.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
 #include "cpu/x64/ir/postops_injector.hpp"
@@ -1255,6 +1262,206 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
         const float expected
                 = ref_dot(&a[r * simd_w()], b_data.data(), simd_w()) + rhs[r];
         EXPECT_FLOAT_EQ(c[r], expected) << "row " << r;
+    }
+}
+
+// Debug output tests
+//
+// The debug output is a view of the IR. A developer can trust it only when it
+// shows the IR as it is, and the output must not get in the way when nobody
+// asked for it. The tests check the invariants behind that, not the text of
+// each operation:
+//   * the output is off unless `x64ir=<level>` asks for it
+//   * the IR dump has one line per operation, in IR order
+//   * each line shows exactly the vregs that `def_use()` reports for its
+//     operation, with their kind and data type, so the IR dump and liveness
+//     agree
+//   * the output for a kernel has one begin line and one end line, and a
+//     higher level keeps every line of a lower level
+//
+// The output cannot change the generated code. The kernel prints it after the
+// code is emitted, and the dump reads the IR through a const reference. None
+// of the tests generates code, so they run on any machine and in builds
+// without dev mode.
+
+// Split `s` into lines, dropping the newline of each.
+std::vector<std::string> split_lines(const std::string &s) {
+    std::vector<std::string> lines;
+    size_t pos = 0;
+    while (pos < s.size()) {
+        const size_t end = s.find('\n', pos);
+        lines.push_back(s.substr(pos, end - pos));
+        if (end == std::string::npos) break;
+        pos = end + 1;
+    }
+    return lines;
+}
+
+// An operand as the IR dump prints it: the letter of its kind (`r`, `v`, `m`,
+// or `L` for a label), its id, and its data type prefix (empty when there is
+// none). For example, `f32:v5` is ('v', 5, "f32").
+using operand_t = std::tuple<char, int, std::string>;
+
+// Return the operands in `text`. A match must be a whole word, so `vload` or
+// `bf16` do not count. A data type prefix belongs to the operand that follows
+// it, so the match cannot start at the `:`.
+std::set<operand_t> operands(const std::string &text) {
+    static const std::regex re(
+            "(^|[^A-Za-z0-9_:])(?:([a-z0-9_]+):)?([rvmL])"
+            "([0-9]+)(?![A-Za-z0-9_])");
+    std::set<operand_t> ops;
+    for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end;
+            ++it)
+        ops.insert(operand_t {
+                (*it)[3].str()[0], std::stoi((*it)[4].str()), (*it)[2].str()});
+    return ops;
+}
+
+// An IR with at least one operation of every kind, so the listing checks
+// below cover every kind. Operands of one operation are distinct vregs, so a
+// dropped operand cannot hide behind a repeated one. The IR does not compute
+// anything useful.
+ir_t build_every_op_ir() {
+    using namespace data_type;
+    ir_t ir;
+    const vreg_t ptr = ir.new_gpr();
+    const vreg_t n = ir.new_gpr();
+    const vreg_t tmp = ir.new_gpr();
+    const vreg_t outer = ir.new_gpr();
+    const vreg_t inner = ir.new_gpr();
+    const vreg_t acc = ir.new_vec(f32);
+    const vreg_t x = ir.new_vec(f32);
+    const vreg_t y = ir.new_vec(f32);
+    const vreg_t h = ir.new_vec(bf16);
+    const vreg_t mask = ir.new_mask();
+    const label_t skip = ir.new_label();
+    const label_t done = ir.new_label();
+
+    ir.load_param(ptr, 8);
+    ir.load(n, ptr, 16);
+    ir.mov_imm(tmp, 0);
+    ir.mov_reg(tmp, n);
+    ir.add_imm(tmp, 4);
+    ir.add_reg(ptr, tmp);
+    ir.vzero(acc);
+    ir.set_mask_imm(mask, 5);
+    ir.jz(n, skip);
+    const int outer_begin = ir.loop_begin_imm(outer, 2);
+    const int inner_begin = ir.loop_begin_reg(inner, n);
+    ir.prefetch(ptr, 512);
+    ir.vload(x, ptr, 0, bf16);
+    ir.vload_bcast(y, ptr, 4, f32);
+    ir.vload(h, ptr, 32, bf16);
+    ir.vdot(acc, x, y);
+    ir.vload_scalar(x, ptr, 0, f32);
+    ir.vadd(acc, x);
+    ir.vmul(acc, y);
+    ir.vload_masked(x, ptr, -64, mask, f32);
+    ir.loop_end(inner, inner_begin);
+    ir.loop_end(outer, outer_begin);
+    ir.label(skip);
+    ir.vhreduce(acc, x);
+    ir.inject_postops({acc}, ptr, {0});
+    ir.vstore_scalar(ptr, 0, acc, f32);
+    ir.vstore_masked(ptr, 0, acc, mask, f32);
+    ir.jmp(done);
+    ir.vstore(ptr, 0, acc, f32);
+    ir.label(done);
+    return ir;
+}
+
+// The output is off unless `x64ir=<level>` asks for it. `all` and
+// `debuginfo=` must not enable it. Otherwise every verbose run would print the
+// listing of every kernel.
+TEST(DumpTests, OutputIsOffUnlessRequested) {
+    EXPECT_EQ(parse_x64ir_level(""), 0);
+    EXPECT_EQ(parse_x64ir_level("all"), 0);
+    EXPECT_EQ(parse_x64ir_level("debuginfo=255"), 0);
+    EXPECT_EQ(parse_x64ir_level("dispatch,profile"), 0);
+
+    EXPECT_EQ(parse_x64ir_level("x64ir=3"), 3);
+    EXPECT_EQ(parse_x64ir_level("dispatch,x64ir=2,debuginfo=1"), 2);
+}
+
+// Checks that the IR dump shows the IR as it is. Line `i` describes operation
+// `i`, and it names exactly the vregs that the operation reads or writes. The
+// vregs come from `def_use()`, the same source that liveness uses, so an IR
+// dump that drops, adds, or misnames an operand fails here. The letter of each
+// vreg must match its kind, and a vec vreg must show its data type.
+TEST(DumpTests, IrDumpShowsEachOperationWithItsVregs) {
+    const ir_t ir = build_every_op_ir();
+    const std::vector<std::string> lines = split_lines(to_string(ir));
+    ASSERT_EQ((int)lines.size(), ir.n_ops());
+
+    const char kind_letter[] = {'r', 'v', 'm'}; // gpr, vec, mask
+    std::vector<int> defs, uses;
+    for (int i = 0; i < ir.n_ops(); i++) {
+        const std::string &line = lines[i];
+        SCOPED_TRACE(line);
+        const size_t sep = line.find(" | ");
+        ASSERT_NE(sep, std::string::npos);
+        EXPECT_EQ(std::stoi(line.substr(0, sep)), i);
+
+        const op_t &op = ir.ops()[i];
+        std::set<operand_t> expected;
+        ir.def_use(op, defs, uses);
+        for (const std::vector<int> *vs : {&defs, &uses})
+            for (int v : *vs) {
+                const vreg_info_t &info = ir.vreg_info()[v];
+                const bool is_vec = info.kind == reg_kind_t::vec;
+                expected.insert(operand_t {kind_letter[(int)info.kind], v,
+                        is_vec ? dnnl_dt2str(info.dt) : ""});
+            }
+        if (op.label_id != label_t::none)
+            expected.insert(operand_t {'L', (int)op.label_id, ""});
+
+        EXPECT_EQ(operands(line.substr(sep + 3)), expected);
+    }
+}
+
+// Checks the structure that tools rely on. The output for a kernel has exactly
+// one begin line and one end line, so `sed` extracts it whole. It ends with a
+// newline, so the output for the next kernel starts on its own line. A higher
+// level keeps every line of a lower level, in the same order, and adds lines.
+// The IR dump appears at level 3.
+TEST(DumpTests, OutputIsFramedAndLevelsAddLines) {
+    const ir_t ir = build_every_op_ir();
+    kernel_info_t info;
+    info.name = "test_kernel";
+    info.isa = avx2;
+    info.code_size = 123;
+    info.data_size = 23;
+
+    // Returns true if every line of `lower` appears in `higher` in the same
+    // order.
+    const auto keeps_lines = [](const std::vector<std::string> &lower,
+                                     const std::vector<std::string> &higher) {
+        size_t j = 0;
+        for (const std::string &line : higher)
+            if (j < lower.size() && line == lower[j]) j++;
+        return j == lower.size();
+    };
+
+    std::vector<std::string> lower;
+    for (int level : {1, 2, 3}) {
+        SCOPED_TRACE("level " + std::to_string(level));
+        const std::string s = format_kernel_dump(level, 7, info, ir);
+        const std::vector<std::string> lines = split_lines(s);
+        ASSERT_GE(lines.size(), 2u);
+
+        EXPECT_EQ(lines.front(), "begin x64ir #7 test_kernel isa=avx2");
+        EXPECT_EQ(lines.back(), "end x64ir #7");
+        EXPECT_EQ(s.back(), '\n');
+        int n_markers = 0;
+        for (const std::string &line : lines)
+            if (line.rfind("begin x64ir", 0) == 0
+                    || line.rfind("end x64ir", 0) == 0)
+                n_markers++;
+        EXPECT_EQ(n_markers, 2);
+
+        EXPECT_TRUE(keeps_lines(lower, lines));
+        EXPECT_EQ(s.find(to_string(ir)) != std::string::npos, level >= 3);
+        lower = lines;
     }
 }
 

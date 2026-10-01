@@ -128,7 +128,9 @@ inline size_t elements_to_bytes(data_type_t data_type, size_t count) {
         case s4:
         case u4: return (count + 1) >> 1;
         case u2: return (count + 3) >> 2;
-        case u3: return utils::div_up(count * 3, (size_t)8);
+        // u3 is accessed as a whole 3-byte groups of 8 values,
+        // so a partial last group still takes 3 bytes
+        case u3: return 3 * utils::div_up(count, (size_t)8);
         default: return data_type_size(data_type) * count;
     }
 }

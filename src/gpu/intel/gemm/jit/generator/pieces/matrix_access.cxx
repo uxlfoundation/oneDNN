@@ -53,6 +53,7 @@ void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &
 {
     if (layout.empty()) return;
 
+    if (layout.T.is3() || layout.T.is4()) return;
     auto &astrategy = layout.addressingStrategy();
     if (astrategy.prefetch && astrategy.newDP) {
         prefetchMatrix(layout, addrs, strategy, state);

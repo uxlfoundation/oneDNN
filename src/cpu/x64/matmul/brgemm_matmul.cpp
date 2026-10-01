@@ -2542,12 +2542,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         if (bgmmc_.is_wei_zp_common)
             return wei_zp_ptr_; // single zero point value
         // Locate the group based on (b_idx, k, n)
-        auto offset = n;
+        dim_t offset = 0;
+        if (bgmmc_.is_wei_zp_per_n) offset += n;
 
         if (bgmmc_.is_wei_zp_per_k) {
             const auto &k_group_sz = bgmmc_.wei_zp_k_gsize;
             const auto k_idx = k / k_group_sz;
-            offset += k_idx * bgmmc_.N;
+            const dim_t n_factor = bgmmc_.is_wei_zp_per_n ? bgmmc_.N : 1;
+            offset += k_idx * n_factor;
         }
 
         if (bgmmc_.wei_zp_batch_stride > 0) {

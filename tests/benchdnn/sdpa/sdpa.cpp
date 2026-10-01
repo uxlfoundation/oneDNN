@@ -227,6 +227,10 @@ void prb_t::skip_unimplemented(res_t *res) const {
         res->reason = reason_t::skip_not_supported;
         return;
     }
+
+    // No fallback implementation: skip cases the device does not support
+    res->state = SKIPPED;
+    res->reason = reason_t::skip_not_supported;
 }
 
 void prb_t::skip_invalid(res_t *res) const {

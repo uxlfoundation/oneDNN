@@ -2189,7 +2189,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                         = bgmmc.is_src_zp_per_k && bgmmc.src_zp_k_gsize > 0
                         ? utils::div_up(bgmmc.K, bgmmc.src_zp_k_gsize)
                         : 1;
-                bgmmc.src_zp_batch_stride = num_k_groups * bgmmc.M;
+                const dim_t m_factor = bgmmc.is_src_zp_per_m ? bgmmc.M : 1;
+                bgmmc.src_zp_batch_stride = num_k_groups * m_factor;
             }
         }
         if (has_wei_zp) {
@@ -2198,7 +2199,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 const dim_t num_k_groups = bgmmc.is_wei_zp_per_k
                         ? utils::div_up(bgmmc.K, bgmmc.wei_zp_k_gsize)
                         : 1;
-                bgmmc.wei_zp_batch_stride = num_k_groups * bgmmc.N;
+                const dim_t n_factor = bgmmc.is_wei_zp_per_n ? bgmmc.N : 1;
+                bgmmc.wei_zp_batch_stride = num_k_groups * n_factor;
             }
         }
     }

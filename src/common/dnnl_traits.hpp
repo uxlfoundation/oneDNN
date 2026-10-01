@@ -108,6 +108,7 @@ struct prec_traits_t<data_type::u2> {
 template <>
 struct prec_traits_t<data_type::u3> {
     using type = uint3_t;
+    using nibble_type = nibble8_t;
 };
 template <>
 struct prec_traits_t<data_type::boolean> {

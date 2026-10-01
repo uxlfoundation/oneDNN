@@ -31,6 +31,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/stream.hpp"
 #include "common/utils.hpp"
+#include "common/verbose_msg.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -193,6 +194,14 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
                                     check_gemm_output_format(*weights_md(1))
                             && bia_d.data_type() == ddt),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
+
+    // This is a conservative fix in that we only fall back in cases which
+    // gemm:acl does not support because gemm:kai is still better tham gemm:acl.
+    // TODO: investigate further and add heuristic/fix for KleidiAI batched matmuls
+    VDISPATCH_MATMUL(
+            IMPLICATION(helper.batched(), !with_bias() && !is_dequant()),
+            VERBOSE_IMPL_HEURISTIC_FAIL,
+            "not optimal for batched, falling back to brg or jit:int8");
 
     const bool is_gemv = utils::everyone_is(2, src_md()->ndims, dst_md()->ndims)
             && (src_md()->dims[0] == 1 || weights_md()->dims[1] == 1);

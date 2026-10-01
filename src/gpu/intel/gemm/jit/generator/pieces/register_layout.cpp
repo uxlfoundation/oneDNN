@@ -963,7 +963,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
             // Xe2: manually mask in the height dimension to work around slow LSC
             //      out-of-bounds checks.
-            bool remainderH = memCM ? remainderC : remainderR;
+            bool remainderH = false; //memCM ? remainderC : remainderR;
             if (hw >= HW::Xe2 && remainderH) {
                 auto &vymask = memCM ? colMask.variable : rowMask.variable;
                 vymask.isFixed = false;

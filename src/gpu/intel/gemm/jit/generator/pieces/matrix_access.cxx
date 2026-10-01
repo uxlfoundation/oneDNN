@@ -53,8 +53,14 @@ void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &
 {
     if (layout.empty()) return;
 
-    if (layout.T.is3() || layout.T.is4()) return;
+    if (layout.type().is3() || layout.type().is4()) return;
     auto &astrategy = layout.addressingStrategy();
+
+    // PERF EXPERIMENT ONLY -- produces incorrect results.
+    // Skip all memory loads of 3-/4-bit (u3/u4) weight data, so that the cost of
+    // the weight load sends can be measured in isolation.
+   // if (layout.type().is3() || layout.type().is4()) return;
+
     if (astrategy.prefetch && astrategy.newDP) {
         prefetchMatrix(layout, addrs, strategy, state);
         return;

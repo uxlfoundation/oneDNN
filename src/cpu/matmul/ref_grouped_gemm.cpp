@@ -121,6 +121,8 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
     const auto wei_scale_ngroups_k
             = wei_scale_group_k > 1 ? K_fixed / wei_scale_group_k : 1;
+    const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, -1);
+    const auto wei_scale_ngroups_n = N / wei_scale_group_n;
     const void *wei_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
 
@@ -138,6 +140,8 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
     const dim_t wei_zp_ngroups_k
             = wei_zp_group_k > 1 ? K_fixed / wei_zp_group_k : 1;
+    const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, -1);
+    const dim_t wei_zp_ngroups_n = N / wei_zp_group_n;
     const void *wei_zps = CTX_IN_MEM(
             const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
 
@@ -279,16 +283,20 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                     if (with_wei_scales) {
                         const dim_t wei_k_group
                                 = i_group * wei_scale_ngroups_k / n_k_groups;
-                        const dim_t idx = group_id * wei_scale_ngroups_k * N
-                                + wei_k_group * N + n;
+                        const dim_t idx
+                                = (group_id * wei_scale_ngroups_k + wei_k_group)
+                                        * wei_scale_ngroups_n
+                                + n / wei_scale_group_n;
                         wei_scale = io::load_float_value(
                                 wei_scale_dt, wei_scales, idx);
                     }
                     if (with_wei_zps) {
                         const dim_t wei_k_group
                                 = i_group * wei_zp_ngroups_k / n_k_groups;
-                        const dim_t idx = group_id * wei_zp_ngroups_k * N
-                                + wei_k_group * N + n;
+                        const dim_t idx
+                                = (group_id * wei_zp_ngroups_k + wei_k_group)
+                                        * wei_zp_ngroups_n
+                                + n / wei_zp_group_n;
                         wei_zp_val
                                 = io::load_int_value(wei_zp_dt, wei_zps, idx);
                     }
@@ -371,8 +379,10 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                     if (with_wei_scales) {
                         const dim_t wei_k_group
                                 = i_group * wei_scale_ngroups_k / n_k_groups;
-                        const dim_t idx = group_id * wei_scale_ngroups_k * N
-                                + wei_k_group * N + n;
+                        const dim_t idx
+                                = (group_id * wei_scale_ngroups_k + wei_k_group)
+                                        * wei_scale_ngroups_n
+                                + n / wei_scale_group_n;
                         const float wei_scale = io::load_float_value(
                                 wei_scale_dt, wei_scales, idx);
                         acc *= wei_scale;

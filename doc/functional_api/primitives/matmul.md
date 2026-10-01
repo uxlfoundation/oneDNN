@@ -506,8 +506,9 @@ The following are supported:
     The scale tensor follows the same concatenated layout as src, with total
     size `[total_tokens, K/gK]`.
   - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
-    K-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`) with group specification
-    are supported.
+    K-grouped or K- and N-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`)
+    with group specification are supported. The scale tensor has size
+    `[num_groups, K/gK, N/gN]`.
   - Scales are not supported when the corresponding tensor data type is
     `f32`, `bf16`, or `f16`. Scale data type depends on tensor data type:
 

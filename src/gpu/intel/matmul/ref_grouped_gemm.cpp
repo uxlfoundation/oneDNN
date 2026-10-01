@@ -102,6 +102,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
     const dim_t wei_scale_ngroups_k
             = wei_scale_group_k > 1 ? K_fixed / wei_scale_group_k : 1;
+    const dim_t wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, -1);
 
     const auto &attr_zps = pd()->attr()->zero_points_;
     const bool with_src_zp = !attr_zps.has_default_values(DNNL_ARG_SRC);
@@ -113,6 +114,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
     const dim_t wei_zp_ngroups_k
             = wei_zp_group_k > 1 ? K_fixed / wei_zp_group_k : 1;
+    const dim_t wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, -1);
 
     // Finest K-group granularity across src/wei scales and ZPs
     const dim_t n_k_groups = is_2dby2d
@@ -157,6 +159,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         arg_list.set(arg_idx++,
                 CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS));
         arg_list.set(arg_idx++, wei_scale_ngroups_k);
+        arg_list.set(arg_idx++, wei_scale_group_n);
     }
     if (with_src_zp) {
         arg_list.set(arg_idx++,
@@ -167,6 +170,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         arg_list.set(arg_idx++,
                 CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS));
         arg_list.set(arg_idx++, wei_zp_ngroups_k);
+        arg_list.set(arg_idx++, wei_zp_group_n);
     }
 
     // Post-ops apply to the 2Dx3D pattern only (grouped dst)

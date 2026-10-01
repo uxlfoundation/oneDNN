@@ -901,6 +901,7 @@ struct jit_brgemm_conv_conf_t {
     bool is_f32_f16 {false};
     bool is_f32_bf16 {false};
     bool comp_with_vpads;
+    bool req_fp8_convert {false};
     bool req_fp8_convert_wsp {false};
 
     int nthr_mb, nthr_g, nthr_oc_b, nthr_ic_b, nthr_oh;

@@ -36,6 +36,7 @@
 #include "cpu/x64/cpu_reducer.hpp"
 #include "cpu/x64/jit_avx512_core_amx_conv_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_comp_pad_kernel.hpp"
+#include "cpu/x64/jit_brgemm_conv_fp8_cvt_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_relo_copy_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_trans_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_utils.hpp"
@@ -238,6 +239,7 @@ private:
     std::unique_ptr<jit_avx512_core_amx_copy_to_pbuffer_t>
             copy_to_relo_pbuffer_;
     std::unique_ptr<jit_brgemm_relo_copy_to_wbuffer_t> copy_to_relo_wbuffer_;
+    std::unique_ptr<jit_brgemm_conv_fp8_cvt_kernel_t> copy_to_fp8_wbuffer_;
 
     std::unique_ptr<jit_generator_t> comp_vpad_pbuffer_;
 

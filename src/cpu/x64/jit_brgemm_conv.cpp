@@ -999,7 +999,23 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                 new jit_brgemm_relo_copy_to_wbuffer_t(wjcp)));
         CHECK(copy_to_relo_wbuffer_->create_kernel());
     }
-
+    /*
+    if (jcp.req_fp8_convert) {
+        jit_brgemm_conv_fp8_cvt_kernel_t::cfg_t fp8_wjcp;
+        fp8_wjcp.isa = jcp.isa;
+        fp8_wjcp.inp_dt = jcp.wei_dt;
+        fp8_wjcp.out_dt = get_mac_emu_data_type(jcp.wei_dt, jcp.isa, true);
+        fp8_wjcp.rd = static_cast<dim_t>(jcp.icp);
+        fp8_wjcp.oc_block = static_cast<dim_t>(jcp.oc_block);
+        fp8_wjcp.kernel_size = static_cast<dim_t>(jcp.kd) * jcp.kh * jcp.kw;
+        fp8_wjcp.kernel_size_offs = static_cast<dim_t>(jcp.icp) * jcp.oc_block;
+        fp8_wjcp.last_oc_block = rnd_up(jcp.oc % jcp.oc_block, 16);
+printf("fp8_wjcp.last_oc_block: %d\n", fp8_wjcp.last_oc_block);
+        CHECK(safe_ptr_assign(copy_to_fp8_wbuffer_,
+                new jit_brgemm_conv_fp8_cvt_kernel_t(fp8_wjcp)));
+        CHECK(copy_to_fp8_wbuffer_->create_kernel());
+    }
+*/
     if (jcp.req_cal_comp_pad) {
         if (is_relo_with_relo_weights) {
             if (is_superset(isa, avx512_core))
@@ -1367,7 +1383,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const char *const __restrict src = brgemm_ctx.src;
     const char *__restrict wei = brgemm_ctx.weights;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
-
+    printf("weights_d.size: %d\n", weights_d.size());
     const auto extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(brgemm_ctx.weights);
@@ -1814,8 +1830,27 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
     const auto &jcp = _pd->jcp_;
 
     wei = input_weights;
-    if (!jcp.is_relo() || !jcp.relo_conv_weights) return;
+    //    if (!jcp.is_relo() || !jcp.relo_conv_weights) return;
+    printf("jcp.req_fp8_convert: %d\n", jcp.req_fp8_convert);
+    /*    if (jcp.req_fp8_convert) {
+        auto wei_buffer = ctx.get_scratchpad_grantor().template get<char>(
+                key_conv_brgemm_fp8_convert_wei);
 
+            parallel_nd(jcp.ngroups, jcp.nb_oc,
+                [= COMPAT_THIS_CAPTURE](dim_t g, dim_t ocb) {
+            auto p = jit_brgemm_conv_fp8_cvt_kernel_t::ctx_t();
+            const auto ocb_off
+                    = g * _pd->wei_g_stride + ocb * _pd->wei_ocb_stride;
+printf("ocb: %d\n", ocb_off);
+            p.src = input_weights + ocb_off * wei_dsz;
+            p.dst = wei_buffer + ocb_off;// * sizeof(float16_t);
+            p.last_ocb = (ocb == jcp.nb_oc - 1);
+//            (*copy_to_fp8_wbuffer_)(&p);
+        });
+//        wei = wei_buffer;
+        return;
+    }*/
+    if (!jcp.is_relo() || !jcp.relo_conv_weights) return;
     auto wei_buffer = ctx.get_scratchpad_grantor().template get<char>(
             key_conv_amx_wei_buffer);
 

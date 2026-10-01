@@ -1825,6 +1825,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.wei_plain = everyone_is(true, jcp.wei_dt == data_type::f32,
             is_superset(isa, avx512_core), weights_d.is_plain());
     jcp.req_fp8_convert_wsp = jcp.is_fp8_convert && !is_amx(isa);
+    jcp.req_fp8_convert = jcp.is_fp8_convert && !is_amx(isa);
     if (jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
 
@@ -2537,7 +2538,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
-
+    printf("jcp.req_fp8_convert: %d\n", jcp.req_fp8_convert);
     return status::success;
 }
 
@@ -2828,6 +2829,15 @@ status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
                 1024);
         scratchpad.book(
                 key_conv_amx_wei_buffer, wei_buffer_size, jcp.wei_dsz, 0, P4K);
+    }
+
+    if (jcp.req_fp8_convert) {
+        const auto wei_buffer_size = static_cast<size_t>(jcp.ngroups)
+                * jcp.nb_oc * jcp.kd * jcp.kh * jcp.kw * jcp.icp * jcp.oc_block;
+        printf("icp: %d, nb oc: %d, oc block: %d, wei_buffer_size: %d\n",
+                jcp.icp, jcp.nb_oc, jcp.oc_block, wei_buffer_size);
+        scratchpad.book(key_conv_brgemm_fp8_convert_wei, wei_buffer_size,
+                sizeof(float16_t), 0, P4K);
     }
 
     if (jcp.use_buffer) {

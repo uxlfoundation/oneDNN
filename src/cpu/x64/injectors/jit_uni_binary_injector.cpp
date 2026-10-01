@@ -395,6 +395,7 @@ jit_uni_binary_injector_t<Vmm>::jit_uni_binary_injector_t(
     , f8_e5m2_cvt_(static_params.f8_e5m2_cvt_)
     , f8_e4m3_cvt_(static_params.f8_e4m3_cvt_)
     , rhs_arg_static_params_(static_params.rhs_arg_static_params)
+    , user_vmm_hint_(static_params.rhs_arg_static_params.rhs_dt_helper_vmm_idx)
     , param1_(static_params.param1)
     , supported_strategy_set_(static_params.supported_strategy_set) {}
 
@@ -541,6 +542,9 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
     JIT_ASSERT(IMPLICATION(dt_helper_vmm_needed, free_vmm_idx >= 0)
             && "binary injector: every vmm is in the set");
     if (free_vmm_idx >= 0) vmm_hint = free_vmm_idx;
+    // A replacement is not a register the caller offered, so it is saved even
+    // when `preserve_vmm_helper` is false.
+    const bool hint_replaced = vmm_hint != user_vmm_hint_;
 
     const auto tail_load_mode = rhs_arg_params.tail_load_mode;
     const int simd_w = static_cast<int>(
@@ -656,7 +660,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
                                                       .rhs_addr_cache_reg,
                                               host_->rax, host_->rdx})
                             : std::initializer_list<Xbyak::Reg64>()),
-            (rhs_arg_static_params_.preserve_vmm_helper && dt_helper_vmm_needed
+            ((rhs_arg_static_params_.preserve_vmm_helper || hint_replaced)
+                                    && dt_helper_vmm_needed
                             ? std::initializer_list<Xbyak::Xmm>({Vmm(vmm_hint)})
                             : std::initializer_list<Xbyak::Xmm>())};
 

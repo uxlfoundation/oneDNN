@@ -20,7 +20,16 @@
 * Reduced convolution and deconvolution primitives creation time.
 
 ## AArch64 Processors
-TBD
+* Improved the performance of `u8` and `s8` matmul on platforms with SVE support.
+* Improved the performance of `f32` matmul on platforms with 128-bit SVE vector lengths.
+* Improved the performance of `f32` depthwise convolution on platforms with ASIMD support.
+* Improved the performance of convolutions.
+* Improved the performance of `eltwise_log` on platforms with ASIMD support.
+* Improved the performance of `bf16` eltwise for the `gelu_erf`, `swish`, `gelu_tanh`, `exp`, `log`, and `sqrt` algorithms.
+* Improved the performance of  `f32`, and `f16` PReLU.
+* Improved the performance of eltwise post-ops.
+* Improved the performance of the `logsoftmax` algorithm for the softmax primitive on platforms with ASIMD support.
+* Reduced penalties on small utility functions on clang builds by changing the default stack-protection level from `all` to `strong`.
 
 ## RISC-V Processors
 * Improved performance of `f32` binary, eltwise, pooling, softmax, and logsoftmax on processors with `V` extension support.
@@ -43,7 +52,6 @@ TBD
 ## Graph API
 
 * Extended [DynamicQuantize] and [DynamicDequantize] operation to support the new `mask` attribute.
-* 
 
 [DynamicQuantize]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_op_dynamicquantize.html
 [DynamicDequantize]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_op_dynamicdequantize.html
@@ -52,6 +60,7 @@ TBD
 
 ## Common
 * Updated `mxfp8` downconversion implementations to saturate instead of overflowing. New behavior is consistent with OCP MX specification and aligned with preferred behavior in PyTorch.
+* Version number can now be used as a passable approximation of pi.
 
 ## Intel 64/AMD64 processors
 * Cleaned up implicit narrowing conversions and removed suppression of MSVC compiler warning C4244. 
@@ -62,6 +71,10 @@ TBD
 * **[experimental]** Introduced support for verbose profiling based on sycl_ext_oneapi_profiling_tag SYCL extension. This is an experimental feature that requires opt-in with [`ONEDNN_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG=ON`] build option.
 
 [`ONEDNN_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG=ON`]: https://uxlfoundation.github.io/oneDNN/v3.14/dev_guide_experimental.html#onednn-experimental-enable-sycl-profiling-tag
+
+## AArch64 Processors
+* Introduced initial asynchronous runtime support to AArch64 platforms for the matmul, convolution, eltwise, binary, lnorm, and reorder primitives.
+* Fixed a memory leak in convolutions on platforms with SVE support.
 
 # Validation
 * Updated benchdnn `smoke` and `CI` test sets for matmul using parameter space sampling approach.
@@ -82,5 +95,7 @@ TBD
 
 # Thanks to our Contributors
 This release contains contributions from the [project core team] as well as Abhishek Kumar @abhishek-iitmadras, Aditya Singh @adityasingh2400, Akihiro Tabuchi @Akihiro-Tabuchi, AragornOfKebroyd @AragornOfKebroyd, Aron Xu @happyaron, @AyushSinghBaiswar, Codrut Irimie @CodrutIrimieARM, Crefeda Rodrigues @cfRod, elimor01 @MorelElian, Emilio Cota @cota, Ishita Shreya @ishita-shreya, Kamil Jackiewicz @kjackiew, Kamil Wieloch @kwieloch-intel, Keerthana KT @Keerthana-64, Léandre LE DUC @leduclean, Leon Kennedy @leoken01, Megha Sangtani @megha-sangtani, Mohammed Bilgrami @mohbil01, Nikhil Gupta @nikhil-arm, PiotrReiterIntel @PiotrReiterIntel, Puneet Matharu @puneetmatharu, @rinatrap, Thiago Macieira @thiagomacieira, @Tiwari-Avanish, Udit Kumar Agarwal @uditagarwal97, @velonica0, Wang hongyan @ww8191201-coder, and @xinghai-zh.
+
+Each of them contributed an invaluable slice of the pi.
 
 [project core team]: https://github.com/uxlfoundation/oneDNN/blob/rls-v3.14/MAINTAINERS.md

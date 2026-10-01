@@ -46,7 +46,7 @@ struct uint3_t {
 
 static_assert(sizeof(uint3_t) == 1, "uint3_t must be 1 byte");
 
-// u3 uses contiguous layout:
+// u3 uses contiguous layout, accessed through nibble8_t
 //
 //         bit7 bit6 bit5 bit4 bit3 bit2 bit1 bit0
 //        ┌────┬────┬────┬────┬────┬────┬────┬────┐
@@ -57,27 +57,6 @@ static_assert(sizeof(uint3_t) == 1, "uint3_t must be 1 byte");
 // byte2  │v7.2│v7.1│v7.0│v6.2│v6.1│v6.0│v5.2│v5.1│
 //        └────┴────┴────┴────┴────┴────┴────┴────┘
 //
-inline uint8_t uint3_unpack(const uint8_t *packed, int64_t idx) {
-    const int64_t bit = idx * 3, byte = bit >> 3;
-    const int sh = static_cast<int>(bit & 7);
-    uint8_t v = packed[byte] >> sh;
-    if (sh > 5) v |= packed[byte + 1] << (8 - sh); // straddle into next byte
-    return v & 0x7;
-}
-inline void uint3_pack(uint8_t *packed, int64_t idx, uint8_t v) {
-    const int64_t bit = idx * 3, byte = bit >> 3;
-    const int sh = static_cast<int>(bit & 7);
-    v &= 0x7;
-    packed[byte] = static_cast<uint8_t>(
-            (packed[byte] & ~((0x7 << sh) & 0xFF)) | ((v << sh) & 0xFF));
-    if (sh > 5) { // high bits straddle into next byte
-        const int lo_bits = 8 - sh;
-        packed[byte + 1] = static_cast<uint8_t>(
-                (packed[byte + 1] & ~((1 << (3 - lo_bits)) - 1))
-                | (v >> lo_bits));
-    }
-}
-
 } // namespace impl
 } // namespace dnnl
 

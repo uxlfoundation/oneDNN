@@ -139,7 +139,7 @@ struct ref_grouped_t : public primitive_t {
                 const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
                 const int colwise_mask = wei_qmask_N();
                 const int blocked_mask = wei_qmask_K() | wei_qmask_N();
-                // Allow column-wise or blocked (K grouping) scales for weights
+                // Allow column-wise or blocked (K or KxN grouping) wei scales
                 VDISPATCH_MATMUL(
                         utils::one_of(
                                 attr_scales.get_data_type(DNNL_ARG_WEIGHTS),
@@ -157,7 +157,8 @@ struct ref_grouped_t : public primitive_t {
                     VDISPATCH_MATMUL(
                             K() % gK == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
                     const auto gN = attr_scales.get_group(DNNL_ARG_WEIGHTS, -1);
-                    VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    VDISPATCH_MATMUL(
+                            N() % gN == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
                 }
             }
             // Zero-points are supported for src and wei: for WOQ (fp src) and
@@ -188,7 +189,7 @@ struct ref_grouped_t : public primitive_t {
                 }
             }
 
-            // Allow column-wise or blocked (K grouping) zps for weights
+            // Allow column-wise or blocked (K or KxN grouping) zps for weights
             if (!attr_zps.has_default_values(DNNL_ARG_WEIGHTS)) {
                 VDISPATCH_MATMUL(is_int_wei, VERBOSE_UNSUPPORTED_ZP_CFG);
                 VDISPATCH_MATMUL(
@@ -206,7 +207,7 @@ struct ref_grouped_t : public primitive_t {
                     VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_ZP_CFG);
                     VDISPATCH_MATMUL(K() % gK == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
                     const auto gN = attr_zps.get_group(DNNL_ARG_WEIGHTS, -1);
-                    VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    VDISPATCH_MATMUL(N() % gN == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
                 }
             }
 

@@ -2481,6 +2481,43 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             bgmmc.postops_inst_count = 0;
         }
 
+    // For small non-batched f32 problems on avx2 the threading overhead exceeds
+    // the compute time, so use a single thread. The rule follows gemm:jit:
+    // - GEMM: adjust_thread_count(), gemm_cycles = 2 * MNK / (4 * veclen)
+    //   below the OMP overhead. Round N up to the vector length to account for
+    //   inactive SIMD lanes.
+    // - GEMV (M == 1 or N == 1): gemv thread_checker(), where the dimension
+    //   scaled by the 288 term depends on whether the kernel walks the
+    //   reduction (K) or the output dimension in its outer loop.
+    // The output size is also limited because the per-output cost dominates
+    // for small K. The thresholds are empirical. The thread count must be set
+    // before the blocking heuristic so the blocking is tuned for sequential
+    // execution.
+    if (bm_conf_utils.is_f32() && bgmmc.isa == avx2 && bgmmc.batch == 1
+            && !bgmmc.is_runtime_M && !bgmmc.is_runtime_N
+            && !bgmmc.is_runtime_K) {
+        const dim_t MN = bgmmc.M * bgmmc.N;
+        const bool is_gemv_shape = bgmmc.M == 1 || bgmmc.N == 1;
+        bool use_seq = MN <= 1024;
+        if (use_seq && is_gemv_shape) {
+            const bool is_trans_a_kernel = utils::one_of(bgmmc.gemv_strategy,
+                    gemv_strategy_t::n1_A_trans, gemv_strategy_t::m1_B_plain);
+            const dim_t gemv_work = is_trans_a_kernel ? bgmmc.K * (MN + 288)
+                                                      : MN * (bgmmc.K + 288);
+            use_seq = gemv_work < 41700;
+        } else if (use_seq) {
+            constexpr int avx2_f32_veclen = 8;
+            constexpr double avx2_f32_fp_per_cycle
+                    = 2.0 * 2.0 * avx2_f32_veclen;
+            const double gemm_cycles = 2.0 * bgmmc.M
+                    * rnd_up(bgmmc.N, avx2_f32_veclen) * bgmmc.K
+                    / avx2_f32_fp_per_cycle;
+            const double omp_cycles = bgmmc.nthr <= 4 ? 3.0e+3 : 5.0e+3;
+            use_seq = gemm_cycles < omp_cycles;
+        }
+        if (use_seq) bgmmc.nthr = 1;
+    }
+
     // Heuristic tries to optimize the following parameters:
     // - M_blk, M_Chunk
     // - N_blk, N_Chunk

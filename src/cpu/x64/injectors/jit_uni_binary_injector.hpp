@@ -622,6 +622,9 @@ private:
     fp8_conversion_e4m3_t *f8_e4m3_cvt_ {nullptr};
 
     const rhs_arg_static_params_t rhs_arg_static_params_;
+    // The hint the caller passed. `rhs_dt_helper_vmm_idx` starts equal to it,
+    // but `compute_vector_range_impl()` overwrites it with the helper it picks.
+    const int user_vmm_hint_;
     const Xbyak::Reg64 param1_;
     const bcast_set_t supported_strategy_set_;
     const cpu_isa_t isa_ = host_->max_cpu_isa();

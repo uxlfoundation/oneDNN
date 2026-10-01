@@ -97,11 +97,9 @@ struct runtime_version_t {
         i += (int)strspn(&s[i], "0123456789");
         if (s[i] != '.') return status::success;
 
-        // Expect a 1-5 digit revision, e.g. 32.0.101.8970 on Windows.
+        // Parse only all-digit revisions that fit into int, e.g. 32.0.101.8970.
         auto len = strspn(&s[++i], "0123456789");
-        bool ok = len >= 1 && len <= 5 && s[i + len] != '.';
-        assert(ok && "unexpected driver version format");
-        if (ok) revision = atoi(&s[i]);
+        if (len >= 1 && len <= 9 && !s[i + len]) revision = atoi(&s[i]);
 
         return status::success;
     }

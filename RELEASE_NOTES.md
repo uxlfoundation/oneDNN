@@ -57,7 +57,7 @@ TBD
 * Cleaned up implicit narrowing conversions and removed suppression of MSVC compiler warning C4244. 
 
 ## Intel Graphics
-* **[experimental]** Refactoring verbose profiling implementation for Level Zero runtime to avoid spurious synchronizations.
+* Refactored verbose profiling implementation for Level Zero runtime to avoid spurious synchronizations.
 * Introduced support for concurrent primitive execution with the Level Zero runtime on Intel GPUs.
 * **[experimental]** Introduced support for verbose profiling based on sycl_ext_oneapi_profiling_tag SYCL extension. This is an experimental feature that requires opt-in with [`ONEDNN_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG=ON`] build option.
 

@@ -1,35 +1,41 @@
 --reset
 # No mask
 --dt=f16,bf16
+--match=Small
 --batch=shapes_basic
 
 # Buffer mask (bf16 excluded: GPU kernel limitation)
 --reset
 --mask=buffer
 --dt=f16
+--match=Small
 --batch=shapes_basic
 
 # Broadcast buffer masks (1D and 2D, matching gtest oneD/twoD)
 --reset
 --mask=buffer_1d
 --dt=f16
+--match=Small
 --batch=shapes_basic
 
 --reset
 --mask=buffer_2d
 --dt=f16
+--match=Small
 --batch=shapes_basic
 
 # Causal mask
 --reset
 --mask=causal_top_left
 --dt=f16
+--match=Small
 --batch=shapes_basic
 
 # Scale
 --reset
 --scale=mul
 --dt=f16
+--match=Small
 --batch=shapes_basic
 
 # Transformer-derived shapes (cf. tests/gtests/internals/test_sdpa.cpp)
@@ -55,3 +61,7 @@
 # --mask=causal_top_left
 # --dt=f16
 # --batch=shapes_bwd
+
+# Forward and backward (GPU only)
+--reset
+--batch=harness_sdpa_gpu

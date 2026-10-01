@@ -67,6 +67,78 @@ TEST(test_subgraph_pass, Kind2Str) {
     ASSERT_EQ(op_t::kind2str(graph::op_kind::_add_zps), "_add_zps");
 }
 
+TEST(test_subgraph_pass, MatmulCanonicalizationPreservesScaleMask) {
+    auto matmul = std::make_shared<op_t>(0, op_kind::_matmul, "matmul");
+    matmul->set_attr<bool>(op_attr::transpose_a, false);
+    matmul->set_attr<bool>(op_attr::transpose_b, true);
+
+    logical_tensor_t src
+            = logical_tensor_init(0, {2, 4, 8, 16}, graph::data_type::f32);
+    logical_tensor_t wei
+            = logical_tensor_init(1, {2, 4, 32, 16}, graph::data_type::f32);
+    logical_tensor_t dst
+            = logical_tensor_init(2, {2, 4, 8, 32}, graph::data_type::f32);
+    matmul->add_input(src);
+    matmul->add_input(wei);
+    matmul->add_output(dst);
+
+    auto scales_op = std::make_shared<op_t>(op_kind::_mul_scales);
+    scales_op->set_attr<int64_t>(op_attr::mask, 3);
+    dnnl_impl::fusion_info_t fusion_info;
+    fusion_info.set_runtime_scales(scales_op, true, 1);
+    matmul->set_attr<dnnl_impl::fusion_info_t>(
+            op_attr::fusion_info, fusion_info);
+
+    auto subgraph = std::make_shared<dnnl_impl::subgraph_t>(
+            std::vector<op_ptr> {matmul});
+
+    ASSERT_EQ(dnnl_impl::insert_permute_for_matmul(subgraph), status::success);
+    auto matmul_op = std::find_if(subgraph->get_ops().begin(),
+            subgraph->get_ops().end(), [](const op_ptr &op) {
+        return op->get_kind() == op_kind::_matmul;
+    });
+    ASSERT_NE(matmul_op, subgraph->get_ops().end());
+    auto get_weight_scale_mask = [&]() {
+        auto info = (*matmul_op)
+                            ->get_attr<dnnl_impl::fusion_info_t>(
+                                    op_attr::fusion_info);
+        return info.get_mutable_scales(true, 1)->get_attr<int64_t>(
+                op_attr::mask);
+    };
+    EXPECT_EQ(get_weight_scale_mask(), 3);
+
+    ASSERT_EQ(dnnl_impl::insert_unsqueeze_and_squeeze_for_matmul(subgraph),
+            status::success);
+    EXPECT_EQ(get_weight_scale_mask(), 3);
+}
+
+TEST(test_subgraph_pass, MatmulUnsqueezeShiftsScaleMask) {
+    auto matmul = std::make_shared<op_t>(0, op_kind::_matmul, "matmul");
+    matmul->add_input(
+            logical_tensor_init(0, {2, 4, 8, 16}, graph::data_type::f32));
+    matmul->add_input(
+            logical_tensor_init(1, {4, 16, 32}, graph::data_type::f32));
+    matmul->add_output(
+            logical_tensor_init(2, {2, 4, 8, 32}, graph::data_type::f32));
+
+    auto scales_op = std::make_shared<op_t>(op_kind::_mul_scales);
+    scales_op->set_attr<int64_t>(op_attr::mask, 3);
+    dnnl_impl::fusion_info_t fusion_info;
+    fusion_info.set_runtime_scales(scales_op, true, 1);
+    matmul->set_attr<dnnl_impl::fusion_info_t>(
+            op_attr::fusion_info, fusion_info);
+    auto subgraph = std::make_shared<dnnl_impl::subgraph_t>(
+            std::vector<op_ptr> {matmul});
+
+    ASSERT_EQ(dnnl_impl::insert_unsqueeze_and_squeeze_for_matmul(subgraph),
+            status::success);
+    auto info
+            = matmul->get_attr<dnnl_impl::fusion_info_t>(op_attr::fusion_info);
+    EXPECT_EQ(
+            info.get_mutable_scales(true, 1)->get_attr<int64_t>(op_attr::mask),
+            6);
+}
+
 TEST(test_subgraph_pass, LargerPartitionKernelCreator) {
     ASSERT_NO_THROW(graph::dnnl_impl::large_partition_kernel_creator());
 }

@@ -305,10 +305,12 @@ float get_element(dnnl_data_type_t dt, int64_t idx, void *ptr) {
             elem = dnnl::impl::float4_e2m1_t(nibble_pair.get(idx % 2));
             break;
         }
-        case dnnl_u3:
-            elem = dnnl::impl::uint3_t(dnnl::impl::uint3_unpack(
-                    reinterpret_cast<uint8_t *>(ptr), idx));
+        case dnnl_u3: {
+            const auto nibble_octet
+                    = reinterpret_cast<dnnl::impl::nibble8_t *>(ptr)[idx / 8];
+            elem = dnnl::impl::uint3_t(nibble_octet.get(idx % 8));
             break;
+        }
         default: assert(!"bad data type");
     }
 #undef CASE
@@ -350,10 +352,12 @@ void set_element(dnnl_data_type_t dt, int64_t idx, void *ptr, float value) {
             ((dnnl::impl::nibble2_t *)ptr)[idx / 2] = dst_val;
             break;
         }
-        case dnnl_u3:
-            dnnl::impl::uint3_pack(reinterpret_cast<uint8_t *>(ptr), idx,
-                    dnnl::impl::uint3_t(value).raw_bits_);
+        case dnnl_u3: {
+            auto dst_val = ((dnnl::impl::nibble8_t *)ptr)[idx / 8];
+            dst_val.set(dnnl::impl::uint3_t(value).raw_bits_, idx % 8);
+            ((dnnl::impl::nibble8_t *)ptr)[idx / 8] = dst_val;
             break;
+        }
         default: assert(!"bad data type");
     }
 #undef CASE

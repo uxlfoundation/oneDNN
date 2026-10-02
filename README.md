@@ -2,6 +2,10 @@
 
 # oneAPI Deep Neural Network Library (oneDNN)
 
+[![Release](https://img.shields.io/github/v/release/uxlfoundation/oneDNN)](https://github.com/uxlfoundation/oneDNN/releases)
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/onednn)](https://anaconda.org/conda-forge/onednn)
+[![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://uxlfoundation.github.io/oneDNN)
+[![Slack](https://img.shields.io/badge/slack-%23onednn-4A154B?logo=slack)](https://slack-invite.uxlfoundation.org/)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/8762/badge)](https://www.bestpractices.dev/projects/8762)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/uxlfoundation/oneDNN/badge)](https://securityscorecards.dev/viewer/?uri=github.com/uxlfoundation/oneDNN)
 

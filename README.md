@@ -30,12 +30,12 @@ oneDNN project is part of the [UXL Foundation].
 - [Highlights](#highlights)
 - [Used By](#used-by)
 - [Quick Start](#quick-start)
+- [Installation](#installation)
 - [Documentation](#documentation)
 - [System Requirements](#system-requirements)
-- [Installation](#installation)
 - [Validated Configurations](#validated-configurations)
-- [Governance](#governance)
 - [Support](#support)
+- [Governance](#governance)
 - [Contributing](#contributing)
 - [License](#license)
 - [Security](#security)
@@ -104,6 +104,25 @@ GitHub. It helps others discover it.
 
 [matrix multiplication performance example]: examples/matmul_perf.cpp
 [Examples and Tutorials]: https://uxlfoundation.github.io/oneDNN/dev_guide_examples.html
+[Build from Source]: https://uxlfoundation.github.io/oneDNN/dev_guide_build.html
+
+## Installation
+
+You can download and install the oneDNN library using one of the following options:
+
+- Binary Distribution: You can download pre-built binary packages from
+  the following sources:
+    - [conda-forge]: If the configuration you need is not available on
+      the conda-forge channel, you can build the library using the
+      Source Distribution.
+    - Intel oneAPI:
+       - [Intel® oneAPI Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/oneapi-toolkit-download.html)
+       - [Intel® oneDNN package](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onednn-download.html)
+- Source Distribution: You can build the library from source by
+  following the instructions on the [Build from Source] page.
+
+[conda-forge]: https://anaconda.org/conda-forge/onednn
+[System Requirements]: #system-requirements
 
 ## Documentation
 
@@ -369,27 +388,6 @@ Runtime-specific dependencies:
 | :----------------------- | :---------------------------- | :---------
 | `ONEDNN_CPU_RUNTIME=OMP` | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.dylib`)
 | `ONEDNN_CPU_RUNTIME=TBB` | any                           | TBB (`libtbb.dylib`)
-
-## Installation
-
-You can download and install the oneDNN library using one of the following options:
-
-- Binary Distribution: You can download pre-built binary packages from
-  the following sources:
-    - [conda-forge]: If the configuration you need is not available on
-      the conda-forge channel, you can build the library using the
-      Source Distribution.
-    - Intel oneAPI:
-       - [Intel® oneAPI Base Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.htm)
-       - [Intel® oneDNN standalone package](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onednn-download.html)
-
-- Source Distribution: You can build the library from source by
-  following the instructions on the [Build from Source] page.
-
-[conda-forge]: https://anaconda.org/conda-forge/onednn
-[System Requirements]: #system-requirements
-[Build Options]: https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html
-[Build from Source]: https://uxlfoundation.github.io/oneDNN/dev_guide_build.html
 
 ## Validated Configurations
 

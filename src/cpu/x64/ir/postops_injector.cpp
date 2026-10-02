@@ -116,8 +116,7 @@ void postops_injector_t::init(jit_generator_t &gen) const {
     if (!is_zmm_ || !needs_rhs_args_ || tail_elems_ <= 0) return;
 
     // `kxnorq` sets all 64 bits and `kshiftrq` keeps the low `tail_elems_` of
-    // them. Building the mask in the k-register file keeps it independent of
-    // the gpr scratch registers.
+    // them. Building the mask in the k-register file needs no gpr.
     const Xbyak::Opmask k(binary_tail_opmask_);
     gen.kxnorq(k, k, k);
     gen.kshiftrq(k, k, (uint8_t)(64 - tail_elems_));

@@ -85,8 +85,6 @@
 // Collapse each value's liveness to one [start, end] interval, ignoring holes.
 // That simplification is what keeps this cheap. If we need, we can enable
 // intervals split to improve register allocation under pressure.
-// Per register kind, sort by start and go through them, keeping the live
-// (`active`) intervals:
 //
 //     v0 |=================|   (0..9)
 //     v1   |===|               (1..3)
@@ -94,10 +92,24 @@
 //     v3           |=====|     (5..8)
 //        0 1 2 3 4 5 6 7 8 9
 //
-// Free a register when its interval ends. When none is free, one of the
-// overlapping intervals has to go to the stack. In the picture, at t=5 both
-// registers are taken by v0 and v2, so one of v0, v2, and the newcomer v3 is
-// spilled.
+// Per register file, the scan goes through the operations left to right,
+// keeping the intervals that hold a register (`active`). A register is freed
+// when its interval ends. When none is free, one of the overlapping intervals
+// has to go to the stack. In the picture, with two registers, at t=5 both are
+// taken by v0 and v2, so one of them is spilled to make room for v3.
+//
+// A spilled value still has to be in a register while an operation reads or
+// writes it. The allocator hands out such a register for the duration of that
+// one operation, called a `temp` (see `temp_reg_t`). The scan maintains this
+// rule:
+//
+//   Rule: at every operation, each operand is in a register, its own or a
+//   temp. Every other live value holds a register or sits in its stack slot.
+//
+// At t=5 the operation defines v3, so v3 is one of its operands. By the rule
+// v3 needs a register at 5 either way, its own or a temp. So spilling v3 frees
+// nothing, and the choice is between v0 and v2. In general, only a value the
+// operation does not touch frees a register by going to the stack.
 //
 // 4. Spill Weights
 //
@@ -337,135 +349,239 @@ std::vector<int64_t> compute_spill_weights(
     return weight;
 }
 
-// Assign physical registers to virtual registers within a single physical
-// register file using linear-scan register allocation. A file may serve more
-// than one register kind (e.g. vec and mask on AVX2*).
+// Assign physical registers within a single physical register file. A file may
+// serve more than one register kind (e.g. vec and mask on AVX2*).
 //
-// Each virtual register is represented as an interval [start, end].
-// Intervals are sorted by start and processed left to right, maintaining an
-// `active` set of intervals currently holding registers.
+// A spilled value lives in its stack slot for its whole live range. No
+// register holds it between operations. At each operation that references it,
+// it gets a temp, a register that holds it for that one operation. The value
+// is loaded into the temp before the operation if the operation reads it, and
+// stored back to the slot after if the operation writes it.
 //
-// For each interval `v`:
+// The scan goes through the operations in order, keeping an `active` set of
+// intervals that hold a register. At operation `i`:
 //   1. Expire old intervals:
-//      Remove any active interval `a` where end[a] < start[v], freeing its
+//      Remove every active interval that ended before `i`, freeing its
 //      register.
 //
-//   2. Allocate register:
-//      If a register is free, assign it to `v`.
+//   2. Count the demand:
+//      `i` needs a register from the free pool for
+//      - each interval that starts at `i`
+//      - each operand of `i` that is already spilled, as its temp. At most
+//        `max_temps_per_op` temps of each kind are counted.
 //
 //   3. Spill if necessary:
-//      Otherwise the lowest-weight interval among `v` and the active intervals
-//      that still hold a register goes to the stack, with ties broken on the
-//      latest end. If it is an active interval, `v` takes over its register.
-//      If it is `v`, then `v` gets no register.
+//      While fewer registers are free than the demand, spill the lightest
+//      active interval that is not an operand of `i`, with ties broken on the
+//      latest end. A mask is never chosen, since its kind gets no temps.
+//
+//   4. Hand out registers:
+//      Intervals that start at `i` take theirs and become active. An interval
+//      left without one is spilled. Then each spilled operand counted in step
+//      2 takes a temp while registers last. Temps return to the free pool
+//      after `i`.
+//
+// A value spilled in step 3 is on the stack at all its references, including
+// those before `i` that the scan has already passed, and they need temps too.
+// From its start up to `i` the value held its register alone, so that register
+// is free at each earlier reference and becomes its temp there. At each later
+// reference, step 2 counts it as a spilled operand and step 4 hands it a temp.
+//
+// When every register holds an operand of `i` or a mask, step 3 has nothing to
+// spill. An operand left without a register then gets no temp, which the
+// emitter reports by failing the kernel.
 //
 // Spilled values are assigned stack slots starting at `frame`, increasing by
 // `slot_size` per spill.
 //
-// Example (2 registers: r0, r1), with every value referenced equally often so
-// that the ends decide:
+// Example with 2 registers, r0 and r1. The diagram shows the final state,
+// after the scan has finished. `|` marks each value's live interval. The
+// register columns show what each register holds in the final allocation. `.`
+// is free.
 //
-//   v0 [0..9]   v1 [1..3]   v2 [4..8]   v3 [5..8]
+//                 live       register
+//                 a  b  c    r0      r1
+//   0  a = 1      |          a temp  .
+//   1  b = 2      |  |       .       b
+//   2  c = 3      |  |  |    c       b
+//   3  b += c     |  |  |    c       b
+//   4  a += 1     |          a temp  .
 //
-//   v0 -> r0
-//   v1 -> r1
+// How the scan gets there:
+//   0: `a` takes r0.
+//   1: `b` takes r1.
+//   2: `c` needs a register and none is free. `a` and `b` are not operands of
+//      2 and weigh 3 each, so the later end spills `a` and `c` takes r0. The
+//      spill covers all of `a`, including 0 and 1, which the scan has passed.
+//      `a` held r0 alone up to 2, so r0 becomes its temp at 0. At 1 `a` is not
+//      an operand, so it needs no register there and r0 is free.
+//   3: `b` and `c` are in registers.
+//   4: `b` and `c` have ended. `a` is a spilled operand and gets r0 as its
+//      temp.
 //
-//   v2: v1 expires (3 < 4), r1 is free, so v2 -> r1
-//
-//   v3: no free registers.
-//       active ends: v0=9, v2=8 -> v0 spills first
-//       since 9 > 8, spill v0 and assign r0 to v3
-//
-// Now let a loop cover 4..8 and let v0 and v3 be read inside it while v2 is
-// only read on the way out. v2 is then the lightest of the three, so it gives
-// up its register to v3 and v0 keeps the one it has, which is the opposite of
-// what the ends alone would have said.
-void alloc_file(const ir_t &ir, int file_idx,
-        const std::vector<int> &kind_to_file, const std::vector<int> &pool,
+// For `a` this becomes, with `[a]` its stack slot:
+//   0: mov r0, 1
+//      mov [a], r0
+//   4: mov r0, [a]
+//      add r0, 1
+//      mov [a], r0
+void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
         const std::vector<int> &start, const std::vector<int> &end,
-        const std::vector<int64_t> &weight, size_t slot_size,
-        reg_alloc_result_t &res, size_t &frame) {
+        const std::vector<int64_t> &weight,
+        const std::vector<std::vector<int>> &operands,
+        const std::vector<std::vector<int>> &refs, reg_alloc_result_t &res,
+        size_t &frame) {
 
+    const int n_ops = ir.n_ops();
     const int n_vregs = ir.n_vregs();
+    const reg_file_t &file = pools.files[file_idx];
 
-    // Collect intervals belonging to this register file
-    // (end[v] >= 0 means v is used) and sort by start time, since linear scan
-    // processes intervals in increasing start order.
-    std::vector<int> scan_order;
+    auto kind_of = [&](int v) { return ir.vreg_info()[v].kind; };
 
-    for (int v = 0; v < n_vregs; v++) {
-        if (kind_to_file[(int)ir.vreg_info()[v].kind] == file_idx
-                && end[v] >= 0)
-            scan_order.push_back(v);
-    }
+    auto in_file = [&](int v) {
+        return pools.kind_to_file[(int)kind_of(v)] == file_idx;
+    };
 
-    std::sort(scan_order.begin(), scan_order.end(),
-            [&](int lhs, int rhs) { return start[lhs] < start[rhs]; });
+    // For each operation, the intervals of this file that start there, by vreg
+    // id. Step 4 hands out registers in this order. `end[v] < 0` means no
+    // operation references `v`, so it has no interval.
+    std::vector<std::vector<int>> starts_at(n_ops);
+    for (int v = 0; v < n_vregs; v++)
+        if (in_file(v) && end[v] >= 0) starts_at[start[v]].push_back(v);
 
-    // free_regs: pool of available physical registers.
-    // active: intervals currently holding registers, sorted by increasing end.
-    // still_active: intervals that survive expiry each iteration.
-    std::vector<int> free_regs(pool.rbegin(), pool.rend());
-    std::vector<int> active;
-    std::vector<int> still_active;
+    // True if `cand` is a better victim than `best`. A lighter weight wins,
+    // then the later end, then the lower id. The id only breaks exact ties, so
+    // the victim does not depend on the order of `active`.
+    auto better_victim = [&](int cand, int best) {
+        if (weight[cand] != weight[best]) return weight[cand] < weight[best];
+        if (end[cand] != end[best]) return end[cand] > end[best];
+        return cand < best;
+    };
 
-    for (int v : scan_order) {
-        // Expire intervals that end before the current interval starts,
-        // returning their registers to the free pool.
+    // A spilled value of a kind without temps could not be used by any
+    // operation, so such a value is never spilled.
+    auto spillable
+            = [&](int v) { return max_temps_per_op[(int)kind_of(v)] > 0; };
+
+    // Moves `v` to a new stack slot for its whole live range and resets its
+    // `phys`. The caller releases the register `v` held, if any, and must read
+    // `phys` before the call.
+    auto spill = [&](int v) {
+        assignment_t &as = res.assignments[v];
+        as.spilled = true;
+        as.phys = -1;
+        as.slot = frame;
+        frame += file.slot_size;
+        res.any_spill = true;
+    };
+
+    // Number of temps of `kind` that operation `i` has.
+    auto n_temps = [&](int i, reg_kind_t kind) {
+        int n = 0;
+        for (const temp_reg_t &t : res.temps[i])
+            if (kind_of((int)t.vreg) == kind) n++;
+        return n;
+    };
+
+    // free_regs:    available registers, used as a stack. The top one is
+    //               handed out next, and a freed register goes on top. It
+    //               starts as the pool reversed, so the pool is handed out
+    //               front to back.
+    // active:       intervals that hold a register.
+    // still_active: step 1's buffer for the intervals that stay active.
+    // wanted:       spilled operands of the current operation that want a
+    //               temp, at most `max_temps_per_op` per kind. Step 4 gives
+    //               each one a temp while registers last.
+    // last_ref:     latest operation so far that references each vreg.
+    std::vector<int> free_regs(file.regs.rbegin(), file.regs.rend());
+    std::vector<int> active, still_active, wanted;
+    std::vector<int> last_ref(n_vregs, -1);
+
+    for (int i = 0; i < n_ops; i++) {
+        // 1. Expire intervals that ended before `i`.
         still_active.clear();
         for (int a : active) {
-            if (end[a] < start[v]) {
-                if (!res.assignments[a].spilled)
-                    free_regs.push_back(res.assignments[a].phys);
-            } else {
+            if (end[a] < i)
+                free_regs.push_back(res.assignments[a].phys);
+            else
                 still_active.push_back(a);
-            }
         }
         active.swap(still_active);
 
-        if (!free_regs.empty()) {
-            // A register is available so assign it.
-            res.assignments[v].phys = free_regs.back();
-            free_regs.pop_back();
-        } else {
-            // No free register, so one of the intervals overlapping here goes
-            // to the stack.
-            auto spills_before = [&](int lhs, int rhs) {
-                if (weight[lhs] != weight[rhs])
-                    return weight[lhs] < weight[rhs];
-                return end[lhs] > end[rhs];
-            };
+        // 2. Count the demand.
+        // Intervals that start at `i`. Step 4 gives them registers, or spills
+        // them when none is left.
+        const std::vector<int> &pending = starts_at[i];
+        wanted.clear();
 
-            int to_spill = -1;
-            for (int a : active) {
-                if (!res.assignments[a].spilled
-                        && (to_spill < 0 || spills_before(a, to_spill))) {
-                    to_spill = a;
-                }
-            }
+        // Temps wanted per kind, indexed like `max_temps_per_op`.
+        int n_wanted[sizeof(max_temps_per_op) / sizeof(max_temps_per_op[0])]
+                = {};
 
-            if (to_spill >= 0 && spills_before(to_spill, v)) {
-                // `to_spill` spills before `v`, so it gives up its register.
-                res.assignments[v].phys = res.assignments[to_spill].phys;
-                res.assignments[to_spill].spilled = true;
-                res.assignments[to_spill].slot = frame;
-                frame += slot_size;
-                res.any_spill = true;
-            } else {
-                // No active interval spills before `v`, so `v` lives on the
-                // stack and is not added to the active set.
-                res.assignments[v].spilled = true;
-                res.assignments[v].slot = frame;
-                frame += slot_size;
-                res.any_spill = true;
-                continue;
+        for (int v : operands[i]) {
+            if (!in_file(v)) continue;
+
+            last_ref[v] = i;
+
+            if (!res.assignments[v].spilled) continue;
+
+            const int k = (int)kind_of(v);
+            if (n_wanted[k] < max_temps_per_op[k]) {
+                n_wanted[k]++;
+                wanted.push_back(v);
             }
         }
-        // `v` now holds a register. Insert it into the active set, keeping the
-        // set sorted by increasing end.
-        const auto pos = std::lower_bound(active.begin(), active.end(), v,
-                [&](int lhs, int rhs) { return end[lhs] < end[rhs]; });
-        active.insert(pos, v);
+
+        // 3. Spill until enough registers are free.
+        while (free_regs.size() < pending.size() + wanted.size()) {
+            int victim = -1;
+            for (int a : active) {
+                // Spilling an operand of `i` frees nothing, since it needs a
+                // temp at `i`. Masks are never spilled.
+                const bool is_operand = last_ref[a] == i;
+                if (is_operand || !spillable(a)) continue;
+                if (victim < 0 || better_victim(a, victim)) victim = a;
+            }
+            if (victim < 0) break; // nothing that frees a register at `i`
+
+            // The register was the victim's alone up to `i`, so it is the temp
+            // at each earlier reference.
+            const int phys = res.assignments[victim].phys;
+            const reg_kind_t kind = kind_of(victim);
+            for (int j : refs[victim]) {
+                if (j >= i) break;
+                if (n_temps(j, kind) < max_temps_per_op[(int)kind])
+                    res.temps[j].push_back({(vreg_t)victim, phys});
+            }
+            active.erase(std::find(active.begin(), active.end(), victim));
+            free_regs.push_back(phys);
+            spill(victim);
+        }
+
+        // 4. Hand out registers. They run short only when step 3 had nothing
+        // to spill. A value left without a register is spilled. An operand
+        // left without a temp is reported by the emitter.
+        for (int v : pending) {
+            if (free_regs.empty()) {
+                spill(v);
+                continue;
+            }
+            res.assignments[v].phys = free_regs.back();
+            free_regs.pop_back();
+            active.push_back(v);
+        }
+
+        const size_t first_temp = res.temps[i].size();
+        for (int v : wanted) {
+            if (free_regs.empty()) break;
+            res.temps[i].push_back({(vreg_t)v, free_regs.back()});
+            free_regs.pop_back();
+        }
+        // Temps return to the pool after `i`. `temps[i]` can already hold the
+        // temps of files allocated before this one, so return only the ones
+        // handed out here.
+        for (size_t t = first_temp; t < res.temps[i].size(); t++)
+            free_regs.push_back(res.temps[i][t].phys);
     }
 }
 
@@ -473,13 +589,14 @@ void alloc_file(const ir_t &ir, int file_idx,
 
 // Run full register allocation pipeline.
 // Returns, for each virtual register, either a physical register or a spill
-// slot.
+// slot, and for each operation the temps of its spilled operands.
 //
 // The pipeline:
 //   1. Compute liveness (live_in for each operation).
 //   2. Convert liveness into a single interval per virtual register:
 //        start[v] = first operation where `v` is defined, used, or live_in
 //        end[v]   = last such operation
+//      and record the distinct operands of each operation.
 //   3. Weight each virtual register by how often it is referenced, so that the
 //      scan spills the lowest-weight value rather than the longest-lived one.
 //   4. Run linear-scan allocation per physical register file, sharing a single
@@ -518,21 +635,35 @@ reg_alloc_result_t allocate_registers(
     //
     // extend_interval(v) expands the interval to include operation `i`
     // whenever `v` is defined, used, or live on entry to `i`.
+    //
+    // `operands[i]` lists the vregs operation `i` reads or writes, each once
+    // even when it is both read and written or passed twice. `refs[v]` lists
+    // the operations that read or write `v`, in increasing order.
     std::vector<int> start(n_vregs, INT_MAX), end(n_vregs, -1);
+    std::vector<std::vector<int>> operands(n_ops), refs(n_vregs);
     std::vector<int> def_vregs, use_vregs;
 
     for (int i = 0; i < n_ops; i++) {
         auto extend_interval = [&](int v) {
-            if (v < 0) return;
             start[v] = std::min(start[v], i);
             end[v] = std::max(end[v], i);
         };
 
+        auto add_operand = [&](int v) {
+            extend_interval(v);
+            // A vreg both read and written, or passed twice, is listed once.
+            // `refs[v]` grows in operation order, so `v` is already listed
+            // exactly when its last reference is `i`.
+            if (!refs[v].empty() && refs[v].back() == i) return;
+            operands[i].push_back(v);
+            refs[v].push_back(i);
+        };
+
         ir.def_use(ir.ops()[i], def_vregs, use_vregs);
         for (int v : def_vregs)
-            extend_interval(v);
+            add_operand(v);
         for (int v : use_vregs)
-            extend_interval(v);
+            add_operand(v);
         for (int v = 0; v < n_vregs; v++)
             if (live_in[i][v]) extend_interval(v);
     }
@@ -546,12 +677,12 @@ reg_alloc_result_t allocate_registers(
     // sharing a single stack frame so spill slots do not overlap across files.
     reg_alloc_result_t res;
     res.assignments.assign(n_vregs, assignment_t());
+    res.temps.assign(n_ops, std::vector<temp_reg_t>());
 
     size_t frame = 0;
-    for (int f = 0; f < (int)pools.files.size(); f++) {
-        alloc_file(ir, f, pools.kind_to_file, pools.files[f].regs, start, end,
-                weight, pools.files[f].slot_size, res, frame);
-    }
+    for (int f = 0; f < (int)pools.files.size(); f++)
+        alloc_file(
+                ir, f, pools, start, end, weight, operands, refs, res, frame);
 
     constexpr size_t stack_alignment = 16;
     res.frame_bytes = utils::rnd_up(frame, stack_alignment);

@@ -41,7 +41,7 @@
 // - It does not do the same for opmasks. On AVX-512 the eltwise injector and
 //   the binary injector each take one as a fixed register and restore neither,
 //   so the kernel reserves both and keeps them out of the allocator's mask file
-//   (see `mask_scratch` in `make_reg_config()`):
+//   (see `reserved_masks` in `make_reg_config()`):
 //     eltwise_opmask     - scratch the eltwise injector overwrites. It is
 //                          written before it is read, so it needs no setup.
 //     binary_tail_opmask - active-element pattern the binary injector reads for
@@ -106,7 +106,7 @@ struct postops_injector_t {
     // register indices). For binary and sum post-ops, `base_phys` and
     // `out_byte_off` give each accumulator's output address: binary reaches its
     // right-hand-side argument through it, sum reads the previous destination
-    // value from it.
+    // value from it. `base_phys` is -1 for a chain that needs neither.
     void DNNL_API inject(const std::vector<int> &acc_phys, int base_phys,
             const std::vector<dim_t> &out_byte_off);
 

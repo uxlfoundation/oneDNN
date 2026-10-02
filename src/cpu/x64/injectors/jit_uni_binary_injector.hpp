@@ -80,9 +80,9 @@ void extend_binary_args_per_w(const post_ops_t &post_ops,
  * and between compute_vector_range calls.
  *
  * @param rhs_dt_helper_vmm_idx - index of vmm helper used when loading data for
- * calculations. Treated as hint from user. If inside compute_vector_range hint
- * turns out to be invalid, it will be overwriten by register preserving logic inside
- * binary injector.
+ * calculations. Treated as hint from user. If inside compute_vector_range the
+ * hint is one of the vmms the post-op is applied to, it is overwritten with a
+ * vmm outside that set.
  * @param rhs_addr_reg - gpr register, used as the currently processed address of
  * rhs tensor slice. Data of rhs(arg1) for the binary operation is loaded from address
  * stored inside rhs_addr_reg.
@@ -324,12 +324,28 @@ public:
 
 private:
     /*
-     * Determines if hint passed by user is valid (is inside range
-     * <start_idx, end_idx>). If not it returns new vmm idx value that will be
-     * used as temporary vmm in future computations.
+     * Like the set-based `compute_vector_range()`, but every output base
+     * register must differ from the helper gprs.
      */
-    int adjust_temp_vmm_hint(
-            int user_hint, int start_idx, int end_idx, int max_vmm_idx) const;
+    void compute_vector_range_impl(
+            const injector_utils::vmm_index_set_t &vmm_idxs, int rhs_arg_idx,
+            const dnnl_post_ops::entry_t &post_op,
+            const rhs_arg_dynamic_params_t &rhs_arg_params) const;
+    /*
+     * Returns the temporary vmm index for one `compute_vector_range()` call.
+     *
+     * Tries these candidates in order and returns the first that qualifies:
+     *   1. `user_hint`, if it is at most `max_vmm_idx` and not in `vmm_idxs`.
+     *   2. `max_vmm_idx`, if it is not in `vmm_idxs` and `user_hint` is at
+     *      most `max_vmm_idx`.
+     *   3. Register 0, if it is not in `vmm_idxs`.
+     *   4. The highest register up to `max_vmm_idx` that is not in
+     *      `vmm_idxs`.
+     * Returns -1 when every register up to `max_vmm_idx` is in `vmm_idxs`.
+     */
+    int adjust_temp_vmm_hint(int user_hint,
+            const injector_utils::vmm_index_set_t &vmm_idxs,
+            int max_vmm_idx) const;
     /*
      * Taking into account rhs_broadcasting_strategy and information from user
      * about tensor slice (rhs_arg_params) stored in Vmm(vmm_idx) calculates
@@ -597,13 +613,6 @@ private:
             const Xbyak::Address &rhs_addr) const;
     void cvt_to_f32(const Vmm &tmp_reg) const;
     /*
-     * Returns pair consisting of flag indication preservation is needed for vmm
-     * index in second member that should be used as temporary vmm inside inject
-     * binary.
-     */
-    std::pair<bool, int> should_preserve_vmm(int curr_idx, int vmm_hint,
-            int max_vmm_idx, bool dt_helper_vmm_needed) const;
-    /*
      * Used in isa != avx512 where m32bcst is not supported, replaces ptr_b
      * with ptr.
      */
@@ -621,6 +630,9 @@ private:
     fp8_conversion_e4m3_t *f8_e4m3_cvt_ {nullptr};
 
     const rhs_arg_static_params_t rhs_arg_static_params_;
+    // The hint the caller passed. `rhs_dt_helper_vmm_idx` starts equal to it,
+    // but `compute_vector_range_impl()` overwrites it with the helper it picks.
+    const int user_vmm_hint_;
     const Xbyak::Reg64 param1_;
     const bcast_set_t supported_strategy_set_;
     const cpu_isa_t isa_ = host_->max_cpu_isa();

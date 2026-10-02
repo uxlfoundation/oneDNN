@@ -15,8 +15,10 @@
 *******************************************************************************/
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
+#include <set>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -46,12 +48,8 @@ using namespace impl::cpu::x64::ir;
 
 // Helpers shared by the tests
 
-// Scratch registers the emitter reserves for spill handling, and the opmasks
-// the post-ops injector writes without restoring. None of them is part of the
-// register pool. The indices are otherwise arbitrary and work for AVX2 and
-// AVX-512 alike.
-constexpr int gpr_scratch0 = 10, gpr_scratch1 = 11;
-constexpr int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
+// The opmasks the post-ops injector writes without restoring. They are not
+// part of the register pool.
 constexpr int eltwise_opmask = 6, binary_tail_opmask = 7;
 
 // ISA the kernel tests generate for. The emitter needs AVX2 as a floor, so the
@@ -73,8 +71,7 @@ int simd_w() {
 // pressure under the test's control.
 reg_pools_t make_pools(int n_gpr) {
     reg_config_t rc = make_reg_config(test_isa(), /*param_reg=*/0,
-            /*rsp_reg=*/Xbyak::Operand::RSP, /*gpr_scratch=*/ {},
-            /*vec_scratch=*/ {}, /*mask_scratch=*/ {});
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {});
 
     reg_file_t &gpr_file = rc.pools.files[0];
     gpr_file.regs.clear();
@@ -153,6 +150,41 @@ void expect_no_reg_conflicts(const ir_t &ir, const reg_pools_t &pools,
     }
 }
 
+// Check the allocator rule for spilled values. At every operation, the temps
+// and the registers of the values live there are all distinct, and each
+// spilled operand has exactly one temp.
+void expect_valid_temps(const ir_t &ir, const reg_pools_t &pools,
+        const reg_alloc_result_t &res) {
+    const auto iv = linear_code_intervals(ir);
+    std::vector<int> defs, uses;
+    for (int i = 0; i < ir.n_ops(); i++) {
+        std::set<std::pair<int, int>> held; // (file, physical register)
+        auto hold = [&](int v, int phys) {
+            const int file = pools.kind_to_file[(int)ir.vreg_info()[v].kind];
+            EXPECT_TRUE(held.insert({file, phys}).second)
+                    << "op " << i << ": register " << phys << " held twice";
+        };
+
+        std::set<int> spilled_operands, temp_vregs;
+        ir.def_use(ir.ops()[i], defs, uses);
+        for (int v : defs)
+            if (res.assignments[v].spilled) spilled_operands.insert(v);
+        for (int v : uses)
+            if (res.assignments[v].spilled) spilled_operands.insert(v);
+        for (const temp_reg_t &t : res.temps[i]) {
+            temp_vregs.insert((int)t.vreg);
+            hold((int)t.vreg, t.phys);
+        }
+        EXPECT_EQ(temp_vregs, spilled_operands) << "op " << i;
+        EXPECT_EQ(temp_vregs.size(), res.temps[i].size()) << "op " << i;
+
+        for (int v = 0; v < ir.n_vregs(); v++)
+            if (iv[v].start <= i && i <= iv[v].end
+                    && !res.assignments[v].spilled)
+                hold(v, res.assignments[v].phys);
+    }
+}
+
 // Build an IR where all GPRs in the live set are live at the same time.
 // Each register is initialized first, then they are all used together by adding
 // them into an accumulator. The live set size controls the register pressure to
@@ -192,10 +224,11 @@ float ref_dot(const float *a, const float *b, int n) {
 // IR-based kernel.
 class ir_kernel_t : public impl::cpu::x64::jit_generator_t {
 public:
-    ir_kernel_t(ir_t ir, int vec_regs_limit = -1)
+    ir_kernel_t(ir_t ir, int vec_regs_limit = -1, int gpr_regs_limit = -1)
         : jit_generator_t("ir_run_kernel", test_isa())
         , ir_(std::move(ir))
-        , vec_regs_limit_(vec_regs_limit) {}
+        , vec_regs_limit_(vec_regs_limit)
+        , gpr_regs_limit_(gpr_regs_limit) {}
 
     const char *name() const override { return "ir_kernel"; }
     const char *source_file() const override { return __FILE__; }
@@ -237,6 +270,10 @@ public:
     };
     void set_postops(const postops_cfg_t &cfg) { postops_cfg_ = cfg; }
 
+    // Replaces the gpr pool with `regs`. The allocator hands out a pool front
+    // to back, so the first gprs the IR defines get them in order.
+    void set_gpr_pool(const std::vector<int> &regs) { gpr_pool_ = regs; }
+
     // Allocation outcome. Becomes valid after `run_ir_pipeline()`.
     //
     // True if the generated kernel has any spills.
@@ -250,17 +287,16 @@ protected:
         const int param_idx = abi_param1.getIdx();
 
         reg_config_t reg_cfg = make_reg_config(max_cpu_isa(), param_idx,
-                rsp_idx, {gpr_scratch0, gpr_scratch1},
-                {vec_scratch0, vec_scratch1, vec_scratch2},
-                {eltwise_opmask, binary_tail_opmask});
+                rsp_idx, {eltwise_opmask, binary_tail_opmask});
+        if (!gpr_pool_.empty()) reg_cfg.pools.files[0].regs = gpr_pool_;
 
-        // Shrink the vector register pool to force spills when requested.
-        if (vec_regs_limit_ >= 0) {
-            const int vec_reg_pool_idx = 1;
-            auto &vec_regs = reg_cfg.pools.files[vec_reg_pool_idx].regs;
-            if ((int)vec_regs.size() > vec_regs_limit_)
-                vec_regs.resize(vec_regs_limit_);
-        }
+        // Shrink the register pools to force spills when requested.
+        const auto limit = [&](int file, int n) {
+            auto &regs = reg_cfg.pools.files[file].regs;
+            if (n >= 0 && (int)regs.size() > n) regs.resize(n);
+        };
+        limit(0, gpr_regs_limit_);
+        limit(1, vec_regs_limit_);
 
         // Run allocator.
         const reg_alloc_result_t alloc = allocate_registers(ir_, reg_cfg.pools);
@@ -302,6 +338,8 @@ protected:
 private:
     ir_t ir_ {};
     int vec_regs_limit_ = 0;
+    int gpr_regs_limit_ = 0;
+    std::vector<int> gpr_pool_;
     bool spilled_ = false;
     size_t stack_size_ = 0;
     postops_cfg_t postops_cfg_ {};
@@ -567,28 +605,28 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
 // checkable on any machine.
 TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
     const int param_reg = 0, rsp_reg = 4;
-    const std::vector<int> gpr_scratch {10, 11};
-    const std::vector<int> vec_scratch {13, 14, 15};
-    const std::vector<int> mask_scratch {6, 7};
+    const std::vector<int> reserved_masks {6, 7};
 
     {
-        const reg_config_t rc = make_reg_config(avx2, param_reg, rsp_reg,
-                gpr_scratch, vec_scratch, mask_scratch);
+        const reg_config_t rc
+                = make_reg_config(avx2, param_reg, rsp_reg, reserved_masks);
 
         ASSERT_EQ(rc.pools.files.size(), 2u);
         EXPECT_EQ(rc.pools.kind_to_file, std::vector<int>({0, 1, 1}));
         EXPECT_EQ(rc.pools.files[1].slot_size, 32u);
-        EXPECT_EQ(rc.pools.files[1].regs.size(), 16u - vec_scratch.size());
+        EXPECT_EQ(rc.pools.files[0].regs.size(), 14u);
+        EXPECT_EQ(rc.pools.files[1].regs.size(), 16u);
     }
 
     {
-        const reg_config_t rc = make_reg_config(avx512_core, param_reg, rsp_reg,
-                gpr_scratch, vec_scratch, mask_scratch);
+        const reg_config_t rc = make_reg_config(
+                avx512_core, param_reg, rsp_reg, reserved_masks);
 
         ASSERT_EQ(rc.pools.files.size(), 3u);
         EXPECT_EQ(rc.pools.kind_to_file, std::vector<int>({0, 1, 2}));
         EXPECT_EQ(rc.pools.files[1].slot_size, 64u);
-        EXPECT_EQ(rc.pools.files[1].regs.size(), 32u - vec_scratch.size());
+        EXPECT_EQ(rc.pools.files[0].regs.size(), 14u);
+        EXPECT_EQ(rc.pools.files[1].regs.size(), 32u);
         // The mask file is k1..k7 less the reserved ones. k0 cannot encode a
         // write mask.
         EXPECT_EQ(rc.pools.files[2].regs, std::vector<int>({1, 2, 3, 4, 5}));
@@ -667,8 +705,10 @@ TEST(AllocatorTests, SpillsUnderRegisterPressure) {
     EXPECT_TRUE(res.any_spill);
     EXPECT_GT(res.frame_bytes, 0u);
 
-    // Check that non-spilled registers do not share the same register.
+    // Check that non-spilled registers do not share the same register, and that
+    // every spilled operand gets a temp that clobbers nothing.
     expect_no_reg_conflicts(ir, pools, res);
+    expect_valid_temps(ir, pools, res);
 
     // Collect spill slots and check that they are unique, slot-aligned, and
     // inside the reserved frame.
@@ -742,6 +782,42 @@ TEST(AllocatorTests, SpillsByWeightAndBreaksTiesByEnd) {
         EXPECT_FALSE(res.assignments[(int)early].spilled);
         EXPECT_FALSE(res.assignments[(int)acc].spilled);
     }
+}
+
+// Checks that a mask is never spilled, since no operation gets a temp for one.
+// On AVX2* masks share the vector file, cut here to 3 registers. When the
+// vectors run out of registers, the mask and the vectors each have one def and
+// one use, so they weigh the same, and the mask ends last. By weight and end
+// alone, the mask is therefore the expected spill, and the test checks that a
+// vector is spilled instead.
+TEST(AllocatorTests, NeverSpillsMasks) {
+    ir_t ir;
+    const vreg_t ptr = ir.new_gpr();
+    ir.load_param(ptr, 0);
+
+    const vreg_t mask = ir.new_mask();
+    ir.set_mask_imm(mask, 3);
+
+    std::vector<vreg_t> v(4, vreg_t::none);
+    for (int r = 0; r < 4; r++) {
+        v[r] = ir.new_vec(data_type::f32);
+        ir.vload(v[r], ptr, 32 * r, data_type::f32);
+    }
+    for (int r = 0; r < 4; r++)
+        ir.vstore(ptr, 32 * r, v[r], data_type::f32);
+
+    const vreg_t x = ir.new_vec(data_type::f32);
+    ir.vload_masked(x, ptr, 0, mask, data_type::f32);
+    ir.vstore(ptr, 0, x, data_type::f32);
+
+    reg_pools_t pools = make_reg_config(avx2, /*param_reg=*/0,
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {})
+                                .pools;
+    pools.files[1].regs.resize(3);
+    const reg_alloc_result_t res = allocate_registers(ir, pools);
+
+    EXPECT_TRUE(res.any_spill);
+    EXPECT_FALSE(res.assignments[(int)mask].spilled);
 }
 
 // Checks that allocation depends only on its inputs. The same IR and register
@@ -1029,15 +1105,17 @@ ir_t build_shared_vector_dot_ir(int n) {
 }
 
 // Validates that register allocator decisions never change results. The same
-// computation is run with a full register file and with one too small to avoid
-// spills. Both must produce identical results.
+// computation is run with full register files and with files only as large as
+// its widest operations (3 vec for `vdot`, 1 gpr). Spilled values need no
+// reserved registers, so both must produce identical results.
 TEST(IntegrationTests, SpillProducesEquivalentResults) {
     SKIP_IF_NO_AVX2();
 
     constexpr int n = 6;
 
     ir_kernel_t full(build_shared_vector_dot_ir(n));
-    ir_kernel_t limited(build_shared_vector_dot_ir(n), /*vec_regs_cap=*/4);
+    ir_kernel_t limited(build_shared_vector_dot_ir(n), /*vec_regs_limit=*/3,
+            /*gpr_regs_limit=*/1);
 
     ASSERT_TRUE(full.run_ir_pipeline());
     ASSERT_TRUE(limited.run_ir_pipeline());
@@ -1256,6 +1334,101 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
                 = ref_dot(&a[r * simd_w()], b_data.data(), simd_w()) + rhs[r];
         EXPECT_FLOAT_EQ(c[r], expected) << "row " << r;
     }
+}
+
+// Validates that the post-ops injector works with any register layout the
+// allocator produces and leaves the other values intact. The two accumulators
+// take the first and the last vec register, a live value fills every register
+// between them, and the output pointer sits in r14, a gpr the binary injector
+// borrows. The chain goes through the eltwise, binary, and sum injectors. A
+// second run with a vec file of two spills the live values, so they stay in
+// their stack slots while the injector runs and come back through temps. The
+// accumulators outweigh them and keep their registers.
+TEST(IntegrationTests, InjectPostopsWorksWithAnyRegisterLayout) {
+    SKIP_IF_NO_AVX2();
+
+    const int n_live = isa_num_vregs(test_isa()) - 2;
+    const dim_t vlen = simd_w() * (dim_t)sizeof(float);
+    const auto f32 = data_type::f32;
+
+    // The allocator hands out vec registers in index order, so defining the
+    // vectors in this order produces the layout.
+    ir_t ir;
+    const vreg_t c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(binary_args_t, c));
+    const vreg_t a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(binary_args_t, a));
+    const vreg_t live_ptr = ir.new_gpr();
+    ir.load_param(live_ptr, offsetof(binary_args_t, b));
+
+    std::vector<vreg_t> acc(2, vreg_t::none), live(n_live, vreg_t::none);
+    acc[0] = ir.new_vec(f32);
+    ir.vload(acc[0], a_ptr, 0, f32);
+    for (int i = 0; i < n_live; i++) {
+        live[i] = ir.new_vec(f32);
+        ir.vload(live[i], live_ptr, i * vlen, f32);
+    }
+    acc[1] = ir.new_vec(f32);
+    ir.vload(acc[1], a_ptr, vlen, f32);
+
+    ir.inject_postops(acc, c_ptr, {0, vlen});
+    for (int r = 0; r < 2; r++)
+        ir.vstore(c_ptr, r * vlen, acc[r], f32);
+    for (int i = 0; i < n_live; i++)
+        ir.vstore(c_ptr, (2 + i) * vlen, live[i], f32);
+
+    using dt = dnnl::memory::data_type;
+    using tag = dnnl::memory::format_tag;
+    const dnnl::memory::desc dst_desc({2, simd_w()}, dt::f32, tag::ab);
+    const dnnl::memory::desc s8_desc({2, simd_w()}, dt::s8, tag::ab);
+    dnnl::post_ops po;
+    po.append_eltwise(dnnl::algorithm::eltwise_tanh, 0.f, 0.f);
+    po.append_binary(dnnl::algorithm::binary_ge, dst_desc);
+    po.append_binary(dnnl::algorithm::binary_add, s8_desc);
+    po.append_sum();
+
+    ir_kernel_t::postops_cfg_t cfg;
+    cfg.post_ops = po.get();
+    cfg.dst_md = dst_desc.get();
+    cfg.rhs_arg_offset = offsetof(binary_args_t, binary_rhs);
+    cfg.dst_orig_offset = offsetof(binary_args_t, dst_orig);
+
+    const int n = 2 * simd_w();
+    std::vector<float> a(n), ge_rhs(n), live_data(n_live * simd_w());
+    std::vector<int8_t> add_rhs(n);
+    for (int i = 0; i < n; i++) {
+        a[i] = (float)(i % 9) * 0.5f - 2.f;
+        ge_rhs[i] = i % 2 ? 0.5f : -0.5f;
+        add_rhs[i] = (int8_t)(i % 7 - 3);
+    }
+    for (size_t i = 0; i < live_data.size(); i++)
+        live_data[i] = (float)i;
+    const void *rhs[2] = {ge_rhs.data(), add_rhs.data()};
+
+    ir_kernel_t full(ir), spilling(ir, /*vec_regs_limit=*/2);
+    for (ir_kernel_t *kern : {&full, &spilling}) {
+        SCOPED_TRACE(kern == &full ? "full vec file" : "vec file of two");
+        kern->set_gpr_pool({Xbyak::Operand::R14, Xbyak::Operand::RAX,
+                Xbyak::Operand::RDX, Xbyak::Operand::RBX});
+        kern->set_postops(cfg);
+        ASSERT_TRUE(kern->run_ir_pipeline());
+
+        // `c` starts at 1 in the accumulator rows, which the sum adds.
+        std::vector<float> c(n + live_data.size(), 1.f);
+        binary_args_t args {
+                a.data(), live_data.data(), c.data(), rhs, c.data()};
+        kern->run(&args);
+
+        for (int i = 0; i < n; i++) {
+            const float ref = (std::tanh(a[i]) >= ge_rhs[i] ? 1.f : 0.f)
+                    + add_rhs[i] + 1.f;
+            EXPECT_EQ(c[i], ref) << "element " << i;
+        }
+        for (size_t i = 0; i < live_data.size(); i++)
+            EXPECT_EQ(c[n + i], live_data[i]) << "live value " << i;
+    }
+    EXPECT_FALSE(full.spilled());
+    EXPECT_TRUE(spilling.spilled());
 }
 
 } // namespace dnnl

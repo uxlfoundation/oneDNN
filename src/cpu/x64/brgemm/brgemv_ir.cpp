@@ -562,9 +562,6 @@ struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
         ir::ir_t ir;
         nontrans::build_gemv(brg_, ir);
 
-        // Scratch registers (2 gpr + 3 vec) reserved for spill code.
-        const int gpr_scratch0 = 10, gpr_scratch1 = 11;
-        const int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
         // AVX-512 opmasks reserved for the post-ops injector, which writes both
         // and restores neither (see `postops_injector_t`).
         const int eltwise_opmask = 6, binary_tail_opmask = 7;
@@ -574,9 +571,7 @@ struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
 
         // Build register configuration for code emission
         const ir::reg_config_t reg_cfg = ir::make_reg_config(brg_.isa_impl,
-                param_idx, rsp_idx, {gpr_scratch0, gpr_scratch1},
-                {vec_scratch0, vec_scratch1, vec_scratch2},
-                {eltwise_opmask, binary_tail_opmask});
+                param_idx, rsp_idx, {eltwise_opmask, binary_tail_opmask});
 
         // Register allocation
         ir::reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools);

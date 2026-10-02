@@ -52,10 +52,10 @@ struct data_section_t {
 // operation into target-specific instructions, using the physical registers
 // chosen by the allocator.
 //
-// Values that cannot stay in a register are spilled on the stack. This is
-// handled by loading spilled inputs into reserved scratch registers before use,
-// and storing results back on stack after use. These scratch registers are
-// excluded from allocation so they are always available for spill handling.
+// Values that cannot stay in a register are spilled on the stack. An operation
+// that reads or writes one gets a temp register for it from the allocator (see
+// `temp_reg_t`). Spilled inputs are loaded into their temps before use. Results
+// are stored back on the stack after use.
 //
 // Supporting another target ISA mainly requires providing a similar backend
 // (see `emitter/backend_avx2.hpp`) or extending an existing one, then adding a

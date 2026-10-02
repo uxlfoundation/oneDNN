@@ -60,20 +60,25 @@ step. They are omitted above for clarity.
   when the access converts.
 * **Register configuration.** An ISA-aware step that produces ISA-agnostic
   register pools (integer indices per register kind) plus the reserved registers:
-  the stack pointer, the kernel-argument pointer, and a few scratch registers the
-  emitter uses for spilled values. It encodes per-ISA facts such as register
-  counts and whether the target has dedicated mask (k) registers.
+  the stack pointer and the kernel-argument pointer. It encodes per-ISA facts
+  such as register counts and whether the target has dedicated mask (k)
+  registers.
 * **Register allocator.** Maps unlimited virtual registers onto physical ones,
   spilling to the stack under pressure. It knows only register kinds and control
   flow. Liveness analysis (which values are still needed at each operation) is
   backward data-flow over the IR's trivial control-flow graph, iterated to a fixed
   point so loop back-edges propagate. Linear scan then
   reduces each value to a single live interval and spills to the stack when the
-  active set outgrows the register file.
+  active set outgrows the register file. A spilled value still needs a register
+  while an operation reads or writes it, so the scan also gives each operation a
+  temp register for every spilled operand. The temps per kind (2 gpr, 3 vector)
+  match the widest operation of that kind, so only `inject_postops`, which takes
+  any number of accumulators, can run out. Masks get no temps and are never
+  spilled.
 * **Emitter.** The only part aware of the ISA and data types, because it produces
   the code. It walks the allocated IR once and lowers each operation to
   instructions using the physical registers the allocator chose. Spilled values
-  are loaded into scratch registers around each use. There is one backend per ISA
+  are loaded into their temps around each use. There is one backend per ISA
   family (for example, AVX2\* and AVX-512\*), and a dispatch step selects the
   matching backend.
 * **Static data.** Some lowerings need constants, such as the AVX2 mask tables,
@@ -133,7 +138,7 @@ today. A shared runner for the fixed part is a follow-up.
 * `ir.hpp`, `ir.cpp`: the IR itself, that is, the operation kinds, virtual
   registers, the builder helpers, `def_use()`, and the loop-emission helpers.
 * `reg_config.hpp`, `reg_config.cpp`: builds the per-ISA register configuration,
-  that is, the allocatable pools plus the reserved and scratch registers.
+  that is, the allocatable pools plus the reserved registers.
 * `reg_alloc.hpp`, `reg_alloc.cpp`: liveness analysis and the linear-scan
   allocator, producing the assignment for each virtual register and the size of
   the spill frame.

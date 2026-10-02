@@ -666,19 +666,13 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
         const int rsp_idx = Xbyak::Operand::RSP;
         const int param_idx = abi_param1.getIdx();
 
-        // Scratch registers (2 gpr + 3 vec) reserved for spill code.
-        const int gpr_scratch0 = 10, gpr_scratch1 = 11;
-        const int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
-
         // Build register configuration for code emission.
         //
         // The bias is applied by the IR, so no post-ops injector runs here and
         // no opmask is reserved for one. The allocator gets the whole mask
         // file.
-        const ir::reg_config_t reg_cfg = ir::make_reg_config(brg_.isa_impl,
-                param_idx, rsp_idx, {gpr_scratch0, gpr_scratch1},
-                {vec_scratch0, vec_scratch1, vec_scratch2},
-                /*mask_scratch=*/ {});
+        const ir::reg_config_t reg_cfg = ir::make_reg_config(
+                brg_.isa_impl, param_idx, rsp_idx, /*reserved_masks=*/ {});
 
         const ir::reg_alloc_result_t alloc
                 = allocate_registers(ir, reg_cfg.pools);
@@ -778,8 +772,7 @@ status_t brgemm_ir_supported(const brgemm_desc_t &brg) {
             "embedded broadcast microkernel");
 
     // Below is a set of checks to check whether the problem fits the register
-    // budget. The check will eventually go away once the allocator is optimized
-    // and scratch registers are removed.
+    // budget.
     const brgemm_ir_conf_t cfg(brg);
 
     // The builder holds every accumulator, every B vector, and the A broadcast
@@ -795,8 +788,7 @@ status_t brgemm_ir_supported(const brgemm_desc_t &brg) {
             ? cfg.ld_block2
             : (cfg.ldb2_tail > 0 ? cfg.ldb2_tail : 1);
     const int n_vregs = max_bd_block * max_ld_block2 + max_ld_block2 + 1;
-    // 3 vector register are scratch.
-    const int vec_pool_size = isa_num_vregs(brg.isa_impl) - 3;
+    const int vec_pool_size = isa_num_vregs(brg.isa_impl);
 
     VCONDCHECK_BRGEMM_IR(n_vregs <= vec_pool_size, VERBOSE_UNSUPPORTED_FEATURE,
             "blocking exceeds the vector register file");

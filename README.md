@@ -29,6 +29,7 @@ oneDNN project is part of the [UXL Foundation].
 
 - [Highlights](#highlights)
 - [Used By](#used-by)
+- [Quick Start](#quick-start)
 - [Documentation](#documentation)
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
@@ -73,6 +74,36 @@ learning practitioners should use one of the applications enabled with oneDNN:
 * [PaddlePaddle\*](http://www.paddlepaddle.org)
 * [PyTorch\*](https://pytorch.org)
 * [Tensorflow\*](https://www.tensorflow.org)
+
+## Quick Start
+
+Install pre-built oneDNN from [conda-forge]:
+
+```sh
+conda install -c conda-forge onednn
+```
+
+Build and run the [matrix multiplication performance example], which
+measures matmul throughput for `f32`, `f16`, `bf16`, and `s8`/`u8` data types:
+
+```sh
+wget https://raw.githubusercontent.com/uxlfoundation/oneDNN/main/examples/matmul_perf.cpp \
+     https://raw.githubusercontent.com/uxlfoundation/oneDNN/main/examples/example_utils.hpp
+g++ matmul_perf.cpp -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib \
+    -ldnnl -o matmul_perf
+LD_LIBRARY_PATH=$CONDA_PREFIX/lib ./matmul_perf cpu
+```
+
+Next steps:
+* [Examples and Tutorials] cover quantization, fusion, Graph API, GPU
+  execution, and more.
+* [Build from Source] to customize the build.
+
+If oneDNN is useful in your work, consider giving the project a star on
+GitHub. It helps others discover it.
+
+[matrix multiplication performance example]: examples/matmul_perf.cpp
+[Examples and Tutorials]: https://uxlfoundation.github.io/oneDNN/dev_guide_examples.html
 
 ## Documentation
 

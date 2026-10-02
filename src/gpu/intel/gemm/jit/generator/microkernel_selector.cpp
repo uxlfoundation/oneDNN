@@ -48,8 +48,8 @@ namespace microkernel {
 using namespace ngen;
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,
-                                           GEMMProblem &problem, HWInformation hwInfo, HostPayload host,
-                                           SizeParams sizes, const std::vector<StrategyRequirement> &reqs);
+                                           GEMMProblem &problem, HWInformation hwInfo, SizeParams sizes,
+                                           const std::vector<StrategyRequirement> &reqs);
 
 static constexpr int smallGRF = 128, largeGRF = 256;
 
@@ -424,7 +424,7 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
                 strategy.raHW = ngen::HW::XeHPC;
             }
         } else if (!reqs.empty() &&
-                   !getStrategyByHeuristics(hw, strategy, localA, localB, problem, hwInfo, host, sizes, reqs))
+                   !getStrategyByHeuristics(hw, strategy, localA, localB, problem, hwInfo, sizes, reqs))
             return false; /* No heuristic strategy found */
 
         strategy.systolicAvailable &= hwInfo.systolicAvailable;
@@ -478,8 +478,8 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
 }
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,
-                                           GEMMProblem &problem, HWInformation hwInfo, HostPayload host,
-                                           SizeParams sizes, const std::vector<StrategyRequirement> &reqs)
+                                           GEMMProblem &problem, HWInformation hwInfo, SizeParams sizes,
+                                           const std::vector<StrategyRequirement> &reqs)
 {
     if (problem.C.layout == MatrixLayout::T) return false;
 
@@ -527,7 +527,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.kb_load = problem.Tb_ext.isInteger() ? 8 / problem.Tb_ext : 4;
     }
 
-    auto m_iter = s.unroll[LoopM] / host.simd;
+    auto m_iter = std::max(1, s.unroll[LoopM] / elementsPerGRF<uint32_t>(hw));
     if (problem.A.layout == MatrixLayout::Pc) {
         s.A.accessType = AccessType::Block;
         s.A_copies = 2;

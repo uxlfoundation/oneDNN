@@ -157,7 +157,7 @@ void find_sparse_batch(off_t *batch, int2 *src_range,
 
     // Find the tile containing the current batch, use shuffle_up to
     // query the next src_offset.
-    int carry_b = sg_carry;
+    off_t carry_b = sg_carry;
 #pragma unroll
     for (int b = 0, idx = sg_batch0 + get_sub_group_local_id();
             b < offsets_tile_nbr; b++, idx += SUBGROUP_SIZE) {
@@ -202,6 +202,17 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
 #define WEI_ZP_ARGS OPTIONAL(WITH_WEI_ZP, wei_attr_zp)
 #define WEI_LD_ARGS OPTIONAL(OR(WITH_WEI_ZP, WEI_SCALES_GROUPED), ldweiq)
 #define K_PARALLEL_LOCAL_ARGS OPTIONAL(K_PARALLEL_LOCAL, sg_k)
+
+// u3 packs 8 elements into 3 bytes, so a plain elements-per-byte division
+// (as used for the other, integral-elements-per-byte zero-point types)
+// would truncate to zero. Convert element counts to byte offsets with the
+// same ceil(count * 3 / 8) formula used on the host side (see
+// types::elements_to_bytes()).
+#if WEI_ZP_DT_U3
+#define WEI_ZP_ELEM_OFFSET(count) ((3 * (count) + 7) / 8)
+#else
+#define WEI_ZP_ELEM_OFFSET(count) ((count) / WEI_ZP_ELEMS_PER_BYTE)
+#endif
 
 void store_results(c_tile_type_float *tile, global DST_DATA_T *ptr, int n,
         int m, int lddst, int sg_i0, int sg_j0) {
@@ -357,7 +368,7 @@ grouped_micro_gemm_m_axis(const global SRC_DATA_T *src, long ldsrc,
     off_t sg_j0 = wg_j0 + sg_j * ugemm_grouped_sg_tile_n;
 
     src += src_offset * ldsrc / SRC_ELEMS_PER_BYTE;
-    wei += batch * wei_strides[0] / WEI_ELEMS_PER_BYTE;
+    wei += batch * WEI_STRIDE0;
     dst += src_offset * lddst;
 
     off_t ldwei = wei_strides[2] == 1 ? wei_strides[1] : wei_strides[2];
@@ -372,8 +383,8 @@ grouped_micro_gemm_m_axis(const global SRC_DATA_T *src, long ldsrc,
     wei_attr_scales += batch * (n / WEI_N_GROUP_SIZE) * (k / WEI_K_GROUP_SIZE);
 #endif
 #if WITH_WEI_ZP
-    wei_attr_zp += batch * (n / WEI_N_GROUP_SIZE) * (k / WEI_K_GROUP_SIZE)
-            / WEI_ZP_ELEMS_PER_BYTE;
+    wei_attr_zp += WEI_ZP_ELEM_OFFSET(
+            batch * (n / WEI_N_GROUP_SIZE) * (k / WEI_K_GROUP_SIZE));
 #endif
 
     ugemm_grouped_c_type c_tile_result = ugemm_grouped(wei, ldwei, src, ldsrc,

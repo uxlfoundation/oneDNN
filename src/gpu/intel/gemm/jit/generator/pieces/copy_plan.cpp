@@ -283,6 +283,7 @@ void CopyPlan::transform()
     optimizeWriteCombine();
     optimizeWriteSpread();
 
+
     legalizeImmediateTypes();
 
     sort(SortType::PhaseOnly);
@@ -756,6 +757,12 @@ void CopyPlan::split2DRegions()
         if (is2D(i.src0)) {
             if (i.dst.stride > 4)
                 continue;
+            // u3 sources are handled entirely by planInt3Upconvert(), which
+            // expects the group-addressed (non-2D) region produced by
+            // RegisterBlock::find()/blockRegion(); skip 2D-region splitting
+            // for them.
+            if (i.src0.type == Type::ngen_u3())
+                continue;
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.width, vs = i.src0.vs, hs = i.src0.stride;
             bool splitH = (w * w >= i.simd || (hw == ngen::HW::Xe3p && i.dst.stride * w >= 8));
@@ -822,7 +829,14 @@ void CopyPlan::planTypeConversions()
             if (planShflUpconvertXe3p(i))
                 continue;
 
-        if (is4(st) && one_of(dt, {ngen_b16_h4x(), ngen_b16_l4x()}))
+        // u3 -> {u8, integer, hf/bf} upconversion, used for Block2DTranspose
+        // accesses. Handled before any other (width-based) generic logic
+        // below, since Type::ngen_u3() is a pseudo type with no consistent
+        // bit-width encoding (there is no native hardware register type for
+        // 3-bit elements).
+        if (st == Type::ngen_u3()) {
+            planInt3Upconvert(i);
+        } else if (is4(st) && one_of(dt, {ngen_b16_h4x(), ngen_b16_l4x()}))
             plan4BitShifts(i);
         else if (isInt4(st) && isInt4(dt) && st != dt) {
             copyThrough(i, DataType::w);
@@ -1426,6 +1440,475 @@ void CopyPlan::planEarlyInt4Upconversions()
     }
 
     mergeChanges();
+}
+
+// Rewrite u3 -> {u8, integer, hf/bf} upconversion.
+//
+// u3 register operands (as produced by RegisterBlock::find()/blockRegion()
+// for Block2DTranspose accesses -- this is the only access type
+// combination currently supported for u3) address the whole GEMM-tile
+// "row-spread" packing used by the 2D block message: a group of 8 elements
+// is packed into 3 bytes, one byte per row, at the same column offset,
+// i.e. columns are stride-4 (crosspack-4) and rows are 1 byte apart. The
+// per-group bit layout is: element e occupies bits [3e, 3e+2] of the
+// 24-bit (byte0, byte1, byte2) group:
+//   e0: byte0[2:0]   e1: byte0[5:3]   e2: byte0[7:6]|byte1[0:0]
+//   e3: byte1[3:1]   e4: byte1[6:4]   e5: byte1[7:7]|byte2[1:0]
+//   e6: byte2[4:2]   e7: byte2[7:5]
+//
+// Elements 2 and 5 straddle a byte boundary; all others are fully
+// contained within one byte. Since rows are stride-1 (contiguous columns
+// within a row), an entire row's worth of columns can be unpacked with a
+// single vectorized (SIMD width = i.simd) shift/mask sequence per lane (8
+// lanes total): lanes 0/1 (row 0, byte 0) and 6/7 (row 2, byte 2) share a
+// source row and are merged into one SIMD-2n shr sequence each using a
+// packed alternating shift immediate; lanes 3/4 (row 1) and the two
+// straddling lanes 2/5 are computed individually. Every element of the
+// n*8-element destination block is written by exactly one lane, so the
+// 0x7 mask is applied once, in bulk, over the whole block afterwards
+// rather than per-lane.
+//
+// If the ultimate destination type is not an integer type (e.g. hf/bf),
+// the unpacked values are written to finalDst reinterpreted as raw uw,
+// followed by a single bulk mov to the real destination type after
+// masking.
+void CopyPlan::planInt3Upconvert(CopyInstruction &i)
+{
+    if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
+
+    struct U3Lane {
+        uint8_t byte, shift;        // low (or only) source row and shift amount
+        uint8_t hiByte, hiShift;    // high source row and shift amount, if straddling
+        bool straddle;
+    };
+    static const U3Lane lanes[8] = {
+        {0, 0, 0, 0, false},
+        {0, 3, 0, 0, false},
+        {0, 6, 1, 2, true},
+        {1, 1, 0, 0, false},
+        {1, 4, 0, 0, false},
+        {1, 7, 2, 1, true},
+        {2, 2, 0, 0, false},
+        {2, 5, 0, 0, false},
+    };
+
+    int n = i.simd;
+    if (n <= 0) stub("u3 upconversion requires a positive SIMD width.");
+    int grfBytes = GRF::bytes(hw);
+
+    // If the ultimate destination is an integer type, the unpacked value
+    // (0-7) is numerically correct in any integer width/signedness, so
+    // each lane's result can be written straight into finalDst; only
+    // genuinely non-integer destinations (e.g. hf/bf) require going
+    // through a raw-uw reinterpretation of finalDst followed by a
+    // converting mov.
+    bool directWrite = isInt(i.dst.type);
+    // Preserve the caller-requested dst stride (e.g. stride 2 to indicate a
+    // crosspack-2 destination) instead of forcing a packed (stride-1)
+    // layout; the unpacked values are then spread out accordingly.
+    CopyOperand finalDst = i.dst;
+
+    CopyOperand srcBase = i.src0;
+    srcBase.type = DataType::ub;
+
+    // Two distinct u3 source-region shapes reach this point (see
+    // blockRegion()):
+    //  - row-spread (RegisterBlock::colMajor == true): a <ld;0,cp> region
+    //    -- srcBase.vs holds the row pitch (nonzero) and srcBase.stride
+    //    (hs == cp, the RegisterBlock's crosspack) holds the packed
+    //    group's column pitch, in bytes, and is always > 1. All n groups
+    //    are read/vectorized together via this single region.
+    //  - flat (colMajor == false): a plain scalar region, <0;0,1> --
+    //    RegisterBlock::find() forces crosspack == 1 for this layout, so
+    //    srcBase.stride (hs) == 1. Groups are packed back-to-back (byteOff
+    //    = (elIndex>>3)*3 -- see RegisterBlock::find()), i.e. each group
+    //    spans exactly 3 bytes; but that 3-byte inter-group pitch can't be
+    //    expressed as a (power-of-2) hardware region stride/vstride, so a
+    //    single region can only ever address one group. Here, n counts
+    //    total elements (a multiple of 8, one 8-element group per 8), and
+    //    the code below loops over each of the n/8 groups individually,
+    //    manually rebasing srcBase/finalDst by 3/8 bytes-or-elements per
+    //    group instead of relying on region vectorization.
+    bool flatU3 = (srcBase.vs == 0) && (srcBase.stride == 1);
+    // A separate "glued" flat layout used by the u3 pseudo-block (D8xV1
+    // byte-scatter) access path (see RegisterBlock's Block/PseudoBlock
+    // is3 branch): the hardware pads each individually-scattered byte to
+    // its own 4-byte (DWORD) register slot instead of packing bytes back-
+    // to-back, so a group's 3 bytes live 4 bytes apart (at +0, +4, +8)
+    // rather than +0, +1, +2. blockRegion() signals this with a plain
+    // (non-colMajor, i.e. vs == 0) stride-4 region -- distinct from both
+    // the tightly-packed flatU3 stride-1 region and the row-spread
+    // colMajor region (which always has vs == block.ld != 0).
+    bool flatGlueU3 = (srcBase.vs == 0) && (srcBase.stride == 4);
+    bool flatFamily = flatU3 || flatGlueU3;
+    if (flatFamily && (n % 8) != 0)
+        stub("u3 flat (non-transposed) block layout requires a SIMD width that's a multiple of 8.");
+
+    int groups = flatFamily ? (n / 8) : 1;
+    int nLocal = flatFamily ? 1 : n;
+
+    // Column pitch, in bytes: the width of the packed column quad within a
+    // row (see blockRegion(): u3 sources use a <ld;0,colPitchBytes> region,
+    // so srcBase.stride already holds this column pitch). For the plain
+    // flat layout, this is simply the 3-byte group size (the group's own 3
+    // bytes are the only "column" positions ever added below); for the
+    // glued flat layout, it's the full 12-byte span of one 4-byte-padded
+    // group (3 bytes x 4-byte stride) -- deliberately larger than any
+    // single byteStep added below, so the (row-spread-only) wraparound
+    // branch of addByteOffset is never taken here.
+    int colPitchBytes = flatGlueU3 ? 12 : (flatU3 ? 3 : srcBase.stride);
+
+    // Raw byte spacing between consecutive bytes of the same group: 1 for
+    // the plain flat layout, 4 for the glued flat layout (see flatGlueU3
+    // above).
+    int byteStep = flatGlueU3 ? 4 : 1;
+
+    // Row stride, in bytes: the distance from a column's byte0 to the next
+    // row's byte0 for the same column (srcBase.vs holds this row pitch).
+    // Always 0 for the flat layouts (no rows to wrap into).
+    int rowStrideBytes = flatFamily ? 0 : srcBase.vs * colPitchBytes;
+
+    // Add a literal (compile-time-known) raw byte offset to a scalar ub
+    // operand, handling overflow of the column quad (carried into the next
+    // row, rowStrideBytes away) as well as overflow into subsequent GRF
+    // registers.
+    auto addByteOffset = [&](CopyOperand op, int bytes) {
+        if (flatFamily)
+            op.offset += bytes;
+        else if ((op.offset % colPitchBytes + bytes) >= colPitchBytes)
+            op.offset = op.offset - (op.offset % colPitchBytes)
+                    + (op.offset % colPitchBytes + bytes) % colPitchBytes
+                    + rowStrideBytes;
+        else
+            op.offset += bytes;
+
+        int grfOffset = op.offset / grfBytes;
+        op.grf += grfOffset;
+        op.offset -= grfOffset * grfBytes;
+        return op;
+    };
+
+    // Lane pairs (0,1) and (6,7) are non-straddling lanes that read the
+    // *same* row (byte 0/2 respectively) and differ only in their shift
+    // amount; each such pair can be handled as a single merged SIMD-2n shr
+    // sequence (1 op) instead of two separate SIMD-n sequences -- but only
+    // when dstStride == 2: mergeRowPair's merged destination region uses a
+    // single hstride between the pair's two lanes, which cannot represent
+    // the two independent within-pair gaps that a crosspack-4 (dstStride
+    // == 4) interleaving requires, so merging is skipped there and lanes
+    // 0, 1, 6, 7 are processed individually instead (see canMergePairs
+    // below). The middle pair (3, 4 / row 1) is always left unmerged, and
+    // lanes 2 and 5 always straddle two rows and are always processed
+    // individually (1 op for non-straddling, 3 ops for straddling: shr,
+    // shl, or_). Total, worst case (no merging): 6 non-straddling lanes
+    // (0,1,3,4,6,7) x 1 op + 2 straddling lanes (2,5) x 3 ops = 12 ops per
+    // group. When merging is used, 2 fewer lanes go through the solo path
+    // and the corresponding trailing slots are invalidated.
+    constexpr int laneOps = 12;
+    // The final and_ 0x7 mask and (when !directWrite) the converting mov
+    // are allocated as 2 extra split slots on every group's seed
+    // instruction -- so splitMultiple's phase/spread bookkeeping stays
+    // consistent -- but they're only actually filled in, covering the
+    // combined span of every group at once, on the LAST group's
+    // iteration; earlier groups' extra slots are invalidated.
+    constexpr int extraOps = 2;
+    constexpr int totalOps = laneOps + extraOps;
+
+    // Reserve capacity up front for every group's worth of instructions
+    // (including its 2 extra, mostly-invalidated and_/mov slots):
+    // split()/splitMultiple() push into the shared `newInsns` vector, and a
+    // reallocation triggered by a later call would invalidate
+    // CopyInstruction* pointers obtained from earlier calls (including the
+    // per-group "seed" instructions cloned below, for groups > 1).
+    int nOpsNeeded = totalOps * groups;
+    newInsns.reserve(newInsns.size() + nOpsNeeded - 1);
+
+    auto setOp = [&](CopyInstruction *ci, Opcode op, int simd, const CopyOperand &d, const CopyOperand &s0, const CopyOperand &s1) {
+        ci->op = op;
+        ci->simd = simd;
+        ci->dst = d;
+        ci->src0 = s0;
+        ci->src1 = s1;
+        ci->src2 = CopyOperand();
+        ci->sat = false;
+        ci->cmod = ConditionModifier::none;
+    };
+
+    int type_size = getBytes(finalDst.type);
+    int dstStride = finalDst.stride;
+    switch (type_size) {
+        case 1:
+        case 2:
+        case 4: break;
+        default: stub("Unsupported dst type size for u3 upconversion.");
+    }
+
+    // For the flat layout (groups > 1 possible), each group is unpacked by
+    // its own independent set of instructions cloned from this original
+    // seed instruction (captured here, before any mutation); the first
+    // group reuses `i` itself (as splitMultiple() does normally), and
+    // subsequent groups get a fresh clone pushed onto newInsns.
+    CopyInstruction seedTemplate = i;
+
+    for (int g = 0; g < groups; g++) {
+        // Rebase this group's source (by one full group's byte span --
+        // colPitchBytes, i.e. 3 bytes for the plain flat layout or 12
+        // bytes for the glued flat layout) and destination (by 8 columns)
+        // from the base (g == 0) operands. This is a plain linear advance
+        // (no row-wrap): each group is entirely independent of the others,
+        // unlike the intra-group byteStep offsets (handled by
+        // addByteOffset above). On the destination side, each source
+        // column advances the physical offset by dstStride (crosspack)
+        // raw elements, not 1 -- computeFinalDstLane's pairIdx/parity
+        // addressing already spaces successive columns of the SAME row by
+        // dstStride (to interleave with a sibling row's columns in
+        // between), so the group-to-group step must use the same pitch
+        // for consistency, i.e. 8*dstStride rather than a bare 8.
+        CopyOperand srcBaseG = srcBase;
+        CopyOperand finalDstG = finalDst;
+        if (g > 0) {
+            int off = srcBaseG.offset + colPitchBytes * g;
+            int grfOff = off / grfBytes;
+            srcBaseG.grf += grfOff;
+            srcBaseG.offset = off - grfOff * grfBytes;
+
+            int eoff = finalDstG.offset + 8 * g * dstStride;
+            int egrfOff = (eoff * type_size) / grfBytes;
+            finalDstG.grf += egrfOff;
+            finalDstG.offset = eoff - (egrfOff * grfBytes) / type_size;
+        }
+
+        CopyOperand rows[3];
+        rows[0] = srcBaseG;
+        rows[1] = addByteOffset(srcBaseG, byteStep);
+        rows[2] = addByteOffset(srcBaseG, 2 * byteStep);
+        // colPitchBytes (3 or 12, for the flat layouts) isn't a valid
+        // hardware region stride (non-power-of-2 or larger than needed),
+        // but since nLocal == 1 in that case, rows[].stride is never
+        // actually used to vectorize across lanes -- leave it at its
+        // inherited (valid, power-of-2) value from srcBaseG instead of
+        // overwriting it.
+        if (!flatFamily)
+            for (auto &r : rows) r.stride = colPitchBytes;
+
+        // Scratch rows for the shift/or sequence of straddling lanes are
+        // strictly write-then-read within a single lane, so a pair of
+        // full-width temporaries (holding lo/hi scratch) suffices for both
+        // straddling lanes instead of allocating a fresh temporary each
+        // time. Fixed as raw uw (stride 2): only straddling lanes route
+        // through these, so they never need to match finalDst's own
+        // element size. A fresh pair is allocated per group so different
+        // groups' instructions (which may be independently reordered/
+        // scheduled) never share a temporary.
+        auto tmp = newTemp(DataType::uw, nLocal, 2);
+        auto tmpHi = newTemp(DataType::uw, nLocal, 2);
+
+        // All ops needed across the 8 lanes come from a single
+        // splitMultiple call on this group's seed instruction, rather than
+        // splitting lane-by-lane.
+        CopyInstruction *seedPtr;
+        if (g == 0)
+            seedPtr = &i;
+        else {
+            newInsns.emplace_back(seedTemplate);
+            seedPtr = &newInsns.back();
+        }
+
+        std::vector<CopyInstruction*> allOps;
+        {
+            auto ops = splitMultiple<totalOps>(*seedPtr);
+            allOps.assign(ops.begin(), ops.end());
+        }
+
+        int next = 0;
+
+        // Explicit crosspack interleaving (crosspack * type_size == 4
+        // bytes, i.e. crosspack-4 for a byte-sized (ub/b) destination,
+        // crosspack-2 for a word-sized (uw and other 2-byte) destination
+        // -- see finalDstG.stride above): each lane's row (all nLocal
+        // columns) is unpacked in one shot, but its columns are not
+        // written densely on their own -- they are interleaved, column by
+        // column, with the row belonging to its pair partner (lanes 0&1,
+        // 2&3, 4&5, 6&7 -- the second element of each pair in the 8-lane
+        // group). The addressing stride used to place a lane's columns is
+        // always dstStride (the pair pitch).
+
+        // Compute the final (GRF-normalized) destination region for a
+        // single lane's nLocal columns, given its position (pairIdx/
+        // parity) in the crosspack-2 interleaving scheme described above.
+        // When !directWrite, the type is overridden to raw uw, since
+        // that's what the (deferred masking, deferred converting)
+        // shr/shl/or_ instructions actually write -- the real dst type's
+        // bits are only materialized by the final converting mov, once,
+        // after the whole-block and_ mask.
+        auto computeFinalDstLane = [&](int lane) {
+            int pairIdx = lane / dstStride;
+            int parity  = lane % dstStride;
+            auto fd = finalDstG;
+            fd.stride = dstStride;
+            // In the flat layout (nLocal == 1, one column per group), the
+            // pairIdx/parity split doesn't apply -- each lane addresses
+            // its own single raw element directly.
+            if (flatFamily)
+                fd.offset += lane * fd.stride;
+            else
+                fd.offset += pairIdx * nLocal * fd.stride + parity;
+            int grfOffset = (fd.offset * type_size) / grfBytes;
+            fd.grf += grfOffset;
+            fd.offset -= ((grfOffset * grfBytes) / type_size);
+            if (!directWrite) fd.type = DataType::uw;
+            return fd;
+        };
+
+        // Absolute element index (in type_size units) of a GRF-normalized
+        // operand, used to find the raw element gap between two lanes'
+        // final destinations (which need not be adjacent, e.g. lanes 3 &
+        // 4).
+        auto elemIndex = [&](const CopyOperand &op) {
+            return (int64_t) op.grf * (grfBytes / type_size) + op.offset;
+        };
+
+        // Merge two non-straddling lanes that read the same source row
+        // into a single SIMD-2*nLocal shr instruction. The source is read
+        // twice per column (via a <rowStride;2,0> region) so each output
+        // pair sees the same row byte; the two shift amounts are packed
+        // into a single alternating (loShift, hiShift, loShift, hiShift,
+        // ...) immediate via zipImmediates() -- the same mechanism the
+        // generic zip pass uses for e.g. int4 unpacking -- and the
+        // destination uses an explicit <dstStride;2,hstride> region so
+        // each lane's nLocal columns land at their true (possibly
+        // non-adjacent) final location. The 0x7 mask is applied later,
+        // once, over the whole destination block.
+        auto mergeRowPair = [&](int laneA, int laneB, CopyInstruction *shrOp) {
+            const auto &LA = lanes[laneA];
+            const auto &LB = lanes[laneB];
+            const auto &rowLo = rows[LA.byte];
+
+            auto dstA = computeFinalDstLane(laneA);
+            auto dstB = computeFinalDstLane(laneB);
+            int hstride = int(elemIndex(dstB) - elemIndex(dstA));
+
+            auto dstMerged = dstA;
+            dstMerged.width = 2;
+            dstMerged.stride = hstride;
+            dstMerged.vs = dstStride;
+
+            auto rowDup = rowLo;
+            rowDup.width = 2;
+            rowDup.vs = rowLo.stride;
+            rowDup.stride = 0;
+
+            CopyOperand shiftLo(int(LA.shift)), shiftHi(int(LB.shift));
+            shiftLo.type = shiftHi.type = DataType::uw;
+            CopyOperand packedShift;
+            if (flatFamily) {
+                // Flat destinations can be unaligned for vector immediates.
+                // Materialize the shifts as two real uw values instead of
+                // exposing the packed 4-bit vector-immediate encoding to
+                // legalizeImmediateTypes().
+                auto kind = CopyResource::makeConstant32(
+                        (uint32_t(LB.shift) << 16) | uint32_t(LA.shift));
+                packedShift = getResource(kind);
+                packedShift.type = DataType::uw;
+                packedShift.vs = 0;
+                packedShift.width = 2;
+                packedShift.stride = 1;
+            } else {
+                packedShift = zipImmediates(shiftLo, shiftHi, 1);
+            }
+            if (!packedShift) stub("Failed to pack u3 shift immediates.");
+
+            setOp(shrOp, Opcode::shr, 2 * nLocal, dstMerged, rowDup, packedShift);
+        };
+
+        // Lanes 0&1 (row 0) and 6&7 (row 2) each merge into one SIMD-2*
+        // nLocal shr, when merging is applicable (dstStride == 2). The
+        // middle pair (3, 4 / row 1) is always left unmerged and processed
+        // individually below, alongside the straddling lanes.
+        //
+        // The merge is valid for both row-spread and flat layouts. In the
+        // flat case nLocal == 1, so it combines each pair's two scalar
+        // shifts into one SIMD-2 instruction.
+        bool canMergePairs = (dstStride == 2);
+        if (canMergePairs) {
+            static const int mergePairs[2][2] = {{0, 1}, {6, 7}};
+            for (auto &pr : mergePairs)
+                mergeRowPair(pr[0], pr[1], allOps[next++]);
+        }
+
+        // Lanes 2, 3, 4, and 5 are always processed individually: 2 and 5
+        // straddle two rows (shr/shl/or_, 3 ops each), while 3 and 4 (the
+        // middle row-1 pair) are left unmerged (a single shr, like any
+        // other non-straddling lane). When pair merging isn't applicable
+        // (dstStride != 2), lanes 0, 1, 6, 7 are processed the same way,
+        // individually, instead of being handled by mergeRowPair above.
+        std::vector<int> soloLanes = {2, 3, 4, 5};
+        if (!canMergePairs)
+            soloLanes = {0, 1, 2, 3, 4, 5, 6, 7};
+        for (int lane : soloLanes) {
+            const auto &L = lanes[lane];
+            auto finalDstLane = computeFinalDstLane(lane);
+            const auto &rowLo = rows[L.byte];
+
+            if (!L.straddle) {
+                setOp(allOps[next++], Opcode::shr, nLocal, finalDstLane, rowLo, CopyOperand(int(L.shift)));
+            } else {
+                const auto &rowHi = rows[L.hiByte];
+                setOp(allOps[next++], Opcode::shr, nLocal, tmp, rowLo, CopyOperand(int(L.shift)));
+                setOp(allOps[next++], Opcode::shl, nLocal, tmpHi, rowHi, CopyOperand(int(L.hiShift)));
+                setOp(allOps[next++], Opcode::or_, nLocal, finalDstLane, tmp, tmpHi);
+            }
+        }
+
+        // When pair merging was used (canMergePairs), fewer ops were
+        // needed than the worst-case laneOps above; invalidate the unused
+        // trailing lane slots so they don't emit as stray instructions.
+        while (next < laneOps)
+            allOps[next++]->invalidate();
+
+        // Every lane above lands its unmasked result directly in
+        // finalDst (reinterpreted in place as raw uw when !directWrite),
+        // one group at a time. The group-to-group destination pitch
+        // (8*dstStride raw elements -- see the per-group rebasing above)
+        // is uniform and equal to each group's own internal per-lane
+        // pitch, so across every group the union of all written
+        // positions forms one single-stride run of `groups * nLocal * 8`
+        // elements starting at finalDst's original (unmodified) position
+        // -- the 0x7 mask (and optional converting mov) can therefore be
+        // applied once, covering every group at once, instead of once
+        // per group. That single mask/mov is emitted here using this
+        // group's 2 extra (otherwise-invalidated) split slots, but only
+        // on the LAST group's iteration -- earlier groups' extra slots
+        // are invalidated instead. legalizeSIMD() will later fracture the
+        // combined-width and_/mov into hardware-legal SIMD chunks (e.g.
+        // SIMD32) as needed, so there's no need to chunk it manually
+        // here.
+        if (g == groups - 1) {
+            int totalElemsAll = groups * nLocal * 8;
+            int finalStride = flatFamily ? dstStride : 1;
+
+            auto finalDstFlat = finalDst;
+            finalDstFlat.stride = finalStride;
+            if (!directWrite) finalDstFlat.type = DataType::uw;
+            setOp(allOps[next++], Opcode::and_, totalElemsAll, finalDstFlat, finalDstFlat, CopyOperand(int(7)));
+
+            // When the real destination type isn't itself an integer
+            // type (e.g. hf/bf), the masked uw values now sitting in
+            // finalDst's memory must be converted, in place, to the real
+            // destination type. This single bulk mov (uw -> i.dst.type)
+            // runs once, after the whole and_ above, instead of one mov
+            // per lane/pair/group.
+            if (!directWrite) {
+                auto realDstFlat = finalDst;
+                realDstFlat.stride = finalStride;
+                setOp(allOps[next++], Opcode::mov, totalElemsAll, realDstFlat, finalDstFlat, CopyOperand());
+            } else
+                allOps[next++]->invalidate();
+        } else {
+            allOps[next++]->invalidate();
+            allOps[next++]->invalidate();
+        }
+    } // end group loop
 }
 
 // Rewrite int4 -> int upconversion using byte operations.
@@ -2778,7 +3261,7 @@ void CopyPlan::legalizeRegions()
             bool strideOK = true, offsetOK = true;
 
             if (!isW(dt)  && !isB(dt))  stub();
-            if (!isW(s0t) && !isB(s0t)) stub();
+            if (!isW(s0t) && !isB(s0t)) stub(); // && !one_of(s0t, {DataType::v, DataType::uv}) ) stub();
 
             if (i.simd == 1) {}
             else if (isW(s0t)) {

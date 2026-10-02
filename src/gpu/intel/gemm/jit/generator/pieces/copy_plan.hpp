@@ -274,6 +274,7 @@ protected:
     void planInt4ToF16(CopyInstruction &i);
     void planUnpack4To16(CopyInstruction &i);
     void planUnpack8To16High(CopyInstruction &i);
+    void planInt3Upconvert(CopyInstruction &i);
     void planInt4Upconversion(CopyInstruction &i);
     void plan4BitShifts(CopyInstruction &i);
     void planInt4Downconversion(CopyInstruction &i);
@@ -317,6 +318,7 @@ protected:
 template <typename Generator>
 void CopyPlan::execute(Generator &g)
 {
+//    return;
     for (auto &r: resources) if (!r.preinitialized) r.initialize(g);
     for (auto &i: insns) i.execute(g);
 }

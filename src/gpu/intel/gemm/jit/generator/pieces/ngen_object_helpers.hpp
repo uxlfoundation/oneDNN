@@ -54,8 +54,21 @@ static inline ngen::DataType asSigned(ngen::DataType dt)
     }
 }
 
-static inline int elementsToBytes(int n, ngen::DataType dt) { return n * getBits(dt) >> 3; }
-static inline int bytesToElements(int b, ngen::DataType dt) { return (b * 8) >> getLog2Bits(dt); }
+// u3 (gemmstone::Type::ngen_u3(), 8 elements packed contiguously into 3 bytes)
+// has a 3-bit element width that is not a power of two, so it cannot be
+// represented by ngen::DataType's bits[5:7]=log2(width) encoding: getBits()/
+// getLog2Bits() do not have a well-defined answer for it. Byte/element
+// conversions for u3 are therefore computed directly here (mirroring
+// Type::operator*/operator/ for sub-byte types) instead of going through
+// getBits()/getLog2Bits().
+static inline int elementsToBytes(int n, ngen::DataType dt) {
+    if (dt == Type::ngen_u3()) return (n * 3 + 7) >> 3;
+    return n * getBits(dt) >> 3;
+}
+static inline int bytesToElements(int b, ngen::DataType dt) {
+    if (dt == Type::ngen_u3()) return (b * 8) / 3;
+    return (b * 8) >> getLog2Bits(dt);
+}
 
 // Move subregister to another pipe.
 void movePipes(ngen::Subregister &s, bool sizeCanChange = true);

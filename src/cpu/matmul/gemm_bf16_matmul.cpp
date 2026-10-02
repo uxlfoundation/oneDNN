@@ -277,9 +277,11 @@ status_t gemm_bf16_matmul_t<dst_type>::execute_ref(
     // (e.g. `acb` gives `ldc == 1`) can violate the `ldc >= N` requirement.
     // Clamp `ldc` to `N`. This is safe for `M == 1` and has no effect for `M > 1`.
     const dim_t acc_ldc = dst_is_acc ? nstl::max(ldc, N) : N;
-    const int scale_idx_mult
-            = this->pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS)
-            == (1 << (ndims - 1));
+    const bool wei_scale_per_n = wei_scale_mask == (1 << (ndims - 1));
+    const int scale_idx_mult = wei_scale_per_n;
+    // A nonzero, non-per-N mask only varies across batch dims here,
+    // so index by batch instead of output column.
+    const bool wei_scale_per_batch = wei_scale_mask != 0 && !wei_scale_per_n;
 
     std::atomic<status_t> st(status::success);
     if (!use_single_gemm_call) {
@@ -371,12 +373,15 @@ status_t gemm_bf16_matmul_t<dst_type>::execute_ref(
                                     + matrix_offset
                             : 0;
                     const ptrdiff_t oc_off = i_work % N;
+                    const dim_t scale_batch_off
+                            = wei_scale_per_batch ? cur_b : 0;
                     (*pp_kernel_)(curr_dst, curr_acc,
                             bias + oc_off * bia_dt_size,
-                            pp_scales + oc_off * scale_idx_mult, dst_scales[0],
-                            0, dst_logical_off, dim1_off, gemm_M * gemm_N,
-                            static_cast<size_t>(N), ldc, nullptr,
-                            post_ops_binary_rhs_arg_vec.data(), dst,
+                            pp_scales + oc_off * scale_idx_mult
+                                    + scale_batch_off,
+                            dst_scales[0], 0, dst_logical_off, dim1_off,
+                            gemm_M * gemm_N, static_cast<size_t>(N), ldc,
+                            nullptr, post_ops_binary_rhs_arg_vec.data(), dst,
                             matrix_per_first_batch_off, ctx, *pd()->dst_md());
                 }
                 i_work += gemm_M * gemm_N;

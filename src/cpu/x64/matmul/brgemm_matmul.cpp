@@ -448,7 +448,10 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         brg.skip_wei_scales = bgmmc_.apply_scales_in_buffer_b;
         // Fill up the scales info in case it's computing in brgemm
         if (!brg.skip_wei_scales && bgmmc_.with_wei_scales) {
-            brg.is_single_wei_scale = bgmmc_.is_wei_scale_common;
+            // A batch-only mask is still a single scalar per brgemm call
+            // (brgemm has no batch concept), not a per-N vector.
+            brg.is_single_wei_scale
+                    = !bgmmc_.is_wei_scale_per_n && !bgmmc_.is_wei_scale_per_k;
             brg.is_per_n_wei_scales = bgmmc_.is_wei_scale_per_n;
             // For grouped (per-K) wei scales: K_blk == group_size and
             // brgemm_batch_size == 1, so each brgemm call covers exactly one
@@ -2459,8 +2462,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     // on @p b_idx, @p k and @p n.
     const void *get_wei_scales_ptr(
             dim_t b_idx = 0, dim_t k = 0, dim_t n = 0) const {
-        if (bgmmc_.is_wei_scale_common) return wei_scales_;
-        auto offset = n;
+        dim_t offset = 0;
+        if (bgmmc_.is_wei_scale_per_n) offset += n;
         if (bgmmc_.is_wei_scale_per_k) {
             const auto &k_group_sz = bgmmc_.wei_scales_k_gsize;
             const auto k_idx = k / k_group_sz;
@@ -2539,12 +2542,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         if (bgmmc_.is_wei_zp_common)
             return wei_zp_ptr_; // single zero point value
         // Locate the group based on (b_idx, k, n)
-        auto offset = n;
+        dim_t offset = 0;
+        if (bgmmc_.is_wei_zp_per_n) offset += n;
 
         if (bgmmc_.is_wei_zp_per_k) {
             const auto &k_group_sz = bgmmc_.wei_zp_k_gsize;
             const auto k_idx = k / k_group_sz;
-            offset += k_idx * bgmmc_.N;
+            const dim_t n_factor = bgmmc_.is_wei_zp_per_n ? bgmmc_.N : 1;
+            offset += k_idx * n_factor;
         }
 
         if (bgmmc_.wei_zp_batch_stride > 0) {

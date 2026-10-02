@@ -432,12 +432,13 @@ time of release
 
 ## Support
 
-Submit questions, feature requests, and bug reports on the
-[GitHub issues] page.
+Ask questions and share your projects in [GitHub Discussions]. Submit
+feature requests and bug reports on the [GitHub issues] page.
 
 You can also contact oneDNN developers via [UXL Foundation Slack] using
 [#onednn] channel.
 
+[GitHub Discussions]: https://github.com/uxlfoundation/oneDNN/discussions
 [Github issues]: https://github.com/uxlfoundation/oneDNN/issues
 [UXL Foundation Slack]: https://slack-invite.uxlfoundation.org/
 [#onednn]: https://uxlfoundation.slack.com/channels/onednn

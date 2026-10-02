@@ -826,7 +826,7 @@ void __attribute__((overloadable)) set_double_half_byte(
     set_double_half_byte((__global uchar *)x, y, z);
 }
 
-// u3 is packed 8 values / 3 bytes; decode matches impl::uint3_unpack (int3.hpp).
+// u3 is packed 8 values / 3 bytes; decode matches impl::nibble8_t (nibble.hpp).
 #define GET_U3(x, y) get_u3(x, y)
 
 uchar __attribute__((overloadable)) get_u3(const __global uchar *x, off_t y) {

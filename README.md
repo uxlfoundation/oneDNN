@@ -9,21 +9,60 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/8762/badge)](https://www.bestpractices.dev/projects/8762)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/uxlfoundation/oneDNN/badge)](https://securityscorecards.dev/viewer/?uri=github.com/uxlfoundation/oneDNN)
 
-oneAPI Deep Neural Network Library (oneDNN) is an open-source cross-platform
-performance library of basic building blocks for deep learning applications.
-oneDNN project is part of the [UXL Foundation] and is an implementation
-of the [oneAPI specification] for oneDNN component.
+**oneDNN is an open-source, cross-platform library of optimized deep learning
+operations for CPUs and GPUs.** It provides highly optimized
+implementations of matrix multiplication, convolution, attention,
+normalization, and other operations, and is the acceleration layer behind
+PyTorch, TensorFlow, OpenVINO, and many other AI frameworks.
 
 The library is optimized for Intel 64/AMD64 architecture based processors,
 Arm(R) 64-bit Architecture (AArch64)-based processors, and Intel Graphics.
 oneDNN has experimental support for the following architectures: NVIDIA\* GPU,
 AMD\* GPU, OpenPOWER\* Power ISA (PPC64), IBMz\* (s390x), and RISC-V.
 
-oneDNN is intended for deep learning applications and framework
-developers interested in improving application performance on CPUs and GPUs.
+oneDNN project is part of the [UXL Foundation].
 
-Deep learning practitioners should use one of the applications enabled with oneDNN:
+[UXL Foundation]: http://www.uxlfoundation.org
 
+
+## Table of Contents
+
+- [Highlights](#highlights)
+- [Used By](#used-by)
+- [Documentation](#documentation)
+- [System Requirements](#system-requirements)
+- [Installation](#installation)
+- [Validated Configurations](#validated-configurations)
+- [Governance](#governance)
+- [Support](#support)
+- [Contributing](#contributing)
+- [License](#license)
+- [Security](#security)
+
+## Highlights
+
+* **Single API, many devices:** The same code targets Intel64/AMD64, and AArch64,
+ RISC-V CPUs, and Intel GPUs.
+* **Hardware specialization:** oneDNN detects the hardware features at runtime
+ and JIT-generates kernels specialized for instruction set, number of cores,
+ and cache sizes.
+* **Low-precision inference:** Supports `f32`, `bf16`, `f16`, `fp8`, `fp4`, `u8`/`s8`, and
+  `u4`/`s4` data types with various quantization schemes including [OCP microscaling formats].
+* **Operation fusion:** Post-ops fuse activations, residual connections, and
+  quantization into matmul and convolution. The [Graph API] fuses larger
+  patterns such as scaled dot-product attention (SDPA) and grouped-query
+  attention (GQA).
+* **Interoperability:** Supports OpenMP, TBB, and custom threadpools on CPUs. SYCL, and OpenCL
+  on GPUs.
+
+[OCP microscaling formats]: https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
+[Graph API]: https://uxlfoundation.github.io/oneDNN/dev_guide_graph_basic_concepts.html
+
+## Used By
+
+oneDNN is intended for deep learning applications and framework developers
+interested in improving application performance on CPUs and GPUs. Deep
+learning practitioners should use one of the applications enabled with oneDNN:
 * [Apache SINGA](https://singa.apache.org)
 * [DeepLearning4J\*](https://deeplearning4j.konduit.ai)
 * [Flashlight\*](https://github.com/flashlight/flashlight)
@@ -34,22 +73,6 @@ Deep learning practitioners should use one of the applications enabled with oneD
 * [PaddlePaddle\*](http://www.paddlepaddle.org)
 * [PyTorch\*](https://pytorch.org)
 * [Tensorflow\*](https://www.tensorflow.org)
-
-[UXL Foundation]: http://www.uxlfoundation.org
-[oneAPI specification]: https://oneapi-spec.uxlfoundation.org/specifications/oneapi/latest/elements/onednn/source/
-
-## Table of Contents
-
-- [Documentation](#documentation)
-- [System Requirements](#system-requirements)
-- [Installation](#installation)
-- [Validated Configurations](#validated-configurations)
-- [Governance](#governance)
-- [Support](#support)
-- [Contributing](#contributing)
-- [License](#license)
-- [Security](#security)
-- [Trademark Information](#trademark-information)
 
 ## Documentation
 

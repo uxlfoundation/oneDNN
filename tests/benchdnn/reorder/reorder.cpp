@@ -643,7 +643,6 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         // Validate main reorder part.
         check_correctness(prb, {DST}, args, ref_args, compute_ref, setup_cmp,
                 res, prb->dir);
-
         // Restore extra for compensation comparison and performance mode.
         dst_dt.md_->extra = orig_dst_extra;
 

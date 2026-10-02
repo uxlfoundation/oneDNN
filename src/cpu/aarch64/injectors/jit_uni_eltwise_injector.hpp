@@ -356,8 +356,10 @@ private:
         // assumption: all table entries sharing the same key also
         // share their broadcast property
         // TODO: enforce through data structure
-        const auto it = entry_map_.find(key); // search an entry for a key
-        assert(it != entry_map_.end());
+        // A key can have several entries. std::multimap::find() may return
+        // any of them, so use lower_bound() to get the first one.
+        const auto it = entry_map_.lower_bound(key);
+        assert(it != entry_map_.end() && it->first == key);
         const auto &te = (*it).second;
         const auto scale = te.bcast ? vlen : sizeof(table_entry_val_t);
         return te.off + key_off_val_shift * scale;
@@ -366,8 +368,10 @@ private:
     TRegS table_val(key_t key, TRegS zreg, size_t key_off_val_shift = 0) {
         // assumption: all table entries sharing the same key also
         // share their broadcast property
-        const auto it = entry_map_.find(key);
-        assert(it != entry_map_.end());
+        // A key can have several entries. std::multimap::find() may return
+        // any of them, so use lower_bound() to get the first one.
+        const auto it = entry_map_.lower_bound(key);
+        assert(it != entry_map_.end() && it->first == key);
         const auto &te = (*it).second;
         const auto scale = te.bcast ? vlen : sizeof(table_entry_val_t);
         const auto off = te.off + key_off_val_shift * scale;

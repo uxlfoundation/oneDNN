@@ -883,9 +883,10 @@ void jit_uni_eltwise_injector_t<Wmm>::log_compute_vector_fwd(
             vlen_ / sizeof(float)); // equal to 2/3/4 for xmm/ymm/zmm
     vec_shift(vmm_aux(1), vmm_aux(1), true, simd_w);
 
-    const auto it = entry_map_.find(log_predefined_vals);
-    if (it == entry_map_.end()) {
-        assert(it != entry_map_.end());
+    // The key has several entries. Use lower_bound() to get the first one.
+    const auto it = entry_map_.lower_bound(log_predefined_vals);
+    if (it == entry_map_.end() || it->first != log_predefined_vals) {
+        assert(!"Non-existent key");
         return;
     }
     const auto table_start_idx = (*it).second.off;

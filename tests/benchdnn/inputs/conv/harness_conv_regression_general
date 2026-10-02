@@ -461,3 +461,8 @@ g960mb32ic960ih7oc960oh7kh5ph2
 --reset
 --dt=bf16:bf16:bf16 --dir=FWD_I
 g1mb1ic48ih10iw1oc48kh128kw1ph64pw0
+
+# BRGEMM-based case with ld tail
+--reset
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+mb1ic60ih30oc120oh15kh3sh2ph1

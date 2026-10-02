@@ -343,8 +343,10 @@ private:
         // assumption: all table entries sharing the same key also
         // share their broadcast property
         // TODO: enforce through data structure
-        const auto it = entry_map_.find(key); // search an entry for a key
-        if (it == entry_map_.end()) {
+        // A key can have several entries. std::multimap::find() may return
+        // any of them, so use lower_bound() to get the first one.
+        const auto it = entry_map_.lower_bound(key);
+        if (it == entry_map_.end() || it->first != key) {
             assert(!"Non-existent key");
             return 0;
         }

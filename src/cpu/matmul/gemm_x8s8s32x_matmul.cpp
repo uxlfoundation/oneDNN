@@ -118,8 +118,13 @@ status_t gemm_x8s8s32x_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
-    const bool problem_dt_correct = one_of(src_md()->data_type, s8, u8)
-            && weights_md()->data_type == s8 && desc()->accum_data_type == s32
+    // Don't report verbose for this line as gemm-based implementations are
+    // differentiating over src data type - they are mutually excluded.
+    if (!utils::one_of(src_md()->data_type, s8, u8))
+        return status::unimplemented;
+
+    const bool problem_dt_correct = weights_md()->data_type == s8
+            && desc()->accum_data_type == s32
             && one_of(dst_md()->data_type, f32, s32, s8, u8)
             && IMPLICATION(with_bias(),
                     one_of(weights_md(1)->data_type, f32, s32, s8, u8)

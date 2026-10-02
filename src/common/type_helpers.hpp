@@ -35,6 +35,8 @@
 #include "utils.hpp"
 #include "verbose.hpp"
 
+#include "oneapi/dnnl/dnnl_config.h"
+
 namespace dnnl {
 namespace impl {
 
@@ -111,6 +113,7 @@ inline size_t data_type_size(data_type_t data_type) {
         case s4: return sizeof(prec_traits_t<s4>::type);
         case u4: return sizeof(prec_traits_t<u4>::type);
         case u2: return sizeof(prec_traits_t<u2>::type);
+        case u3: return sizeof(prec_traits_t<u3>::type);
         case boolean: return sizeof(prec_traits_t<boolean>::type);
         case data_type::undef:
         default: assert(!"unknown data_type");
@@ -125,6 +128,7 @@ inline size_t elements_to_bytes(data_type_t data_type, size_t count) {
         case s4:
         case u4: return (count + 1) >> 1;
         case u2: return (count + 3) >> 2;
+        case u3: return utils::div_up(count * 3, (size_t)8);
         default: return data_type_size(data_type) * count;
     }
 }
@@ -136,6 +140,7 @@ inline size_t bytes_to_elements(data_type_t data_type, size_t bytes) {
         case s4:
         case u4: return bytes * 2;
         case u2: return bytes * 4;
+        case u3: return bytes * 8 / 3;
         default: return utils::div_up(bytes, data_type_size(data_type));
     }
 }
@@ -167,6 +172,7 @@ inline T min_value(data_type_t data_type) {
         CASE(s4);
         CASE(u4);
         CASE(u2);
+        CASE(u3);
         case data_type::undef:
         default: assert(!"unknown data_type");
     }
@@ -196,6 +202,7 @@ inline T max_value(data_type_t data_type) {
         CASE(s4);
         CASE(u4);
         CASE(u2);
+        CASE(u3);
         case f64: return nstl::numeric_limits<T>::max();
         case data_type::undef:
         default: assert(!"unknown data_type");
@@ -225,6 +232,7 @@ inline float max_value(data_type_t data_type) {
         CASE(s4);
         CASE(u4);
         CASE(u2);
+        CASE(u3);
         // INT_MAX is not representable in float. The nearest float to it is
         // INT_MAX + 1 = 2^31 (0x4f000000). Regular conversion instructions such
         // as `cvtps2dq` or `cvtss2si` will convert this number to INT_MIN
@@ -266,6 +274,7 @@ inline T lowest_value(data_type_t data_type) {
         CASE(s4);
         CASE(u4);
         CASE(u2);
+        CASE(u3);
         case f64: return nstl::numeric_limits<T>::lowest();
         case data_type::undef:
         default: assert(!"unknown data_type");
@@ -297,6 +306,7 @@ inline T digits(data_type_t data_type) {
         CASE(s4);
         CASE(u4);
         CASE(u2);
+        CASE(u3);
         case data_type::undef:
         default: assert(!"unknown data_type");
     }
@@ -357,6 +367,7 @@ inline float round_to_dt(data_type_t data_type, float val) {
         CASE(s4);
         CASE(u4);
         CASE(u2);
+        CASE(u3);
         case data_type::undef:
         default: assert(!"unknown data_type");
     }
@@ -503,7 +514,7 @@ inline data_type_t default_accum_data_type(
     // we allow to use f32 accumulation type only when the
     // accumulation chain is small. Otherwise, strict should be set to
     // true
-    if (one_of(src_dt, s8, u8, u4, s4, u2) && (dst_dt != f32 || strict))
+    if (one_of(src_dt, s8, u8, u4, s4, u2, u3) && (dst_dt != f32 || strict))
         return s32;
 
     if (one_of(f4_e2m1, src_dt, dst_dt)) return f32;
@@ -517,7 +528,7 @@ inline data_type_t default_accum_data_type(
 
     if (one_of(s8, src_dt, dst_dt) || one_of(u8, src_dt, dst_dt)
             || one_of(s4, src_dt, dst_dt) || one_of(u4, src_dt, dst_dt)
-            || one_of(u2, src_dt, dst_dt))
+            || one_of(u2, src_dt, dst_dt) || one_of(u3, src_dt, dst_dt))
         return s32;
 
     return data_type::undef;
@@ -534,11 +545,11 @@ inline data_type_t default_accum_data_type(data_type_t src_dt,
     if (everyone_is(f64, src_dt, wei_dt)) return f64;
 
     if (one_of(prop_kind, forward_training, forward_inference)) {
-        if (one_of(src_dt, u8, s8) && one_of(wei_dt, u8, s8, s4, u4, u2))
+        if (one_of(src_dt, u8, s8) && one_of(wei_dt, u8, s8, s4, u4, u2, u3))
             return s32;
         if (one_of(f16, src_dt, wei_dt)) return f32;
         // weights decompression
-        if (one_of(src_dt, bf16, f32) && one_of(wei_dt, u8, s8, s4, u4, u2))
+        if (one_of(src_dt, bf16, f32) && one_of(wei_dt, u8, s8, s4, u4, u2, u3))
             return f32;
     } else if (prop_kind == backward_data) {
         if (one_of(src_dt, f32, s32, s8, u8) && wei_dt == s8
@@ -560,7 +571,7 @@ inline data_type_t default_accum_data_type(data_type_t src_dt,
 
 inline bool is_integral_dt(data_type_t dt) {
     using namespace data_type;
-    return utils::one_of(dt, s64, s32, s8, u8, u4, s4, u2);
+    return utils::one_of(dt, s64, s32, s8, u8, u4, s4, u2, u3);
 }
 
 template <typename data_t>

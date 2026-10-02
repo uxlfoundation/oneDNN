@@ -56,8 +56,11 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
-    const bool problem_dt_correct = src_md()->data_type == src_type
-            && weights_md()->data_type == weights_type
+    // Don't report verbose for this line as gemm-based implementations are
+    // differentiating over src data type - they are mutually excluded.
+    if (src_md()->data_type != src_type) return status::unimplemented;
+
+    const bool problem_dt_correct = weights_md()->data_type == weights_type
             && desc()->accum_data_type == acc_type
             && dst_md()->data_type == dst_type
             && platform::has_data_type_support(data_type::bf16);

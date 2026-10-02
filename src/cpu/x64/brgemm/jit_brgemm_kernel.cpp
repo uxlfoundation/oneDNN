@@ -2807,9 +2807,8 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(matrix_kind_t matrix_kind,
         const Tmm &t1, reg64_t reg_base, dim_t offset, reg64_t reg_stride,
         int num_rows, int num_col_bytes, bool is_rd_tail) {
-    const auto transform_offset = brg.brgattr.use_interleave_stores
-            ? brg.get_num_C_tiles() * brgemm_desc_t::tilesize
-            : 0;
+    const auto transform_offset
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_convert);
     add(reg_buf_aux, transform_offset);
 
     switch (matrix_kind) {
@@ -2909,8 +2908,8 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool is_rd_tail,
 
     const auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
 
-    auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
-            + brg.get_convert_wsp_buffer_size();
+    const auto transform_offset
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_wary_k_tail);
 
     //TODO: reuse transformed data from matrix A for ldi > 0
     const int max_tiles = amx::get_max_palette_size();
@@ -3141,6 +3140,11 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::outer_product(
         const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
     using namespace data_type;
+    // ACE has no unscaled fp8 outer product: the TOP4MX*PS forms below are
+    // the MX-scaled ones, driven with selector 0 against the all-ones Block
+    // Scale Register that generate() sets up with bsrinit. Every scale the
+    // product then reads is 1.0, so the selector value is immaterial.
+    constexpr uint8_t unit_scale_selector = 0;
     if (brg.dt_a == bf16 && brg.dt_b == bf16) {
         top2bf16ps(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == u8 && brg.dt_b == u8) {
@@ -3151,6 +3155,14 @@ void jit_brgemm_kernel_t<Wmm>::outer_product(
         top4bsud(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == s8 && brg.dt_b == s8) {
         top4bssd(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+        top4mxbf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
+        top4mxbhf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+        top4mxhf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
+        top4mxhbf8ps(accm, zmm_a, zmm_b, unit_scale_selector);
     } else {
         assert(!"Unsupported data type for outer product");
     }
@@ -3175,21 +3187,26 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_ace(int bd_block2,
                         is_rd_tail);
             }
 
-            // Load B one rds at a time, compute with all bdb
-            for (int ldb = 0; ldb < ld_block2; ldb++) {
-                // The offset is relative to reg_aux_B, which has already
-                // been advanced for the tail.
-                const auto rd_pos = rdb;
-                const auto ldb_offs = ldb * brg.ld_block;
-                auto b_offset_base
-                        = rd_pos * brg.rd_block * brg.LDB * brg.typesize_B
-                        + brg.typesize_B
-                                * ((ldb_offs / brg.LDB) * brg.brgattr.LDB2
-                                        + (ldb_offs % brg.LDB) * brg.rd_step);
+            // Load B one rds at a time, compute with all bdb.
+            // The ld loop is inside the rd loop so that consecutive outer
+            // products target distinct accumulator tiles instead of chaining
+            // on one of them. Mirrors gemm_microkernel_ace() in
+            // jit_brgemm_amx_uker.cpp; the two generators must schedule the
+            // same way.
+            const auto rd_block_cur = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+            for (int rds = 0; rds < ace_rd_steps(rd_block_cur); rds++) {
+                for (int ldb = 0; ldb < ld_block2; ldb++) {
+                    // The offset is relative to reg_aux_B, which has already
+                    // been advanced for the tail.
+                    const auto rd_pos = rdb;
+                    const auto ldb_offs = ldb * brg.ld_block;
+                    const auto b_offset_base
+                            = rd_pos * brg.rd_block * brg.LDB * brg.typesize_B
+                            + brg.typesize_B
+                                    * ((ldb_offs / brg.LDB) * brg.brgattr.LDB2
+                                            + (ldb_offs % brg.LDB)
+                                                    * brg.rd_step);
 
-                const auto rd_block_cur
-                        = is_rd_tail ? brg.rdb_tail : brg.rd_block;
-                for (int rds = 0; rds < ace_rd_steps(rd_block_cur); rds++) {
                     // Load one rds line from B into ace_zmm_B(bd_block2, ldb,
                     // rds); ace_load_B adds rds * rds_stride internally.
                     ace_load_B(ldb, b_offset_base, rds, is_ld_tail,
@@ -3232,16 +3249,26 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_ace(int bd_block2,
                 // The tail uses rdb=0, and reg_aux_A has already
                 // advanced past the full blocks.
                 const auto rd_offset = rdb * rdb_A_offset();
+                // Load the A registers for this bd block. A is deliberately
+                // loaded here and not inside the rd loop below: ace_load_A()
+                // fills all ace_zmms_per_bd_block registers at once, so
+                // calling it per rd step would redo the whole masked load +
+                // transpose. Hoisting it further out is not possible either:
+                // without n_bcast_1_load the A registers are shared by all
+                // bdb (ace_zmm_A has base_idx == 0).
                 ace_load_A(bdb, rd_offset + A_offset(bdb, 0, true),
                         is_bdb_tail && bdb == bd_block2 - 1, bd_block,
                         is_rd_tail);
-                for (int ldb = 0; ldb < ld_block2; ldb++) {
-                    const int idx = (is_ld_tail) ? brg.ld_block2 : ldb;
-                    const auto &accm = Tmm(brg.get_C_tensor(
-                            bdb, idx, is_bdb_tail, is_ld_tail));
-                    const auto rd_block_cur
-                            = is_rd_tail ? brg.rdb_tail : brg.rd_block;
-                    for (int rds = 0; rds < ace_rd_steps(rd_block_cur); rds++) {
+                const auto rd_block_cur
+                        = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+                // rd outside, ld inside: consecutive outer products write
+                // different accumulator tiles, so the TMUL latency is hidden
+                // instead of serializing on a single Tmm.
+                for (int rds = 0; rds < ace_rd_steps(rd_block_cur); rds++) {
+                    for (int ldb = 0; ldb < ld_block2; ldb++) {
+                        const int idx = (is_ld_tail) ? brg.ld_block2 : ldb;
+                        const auto &accm = Tmm(brg.get_C_tensor(
+                                bdb, idx, is_bdb_tail, is_ld_tail));
                         outer_product(ace_zmm_A(bdb, rds),
                                 ace_zmm_B(bd_block2, ldb, rds), accm);
                     }
@@ -4311,6 +4338,8 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     }
 
     read_params();
+
+    if (brg.is_fp8 && brg.is_ace()) bsrinit(bsr0);
 
     bdb_loop();
 

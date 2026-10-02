@@ -107,6 +107,13 @@ private:
     void copy_a_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *A_data_batch_ptr, int ithr, dim_t m_blk_idx,
             dim_t k_blk_idx) const;
+    // Repacks the MXFP8 A block scales of the (m_blk_idx, k_blk_idx) block
+    // into the layout the micro-kernel reads.
+    void copy_a_scales_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
+            dim_t b_idx, int ithr, dim_t m_blk_idx, dim_t k_blk_idx) const;
+    void copy_dst_scales_chunk_from_buffer(
+            const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t b_idx,
+            dim_t m_blk_idx, dim_t n_blk_idx) const;
     void copy_b_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *B_data_batch_ptr, int ithr, dim_t b_idx,
             dim_t n_blk_idx, dim_t k_blk_idx) const;
@@ -127,6 +134,15 @@ private:
 
     std::unique_ptr<jit_brgemm_matmul_copy_b_t> copy_B_kernel_;
     std::unique_ptr<jit_brgemm_matmul_copy_a_t> copy_A_kernel_;
+    // MXFP8 A-scales repack kernels, indexed as
+    // [is_M_tail | (is_K_tail << 1)]; see
+    // create_brgemm_matmul_copy_a_scales().
+    std::unique_ptr<jit_brgemm_matmul_copy_a_scales_t> copy_A_scales_kernel_[4];
+    // MXFP8 dst scales relayout kernels, indexed as
+    // mx_scales_kernel_idx(is_M_tail, is_N_tail); see
+    // create_brgemm_matmul_copy_d_scales().
+    std::unique_ptr<jit_brgemm_matmul_copy_dst_scales_t>
+            copy_D_scales_kernel_[4];
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_f32_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::s32>> acc_ker_s32_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::bf16>> acc_ker_bf16_;

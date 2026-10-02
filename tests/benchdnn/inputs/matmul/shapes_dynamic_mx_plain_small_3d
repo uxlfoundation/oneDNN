@@ -1,0 +1,64 @@
+# 3D shapes for MXFP8 (dynamic_mx) matmul testing - plain form (no --reset),
+# intended to be used via --batch= from harness_matmul_dynamic_mx.
+# Constraints: K % 32 == 0, N % 32 == 0 (mx group size along K and N).
+# B <= 16; M, K, N <= 512.
+
+# 3D small B, small M/K/N
+9x11x32:9x32x32
+13x34x64:13x64x32
+3x27x64:3x64x32
+4x39x32:4x32x64
+15x22x64:15x64x32
+11x29x32:11x32x32
+7x30x32:7x32x64
+16x4x32:16x32x64
+
+# 3D small B, M%32==0, larger K/N
+5x64x192:5x192x480
+12x64x480:12x480x256
+16x32x224:16x224x160
+2x64x192:2x192x256
+8x64x352:8x352x384
+1x64x384:1x384x256
+11x32x288:11x288x416
+14x64x192:14x192x288
+
+# 3D small B, larger M, small N (N<M)
+6x379x480:6x480x64
+10x468x512:10x512x32
+3x320x160:3x160x32
+16x443x288:16x288x32
+13x416x256:13x256x32
+7x111x96:7x96x32
+2x400x192:2x192x32
+4x255x192:4x192x64
+
+# 3D small B, small M, large N (M<N)
+9x42x64:9x64x352
+15x17x32:15x32x512
+6x59x64:6x64x320
+16x20x32:16x32x288
+1x1x32:1x32x192
+12x61x32:12x32x352
+
+# 3D large B (9-16), small M/K/N
+16x42x64:16x64x32
+16x8x32:16x32x32
+16x6x32:16x32x64
+14x4x32:14x32x64
+15x26x64:15x64x64
+16x62x32:16x32x64
+
+# 3D large B (9-16), M%32==0, small K/N
+16x32x64:16x64x32
+13x32x64:13x64x64
+16x32x32:16x32x64
+11x32x64:11x64x32
+16x64x32:16x32x64
+9x64x32:9x32x32
+
+# 3D large B (8-16), larger M/K/N
+16x319x160:16x160x384
+12x185x416:12x416x288
+16x278x256:16x256x288
+8x284x256:8x256x160

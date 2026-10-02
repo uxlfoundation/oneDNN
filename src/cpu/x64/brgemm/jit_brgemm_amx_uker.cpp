@@ -13,7 +13,9 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+#include <functional>
 #include <memory>
+#include <vector>
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"
@@ -179,9 +181,17 @@ private:
     const reg64_savable_t reg_bias {regscratchpad_, rbx};
     const reg64_savable_t reg_bias_backup {regscratchpad_, rbx};
     const reg64_savable_t reg_src_scales {regscratchpad_, rbx};
+    // Copy of reg_src_scales taken before the bd loop and restored after it,
+    // so the per-bd-iteration advance (bd_iteration_t::A_scales_shift) does
+    // not leak into the next ld iteration when the bd loop is the inner one.
+    const reg64_savable_t reg_src_scales_bd_loop {regscratchpad_, rbx};
     const reg64_savable_t reg_wei_scales {regscratchpad_, rbx};
     const reg64_savable_t reg_wei_scales_backup {regscratchpad_, rbx};
     const reg64_savable_t reg_dst_scales {regscratchpad_, rbx};
+    // Copy of reg_dst_scales taken before the bd loop and restored after it,
+    // Booked only for MXFP8 dst quantization.
+    const reg64_savable_t reg_dst_scales_bd_loop {
+            regscratchpad_, rbx, brg.quantize_dst_to_mxfp8};
 
     const reg64_t reg_stride_ld_block = rdx;
     const reg64_t reg_do_post_ops = rbx;
@@ -225,6 +235,24 @@ private:
     // transformed(downconverted), to reuse when needed.
     std::unordered_map<std::string, dim_t> transform_buf_map_A_;
     std::unordered_map<std::string, dim_t> transform_buf_map_B_;
+
+    // Deferred micro-kernel body.
+    // rdb_loop_call_based() emits `call(*entry)` into the hot path and
+    // registers here an emitter that will later emit
+    // `L(*entry); rdb_loop_body(bi); ret();` out of the hot path.
+    // The label and the emitter are one object with one lifetime: top_loop()
+    // owns them, emits every registered body exactly once and then destroys
+    // both. No label outlives the code generation of the loop nest that
+    // referenced it.
+    // The label is held by shared_ptr because the emitter is created before
+    // the `call` that references it: a copy of a not-yet-used Xbyak::Label is
+    // an independent label, so the very same object must be shared by the
+    // call site and by the deferred `L()`.
+    struct deferred_uk_body_t {
+        std::shared_ptr<Xbyak::Label> entry;
+        std::function<void()> emit;
+    };
+    std::vector<deferred_uk_body_t> deferred_uk_bodies_;
 
     dim_t LDA_size_ = 0, LDA2_size_ = 0;
     dim_t LDB_size_ = 0, LDB2_size_ = 0;
@@ -306,6 +334,11 @@ private:
 
     struct bd_iteration_t : public dim_iteration_t {
         dim_t A_shift {0};
+        // MXFP8: advance of reg_src_scales between this and the previous bd
+        // iteration under ununroll_bd_loop (A_offset_scales() is then
+        // relative to the current iteration).
+        dim_t A_scales_shift {0};
+        dim_t D_scales_shift {0};
         dim_t C_shift {0};
         dim_t D_shift {0};
         dim_t zp_comp_pad_a_shift {0};
@@ -316,9 +349,11 @@ private:
 
         bool operator==(const bd_iteration_t &rhs) const {
             return dim_iteration_t::operator==(rhs) && A_shift == rhs.A_shift
+                    && A_scales_shift == rhs.A_scales_shift
                     && C_shift == rhs.C_shift && D_shift == rhs.D_shift
                     && bd_mask == rhs.bd_mask
-                    && zp_comp_pad_a_shift == rhs.zp_comp_pad_a_shift;
+                    && zp_comp_pad_a_shift == rhs.zp_comp_pad_a_shift
+                    && D_scales_shift == rhs.D_scales_shift;
         }
         bool operator!=(const bd_iteration_t &_rhs) const {
             return !operator==(_rhs);
@@ -414,6 +449,16 @@ private:
     bool use_sat_cvt_ = false;
 
     bool ununroll_bd_loop = false;
+    // If set, the rd loop is emitted as a sequence of calls to a few shared
+    // micro-kernel bodies instead of being fully unrolled. It keeps the code
+    // size small while still allowing rd iterations to use different
+    // (statically known) offsets: the shared bodies address A, B and the
+    // transform buffer relative to registers that the caller advances once
+    // per group of call_based_rd_unroll iterations.
+    bool call_based_rd_loop = false;
+    // Number of rd iterations sharing one group of micro-kernel bodies. All
+    // matrix pointers are advanced once per group.
+    static constexpr int call_based_rd_unroll = 4;
     // Number of ZMM registers per bd block for ACE microkernel.
     static constexpr int ace_zmms_per_bd_block
             = brgemm_desc_t::ace_zmms_per_bd_block;
@@ -424,6 +469,9 @@ private:
     Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(7);
     Xbyak::Opmask fp_col_mask = Xbyak::Opmask(2);
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(3);
+    // There are 3 uses of k4: ld_scale_tail_mask, fp8_tmp_mask and ace_load_A_mask.
+    // All 3 usage sites have a mask load before the use.
+    Xbyak::Opmask ld_scale_tail_mask = Xbyak::Opmask(4);
     Xbyak::Opmask fp8_tmp_mask = Xbyak::Opmask(4);
 
     // The four constant masks below are set up once in generate(), so they
@@ -455,6 +503,74 @@ private:
     const Xbyak::Zmm zmm_zp_c = zmm7;
     const Xbyak::Zmm zmm_lbound = zmm8;
     const Xbyak::Zmm zmm_ubound = zmm9;
+
+    // MXFP8 only. The B scales are stored flat along the ld dimension in
+    // memory, while the Block Scale Register expects `b_scales_perm_groups`
+    // interleaved groups of `b_scales_perm_group_size` scales, so a `vpermb`
+    // is needed before moving them into the BSR. The permutation maps the
+    // memory layout
+    //     [ 0, 1, 2, ..., 63 ]
+    // to the BSR layout
+    //     [ 0, 16, 32, 48, 1, 17, 33, 49, ..., 15, 31, 47, 63 ]
+    // i.e. destination byte `b_scales_perm_groups * i + j` is taken from
+    // source byte `i + b_scales_perm_group_size * j`.
+    //
+    // zmm22 is free on this path: postop scale vectors (zmm18-23) are not
+    // used by MXFP8 (the scales are consumed by the outer product, see
+    // prepare_post_ops_registers()), and the A/B operand registers stay well
+    // below it -- asserted in init().
+    const Xbyak::Zmm zmm_wei_scale_permute = zmm22;
+    static constexpr int b_scales_perm_group_size = 16;
+    static constexpr int b_scales_perm_groups = 4;
+    Xbyak::Label b_scales_perm_index_table;
+    // MX block scale group size, in elements of the reduction dimension.
+    static constexpr int mx_group_size = 32;
+
+    // Number of levels of the max-reduction tree used to compute the MXFP8
+    // dst scales: 2^4 = 16 rows of a tile are reduced into a single vector of
+    // per-group exponents.
+    static constexpr int mxfp8_reduce_levels = 4;
+
+    // Tiles of the C accumulator, indexed as [bdb * mxfp8_max_ld_blocks + ldb].
+    // The blocking heuristics cap the ACE MXFP8 output at 2 x 4 tiles, see
+    // brgemm_blocking() in brgemm_utils.cpp.
+    static constexpr int mxfp8_max_bd_blocks = 2;
+    static constexpr int mxfp8_max_ld_blocks = 4;
+    static constexpr int mxfp8_max_tiles
+            = mxfp8_max_bd_blocks * mxfp8_max_ld_blocks;
+    // Number of rows of a single tile.
+    static constexpr int mxfp8_tile_rows = 16;
+    // Two tiles (2 x 16 elements of f32) are packed into one vector, so a pair
+    // of tiles covers one 32-element MX scale group.
+    static constexpr int mxfp8_tiles_per_group = 2;
+
+    // Upper bound of the node range of quantize_to_mxfp8(), i.e. "emit all the
+    // nodes":
+    //   1                                                          constant tables
+    // + (2 * mxfp8_tile_rows - 1)                  max-reduction tree (16 leaves and 15 inner nodes)
+    // + 1                                                        e8m0 scale computation and store
+    // + bd_blocks * ld_pairs *  2                  prep inv scales per tile pair
+    // + bd_blocks * ld_pairs *  rows             number of vector pairs to quantize
+    static constexpr int mxfp8_all_nodes = 1 + (2 * mxfp8_tile_rows - 1) + 1
+            + mxfp8_max_bd_blocks
+                    * (mxfp8_max_ld_blocks / mxfp8_tiles_per_group)
+                    * (2 + mxfp8_tile_rows);
+
+    // Constant tables used by quantize_to_mxfp8().
+    // `mxfp8_permute_table` holds one 64-byte permutation per reduction level
+    // and `mxfp8_mask_table` the matching 64-bit blend mask
+    Xbyak::Label mxfp8_permute_table;
+    Xbyak::Label mxfp8_mask_table;
+    // Gathers the per-group exponents produced by the reduction tree into
+    // consecutive bytes.
+    Xbyak::Label mxfp8_final_permute_table;
+    // Reorders the e8m0 scales into the layout expected by the dst scales
+    // copy kernel
+    Xbyak::Label mxfp8_final_permute_store_table;
+    // Selects the high halves of two f32 vectors, i.e. performs a truncating
+    // (round-to-zero) f32 -> bf16 conversion of both of them at once. This is
+    // the rounding required by the e8m0 scale definition.
+    Xbyak::Label mxfp8_bf16_truncation_table;
 
     int store_bd_step() const {
         return brg.is_ace() ? 8 : 3; /*heuristic values*/
@@ -583,6 +699,11 @@ private:
     void interleave_store(brgemm_iteration_t &bi, bool store_all);
 
     void store_accumulators(brgemm_iteration_t &bi);
+    void store_accumulators_default(brgemm_iteration_t &bi);
+
+    bool need_to_output_mxfp8() const;
+    bool is_mxfp8_quantization_after_postops(
+            const brgemm_iteration_t &bi) const;
 
     void set_A_B_matrices(dim_t bs);
     void set_A_B_matrices();
@@ -625,7 +746,28 @@ private:
 
     void ace_load_A(brgemm_iteration_t &bi, int bdb, dim_t offset);
     void ace_load_B(brgemm_iteration_t &bi, int ldb, dim_t offset, int rdstep);
-    void outer_product(const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm);
+    // `imm8` is the BSR selector: bits [2:0] pick the A scale sub-block and
+    // bits [5:3] the B one. It is meaningful on the MXFP8 path only; the
+    // unscaled fp8 path passes 0 against an all-ones BSR.
+    void outer_product(
+            const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm, int imm8 = 0);
+
+    // True when the block scales are applied by the outer product itself,
+    // i.e. this is an MXFP8 ACE descriptor.
+    bool is_mxfp8_compute() const noexcept { return brg.is_mxfp8_ace; }
+
+    // Loads the B block scales of the current (ldi, rdi) into zmm_tmp_2 and
+    // permutes them into the BSR order. Reads ld_scale_tail_mask, which
+    // set_b_scale_tail_mask() must have set for the same bi.
+    void load_b_scale(const brgemm_iteration_t &bi);
+    bool is_b_scale_tail(const brgemm_iteration_t &bi) const;
+    // Sets ld_scale_tail_mask. It depends on bi.ldi only, so it is emitted
+    // once above the rd loop rather than on every rd iteration.
+    void set_b_scale_tail_mask(const brgemm_iteration_t &bi);
+    // Refreshes the BSR for the rd window `bi.rdi` if that window starts a
+    // new BSR field; a no-op otherwise. See the implementation for the
+    // window-to-field mapping.
+    void maybe_load_mxfp8_scales(const brgemm_iteration_t &bi);
 
     void tdpbxxd(brgemm_iteration_t &bi, int bdb_idx, int ldb_idx,
             bool do_pre_tilestore, bool do_post_tilestore);
@@ -634,6 +776,12 @@ private:
     void gemm_microkernel_ace(brgemm_iteration_t &bi);
 
     void rdb_loop_body(brgemm_iteration_t &bi);
+    // Emits the rd loop as a sequence of calls to a small set of shared
+    // micro-kernel bodies (see call_based_rd_loop).
+    void rdb_loop_call_based(brgemm_iteration_t &bi);
+    // Emits, out of the hot path, the bodies registered by
+    // rdb_loop_call_based() and destroys them together with their labels.
+    void emit_deferred_uk_bodies();
     void rdb_loop(brgemm_iteration_t &bi);
 
     void bs_loop_body(brgemm_iteration_t &bi);
@@ -670,6 +818,25 @@ private:
                 && !skip_accumulation);
     }
 
+    // Quantizes the accumulators of the current iteration to MXFP8: computes
+    // the e8m0 scale of every group of 32 elements along the ld dimension,
+    // stores the scales through `reg_dst_scales` and down-converts the values
+    // to `brg.dt_d`. Values are read from the C tiles if `tile_src` is set and
+    // from the tile workspace otherwise.
+    // The emitted code is split into a sequence of numbered nodes; only the
+    // nodes in the [node_start, node_end) range are emitted. This is used to
+    // interleave quantization with the rest of the kernel.
+    void quantize_to_mxfp8(brgemm_iteration_t &bi, bool tile_src,
+            int node_start, int node_end);
+
+    // Emits the constant tables used by quantize_to_mxfp8() into the generated
+    // code.
+    void emit_mxfp8_tables();
+
+    // Sets the constant row masks of the ACE A load. quantize_to_mxfp8()
+    // clobbers them, so they are re-emitted before the rd loop.
+    void emit_ace_load_A_masks();
+
     dim_t A_offset(
             const brgemm_iteration_t &bi, int bdb, int rdb = 0) const noexcept;
 
@@ -691,7 +858,16 @@ private:
     dim_t C_offset_row(const brgemm_iteration_t &bi, int bdb, int inp_bd,
             dim_t ldb) const noexcept;
 
+    dim_t C_offset_wsp(const brgemm_iteration_t &bi, int bdb, int ldb,
+            int inp_bd) const noexcept;
+
     dim_t D_offset(const brgemm_iteration_t &bi, int bdb, int inp_bd,
+            dim_t ldb) const noexcept;
+
+    dim_t D_scales_offset(const bd_iteration_t *bdi, int bdb, int inp_bd,
+            dim_t ldb, bool force_global_pos = false) const noexcept;
+
+    dim_t D_scales_offset(const brgemm_iteration_t &bi, int bdb, int inp_bd,
             dim_t ldb) const noexcept;
 
     dim_t lda() const noexcept;
@@ -700,6 +876,17 @@ private:
     dim_t bias_offset(dim_t ldb) const noexcept;
 
     dim_t scales_offset(dim_t ldb) const noexcept;
+    // MXFP8 only. Offset, in bytes, of the A block scales of the given
+    // iteration inside the repacked A-scales slab of one (M_blk, K_blk)
+    // block. The layout is documented on A_offset_scales(m, k).
+    dim_t A_offset_scales(const brgemm_iteration_t &bi, int bdb, int rdb = 0,
+            int bd_elem_idx = 0) const noexcept;
+    dim_t A_offset_scales(dim_t m, dim_t k) const noexcept;
+    // MXFP8 only. Offset, in bytes, of the B block scales of the given
+    // iteration in the user tensor, whose layout is the plain mathematical
+    // [K / mx_group_size][N] with a row stride of brg.LDB_scales.
+    dim_t B_offset_scales(
+            const brgemm_iteration_t &bi, int ldb, int rdb = 0) const noexcept;
     dim_t zp_comp_a_offset(dim_t ldb) const noexcept;
     dim_t zp_comp_pad_a_offset(const brgemm_iteration_t &bi, int bdb,
             int inp_bd, dim_t ldb) const noexcept;
@@ -829,13 +1016,9 @@ dim_t jit_brgemm_amx_uker_t::skipped_bd_mask(dim_t inp_bd) noexcept {
 
 dim_t jit_brgemm_amx_uker_t::A_offset_wsp(
         const brgemm_iteration_t &bi, int bdb, int rdb) const noexcept {
-    // Full WSP buffer layout:
-    //   1. partial C results.
-    //   2. data type conversion.
-    //   3. Wary K: No need to reserve space since it is mutually exclusive with fused copy A.
-    //   4. Fused copy A with layout: [bs][k / rd_block][m][k = rd_block]
-    auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
-            + brg.get_convert_wsp_buffer_size();
+    // Fused copy A layout: [bs][k / rd_block][m][k = rd_block].
+    const auto transform_offset
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_fused_copy_a);
 
     const auto bs_offs = bi.bsi->pos * brg.bcast_dim
             * rnd_up(brg.reduce_dim, brg.max_rd_block()) * brg.typesize_A;
@@ -922,6 +1105,40 @@ dim_t jit_brgemm_amx_uker_t::D_offset(const brgemm_iteration_t &bi, int bdb,
     return (dim_t)bd_shift * LDD_size_ + (dim_t)ldb * ld_block_D_size_;
 }
 
+dim_t jit_brgemm_amx_uker_t::D_scales_offset(const bd_iteration_t *bdi, int bdb,
+        int inp_bd, dim_t ldb, bool force_global_pos) const noexcept {
+    // `top_loop` computes shifts between iterations and hence needs absolute
+    // positions, while in-loop uses are relative to the current bd iteration.
+    const bool global_pos = force_global_pos || !ununroll_bd_loop;
+    const auto bi_bd_start = get_out_bd(bdi, 0, 0);
+    const auto bd = get_out_bd(bdi, bdb, inp_bd);
+    const auto bd_shift = bd - (global_pos ? 0 : bi_bd_start);
+    // The scales are staged as [n1 = N/64][m = rnd_up(bcast_dim, 32)][n0 = 2]:
+    // each group of 4 ld blocks (4 * 16 = 64 elements) holds 2 e8m0 scale
+    // groups of 32 elements each.
+    constexpr dim_t scales_per_ld_group = 2;
+    constexpr dim_t ld_blocks_per_ld_group = 4;
+    const dim_t total_m = rnd_up(brg.bcast_dim, mx_group_size);
+    return bd_shift * scales_per_ld_group
+            + (ldb / ld_blocks_per_ld_group) * total_m * scales_per_ld_group;
+}
+
+dim_t jit_brgemm_amx_uker_t::D_scales_offset(const brgemm_iteration_t &bi,
+        int bdb, int inp_bd, dim_t ldb) const noexcept {
+    return D_scales_offset(bi.bdi, bdb, inp_bd, ldb);
+}
+
+dim_t jit_brgemm_amx_uker_t::C_offset_wsp(const brgemm_iteration_t &bi, int bdb,
+        int ldb, int inp_bd) const noexcept {
+    // The workspace holds the C tiles of the iteration one after another, each
+    // of them stored as `bd_block` rows of `ld_block_C_size_` bytes. Passing
+    // bdb = ldb = 0 gives the offset of the single slot shared by all the
+    // tiles when they are not staged per tile.
+    return brg.get_wsp_base_offset(brgemm_desc_t::wsp_c_tiles)
+            + (bdb * bi.ldi->block2() + ldb) * bi.bdi->block(0)
+            * ld_block_C_size_
+            + inp_bd * ld_block_C_size_;
+}
 dim_t jit_brgemm_amx_uker_t::lda() const noexcept {
     return LDA_size_;
 }
@@ -936,6 +1153,60 @@ dim_t jit_brgemm_amx_uker_t::bias_offset(dim_t ldb) const noexcept {
 
 dim_t jit_brgemm_amx_uker_t::scales_offset(dim_t ldb) const noexcept {
     return brg.is_per_n_wei_scales * ldb * ld_block_scales_size_;
+}
+dim_t jit_brgemm_amx_uker_t::A_offset_scales(const brgemm_iteration_t &bi,
+        int bdb, int rdb, int bd_elem_idx) const noexcept {
+    // One BSR A field covers 32 rows x 2 scale groups, and the selector
+    // encoded in the outer product picks the (16-row, 1-group) quarter of it,
+    // so the address is rounded down to that granularity here.
+    const auto bdb_pos
+            = ununroll_bd_loop ? bi.bdi->rel_pos(bdb) : bi.bdi->pos(bdb);
+    const dim_t m = rnd_dn(bdb_pos + bd_elem_idx, 32);
+    const dim_t k = rnd_dn(bi.rdi->pos(rdb) * brg.rd_block, 2 * mx_group_size);
+    return A_offset_scales(m, k);
+}
+
+dim_t jit_brgemm_amx_uker_t::A_offset_scales(dim_t m, dim_t k) const noexcept {
+    // Repacked A scales of a single (M_blk, K_blk) block, one byte per e8m0
+    // scale:
+    //     [m2 = rnd_up(M_blk, 32) / 32][k1 = rnd_up(K_blk, 64) / 64]
+    //             [m0 = 16][m1 = 2][k0 = 2]
+    // The innermost [m0][m1][k0] tile is exactly one 64-byte BSR A field.
+    // The same layout is produced by jit_brgemm_matmul_copy_a_scales_t and
+    // addressed by brgemm_matmul; all three are block-local, the driver owns
+    // the outer [M_chunk][K_chunk] indexing.
+    constexpr dim_t m0_size = 16;
+    constexpr dim_t m1_size = 2;
+    constexpr dim_t k0_size = 2;
+
+    const dim_t k_scales = div_up(brg.reduce_dim, mx_group_size);
+    const dim_t k1_count = div_up(k_scales, k0_size);
+    const dim_t k_scale_idx = k / mx_group_size;
+
+    const dim_t m2 = m / (m0_size * m1_size);
+    const dim_t m1 = (m % (m0_size * m1_size)) / m0_size;
+    const dim_t m0 = m % m0_size;
+    const dim_t k1 = k_scale_idx / k0_size;
+    const dim_t k0 = k_scale_idx % k0_size;
+
+    const dim_t m1_stride = k0_size;
+    const dim_t m0_stride = m1_stride * m1_size;
+    const dim_t k1_stride = m0_size * m0_stride;
+    const dim_t m2_stride = k1_count * k1_stride;
+
+    return m2 * m2_stride + k1 * k1_stride + m0 * m0_stride + m1 * m1_stride
+            + k0;
+}
+
+dim_t jit_brgemm_amx_uker_t::B_offset_scales(
+        const brgemm_iteration_t &bi, int ldb, int rdb) const noexcept {
+    // B scales in the plain mathematical layout [K / mx_group_size][N] with a
+    // row stride of brg.LDB_scales (== N), one byte per e8m0 scale. One BSR B
+    // field holds the 64 N values of a single scale group; the selector picks
+    // the 16-wide ldb slice of it, so the address is rounded down to 64.
+    const dim_t n = rnd_dn(bi.ldi->pos(ldb) * brg.ld_block, 64);
+    const dim_t k = rnd_dn(bi.rdi->pos(rdb) * brg.rd_block, mx_group_size);
+    return (k / mx_group_size) * brg.LDB_scales + n;
 }
 
 dim_t jit_brgemm_amx_uker_t::zp_comp_a_offset(dim_t ldb) const noexcept {
@@ -1263,9 +1534,16 @@ void jit_brgemm_amx_uker_t::prepare_post_ops_registers_ldb(
 void jit_brgemm_amx_uker_t::prepare_post_ops_registers(brgemm_iteration_t &bi) {
     const auto ldi = bi.ldi;
 
+    // MXFP8 consumes both scale tensors inside the outer product (they are
+    // staged in the BSR, see maybe_load_mxfp8_scales()), so none of the
+    // epilogue scale vectors below are loaded. They are also not merely
+    // redundant: the scales are e8m0 bytes, and the loaders here would read
+    // them as f32/bf16/f16.
+    const bool scales_in_epilogue = !is_mxfp8_compute();
+
     // Load wei_scales for per K-block application (is_per_k_wei_scales).
     // This must happen for both apply_postops and non-apply_postops paths.
-    if (brg.with_wei_scales && brg.is_per_k_wei_scales) {
+    if (scales_in_epilogue && brg.with_wei_scales && brg.is_per_k_wei_scales) {
         reg_wei_scales.restore();
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
@@ -1329,7 +1607,7 @@ void jit_brgemm_amx_uker_t::prepare_post_ops_registers(brgemm_iteration_t &bi) {
         }
     }
 
-    if (brg.with_src_scales && !brg.is_per_k_src_scales
+    if (scales_in_epilogue && brg.with_src_scales && !brg.is_per_k_src_scales
             && !brg.is_per_k_wei_scales) {
         reg_src_scales.restore();
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
@@ -1359,7 +1637,7 @@ void jit_brgemm_amx_uker_t::prepare_post_ops_registers(brgemm_iteration_t &bi) {
         }
     }
 
-    if (brg.with_wei_scales && !brg.is_per_k_wei_scales) {
+    if (scales_in_epilogue && brg.with_wei_scales && !brg.is_per_k_wei_scales) {
         reg_wei_scales.restore();
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
@@ -1656,12 +1934,11 @@ void jit_brgemm_amx_uker_t::process_output_range(
         } else {
             vreg_acc = bi.ldi->is_tail(ldb) ? vreg_acc | ld_tail_mask | T_z
                                             : vreg_acc;
-            const auto wsp_offset = (use_ils_ || brg.interleave_tilestores_)
-                    ? (bdb * prev_bi_.ldi->block2() + ldb)
-                            * prev_bi_.bdi->block(0) * ld_block_C_size_
-                    : 0;
-            const auto buf_offset = bd * ld_block_C_size_;
-            vmovups(vreg_acc, ptr[reg_buf + buf_offset + wsp_offset]);
+            const bool per_tile_wsp = use_ils_ || brg.interleave_tilestores_;
+            const auto wsp_offset = per_tile_wsp
+                    ? C_offset_wsp(prev_bi_, bdb, ldb, bd)
+                    : C_offset_wsp(prev_bi_, 0, 0, bd);
+            vmovups(vreg_acc, ptr[reg_buf + wsp_offset]);
         }
 
         // Per-(M,N) compensation: convert int32->float and subtract the
@@ -1685,7 +1962,10 @@ void jit_brgemm_amx_uker_t::process_output_range(
         // already done by per-MN compensation) and apply the current
         // K-group's scales BEFORE alpha_beta accumulation. Non-integer
         // accumulators (e.g. fp8/bf16 TMUL) are already f32.
-        if (brg.has_per_k_scales() && !bi.skip_accumulation) {
+        // MXFP8 is excluded: its per-K flags describe block scales that the
+        // outer product has already applied, so the accumulator is final.
+        if (brg.has_per_k_scales() && !is_mxfp8_compute()
+                && !bi.skip_accumulation) {
             if (brg.is_int8 && !brg.with_per_mn_compensation)
                 vcvtdq2ps(zmm, zmm);
 
@@ -1789,7 +2069,9 @@ void jit_brgemm_amx_uker_t::process_output_range(
     const bool wei_scales_in_postops
             = brg.with_wei_scales && !brg.is_per_k_wei_scales;
     const bool apply_scales_in_postops
-            = src_scales_in_postops || wei_scales_in_postops;
+            = (src_scales_in_postops || wei_scales_in_postops)
+            // MXFP8 applies both scale tensors in the outer product.
+            && !is_mxfp8_compute();
     if (apply_scales_in_postops) {
         for (auto bd = bd_start; bd < bd_finish; bd++) {
             if (!is_out_bd(bi.bdi, bdb, bd)) continue;
@@ -1813,7 +2095,7 @@ void jit_brgemm_amx_uker_t::process_output_range(
         apply_post_ops_to_range(bi, bd_start, bd_finish, bdb, ldb);
     }
 
-    if (brg.with_dst_scales) {
+    if (brg.with_dst_scales && !need_to_output_mxfp8()) {
         reg_dst_scales.restore();
         auto zmm_dst_scales = zmm_tmp_1();
         vbroadcastss(zmm_dst_scales, ptr[reg_dst_scales]);
@@ -1917,7 +2199,13 @@ void jit_brgemm_amx_uker_t::store_vector(
     const auto c_offset = C_offset(bi, bdb, inp_bd, ldb_pos);
     const auto d_offset = D_offset(bi, bdb, inp_bd, ldb_pos);
 
-    if (bi.apply_postops) {
+    // When post-ops have to be applied before quantization, the result is
+    // staged in the tile workspace and quantized once the whole bd x ld block
+    // is final.
+    if (is_mxfp8_quantization_after_postops(bi)) {
+        vmovups(ptr[reg_buf + C_offset_wsp(bi, bdb, ldb, inp_bd)],
+                Zmm(acc_idx));
+    } else if (bi.apply_postops) {
         auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_tmp_gpr);
         store_vector_with_post_ops(acc_idx, ptr_D, is_ld_tail);
     } else if (are_post_ops_applicable_) {
@@ -2017,6 +2305,26 @@ void jit_brgemm_amx_uker_t::store_accumulators(brgemm_iteration_t &bi) {
     prf0C.reset();
     prf1C.reset();
 
+    // Nothing has to be applied to the accumulators before quantization, so
+    // they are quantized directly from the C tiles and the regular store path
+    // is not needed at all.
+    if (need_to_output_mxfp8() && bi.apply_postops
+            && !is_mxfp8_quantization_after_postops(bi)) {
+        quantize_to_mxfp8(bi, /*tile_src=*/true, 0, mxfp8_all_nodes);
+        return;
+    }
+
+    store_accumulators_default(bi);
+
+    // Post-ops were applied and their result staged in the tile workspace by
+    // store_vector(); quantize it now that the whole block is final.
+    if (is_mxfp8_quantization_after_postops(bi))
+        quantize_to_mxfp8(bi, /*tile_src=*/false, 0, mxfp8_all_nodes);
+}
+
+void jit_brgemm_amx_uker_t::store_accumulators_default(brgemm_iteration_t &bi) {
+
+    const auto store_by_vectors = get_store_by_vectors(bi.apply_postops);
     const bool real_ils = actual_ils(bi.apply_postops, bi.skip_accumulation);
     if (store_by_vectors && !real_ils && !prepare_post_ops_registers_once_)
         prepare_post_ops_registers(bi);
@@ -2030,10 +2338,9 @@ void jit_brgemm_amx_uker_t::store_accumulators(brgemm_iteration_t &bi) {
         if (tile_store_by_vectors) {
             if (!brg.interleave_tilestores_ && !bi.skip_accumulation
                     && !brg.is_ace()) {
-                const auto wsp_offset = use_ils_
-                        ? (bdb * bi.ldi->block2() + ldb) * bi.bdi->block(0)
-                                * ld_block_C_size_
-                        : 0;
+                const dim_t wsp_offset = use_ils_
+                        ? C_offset_wsp(bi, bdb, ldb, 0)
+                        : C_offset_wsp(bi, 0, 0, 0);
                 tilestored(ptr[reg_buf + reg_stride_ld_block + wsp_offset],
                         Tmm(get_C_tensor(bi, bdb, ldb)));
             }
@@ -2056,6 +2363,28 @@ void jit_brgemm_amx_uker_t::store_accumulators(brgemm_iteration_t &bi) {
                     Tmm(get_C_tensor(bi, bdb, ldb)));
         }
     }
+}
+bool jit_brgemm_amx_uker_t::need_to_output_mxfp8() const {
+    return brg.quantize_dst_to_mxfp8;
+}
+
+// Quantization has to happen after the post-ops whenever anything modifies the
+// accumulators between the tiles and the dst, since the scale of a group can
+// only be computed once every contribution to that group is final.
+bool jit_brgemm_amx_uker_t::is_mxfp8_quantization_after_postops(
+        const brgemm_iteration_t &bi) const {
+    if (!need_to_output_mxfp8() || !bi.apply_postops) return false;
+
+    const bool with_zp_ab = brg.zp_type_a != brgemm_broadcast_t::none
+            || brg.zp_type_b != brgemm_broadcast_t::none
+            || brg.req_s8s8_compensation;
+    const bool with_epilogue_scales
+            = (brg.with_src_scales || brg.with_wei_scales)
+            && !is_mxfp8_compute();
+    return need_to_apply_alpha_beta_ || bi.skip_accumulation
+            || brg.req_comp_pads_with_bcast || brg.with_bias
+            || postops_injector_ != nullptr || with_zp_ab
+            || brg.with_per_mn_compensation || with_epilogue_scales;
 }
 
 void jit_brgemm_amx_uker_t::set_A_B_matrices(dim_t bs) {
@@ -2274,10 +2603,10 @@ void jit_brgemm_amx_uker_t::maybe_tilestore(brgemm_iteration_t &bi, int bdb_idx,
     const bool store_by_vectors = get_store_by_vectors(bi.apply_postops);
     Tmm acc = Tmm(store_tensor_idx);
     if (store_by_vectors) {
-        const auto wsp_offset = (use_ils_ || brg.interleave_tilestores_)
-                ? (bdb_idx * bi.ldi->block2() + ldb_idx) * bi.bdi->block(0)
-                        * ld_block_C_size_
-                : 0;
+        const bool per_tile_wsp = use_ils_ || brg.interleave_tilestores_;
+        const auto wsp_offset = per_tile_wsp
+                ? C_offset_wsp(bi, bdb_idx, ldb_idx, 0)
+                : C_offset_wsp(bi, 0, 0, 0);
         tilestored(ptr[reg_buf + reg_stride_ld_block + wsp_offset], acc);
     } else {
         const auto store_ldb_ind
@@ -2524,16 +2853,21 @@ void jit_brgemm_amx_uker_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     const bool is_A = mk == matrix_A;
     auto &transform_buf = is_A ? transform_buf_map_A_ : transform_buf_map_B_;
 
-    const auto transform_offset
-            = use_ils_ ? brg.get_num_C_tiles() * brgemm_desc_t::tilesize : 0;
+    const auto convert_base
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_convert);
     const auto max_bdb2 = tloop.bdis[0].block2();
-    const auto max_rdb = tloop.rdis.size();
-    const auto matrix_a_offset = transform_offset;
-    const auto matrix_b_offset = transform_offset
-            + brgemm_desc_t::tilesize
-                    * nstl::max<dim_t>(should_save_transform(mk),
-                            should_save_transform(matrix_A) * brg.brgattr.max_bs
-                                    * max_bdb2 * static_cast<dim_t>(max_rdb));
+    const auto max_rdb = static_cast<dim_t>(tloop.rdis.size());
+    dim_t matrix_a_tiles;
+    if (should_save_transform(matrix_A))
+        matrix_a_tiles = brg.brgattr.max_bs * max_bdb2 * max_rdb;
+    else if (should_save_transform(matrix_B))
+        matrix_a_tiles = 1;
+    else
+        matrix_a_tiles = 0;
+
+    const auto matrix_a_offset = static_cast<dim_t>(convert_base);
+    const auto matrix_b_offset
+            = matrix_a_offset + brgemm_desc_t::tilesize * matrix_a_tiles;
     const auto matrix_offset = is_A ? matrix_a_offset : matrix_b_offset;
     const std::string key
             = std::to_string(bi.bsi->pos) + "_" + std::to_string(offset);
@@ -2610,8 +2944,8 @@ bool jit_brgemm_amx_uker_t::maybe_pre_process_k_tail(brgemm_iteration_t &bi,
 
     if (!need_k_tail_processing) return false;
 
-    auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
-            + brg.get_convert_wsp_buffer_size();
+    const auto transform_offset
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_wary_k_tail);
 
     if (transform_offset) add(reg_buf, transform_offset);
     mov(reg_converted_stride, zmm_width_in_bytes);
@@ -2722,7 +3056,8 @@ void jit_brgemm_amx_uker_t::ace_load_A(
     const auto a_zmm4 = Zmm(base_zmm_idx + 3);
 
     const auto transformed_data_base
-            = (bi.bsi->idx * brg.all_rdb() + bi.rdi->pos(0))
+            = brg.get_wsp_base_offset(brgemm_desc_t::wsp_a_transform)
+            + (bi.bsi->idx * brg.all_rdb() + bi.rdi->pos(0))
                     * brg.ace_transformed_A_bd_block2_size()
             + bdb * brg.ace_transformed_A_bd_block_size();
     const auto transf_addr = [&](int i) {
@@ -2731,7 +3066,7 @@ void jit_brgemm_amx_uker_t::ace_load_A(
         return ptr[reg_buf + transformed_data_offset];
     };
 
-    if (brg.save_transform_A() && bi.ldi->idx > 0) {
+    if (brg.ace_save_transform_A() && bi.ldi->idx > 0) {
 
         vmovups(a_zmm1, transf_addr(0));
         vmovups(a_zmm2, transf_addr(1));
@@ -2783,7 +3118,7 @@ void jit_brgemm_amx_uker_t::ace_load_A(
     vpunpcklqdq(a_zmm3, tmp_zmm2, tmp_zmm4);
     vpunpckhqdq(a_zmm4, tmp_zmm2, tmp_zmm4);
 
-    if (brg.save_transform_A() && bi.ldi->idx == 0) {
+    if (brg.ace_save_transform_A() && bi.ldi->idx == 0) {
 
         vmovups(transf_addr(0), a_zmm1);
         vmovups(transf_addr(1), a_zmm2);
@@ -2830,9 +3165,76 @@ void jit_brgemm_amx_uker_t::ace_load_B(
     }
 }
 
+bool jit_brgemm_amx_uker_t::is_b_scale_tail(
+        const brgemm_iteration_t &bi) const {
+    // One BSR B field is 64 scales wide, so a tail exists whenever fewer than
+    // 64 N columns remain from the start of the field.
+    const dim_t n = rnd_dn(bi.ldi->pos(0) * brg.ld_block, 64);
+    return (brg.load_dim - n) < 64;
+}
+
+void jit_brgemm_amx_uker_t::set_b_scale_tail_mask(
+        const brgemm_iteration_t &bi) {
+    if (!is_b_scale_tail(bi)) return;
+    const dim_t n = rnd_dn(bi.ldi->pos(0) * brg.ld_block, 64);
+    const size_t remaining_n = static_cast<size_t>(brg.load_dim - n);
+    assert(remaining_n > 0 && remaining_n < 64);
+    const size_t tail_mask = (static_cast<size_t>(1) << remaining_n) - 1;
+    mov(reg_tmp_gpr, tail_mask);
+    kmovq(ld_scale_tail_mask, reg_tmp_gpr);
+}
+
+void jit_brgemm_amx_uker_t::load_b_scale(const brgemm_iteration_t &bi) {
+    set_b_scale_tail_mask(bi);
+    const auto zmm_b_scales = zmm_tmp_2();
+    // Out-of-range N columns are zeroed rather than left undefined: an e8m0
+    // of 0 is a denormal scale, and the corresponding B elements are zero as
+    // well, so the products of the tail lanes stay zero.
+    const auto zmm_masked = is_b_scale_tail(bi)
+            ? (zmm_b_scales | ld_scale_tail_mask | T_z)
+            : zmm_b_scales;
+    reg_wei_scales.restore();
+    vmovdqu8(zmm_masked, ptr[reg_wei_scales + B_offset_scales(bi, 0, 0)]);
+    vpermb(zmm_b_scales, zmm_wei_scale_permute, zmm_b_scales);
+}
+
+void jit_brgemm_amx_uker_t::maybe_load_mxfp8_scales(
+        const brgemm_iteration_t &bi) {
+    if (!is_mxfp8_compute()) return;
+    // Four consecutive rd windows share one BSR state:
+    //   window 0: the A field (32 rows x 2 scale groups) and the high B field
+    //             (64 N columns of the first group) are written together by
+    //             bsrmovf;
+    //   window 2: only the low B field (the second group) changes, bsrmovl;
+    //   windows 1 and 3 reuse what the previous window wrote -- the outer
+    //   product selector, not the BSR contents, distinguishes them.
+    const int window = static_cast<int>(bi.rdi->pos(0) % 4);
+    if (window != 0 && window != 2) return;
+
+    const auto zmm_a_scales = zmm_tmp_1();
+    const auto zmm_b_scales = zmm_tmp_2();
+
+    load_b_scale(bi);
+    if (window == 0) {
+        reg_src_scales.restore();
+        vmovups(zmm_a_scales, ptr[reg_src_scales + A_offset_scales(bi, 0, 0)]);
+        bsrmovf(bsr0, zmm_a_scales, zmm_b_scales);
+    } else {
+        bsrmovl(bsr0, zmm_b_scales);
+    }
+}
+
 void jit_brgemm_amx_uker_t::outer_product(
-        const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
+        const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm, int imm8) {
     using namespace data_type;
+    // ACE has no unscaled fp8 outer product: the TOP4MX*PS forms below are
+    // always the MX-scaled ones. On the MXFP8 path `imm8` selects the block
+    // scales staged in the BSR register by load_mxfp8_scales(). On the plain
+    // fp8 path the caller passes 0 and generate() has primed the BSR with
+    // bsrinit, so every scale read is 1.0 and the selector is immaterial.
+    assert(IMPLICATION(brg.is_fp8, brg.is_ace())
+            && "fp8 outer products require the ACE BSR to be initialized");
+    assert(IMPLICATION(!is_mxfp8_compute(), imm8 == 0));
     if (brg.dt_a == bf16 && brg.dt_b == bf16) {
         top2bf16ps(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == u8 && brg.dt_b == u8) {
@@ -2843,6 +3245,14 @@ void jit_brgemm_amx_uker_t::outer_product(
         top4bsud(accm, zmm_a, zmm_b);
     } else if (brg.dt_a == s8 && brg.dt_b == s8) {
         top4bssd(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+        top4mxbf8ps(accm, zmm_a, zmm_b, imm8);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
+        top4mxbhf8ps(accm, zmm_a, zmm_b, imm8);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+        top4mxhf8ps(accm, zmm_a, zmm_b, imm8);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e5m2) {
+        top4mxhbf8ps(accm, zmm_a, zmm_b, imm8);
     } else {
         assert(!"Unsupported data type for outer product");
     }
@@ -2858,19 +3268,36 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
     prf2B.reset();
     prfntaB.reset();
 
+    // BSR selector of the current outer product. The A field of the BSR holds
+    // 32 rows x 2 scale groups; `bdb` picks the 16-row half (bd_block is 16)
+    // and the parity of the rd window picks the scale group. The B field
+    // holds 64 N columns, of which `ldb` picks the 16-wide slice.
+    // Both halves are addressed by the selector, so load_mxfp8_scales() only
+    // has to refresh the BSR once per pair of rd windows.
+    const auto bsr_selector = [&](int bdb, int ldb) {
+        if (!is_mxfp8_compute()) return 0;
+        assert(bdb < 2 && ldb < b_scales_perm_groups);
+        const int selector_a = (bdb % 2) * 2 + (bi.rdi->pos(0) % 4) / 2;
+        return selector_a | (ldb << 3);
+    };
+
     if (brg.n_bcast_1_load) {
         for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
             ace_load_A(bi, bdb, A_offset(bi, bdb));
         }
 
-        for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
-            for (int rds = 0; rds < ace_rd_steps(bi.rdi->block(0)); rds++) {
+        // The ld loop is inside the rd loop so that consecutive outer
+        // products target distinct accumulator tiles instead of chaining on
+        // one of them.
+        for (int rds = 0; rds < ace_rd_steps(bi.rdi->block(0)); rds++) {
+            for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
                 // Load one line from B for the current ldb and rds into
                 // ace_zmm_B(ldb, 0).
                 ace_load_B(bi, ldb, B_offset(bi, ldb), rds);
                 for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
                     const auto &accm = Tmm(get_C_tensor(bi, bdb, ldb));
-                    outer_product(ace_zmm_A(bdb, rds), ace_zmm_B(ldb, 0), accm);
+                    outer_product(ace_zmm_A(bdb, rds), ace_zmm_B(ldb, 0), accm,
+                            bsr_selector(bdb, ldb));
                 }
             }
         }
@@ -2881,12 +3308,21 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
         }
 
         for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
+            // Load the A registers for this bd block. A is deliberately
+            // loaded here and not inside the rd loop below: ace_load_A()
+            // fills all ace_zmms_per_bd_block registers at once, so calling
+            // it per rd step would redo the whole masked load + transpose
+            // (and, with ace_save_transform_A(), the transform stores too).
             ace_load_A(bi, bdb, A_offset(bi, bdb));
-            for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
-                const auto &accm = Tmm(get_C_tensor(bi, bdb, ldb));
-                for (int rds = 0; rds < ace_rd_steps(bi.rdi->block(0)); rds++)
-                    outer_product(
-                            ace_zmm_A(bdb, rds), ace_zmm_B(ldb, rds), accm);
+            // rd outside, ld inside: consecutive outer products write
+            // different accumulator tiles, so the TMUL latency is hidden
+            // instead of serializing on a single Tmm.
+            for (int rds = 0; rds < ace_rd_steps(bi.rdi->block(0)); rds++) {
+                for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
+                    const auto &accm = Tmm(get_C_tensor(bi, bdb, ldb));
+                    outer_product(ace_zmm_A(bdb, rds), ace_zmm_B(ldb, rds),
+                            accm, bsr_selector(bdb, ldb));
+                }
             }
         }
     }
@@ -2940,17 +3376,519 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
             do_post_tilestore);
 }
 
+void jit_brgemm_amx_uker_t::emit_ace_load_A_masks() {
+    mov(reg_tmp_gpr, 0xf);
+    kmovq(ace_load_A_mask_f, reg_tmp_gpr);
+    mov(reg_tmp_gpr, 0xf0);
+    kmovq(ace_load_A_mask_f0, reg_tmp_gpr);
+    mov(reg_tmp_gpr, 0xf00);
+    kmovq(ace_load_A_mask_f00, reg_tmp_gpr);
+    mov(reg_tmp_gpr, 0xf000);
+    kmovq(ace_load_A_mask_f000, reg_tmp_gpr);
+}
+
+void jit_brgemm_amx_uker_t::emit_mxfp8_tables() {
+    // clang-format off
+    static constexpr uint8_t
+            permute_table[mxfp8_reduce_levels][zmm_width_in_bytes] = {
+        {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111},
+        {8, 9, 10, 11, 12, 13, 14, 15, 64, 65, 66, 67, 68, 69, 70, 71, 24, 25, 26, 27, 28, 29, 30, 31, 80, 81, 82, 83, 84, 85, 86, 87, 40, 41, 42, 43, 44, 45, 46, 47, 96, 97, 98, 99, 100, 101, 102, 103, 56, 57, 58, 59, 60, 61, 62, 63, 112, 113, 114, 115, 116, 117, 118, 119},
+        {4, 5, 6, 7, 64, 65, 66, 67, 12, 13, 14, 15, 72, 73, 74, 75, 20, 21, 22, 23, 80, 81, 82, 83, 28, 29, 30, 31, 88, 89, 90, 91, 36, 37, 38, 39, 96, 97, 98, 99, 44, 45, 46, 47, 104, 105, 106, 107, 52, 53, 54, 55, 112, 113, 114, 115, 60, 61, 62, 63, 120, 121, 122, 123},
+        {2, 3, 64, 65, 6, 7, 68, 69, 10, 11, 72, 73, 14, 15, 76, 77, 18, 19, 80, 81, 22, 23, 84, 85, 26, 27, 88, 89, 30, 31, 92, 93, 34, 35, 96, 97, 38, 39, 100, 101, 42, 43, 104, 105, 46, 47, 108, 109, 50, 51, 112, 113, 54, 55, 116, 117, 58, 59, 120, 121, 62, 63, 124, 125},
+    };
+
+    static constexpr uint64_t mask_table[mxfp8_reduce_levels] = {
+        0xffff0000ffff0000,
+        0xff00ff00ff00ff00,
+        0xf0f0f0f0f0f0f0f0,
+        0xcccccccccccccccc,
+    };
+
+    static constexpr uint8_t final_permute[zmm_width_in_bytes] = {
+        0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30, 32, 48, 40, 56, 36, 52, 44, 60, 34, 50, 42, 58, 38, 54, 46, 62,
+        1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31, 33, 49, 41, 57, 37, 53, 45, 61, 35, 51, 43, 59, 39, 55, 47, 63};
+
+    static constexpr uint8_t final_permute_store[zmm_width_in_bytes] = {
+        0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9, 25, 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31,
+        32, 48, 33, 49, 34, 50, 35, 51, 36, 52, 37, 53, 38, 54, 39, 55, 40, 56, 41, 57, 42, 58, 43, 59, 44, 60, 45, 61, 46, 62, 47, 63};
+    // clang-format on
+
+    align(64);
+    L(mxfp8_permute_table);
+    for (int level = 0; level < mxfp8_reduce_levels; level++)
+        for (int i = 0; i < zmm_width_in_bytes; i++)
+            db(permute_table[level][i]);
+
+    align(64);
+    L(mxfp8_mask_table);
+    for (int level = 0; level < mxfp8_reduce_levels; level++)
+        dq(mask_table[level]);
+
+    align(64);
+    L(mxfp8_final_permute_table);
+    for (int i = 0; i < zmm_width_in_bytes; i++)
+        db(final_permute[i]);
+
+    align(64);
+    L(mxfp8_final_permute_store_table);
+    for (int i = 0; i < zmm_width_in_bytes; i++)
+        db(final_permute_store[i]);
+
+    align(64);
+    L(mxfp8_bf16_truncation_table);
+    for (int i = 0; i < zmm_width_in_bytes / 2; i++)
+        dw(2 * i + 1);
+}
+
+void jit_brgemm_amx_uker_t::quantize_to_mxfp8(
+        brgemm_iteration_t &bi, bool tile_src, int node_start, int node_end) {
+
+    // The code below is emitted as a sequence of numbered nodes and only the
+    // nodes within the [node_start, node_end) range are actually emitted. This
+    // allows the caller to interleave the quantization with the rest of the
+    // kernel by requesting the nodes in several chunks.
+    int current_node = 0;
+    auto advance_node = [&]() { current_node++; };
+    auto is_node_relevant = [&]() {
+        return current_node >= node_start && current_node < node_end;
+    };
+
+    // Short aliases for the tile geometry, see the class scope declarations.
+    // mxfp8_all_nodes is derived from them, so they must not be redefined here.
+    constexpr int max_bd_blocks = mxfp8_max_bd_blocks;
+    constexpr int max_ld_blocks = mxfp8_max_ld_blocks;
+    constexpr int max_tiles = mxfp8_max_tiles;
+    constexpr int tile_rows = mxfp8_tile_rows;
+    constexpr int tiles_per_group = mxfp8_tiles_per_group;
+
+    Zmm perm[mxfp8_reduce_levels];
+    for (int i = 0; i < mxfp8_reduce_levels; i++)
+        perm[i] = Zmm(29 - i);
+
+    Opmask mask[mxfp8_reduce_levels];
+    for (int i = 0; i < mxfp8_reduce_levels; i++)
+        mask[i] = Opmask(i + 1);
+
+    const Opmask int8_blend_mask = Opmask(7);
+    // mask for the final f8 stores: guards partial ld blocks / missing tiles
+    const Opmask d_store_mask = Opmask(4);
+    // Set for the groups whose max is inf/NaN.
+    const Opmask k_is_inf = k7;
+    // Set for the groups whose scale is zero.
+    const Opmask k_is_zero = k6;
+
+    const Zmm zmm_inf = Zmm(29);
+    const Zmm e8m0_zmm_inf = Zmm(29);
+    const Zmm zmm_max_dt_exp = Zmm(28);
+    const Zmm zmm_zero = Zmm(27);
+    const Zmm zmm_e127 = Zmm(28);
+    const Zmm zmm_final_permute_store = Zmm(26);
+    const Zmm zmm_final_permute = Zmm(25);
+    // Indices of the truncating f32 -> bf16 pack, see
+    // mxfp8_bf16_truncation_table.
+    const Zmm zmm_bf16_truncate_perm = Zmm(21);
+    const Zmm zmm_inv_scale = Zmm(20);
+    const Zmm zmm_max = Zmm(20);
+    const Zmm zmm_scales = Zmm(30);
+    Tmm tmm[max_tiles];
+
+    vmovups(zmm_bf16_truncate_perm, ptr[rip + mxfp8_bf16_truncation_table]);
+
+    if (is_node_relevant()) {
+        for (int i = 0; i < mxfp8_reduce_levels; i++) {
+            vmovdqu8(perm[i],
+                    ptr[rip + mxfp8_permute_table + i * zmm_width_in_bytes]);
+            kmovq(mask[i], ptr[rip + mxfp8_mask_table + i * sizeof(uint64_t)]);
+        }
+
+        mov(reg_tmp_gpr, 0xaaaaaaaaaaaaaaaa);
+        kmovq(int8_blend_mask, reg_tmp_gpr);
+    }
+    advance_node();
+
+    // Whether the tile (m, n) is a part of the current iteration.
+    auto tile_exists = [&](int m, int n) {
+        return static_cast<int>(bi.bdi->blocks.size()) > m
+                && static_cast<int>(bi.ldi->blocks.size()) > n;
+    };
+
+    // Number of valid columns (ld dimension) in tile (m, n), 0 if the tile
+    // does not exist at all.
+    auto tile_ld_size = [&](int m, int n) {
+        return tile_exists(m, n) ? bi.ldi->block(n) : 0;
+    };
+
+    // Number of valid rows (bd dimension) in the bdb-th block of tiles.
+    auto tile_bd_size = [&](int m) {
+        return static_cast<int>(bi.bdi->blocks.size()) > m ? bi.bdi->block(m)
+                                                           : 0;
+    };
+
+    auto load_row_to_zmm = [&](const Zmm &into, const Tmm &maybe_tmm,
+                                   int inp_bd, int ldb_local, int bdb_local) {
+        if (tile_src) {
+            tilemovrow(into, maybe_tmm, inp_bd);
+        } else {
+            vmovdqu16(into,
+                    ptr[reg_buf
+                            + C_offset_wsp(bi, bdb_local, ldb_local, inp_bd)]);
+        }
+    };
+
+    // Loads the rows of the tile pair (m, n) and (m, n + 1) and keeps the
+    // element-wise absolute max of them in `dst`. If only the first tile of
+    // the pair is present, its row is used as is; if none of them is present,
+    // `dst` is zeroed so that it does not contribute garbage to the reduction.
+    auto load_pair_max = [&](const Zmm &dst, int inp_bd, int m, int n) {
+        const int tile = m * max_ld_blocks + n;
+        if (tile_exists(m, n) && tile_exists(m, n + 1)) {
+            load_row_to_zmm(dst, tmm[tile], inp_bd, n, m);
+            load_row_to_zmm(zmm30, tmm[tile + 1], inp_bd, n + 1, m);
+            vminmaxps(dst, dst, zmm30, 0xb);
+        } else if (tile_exists(m, n)) {
+            load_row_to_zmm(dst, tmm[tile], inp_bd, n, m);
+        } else {
+            vpxord(dst, dst, dst);
+        }
+    };
+
+    // Max-reduction tree over the rows [line_beg, line_end) of the tiles. The
+    // leaves reduce a single row of all the tiles into a vector of exponents
+    // packed as bytes, the internal levels combine two partial results with an
+    // unsigned byte max.
+    std::function<void(int, int, int, const Zmm &)> reduce_max_tree
+            = [&](int level, int line_beg, int line_end, const Zmm &into) {
+        if (line_end - line_beg == 1) {
+            if (is_node_relevant()) {
+                const Zmm zmm_level = Zmm(15);
+
+                load_pair_max(into, line_beg, 0, 0);
+                load_pair_max(zmm_level, line_beg, 0, 2);
+
+                // Pack f32 -> bf16 keeping only what the byte-wise max below
+                // needs: the 8 exponent bits. Truncation (keep the high word
+                // of every f32) matches the e8m0 scale definition used by the
+                // reference (float8_e8m0_t::operator=(float), round toward
+                // zero).
+                vpermt2w(into, zmm_bf16_truncate_perm, zmm_level);
+
+                load_pair_max(zmm14, line_beg, 1, 0);
+                load_pair_max(zmm_level, line_beg, 1, 2);
+                vpermt2w(zmm14, zmm_bf16_truncate_perm, zmm_level);
+
+                // move the exponents of both halves into byte lanes
+                // so that the reduction can proceed as an unsigned
+                // byte max
+                vpsrlw(into, into, 7);
+                vpsllw(zmm14, zmm14, 1);
+
+                vmovdqu8(into | int8_blend_mask, zmm14);
+            }
+            advance_node();
+            return;
+        }
+
+        const Zmm zmm_level = Zmm(level + 15);
+        const Zmm zmm_tmp = Zmm(31);
+        const Zmm zmm_tmp2 = Zmm(30);
+        const int line_mid = line_beg + (line_end - line_beg) / 2;
+        reduce_max_tree(level - 1, line_beg, line_mid, zmm_level);
+        reduce_max_tree(level - 1, line_mid, line_end, zmm_tmp);
+        if (is_node_relevant()) {
+            vpblendmb(zmm_tmp2, zmm_level, zmm_tmp | mask[level - 1]);
+            vpermt2b(zmm_level, perm[level - 1], zmm_tmp);
+            vpmaxub(into, zmm_level, zmm_tmp2);
+        }
+        advance_node();
+    };
+
+    for (int m = 0; m < max_bd_blocks; m++)
+        for (int n = 0; n < max_ld_blocks; n++)
+            if (tile_exists(m, n))
+                tmm[m * max_ld_blocks + n] = Tmm(get_C_tensor(bi, m, n));
+
+    reduce_max_tree(mxfp8_reduce_levels, 0, tile_rows, zmm_max);
+
+    if (is_node_relevant()) {
+        vpxord(zmm_zero, zmm_zero, zmm_zero);
+
+        // max exponent representable by the destination data type
+        if (brg.dt_d == data_type::f8_e4m3)
+            mov(reg_tmp_gpr, 8);
+        else if (brg.dt_d == data_type::f8_e5m2)
+            mov(reg_tmp_gpr, 15);
+        else
+            assert(!"unsupported dst dt");
+        vpbroadcastb(zmm_max_dt_exp, reg_tmp_gpr.cvt8());
+
+        // init e8m0 inf
+        mov(reg_tmp_gpr, 0xff);
+        vpbroadcastb(e8m0_zmm_inf, reg_tmp_gpr.cvt8());
+
+        vmovups(zmm_final_permute_store,
+                ptr[rip + mxfp8_final_permute_store_table]);
+        vmovups(zmm_final_permute, ptr[rip + mxfp8_final_permute_table]);
+
+        // gather the per-group exponents into consecutive bytes
+        vpermb(zmm_scales, zmm_final_permute, zmm_max);
+        // find inf/nan
+        vpcmpub(k_is_inf, zmm_scales, e8m0_zmm_inf, 0x0);
+        // scale = max_exponent - max_exponent_of_dst_dt
+        vpsubusb(zmm_scales, zmm_scales, zmm_max_dt_exp);
+        vpcmpub(k_is_zero, zmm_scales, zmm_zero, 0x0);
+        // restore inf
+        vmovdqu8(zmm_scales | k_is_inf, e8m0_zmm_inf);
+
+        // reorder the scales into the layout expected by the copy kernel
+        vpermb(zmm14, zmm_final_permute_store, zmm_scales);
+
+        // save the scales
+        reg_dst_scales.restore();
+        vmovups(ptr[reg_dst_scales + D_scales_offset(bi, 0, 0, bi.ldi->pos(0))],
+                zmm14);
+
+        // f32 +inf, injected into the values of an inf/NaN group
+        mov(reg_tmp_gpr, 0x7f800000);
+        vpbroadcastd(zmm_inf, reg_tmp_gpr.cvt32());
+
+        // f32 const 2^127, used as the inverse scale of a zero group
+        mov(reg_tmp_gpr, 0x7f000000);
+        vpbroadcastd(zmm_e127, reg_tmp_gpr.cvt32());
+    }
+    advance_node();
+
+    // One vector of inverse scales covers a single tile pair, so it has to be
+    // rebuilt for every (bdb, ldb). Note that `k_is_zero` is consumed 16 bits
+    // at a time here, hence this must run for every tile pair, including the
+    // ones that are skipped by the store mask below.
+    auto prepare_inv_scales = [&](int bdb, int ldb) {
+        const Xmm xmm_inv_scale(zmm_inv_scale.getIdx());
+        vextracti64x2(xmm_inv_scale, zmm_scales,
+                max_ld_blocks / tiles_per_group * bdb + ldb);
+        vpmovzxbd(zmm_inv_scale, xmm_inv_scale);
+        vpslld(zmm_inv_scale, zmm_inv_scale, 23);
+
+        // scale^(-1). The scale is a power of two, so the 14-bit
+        // approximation is exact here.
+        vrcp14ps(zmm_inv_scale, zmm_inv_scale);
+        // inject 2^127 for zero values
+        vmovdqu32(zmm_inv_scale | k_is_zero, zmm_e127);
+        kshiftrq(k_is_zero, k_is_zero, 16);
+    };
+
+    // Scales and down-converts row `i` of the tile pair (bdb, ldb) and stores
+    // the resulting 32 f8 values.
+    auto scale_and_store_row
+            = [&](int bdb, int ldb, int i, bool use_store_mask) {
+        const int tile = tiles_per_group * ldb + max_ld_blocks * bdb;
+
+        // broadcast the scale of the row across the vector
+        mov(reg_tmp_gpr, i);
+        vpbroadcastd(zmm2, reg_tmp_gpr.cvt32());
+        vpermd(zmm2, zmm2, zmm_inv_scale);
+
+        // get the values from the tiles
+        load_row_to_zmm(zmm0, tmm[tile], i, tiles_per_group * ldb, bdb);
+        load_row_to_zmm(zmm1, tmm[tile + 1], i, tiles_per_group * ldb + 1, bdb);
+
+        // the scale is zero for inf/nan, inject inf to get nan
+        // after the multiplication
+        vpcmpud(k_is_inf, zmm2, zmm_zero, 0x0);
+        vmovdqu32(zmm0 | k_is_inf, zmm_inf);
+        vmovdqu32(zmm1 | k_is_inf, zmm_inf);
+
+        // scale^(-1) the values
+        vmulps(zmm0, zmm0, zmm2);
+        vmulps(zmm1, zmm1, zmm2);
+
+        // quantize to f8. The saturating variants are required: the e8m0
+        // scale truncates the exponent of the group max, so the scaled
+        // values may exceed the dst dt range by up to one exponent.
+        if (brg.dt_d == data_type::f8_e4m3) {
+            vcvtps2hf8s(xmm0, zmm0);
+            vcvtps2hf8s(xmm1, zmm1);
+        } else if (brg.dt_d == data_type::f8_e5m2) {
+            vcvtps2bf8s(xmm0, zmm0);
+            vcvtps2bf8s(xmm1, zmm1);
+        } else
+            assert(!"unsupported dst dt");
+
+        vinserti128(ymm0, ymm0, xmm1, 1);
+
+        const auto addr_D = ptr[reg_D
+                + D_offset(bi, bdb, i, bi.ldi->pos(tiles_per_group * ldb))];
+        if (use_store_mask)
+            vmovdqu8(addr_D, ymm0 | d_store_mask);
+        else
+            vmovdqu8(addr_D, ymm0);
+    };
+
+    for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
+        for (int ldb = 0; ldb < max_ld_blocks / tiles_per_group; ldb++) {
+            if (is_node_relevant()) prepare_inv_scales(bdb, ldb);
+            advance_node();
+
+            // The stored ymm holds 32 f8 values: bytes [0..15] come from tile
+            // (bdb, 2 * ldb) and bytes [16..31] from tile (bdb, 2 * ldb + 1).
+            // Build the byte mask out of the number of valid ld elements of
+            // each of the two tiles; a missing tile contributes 0 bits.
+            const int ld_size_lo = tile_ld_size(bdb, tiles_per_group * ldb);
+            const int ld_size_hi = tile_ld_size(bdb, tiles_per_group * ldb + 1);
+            assert(ld_size_lo <= 16 && ld_size_hi <= 16);
+            const uint32_t store_mask = (uint32_t)((1ULL << ld_size_lo) - 1)
+                    | (uint32_t)(((1ULL << ld_size_hi) - 1) << 16);
+            // nothing to store for this pair of tiles
+            if (store_mask == 0) continue;
+            const bool use_store_mask = store_mask != 0xffffffff;
+
+            if (use_store_mask && is_node_relevant()) {
+                mov(reg_tmp_gpr, store_mask);
+                kmovd(d_store_mask, reg_tmp_gpr.cvt32());
+            }
+            advance_node();
+
+            const int bd_size = tile_bd_size(bdb);
+            for (int i = 0; i < tile_rows; i++) {
+                // the line is outside of the valid bd range of both tiles
+                if (i >= bd_size) continue;
+                if (is_node_relevant())
+                    scale_and_store_row(bdb, ldb, i, use_store_mask);
+                advance_node();
+            }
+        }
+    }
+
+    // Callers pass [0, mxfp8_all_nodes) to emit everything, so the bound must
+    // cover the whole sequence, otherwise the tail would be silently dropped.
+    assert(current_node <= mxfp8_all_nodes);
+}
+
 void jit_brgemm_amx_uker_t::rdb_loop_body(brgemm_iteration_t &bi) {
     if (brg.is_ace())
         gemm_microkernel_ace(bi);
     else
         gemm_microkernel_amx(bi);
 }
+void jit_brgemm_amx_uker_t::rdb_loop_call_based(brgemm_iteration_t &bi) {
+    // Note: the micro-kernel bodies registered below are entered with `call`,
+    // so inside them rsp is 8 bytes lower than here (return address). The
+    // register scratchpad is addressed relative to rsp, hence
+    // reg64_savable_t::save()/restore() (and anything else touching the
+    // scratchpad) must not be emitted inside a body. rdb_loop_body() only
+    // reads A, B and the transform buffer through registers, so the
+    // save/restore of these pointers stays here, in the caller.
+    // reg_C, reg_D and reg_ldb_loop are not modified by rdb_loop_body() and
+    // therefore are not preserved.
+    const auto &tloop = imap_[bi.apply_postops];
+    assert(tloop.rdis.size() > 1);
+
+    const bool separate_last_iteration = brg.rdb_tail > 0;
+    const auto *last_rdi = &tloop.rdis.back();
+    auto rdb_loop_count = static_cast<int>(tloop.rdis.size());
+    if (separate_last_iteration) rdb_loop_count--;
+
+    // Calculate the A and B increments using the next rdi assuming that they
+    // are the same for all iterations.
+    bi.rdi = &tloop.rdis[0];
+    brgemm_iteration_t next_rdi_bi = bi;
+    next_rdi_bi.rdi = &tloop.rdis[1];
+    const auto reg_A_increment = A_offset(next_rdi_bi, 0) - A_offset(bi, 0);
+    const auto reg_B_increment = B_offset(next_rdi_bi, 0) - B_offset(bi, 0);
+
+    // save registers advanced by the loop below
+    reg_A.save();
+    reg_B.save();
+    if (brg.ace_save_transform_A()) reg_buf.save();
+
+    // Defer the generation of the micro-kernel bodies: they are emitted out
+    // of the hot path by top_loop(), which owns them.
+    const int rd_unroll = call_based_rd_unroll;
+    const auto n_variants = nstl::min(rdb_loop_count, rd_unroll);
+    std::vector<std::shared_ptr<Label>> variant_labels;
+    variant_labels.reserve(n_variants);
+    for (int v = 0; v < n_variants; v++) {
+        auto entry = std::make_shared<Label>();
+        auto variant_bi = bi;
+        variant_bi.rdi = &tloop.rdis[v];
+        deferred_uk_bodies_.push_back({entry, [this, entry, variant_bi]() {
+            auto body_bi = variant_bi;
+            L(*entry);
+            rdb_loop_body(body_bi);
+            ret();
+        }});
+        variant_labels.push_back(std::move(entry));
+    }
+
+    for (int rdb = 0; rdb < rdb_loop_count; rdb += rd_unroll) {
+        const auto n_calls = nstl::min(rd_unroll, rdb_loop_count - rdb);
+        for (int v = 0; v < n_calls; v++) {
+            // The BSR refresh has to stay in the caller: it restores the
+            // scale pointers from the register scratchpad, which is addressed
+            // relative to rsp and therefore off by the return address inside
+            // a called body.
+            //
+            // Note that it is indexed by the *real* rd window (rdb + v), not
+            // by the variant v: unlike reg_A / reg_B, the scale registers are
+            // not advanced by the rd loop (reg_src_scales moves only between
+            // bd iterations, in bs_loop()), so the offsets computed here are
+            // absolute within the current bd iteration. The
+            // shared body of variant v is still the right one, because the
+            // only thing that varies within a group is the BSR selector, and
+            // that depends on the window parity, which is v.
+            bi.rdi = &tloop.rdis[rdb + v];
+            maybe_load_mxfp8_scales(bi);
+            call(*variant_labels[v]);
+        }
+
+        add(reg_A, reg_A_increment * n_calls);
+        add(reg_B, reg_B_increment * n_calls);
+        if (brg.ace_save_transform_A())
+            add(reg_buf, brg.ace_transformed_A_bd_block2_size() * n_calls);
+    }
+
+    // restore registers
+    if (brg.ace_save_transform_A()) reg_buf.restore();
+    reg_B.restore();
+    reg_A.restore();
+
+    // separate last iteration if needed
+    if (separate_last_iteration) {
+        bi.rdi = last_rdi;
+        maybe_load_mxfp8_scales(bi);
+        rdb_loop_body(bi);
+    } else {
+        bi.rdi = last_rdi;
+    }
+}
+
+void jit_brgemm_amx_uker_t::emit_deferred_uk_bodies() {
+    if (deferred_uk_bodies_.empty()) return;
+
+    Label end_uk_bodies;
+    jmp(end_uk_bodies, T_NEAR);
+    for (auto &body : deferred_uk_bodies_)
+        body.emit();
+    L(end_uk_bodies);
+
+    // The labels are bound now and nothing may reference them anymore: they
+    // are destroyed together with the emitters that own them.
+    deferred_uk_bodies_.clear();
+}
 
 void jit_brgemm_amx_uker_t::rdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];
+    // The B-scale tail mask depends on bi.ldi only, so it is generated once
+    // here instead of on every rd window.
+    if (need_to_output_mxfp8()
+            && !(brg.ace_save_transform_A() && bi.ldi->idx > 0))
+        emit_ace_load_A_masks();
+    if (call_based_rd_loop) {
+        rdb_loop_call_based(bi);
+        return;
+    }
     for (auto &rdi : tloop.rdis) {
         bi.rdi = &rdi;
+        maybe_load_mxfp8_scales(bi);
         rdb_loop_body(bi);
     }
 }
@@ -2980,7 +3918,19 @@ void jit_brgemm_amx_uker_t::bs_loop(brgemm_iteration_t &bi) {
 
     const auto &tloop = imap_[bi.apply_postops];
     if (ununroll_bd_loop && was_prev_bi_) {
-        if (bi.bdi->idx != prev_bi_.bdi->idx) add(reg_A, bi.bdi->A_shift);
+        if (bi.bdi->idx != prev_bi_.bdi->idx) {
+            add(reg_A, bi.bdi->A_shift);
+            if (is_mxfp8_compute()) {
+                reg_src_scales.restore();
+                add(reg_src_scales, bi.bdi->A_scales_shift);
+                reg_src_scales.save();
+            }
+            if (need_to_output_mxfp8()) {
+                reg_dst_scales.restore();
+                add(reg_dst_scales, bi.bdi->D_scales_shift);
+                reg_dst_scales.save();
+            }
+        }
 
         const auto real_ils
                 = actual_ils(bi.apply_postops, bi.skip_accumulation);
@@ -3136,6 +4086,16 @@ void jit_brgemm_amx_uker_t::bdb_loop_body(brgemm_iteration_t &bi) {
 void jit_brgemm_amx_uker_t::bdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];
     Label iteration_pointers;
+    if (is_mxfp8_compute() && ununroll_bd_loop) {
+        // bs_loop() advances reg_src_scales per bd iteration; keep the
+        // start-of-loop value so the next ld iteration sees it again.
+        reg_src_scales.restore();
+        reg_src_scales_bd_loop.save();
+    }
+    if (need_to_output_mxfp8() && ununroll_bd_loop) {
+        reg_dst_scales.restore();
+        reg_dst_scales_bd_loop.save();
+    }
     if (ununroll_bd_loop) {
         lea(reg_iter_labels_list, ptr[rip + iteration_pointers]);
         // shift to load address for jmp for next iteration
@@ -3158,6 +4118,14 @@ void jit_brgemm_amx_uker_t::bdb_loop(brgemm_iteration_t &bi) {
         }
         putL(loop_end);
         L(loop_end);
+    }
+    if (is_mxfp8_compute() && ununroll_bd_loop) {
+        reg_src_scales_bd_loop.restore();
+        reg_src_scales.save();
+    }
+    if (need_to_output_mxfp8() && ununroll_bd_loop) {
+        reg_dst_scales_bd_loop.restore();
+        reg_dst_scales.save();
     }
 }
 
@@ -3192,6 +4160,11 @@ void jit_brgemm_amx_uker_t::top_loop(brgemm_iteration_t &bi) {
             add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
     }
     interleave_store(bi, true);
+
+    // top_loop owns the deferred micro-kernel bodies registered by
+    // rdb_loop_call_based(): emit them here, out of the hot path, and destroy
+    // them together with their labels.
+    emit_deferred_uk_bodies();
 }
 
 void jit_brgemm_amx_uker_t::fill_imap() {
@@ -3254,6 +4227,22 @@ void jit_brgemm_amx_uker_t::fill_imap() {
                 const auto prev_bdi = &tloop.bdis[bdi.idx - 1];
                 const auto inp_shift = (bdi.pos(0) - prev_bdi->pos(0));
                 bdi.A_shift = inp_shift * LDA2_size_;
+                if (is_mxfp8_compute()) {
+                    // A_offset_scales(m, k) is the block-local repacked
+                    // layout, which is all a single kernel invocation sees;
+                    // the shift between two bd iterations is therefore the
+                    // difference of their 32-row-aligned starts.
+                    const dim_t m_prev = rnd_dn(prev_bdi->pos(0), 32);
+                    const dim_t m_curr = rnd_dn(bdi.pos(0), 32);
+                    bdi.A_scales_shift = A_offset_scales(m_curr, 0)
+                            - A_offset_scales(m_prev, 0);
+                }
+                if (need_to_output_mxfp8()) {
+                    bdi.D_scales_shift
+                            = D_scales_offset(&bdi, 0, 0, 0, /*global=*/true)
+                            - D_scales_offset(
+                                    prev_bdi, 0, 0, 0, /*global=*/true);
+                }
 
                 const auto out_shift
                         = (get_out_bd(&bdi, 0, 0) - get_out_bd(prev_bdi, 0, 0));
@@ -3393,6 +4382,11 @@ void jit_brgemm_amx_uker_t::init(brgemm_iteration_t &bi) {
             && IMPLICATION(!bi.skip_accumulation,
                     (brg.brgattr.max_bs == 1 || brg.type == brgemm_static_offs)
                             && !brg.brgattr.var_bs);
+
+    // TODO: extend the call based rd loop to non-ACE kernels and add a
+    // heuristic based on the estimated kernel size.
+    call_based_rd_loop = brg.is_ace() && brg.rdb > 1;
+
     if (brg.type == brgemm_static_offs && !bi.skip_accumulation) {
         reg_A.restore();
         reg_B.restore();
@@ -3445,6 +4439,7 @@ void jit_brgemm_amx_uker_t::init(brgemm_iteration_t &bi) {
         bi.ldi = &(imap_[true].ldis[0]);
         prepare_post_ops_registers(bi);
     }
+    assert(IMPLICATION(brg.is_ace(), !prepare_post_ops_registers_once_));
     if (bi.apply_postops)
         dt_requires_saturation_ = one_of(
                 brg.dt_d, data_type::u8, data_type::s8, data_type::s32);
@@ -3493,17 +4488,30 @@ void jit_brgemm_amx_uker_t::generate() {
     kmovq(ld_tail_mask, reg_mask);
 
     if (brg.is_ace()) {
-        // Constant row masks of the ACE A load. ACE emits bf16 and int8 only,
-        // so the fp8 paths that would clobber these opmasks are never taken.
-        assert(!brg.is_fp8);
-        mov(reg_mask, 0xf);
-        kmovq(ace_load_A_mask_f, reg_mask);
-        mov(reg_mask, 0xf0);
-        kmovq(ace_load_A_mask_f0, reg_mask);
-        mov(reg_mask, 0xf00);
-        kmovq(ace_load_A_mask_f00, reg_mask);
-        mov(reg_mask, 0xf000);
-        kmovq(ace_load_A_mask_f000, reg_mask);
+        // Constant row masks of the ACE A load. ACE fp8 goes straight into
+        // the outer product, so the fp8 up-convert paths that would clobber
+        // these opmasks are never taken.
+        assert(!brg.is_fp8_via_convert());
+        // The fp8 post-op converters alias k2/k4 as well, but on ACE they
+        // only ever take their native branches (max_cpu_isa is avx10_2_ace,
+        // which is a superset of avx10_2_aux), and those touch no opmask.
+        assert(IMPLICATION(
+                brg.is_fp8, is_superset(max_cpu_isa(), avx10_2_aux)));
+        // ld_scale_tail_mask aliases rd_tail_mask, which only the AMX k-tail
+        // path writes. brgemm_desc_finalize() rejects that combination.
+        assert(IMPLICATION(brg.is_mxfp8_ace, !brg.amx_wary_k_tail()));
+        if (is_mxfp8_compute()) {
+            // The BSR selector has 3 bits per operand and the A field spans
+            // two bd blocks, so the blocking must stay within these bounds.
+            // brgemm_blocking() caps ld_block2 accordingly.
+            assert(brg.bd_block2 <= 2 && brg.ld_block2 <= b_scales_perm_groups);
+            // The repacked A scales and the B scales are addressed per
+            // (M_blk, K_blk) block with no batch term, so a batch of more
+            // than one would read the same scales for every batch element.
+            assert(brg.brgattr.max_bs == 1 && !brg.brgattr.var_bs);
+        }
+        // With MXFP8 dst quantization the masks are emitted by rdb_loop().
+        if (!need_to_output_mxfp8()) emit_ace_load_A_masks();
     }
 
     LDA_size_ = static_cast<dim_t>(brg.typesize_A) * brg.LDA;
@@ -3576,6 +4584,24 @@ void jit_brgemm_amx_uker_t::generate() {
             = !are_post_ops_applicable_ || !brg.brgattr.postops_only;
     brgemm_iteration_t bi;
 
+    // Per-compute-path ACE fp8 setup. It is emitted here rather than once up
+    // front because the skip-accumulation path performs no outer product at
+    // all, and its caller is not required to have brought the ACE state up.
+    //  * unscaled fp8 expresses its product as the MX one over an all-ones
+    //    Block Scale Register, so BSR0 is primed with bsrinit (every byte
+    //    0x7F, i.e. an e8m0 exponent of 1.0). MXFP8 overwrites BSR0 on every
+    //    K window, so priming it there would be dead work.
+    //  * MXFP8 needs the B-scale permutation constant, which stays live for
+    //    the whole compute path.
+    auto init_ace_fp8_regs = [&]() {
+        if (!brg.is_fp8 || !brg.is_ace()) return;
+        if (is_mxfp8_compute())
+            vmovdqu8(zmm_wei_scale_permute,
+                    ptr[rip + b_scales_perm_index_table]);
+        else
+            bsrinit(bsr0);
+    };
+
     Label label_to_ret;
     if (are_post_ops_applicable_) {
         Label label_store_without_post_ops;
@@ -3597,6 +4623,7 @@ void jit_brgemm_amx_uker_t::generate() {
 
             L(label_do_not_skip_acc);
         }
+        init_ace_fp8_regs();
         top_loop(bi);
         if (non_postops_generate) jmp(label_to_ret, T_NEAR);
         transform_buf_map_A_.clear();
@@ -3605,9 +4632,14 @@ void jit_brgemm_amx_uker_t::generate() {
     }
     if (non_postops_generate) {
         bi.apply_postops = false;
+        init_ace_fp8_regs();
         top_loop(bi);
     }
     L(label_to_ret);
+
+    // Every deferred micro-kernel body must have been emitted by top_loop();
+    // an undrained one would leave an unbound label referenced by a `call`.
+    assert(deferred_uk_bodies_.empty());
 
     add(rsp, regscratchpad_.Size());
 
@@ -3630,6 +4662,16 @@ void jit_brgemm_amx_uker_t::generate() {
         for (size_t i = 0; i < 32; ++i)
             dw(_idx[i]);
     }
+
+    if (is_mxfp8_compute()) {
+        align(64);
+        L(b_scales_perm_index_table);
+        for (int i = 0; i < b_scales_perm_group_size; ++i)
+            for (int j = 0; j < b_scales_perm_groups; ++j)
+                db(i + b_scales_perm_group_size * j);
+    }
+
+    if (need_to_output_mxfp8()) emit_mxfp8_tables();
 }
 
 brgemm_kernel_t *create_brgemm_amx_uker_kernel(const brgemm_desc_t &brg) {

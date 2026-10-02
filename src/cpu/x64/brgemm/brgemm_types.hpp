@@ -17,6 +17,8 @@
 #ifndef CPU_X64_BRGEMM_BRGEMM_TYPES_HPP
 #define CPU_X64_BRGEMM_BRGEMM_TYPES_HPP
 
+#include <limits>
+
 #include "common/primitive_attr.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
@@ -216,6 +218,14 @@ struct DNNL_API brgemm_attr_t {
     // specified on brgemm creation.
     // Supported by brgemm unrolled kernel for now.
     dim_t LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
+
+    // Leading dimension (stride) of the B scales tensor. MX B scales are
+    // stored in a flat mathematical layout [K / group_size][N], so the
+    // distance between consecutive K scale groups for a given N is N.
+    // `brgemm_desc_t::LDB_scales` is initialized from this value on
+    // descriptor finalization.
+    dim_t LDB_scales {0};
+
     // If "true" then batchsize is allowed to change on each kernel call
     // and there is no unrolling by batchsize in kernel
     bool var_bs {false};
@@ -255,6 +265,12 @@ struct DNNL_API brgemm_attr_t {
     // request the ACE compute path; honored only when the descriptor resolves
     // to an ACE ISA, see brgemm_desc_t::is_ace()
     bool use_ace = false;
+    // Request the MXFP8 compute path: the e8m0 block scales of A and B are
+    // applied by the ACE outer product itself (through the BSR register)
+    // instead of being applied to the accumulators in post-ops. Honored only
+    // on an fp8 x fp8 ACE descriptor, see brgemm_desc_t::is_mxfp8_ace.
+    bool use_mxfp8_compute {false};
+    bool quantize_dst_to_mxfp8 {false};
 };
 
 struct brgemm_desc_t {
@@ -271,8 +287,24 @@ struct brgemm_desc_t {
     dim_t LDB = 0;
     dim_t LDC = 0;
     dim_t LDD = 0;
+    // Leading dimension (stride) of the B scales tensor. MX B scales are
+    // stored in a flat mathematical layout [K / group_size][N], so the
+    // distance between consecutive K scale groups for a given N is N.
+    // Initialized from `brgattr.LDB_scales` on descriptor finalization.
+    dim_t LDB_scales = 0;
 
     bool fused_copy_a = false;
+
+    // Placeholders for the fused-transform variants that the WSP layout is
+    // built to accommodate. None of them has a setter yet: each is fixed at
+    // the default below, which is exactly what the current kernel implements
+    // (ACE transforms and caches A; it loads B straight from memory with
+    // vmovups; plain AMX has no fused copy of B). They exist so that adding a
+    // variant is a change to the producer plus a setter, not a reshuffle of
+    // the workspace.
+    bool ace_fused_a_transform = true;
+    bool ace_fused_b_transform = false;
+    bool amx_fused_copy_b = false;
     // we use two isa_ variables
     // isa_user to store the user provided isa value
     // isa_impl to store actual implementation. This can change until the kernel
@@ -372,6 +404,12 @@ struct brgemm_desc_t {
     bool is_f16 = false, is_f16_tmm = false;
     bool is_f32 = false;
     bool is_bf32 = false;
+    // MXFP8 compute on ACE: fp8 x fp8 with e8m0 block scales applied by the
+    // outer product itself. Set in brgemm_desc_set_attr() from
+    // `brgattr.use_mxfp8_compute`, and only there, so that it is final before
+    // blocking runs.
+    bool is_mxfp8_ace = false;
+    bool quantize_dst_to_mxfp8 = false;
 
     bool has_int8_vnni = false;
 
@@ -608,13 +646,36 @@ struct brgemm_desc_t {
         return !is_ace() && can_reuse_input_transform() && bdb2 > 1;
     }
 
+    // ACE-specific transform caching.
+    //
+    // `save_transform_A()` / `save_transform_B()` describe the *generic* AMX
+    // convert path, where a transformed tile is parked inside the convert
+    // region (see `wsp_convert`). ACE instead keeps A transformed in its own
+    // WSP region (`wsp_a_transform`), which is sized from the predicates
+    // below. Every ACE code path that addresses `wsp_a_transform` must use
+    // `ace_save_transform_A()`, never `save_transform_A()`
+    bool ace_save_transform_A() const noexcept {
+        return is_ace() && ace_fused_a_transform && can_reuse_input_transform()
+                && ldb2 > 1;
+    }
+
+    bool ace_save_transform_B() const noexcept {
+        return is_ace() && ace_fused_b_transform && can_reuse_input_transform()
+                && bdb2 > 1;
+    }
+
     dim_t get_convert_wsp_buffer_size() const noexcept {
         if (!is_input_convert()) return 0;
-        const dim_t n_bdb = bd_block2;
-        const dim_t n_rdb = rdb + (rdb_tail != 0);
-        const dim_t n_ldb = ldb + (ldb_tail != 0);
-        const dim_t downcvt_tiles = brgattr.max_bs * n_rdb * (n_bdb + n_ldb);
-        return downcvt_tiles * tilesize;
+        if (!save_transform_A() && !save_transform_B()) return tilesize;
+
+        const dim_t n_rdb = all_rdb();
+        const dim_t atiles
+                = save_transform_A() ? brgattr.max_bs * n_rdb * bd_block2 : 1;
+        const dim_t btiles = save_transform_B()
+                ? brgattr.max_bs * n_rdb * (ldb + (ldb_tail != 0))
+                : 1;
+        const dim_t total_tiles = atiles + btiles;
+        return total_tiles * tilesize;
     }
 
     dim_t get_fused_copy_a_wsp_buffer_size() const noexcept {
@@ -643,23 +704,101 @@ struct brgemm_desc_t {
         return bd_block2 * ace_transformed_A_bd_block_size();
     }
 
-    dim_t get_wsp_buffer_size() const noexcept {
-        dim_t sz = 0;
-        if (is_ace()) {
-            // ACE transforms and caches A only; B is consumed directly from
-            // its source matrix by the ZMM load path. No C tile area is
-            // reserved either, ACE reads accumulators out with tilemovrow.
-            if (save_transform_A())
-                sz = static_cast<dim_t>(ace_transformed_A_bd_block2_size())
-                        * brgattr.max_bs * all_rdb();
-        } else if (is_tmm) {
-            sz = get_num_C_tiles() * tilesize; // postops buffer
-            sz += get_convert_wsp_buffer_size();
-            if (amx_wary_k_tail()) sz += tilesize;
-            sz += get_fused_copy_a_wsp_buffer_size();
+    // ========================= Workspace (WSP) layout ======================
+    //
+    // Every tile kernel (AMX and ACE) receives one per-thread scratch buffer
+    // through `brgemm_kernel_params_t::ptr_buf`; the uker keeps its base in
+    // `reg_buf`. The buffer is a concatenation of the regions below, laid out
+    // in enum order. `init_wsp_offsets()` is the single place that sizes and
+    // orders them; every consumer must address a region as
+    // `reg_buf + get_wsp_base_offset(<kind>)` and never re-derive an offset
+    // by summing sizes locally.
+    //
+    //   0                                                          wsp_size
+    //   +----------+------------+------------+---------+--------+----------+
+    //   | C tiles  | A transform| B transform| convert | wary   | fused    |
+    //   |          |   (ACE)    |   (ACE)    |         | K tail | copy A   |
+    //   +----------+------------+------------+---------+--------+----------+
+
+    enum wsp_buffer_t {
+        wsp_c_tiles = 0,
+        wsp_a_transform,
+        wsp_b_transform,
+        wsp_convert,
+        wsp_wary_k_tail,
+        wsp_fused_copy_a,
+        wsp_num_buffers,
+    };
+
+    int wsp_offsets_[wsp_num_buffers + 1] = {0};
+    bool wsp_initialized_ = false;
+
+    dim_t get_wsp_buffer_kind_size(int kind) const noexcept {
+        switch (kind) {
+            case wsp_c_tiles:
+                return static_cast<dim_t>(get_num_C_tiles()) * tilesize;
+            case wsp_a_transform:
+                return ace_save_transform_A()
+                        ? static_cast<dim_t>(ace_transformed_A_bd_block2_size())
+                                * brgattr.max_bs * all_rdb()
+                        : 0;
+            case wsp_b_transform:
+                assert(!ace_save_transform_B());
+                return ace_save_transform_B()
+                        ? static_cast<dim_t>(ace_transformed_A_bd_block2_size())
+                                * brgattr.max_bs * all_rdb()
+                        : 0;
+            case wsp_convert: return get_convert_wsp_buffer_size();
+            case wsp_wary_k_tail: return amx_wary_k_tail() ? tilesize : 0;
+            case wsp_fused_copy_a: return get_fused_copy_a_wsp_buffer_size();
+            default: assert(!"unknown WSP buffer kind"); return 0;
         }
-        return sz;
     }
+
+    void init_wsp_offsets() {
+        for (int i = 0; i <= wsp_num_buffers; i++)
+            wsp_offsets_[i] = 0;
+        wsp_initialized_ = true;
+
+        if (!is_tmm) return;
+
+        dim_t offset = 0;
+        for (int i = 0; i < wsp_num_buffers; i++) {
+            const dim_t sz = get_wsp_buffer_kind_size(i);
+            assert(sz >= 0);
+            // Keeping every region 64B-aligned is what lets consumers use
+            // plain vmovups/tilestored against the region base.
+            assert(sz % 64 == 0);
+            wsp_offsets_[i] = static_cast<int>(offset);
+            // The uker folds these offsets into EVEX displacements, which are
+            // signed 32-bit immediates. brgemm_desc_finalize() rejects a
+            // descriptor whose total exceeds that, so the cast is safe here.
+            assert(offset <= std::numeric_limits<int32_t>::max());
+            offset += sz;
+        }
+        assert(offset <= std::numeric_limits<int32_t>::max());
+        wsp_offsets_[wsp_num_buffers] = static_cast<int>(offset);
+    }
+
+    // Byte displacement of `kind` from the start of the workspace.
+    int get_wsp_base_offset(int kind) const noexcept {
+        assert(wsp_initialized_);
+        assert(kind >= 0 && kind < wsp_num_buffers);
+        return wsp_offsets_[kind];
+    }
+
+    int get_wsp_size(int kind) const noexcept {
+        assert(wsp_initialized_);
+        assert(kind >= 0 && kind < wsp_num_buffers);
+        return wsp_offsets_[kind + 1] - wsp_offsets_[kind];
+    }
+
+    dim_t get_wsp_buffer_size() const noexcept {
+        assert(wsp_initialized_);
+        return wsp_offsets_[wsp_num_buffers];
+    }
+
+    bool is_wsp_initialized() const noexcept { return wsp_initialized_; }
 
     // A class version of the `static` version of the function.
     // Note: used in benchdnn only, not used inside the library.

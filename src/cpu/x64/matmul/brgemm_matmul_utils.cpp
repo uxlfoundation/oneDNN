@@ -291,7 +291,18 @@ status_t check_isa_with_datatype(
                     is_superset(isa, avx512_core_amx_fp16)
                             || is_superset(isa, avx10_2))
             && IMPLICATION(
-                    bm_conf_utils.is_f4_via_convert(), one_of(isa, avx10_2));
+                    bm_conf_utils.is_f4_via_convert(), one_of(isa, avx10_2))
+            // u8 weights need a u8 x u8 outer product. AMX-INT8 provides it
+            // with TDPBUUD, ACE with TOP4BUUD. VNNI implements u8 x s8 only.
+            // Note: `avx10_2_ace` does not include `amx_int8` by design, hence
+            // the explicit second alternative.
+            && IMPLICATION(bm_conf_utils.is_int8_unsigned_wei(),
+                    is_superset(isa, amx_int8) || is_superset(isa, avx10_2_ace))
+            // Grouped int8 quantization with u8 weights is implemented for the
+            // VNNI code path only.
+            && IMPLICATION(bm_conf_utils.is_int8_grouped_unsigned_wei(),
+                    !is_superset(isa, amx_int8)
+                            && !is_superset(isa, avx10_2_ace));
     return ok ? status::success : status::unimplemented;
 }
 
@@ -350,7 +361,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , bf8_dt(everyone_is(f8_e5m2, bgmmc.src_dt, bgmmc.wei_dt)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
-    , int8_dt(utils::one_of(bgmmc.src_dt, u8, s8) && bgmmc.wei_dt == s8
+    , int8_dt(utils::one_of(bgmmc.src_dt, u8, s8)
+              && utils::one_of(bgmmc.wei_dt, u8, s8)
               && one_of(bgmmc.dst_dt, u8, s8, s32, f32, f16, bf16))
     , bf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
@@ -396,6 +408,15 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , f16_fp8_dt(bgmmc.src_dt == f16 && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
+    // Plain int8 with u8 weights. The grouped quantization path is excluded
+    // on purpose: it has its own (VNNI-based) kernels and its own dispatch
+    // conditions, see `int8_grouped_unsigned_wei_dt`.
+    , int8_unsigned_wei_dt(
+              int8_dt && bgmmc.wei_dt == u8 && !int8_grouped_quantization_dt)
+    // Grouped int8 quantization with u8 weights runs on the VNNI code path
+    // only; the AMX/ACE path does not implement it.
+    , int8_grouped_unsigned_wei_dt(
+              int8_grouped_quantization_dt && bgmmc.wei_dt == u8)
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
     , C_any_layout(C_any_layout)
@@ -1613,8 +1634,9 @@ status_t compute_amx_blocking_candidate(brgemm_matmul_conf_t &bgmmc,
 
         if (best_blocking.get_blocking_scores() != 0.0f) {
             best_blocking.update_configuration(bgmmc);
-            per_k_requires_buffer_c
-                    = apply_per_k_constraints(bgmmc, k_group, actual_ldd);
+            if (!(bgmmc.is_ace && bgmmc.is_mxfp8))
+                per_k_requires_buffer_c
+                        = apply_per_k_constraints(bgmmc, k_group, actual_ldd);
             return status::success;
         }
     }
@@ -1856,8 +1878,61 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const bool is_wei_any = weights_d.format_kind() == format_kind::any
             || weights_d.is_sparse_packed_desc();
+
+    const auto &asc = attr.scales_;
+    const bool is_f8_x_f8
+            = brgemm_utils::ace_fp8_dt_ok(bgmmc.src_dt, bgmmc.wei_dt);
+    const int ndims = src_d.ndims();
+    const bool src_is_mx = is_mx_block_scale(asc, DNNL_ARG_SRC, ndims);
+    const bool wei_is_mx = is_mx_block_scale(asc, DNNL_ARG_WEIGHTS, ndims);
+    // Dynamic MX on inputs is not a valid configuration.
+    VCONDCHECK_BG(asc.get(DNNL_ARG_SRC).get_quantization_mode()
+                            != quantization_mode::dynamic_mx
+                    && asc.get(DNNL_ARG_WEIGHTS).get_quantization_mode()
+                            != quantization_mode::dynamic_mx,
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    const bool dst_is_mx = !asc.get(DNNL_ARG_DST).has_default_values()
+            && asc.get(DNNL_ARG_DST).get_quantization_mode()
+                    == quantization_mode::dynamic_mx;
+
+    // One-sided MX is not a supported configuration, see above.
+    VCONDCHECK_BG(src_is_mx == wei_is_mx, VERBOSE_UNSUPPORTED_SCALES_CFG);
+    // MX is only defined for fp8 x fp8 here.
+    VCONDCHECK_BG(IMPLICATION(src_is_mx, is_f8_x_f8), VERBOSE_UNSUPPORTED_DT);
+
+    bgmmc.is_mxfp8 = is_f8_x_f8 && src_is_mx && wei_is_mx;
+
+    // MX on DST (dst quantization) is supported only on top of MXFP8 inputs
+    // and with an fp8 destination. Anything else must not reach the generic
+    // `with_dst_scales` path, which would apply the e8m0 array as an f32
+    // scale.
+    const bool is_f8_dst = one_of(bgmmc.dst_dt, f8_e5m2, f8_e4m3);
+    VCONDCHECK_BG(IMPLICATION(dst_is_mx, bgmmc.is_mxfp8 && is_f8_dst),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    bgmmc.is_mxfp8_dst = dst_is_mx;
+
+    if (bgmmc.is_mxfp8_dst) {
+        VCONDCHECK_BG(asc.get_data_type(DNNL_ARG_DST) == e8m0,
+                VERBOSE_UNSUPPORTED_DT_CFG);
+        // dst scales groups: 1 along M, 32 along N, over the full (M, N)
+        // plane.
+
+        const int dst_full_mask = (1 << bgmmc.ndims) - 1;
+        VCONDCHECK_BG(asc.get(DNNL_ARG_DST).get_mask() == dst_full_mask
+                        && asc.get(DNNL_ARG_DST).get_group(0) == 1
+                        && asc.get(DNNL_ARG_DST).get_group(1) == 32,
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+
+    // fp8 x fp8 is ACE-capable on its own, MX scaling or not, so this needs
+    // no extra MXFP8 term.
     bgmmc.is_ace = is_superset(isa, avx10_2_ace)
             && brgemm_utils::ace_dt_ok(bgmmc.src_dt, bgmmc.wei_dt);
+
+    if (bgmmc.is_mxfp8) {
+        // Only ACE has the MX outer product.
+        VCONDCHECK_BG(bgmmc.is_ace, VERBOSE_UNSUPPORTED_ISA);
+    }
 
     brgemm_matmul_conf_utils_t bm_conf_utils(bgmmc, isa, attr,
             src_d.format_kind() == format_kind::any, is_wei_any,
@@ -2005,12 +2080,20 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         if (bgmmc.is_src_scale_per_k) {
             bgmmc.src_scales_k_gsize = src_scales.get_group(1);
         }
+        // MX block scales are static, K-grouped scales whose mask has the K
+        // bit set (validated by is_mx_block_scale()).
+        assert(IMPLICATION(bgmmc.is_mxfp8,
+                bgmmc.is_src_scale_per_k && bgmmc.src_scales_k_gsize == 32));
     }
     if (bgmmc.with_wei_scales) {
         const auto &wei_scale_mask = wei_scales.get_mask();
         bgmmc.is_wei_scale_common = wei_scale_mask == 0;
         bgmmc.is_wei_scale_per_k = wei_scale_mask & 1 << (bgmmc.ndims - 2);
         bgmmc.is_wei_scale_per_n = wei_scale_mask & 1 << (bgmmc.ndims - 1);
+        // MX block scales have both K and N bits set (validated by
+        // is_mx_block_scale()).
+        assert(IMPLICATION(bgmmc.is_mxfp8,
+                bgmmc.is_wei_scale_per_k && bgmmc.is_wei_scale_per_n));
         bgmmc.apply_scales_in_buffer_b = bgmmc.is_wei_scale_per_k
                 && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1;
         bgmmc.wei_scales_dt = wei_scales.get_data_type();
@@ -2040,9 +2123,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
     bgmmc.with_dst_scales = !dst_scales.has_default_values();
-    // only common scales are supported
-    VCONDCHECK_BG(!(bgmmc.with_dst_scales && dst_scales.get_mask() > 0),
-            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    if (bgmmc.is_mxfp8_dst) {
+        bgmmc.dst_scales_n_gsize = dst_scales.get_group(1);
+    } else {
+        // if not mxfp, only common scales are supported
+        VCONDCHECK_BG(!(bgmmc.with_dst_scales && dst_scales.get_mask() > 0),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
 
     const auto &src_zp = attr.zero_points_.get(DNNL_ARG_SRC);
     const auto has_src_zp = !src_zp.has_default_values();
@@ -2107,6 +2194,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.has_zero_point_a = bgmmc.src_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
+
+    // The src zero point compensation accumulates the B column sums in copy_b
+    // with vpdpbusd, which reads B as signed bytes. That is incorrect for u8
+    // weights, so reject the combination until the compensation kernel becomes
+    // aware of the weights signedness.
+    VCONDCHECK_BG(IMPLICATION(bm_conf_utils.is_int8_unsigned_wei(),
+                          !bgmmc.has_zero_point_a),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+
     // Non-default src zero points (per-tensor, common, host_scalar) with
     // int8 grouped quantization: the per-(M,N) compensation tile (set via
     // bgmmc.with_per_mn_compensation later in init) covers the remaining
@@ -2136,6 +2232,17 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_M = is_runtime_value(bgmmc.M);
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
+
+    if (bgmmc.is_mxfp8_dst) {
+        // The dst scales relayout kernels are generated for the static M/N
+        // tails.
+        VCONDCHECK_BG(!bgmmc.is_runtime_M && !bgmmc.is_runtime_N
+                        && !bgmmc.is_runtime_K,
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
+        VCONDCHECK_BG(bgmmc.N % 32 == 0, VERBOSE_UNSUPPORTED_FEATURE,
+                "MXFP8 dst quantization requires N % 32 == 0");
+    }
 
     // Downgrade to per-N to avoid the expensive K-scales JIT path which
     // is not needed for this case.
@@ -2474,7 +2581,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     if (matmul_amx_blocking_params_macro_t::is_supported(bgmmc, bm_conf_utils))
         if (postops_estimator_t::estimate_insts_per_cacheline(
-                    dst_md, attr, bgmmc.postops_inst_count)
+                    dst_md, attr, isa, bgmmc.postops_inst_count)
                 != status::success) {
             // Failed to estimate postops length. Assumption is no impact on
             // gemm execution.
@@ -2488,6 +2595,18 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // - nthr_K
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils, dst_d, attr),
             VERBOSE_BLOCKING_FAIL, "");
+
+    // The batch (bs) dimension is not applied to the scale pointers on either
+    // side: the micro-kernel offsets (A_offset_scales/B_offset_scales) have no
+    // bs term, and the A-scales repack runs per (M_blk, K_blk) only. Fixing
+    // one side alone would desynchronize the repacked buffer from what the
+    // micro-kernel reads, so both are blocked here until they are implemented
+    // together. This is a software restriction, not a hardware one.
+    // Note the placement: `brgemm_batch_size` is derived from the K chunking,
+    // so this must run after blocking, otherwise it reads a stale value.
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_mxfp8, bgmmc.brgemm_batch_size == 1),
+            VERBOSE_UNSUPPORTED_FEATURE,
+            "MXFP8 does not support brgemm_batch_size > 1");
 
     if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk) {
         assert(!bgmmc.is_runtime_N
@@ -2833,6 +2952,42 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.buffer_a_per_thread_sz = bgmmc.buffer_a_m_stride * bgmmc.M_chunk_size;
 
+    if (bgmmc.is_mxfp8) {
+        // Repacked A scales, one byte per e8m0 scale. The slab of a single
+        // (M_blk, K_blk) block is the layout documented on
+        // jit_brgemm_matmul_copy_a_scales_impl_t:
+        //     [m2 = rnd_up(M_blk,32)/32][k1 = rnd_up(K_blk,64)/32]
+        //             [m0 = 16][m1 = 2][k0 = 2]
+        // whose size is rnd_up(K_blk, 2 * gsize) / gsize * rnd_up(M_blk, 32).
+        // The kernel and the micro-kernel both address one such slab; the
+        // outer [M_chunk][K_chunk] indexing is applied by the driver, hence
+        // the two strides below.
+        bgmmc.buffer_a_scales_k_brgm_stride
+                = rnd_up(bgmmc.K_blk, 2 * bgmmc.src_scales_k_gsize)
+                / bgmmc.src_scales_k_gsize * rnd_up(bgmmc.M_blk, 32);
+        bgmmc.buffer_a_scales_m_brgm_stride
+                = bgmmc.buffer_a_scales_k_brgm_stride * bgmmc.K_chunk_size;
+        bgmmc.buffer_a_scales_per_thread_sz
+                = bgmmc.buffer_a_scales_m_brgm_stride * bgmmc.M_chunk_size;
+    } else {
+        bgmmc.buffer_a_scales_k_brgm_stride = 0;
+        bgmmc.buffer_a_scales_m_brgm_stride = 0;
+        bgmmc.buffer_a_scales_per_thread_sz = 0;
+    }
+
+    if (bgmmc.is_ace && bgmmc.is_mxfp8_dst) {
+        // Staged MXFP8 dst scales of one (M_blk, N_blk) block, one byte per
+        // e8m0 scale, in the layout documented on
+        // jit_brgemm_matmul_copy_dst_scales_impl_t. Sized for the full M
+        // block, which also covers the smaller footprint of an M tail.
+        assert(bgmmc.dst_scales_n_gsize == mx_group_size);
+        bgmmc.buffer_dst_scales_brgm_size
+                = rnd_up(bgmmc.N_blk, 2 * mx_group_size) / mx_group_size
+                * rnd_up(bgmmc.M_blk, mx_group_size);
+    } else {
+        bgmmc.buffer_dst_scales_brgm_size = 0;
+    }
+
     // Layout of a single GB in packed format:
     //     [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
 
@@ -2999,6 +3154,16 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_brgemm_primitive_buffer_a,
                 bgmmc.nthr * bgmmc.buffer_a_per_thread_sz, default_data_align);
 
+    if (bgmmc.is_mxfp8)
+        scratchpad.book(key_brgemm_matmul_copy_a_scales_buffer,
+                bgmmc.nthr * bgmmc.buffer_a_scales_per_thread_sz,
+                default_data_align);
+
+    if (bgmmc.is_ace && bgmmc.is_mxfp8_dst)
+        scratchpad.book(key_brgemm_matmul_copy_dst_scales_buffer,
+                bgmmc.nthr * bgmmc.buffer_dst_scales_brgm_size,
+                default_data_align);
+
     if (bgmmc.use_buffer_b) {
         scratchpad.book(key_brgemm_primitive_buffer_b,
                 bgmmc.nthr * bgmmc.buffer_b_per_thread_sz, default_data_align);
@@ -3049,7 +3214,7 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_brgemm_primitive_buffer_d,
                 bgmmc.M_blk * bgmmc.N_blk * bgmmc.c_dt_sz * bgmmc.nthr,
                 default_data_align);
-    if (bgmmc.with_dst_scales) {
+    if (bgmmc.with_dst_scales && !bgmmc.is_mxfp8_dst) {
         // See brgemm_types.hpp comment for `with_dst_scales`.
         scratchpad.book(key_matmul_dst_scales,
                 static_cast<size_t>(bgmmc.nthr) * sizeof(float),

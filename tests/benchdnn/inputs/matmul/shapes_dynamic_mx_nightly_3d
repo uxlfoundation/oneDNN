@@ -1,0 +1,11 @@
+# 3D nightly subset of shapes_dynamic_mx_plain_small_3d - plain form
+# (no --reset), used via --batch= from harness_matmul_dynamic_mx_nightly.
+# Constraints: K % 32 == 0, N % 32 == 0. B <= 16; M, K, N <= 512.
+9x11x32:9x32x32
+16x4x32:16x32x64
+1x1x32:1x32x192
+1x64x384:1x384x256
+10x468x512:10x512x32
+15x17x32:15x32x512
+16x32x64:16x64x32
+16x319x160:16x160x384

@@ -24,6 +24,10 @@ namespace itt {
 #if defined(DNNL_ENABLE_ITT_TASKS)
 static setting_t<int> itt_task_level {__itt_task_level_high};
 
+namespace {
+__itt_domain *itt_domain(const char *log_kind);
+} // namespace
+
 bool get_itt(__itt_task_level level) {
     if (!itt_task_level.initialized()) {
         // Assumes that all threads see the same environment
@@ -31,7 +35,10 @@ bool get_itt(__itt_task_level level) {
                 = getenv_int_user("ITT_TASK_LEVEL", itt_task_level.get());
         itt_task_level.set(val);
     }
-    return level <= itt_task_level.get();
+    // Without a collector `__itt_domain_create` returns nullptr and all ITT
+    // calls on a null domain are no-ops, so skip the task bookkeeping.
+    static const bool has_domain = itt_domain("exec") != nullptr;
+    return has_domain && level <= itt_task_level.get();
 }
 
 __itt_id make_itt_id(const char *tname, double stamp) {

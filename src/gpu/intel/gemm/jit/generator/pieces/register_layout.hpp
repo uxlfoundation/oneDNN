@@ -375,6 +375,14 @@ public:
     // Change data types.
     void cast(Type Tnew) { T = Tnew; }
 
+    // Repoint this layout at a different in-memory representation (e.g. when redirecting
+    //   an existing register layout, originally built for one matrix addressing scheme,
+    //   to a differently-addressed buffer such as a packed temporary C buffer).
+    // The existing blocks' register assignments (offsetBytes) are left untouched, but any
+    //   address-coalescing offsets are recalculated for the new addressing scheme, since
+    //   they may otherwise be invalid (e.g. assuming the wrong row/column pitch).
+    void retarget(const MatrixAddressing &atype_, const MatrixAddressingStrategy &astrategy_);
+
     // Re-order a layout so that registers appear in appropriate order (row or column major).
     void sort(bool reverse = false);
 

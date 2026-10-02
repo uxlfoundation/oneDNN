@@ -397,6 +397,13 @@ void Generator<hw>::gemmRedirectToTempC(GEMMProblem &problem, GEMMStrategy &stra
 
     state.effC[0] = state.effTempC;
     state.C_layoutExt = state.C_layout;
+    // state.C_layout was built for the original (non-tempC) matrix addressing scheme.
+    // Its blocks' register assignments remain valid, but any address-coalescing offsets
+    // between blocks (e.g. row-to-row deltas) were computed for that original layout's
+    // pitch and are generally invalid for the packed temporary C buffer (whose pitch is
+    // determined by state.tempC's packSize, not the original leading dimension). Retarget
+    // the copied layout so these offsets get recomputed for the new addressing scheme.
+    state.C_layoutExt.retarget(problem.C, strategy.C);
     state.C_layoutExtUnmasked.clear();
     state.C_layoutExtNonatomicUnmasked.clear();
     state.inputs.ldc[0] = invalid;

@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstring>
+
 #include "dnnl_test_common.hpp"
 #include "gtest/gtest.h"
 
@@ -93,7 +95,7 @@ TEST(test_e2m1_conversion, f4_e2m1) {
     test_conversions<impl::float4_e2m1_t>();
 }
 
-TEST(test_uint3_conversion, uint3) {
+TEST(test_int3_conversion, uint3) {
     for (int v = 0; v <= 7; ++v)
         ASSERT_EQ(static_cast<float>(impl::uint3_t(v)), static_cast<float>(v));
 
@@ -101,19 +103,31 @@ TEST(test_uint3_conversion, uint3) {
     ASSERT_EQ(static_cast<float>(impl::uint3_t(9.f)), 1.f);
 }
 
-TEST(test_uint3_sizing, byte_conversions) {
+TEST(test_sizing, uint3) {
     using namespace impl;
     const auto u3 = data_type::u3;
-    // contiguous packing
-    EXPECT_EQ(types::elements_to_bytes(u3, 1), size_t(1));
+    // whole 3-byte groups of 8 values
+    EXPECT_EQ(types::elements_to_bytes(u3, 1), size_t(3));
     EXPECT_EQ(types::elements_to_bytes(u3, 8), size_t(3));
-    EXPECT_EQ(types::elements_to_bytes(u3, 9), size_t(4));
+    EXPECT_EQ(types::elements_to_bytes(u3, 9), size_t(6));
     EXPECT_EQ(types::elements_to_bytes(u3, 16), size_t(6));
     // a partial byte still holds whole 3-bit elements
     EXPECT_EQ(types::bytes_to_elements(u3, 1), size_t(2));
     EXPECT_EQ(types::bytes_to_elements(u3, 2), size_t(5));
     EXPECT_EQ(types::bytes_to_elements(u3, 3), size_t(8));
     EXPECT_EQ(types::data_type_bits(u3), size_t(3));
+}
+
+TEST(test_nibble_layout, nibble8) {
+    impl::nibble8_t octet {};
+    // build 111 110 101 100 011 010 001 000
+    for (int i = 0; i < impl::nibble8_t::nelems(); i++)
+        octet.set(static_cast<uint8_t>(i), i);
+
+    const auto *bytes = reinterpret_cast<const uint8_t *>(&octet);
+    EXPECT_EQ(bytes[0], 0x88); // bits 0-7, expected 10 001 000
+    EXPECT_EQ(bytes[1], 0xC6); // bits 8-15, expected 1 100 011 0
+    EXPECT_EQ(bytes[2], 0xFA); // bits 16-23, expected 111 110 10
 }
 
 } // namespace dnnl

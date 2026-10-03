@@ -51,8 +51,11 @@ struct ref_matmul_int8_t : public primitive_t {
 
             VDISPATCH_MATMUL(
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_MATMUL(
-                    utils::one_of(src_type, s8, u8), VERBOSE_UNSUPPORTED_DT);
+
+            // Don't report verbose for this line as ref implementations are
+            // differentiating over src data type - they are mutually excluded.
+            if (!utils::one_of(src_type, s8, u8)) return status::unimplemented;
+
             VDISPATCH_MATMUL(utils::one_of(wei_type, s8, u8, s4, u4),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(IMPLICATION(with_bias(),
@@ -67,7 +70,8 @@ struct ref_matmul_int8_t : public primitive_t {
                                     | smask_t::scales_groups
                                     | smask_t::zero_points_data_type
                                     | smask_t::zero_points_groups
-                                    | smask_t::post_ops | smask_t::sum_dt
+                                    | smask_t::post_ops_inplace
+                                    | smask_t::sum_dt
                                     | smask_t::precomputed_reductions,
                             dst_type),
                     VERBOSE_UNSUPPORTED_ATTR);

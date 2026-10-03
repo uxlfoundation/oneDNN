@@ -654,7 +654,7 @@ void jit_brgemm_f16_kernel_t::generate() {
         L(lbl_no_bias);
     }
 
-    if (brg_.store_f16) {
+    if (brg_.stores_f16()) {
         // Narrow the f32 accumulators to f16 on store: e32/m4 -> e16/m2
         // keeps VL unchanged. C is a 2-byte element array.
         vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
@@ -816,7 +816,7 @@ void jit_brgemm_f16_kernel_t::generate() {
     {
         Label lbl_bz2, lbl_done2;
         beq(reg_beta, x0, lbl_bz2);
-        if (brg_.store_f16) {
+        if (brg_.stores_f16()) {
             vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
             vle16_v(v_a0, reg_C);
             vfwcvt_f_f_v(v_a0, v_a0);
@@ -832,7 +832,7 @@ void jit_brgemm_f16_kernel_t::generate() {
         }
         j_(lbl_done2);
         L(lbl_bz2);
-        if (brg_.store_f16) {
+        if (brg_.stores_f16()) {
             vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
             vfncvt_f_f_w(v_c0, v_c0);
             vse16_v(v_c0, reg_C);

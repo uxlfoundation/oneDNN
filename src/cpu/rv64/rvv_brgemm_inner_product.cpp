@@ -52,7 +52,7 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
             && (src_type == f32 || (src_type == bf16 && mayiuse(zvfbfwma))
                     || (src_type == f16 && mayiuse(zvfh)));
     // dst is f32, or f16 narrowed from the f32 accumulators (Zvfh). The
-    // brgemm f16 kernel narrows on store via vfncvt when store_f16 is set.
+    // brgemm f16 kernel selects the narrowing store from the C data type.
     const bool dst_ok = dst_type == f32
             || (dst_type == f16 && src_type == f16 && mayiuse(zvfh));
     const bool types_ok
@@ -148,7 +148,7 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     // typesize_C (2) to advance C between columns; the f32/bf16 paths keep
     // typesize_C = 4 (the accumulator width).
     if (dst_type == f16) {
-        brg_desc.store_f16 = true;
+        brg_desc.dt_c = dst_type;
         brg_desc.typesize_C = static_cast<int>(types::data_type_size(dst_type));
     }
 

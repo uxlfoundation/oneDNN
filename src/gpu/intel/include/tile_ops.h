@@ -510,7 +510,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_load_full(tile_type *t, \
             const global element_type *ptr, int ld, int offset_r, \
             int offset_c) { \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
             _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
                 int i = i0 + get_sub_group_local_id(); \
@@ -554,7 +554,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             tile_load_full(t, ptr, ld, offset_r, offset_c); \
             return; \
         } \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
             if (offset_c + j < n) { \
                 _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
@@ -605,7 +605,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_load_t_full(tile_type *t, \
             const global element_type *ptr, int ld, int offset_r, \
             int offset_c) { \
-        ptr += ld * offset_r + offset_c; \
+        ptr += (off_t)ld * offset_r + offset_c; \
         _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
                                i0 += sg, ptr += ld * sg) { \
             _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
@@ -621,7 +621,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             tile_load_t_full(t, ptr, ld, offset_r, offset_c); \
             return; \
         } \
-        ptr += ld * offset_r + offset_c; \
+        ptr += (off_t)ld * offset_r + offset_c; \
         _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
                                i0 += sg, ptr += ld * sg) { \
             int i = i0 + get_sub_group_local_id(); \
@@ -697,7 +697,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     } \
     __attribute__((overloadable)) void tile_store_full(tile_type t, \
             global element_type *ptr, int ld, int offset_r, int offset_c) { \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
             _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
                 int i = i0 + get_sub_group_local_id(); \
@@ -712,7 +712,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             tile_store_full(t, ptr, ld, offset_r, offset_c); \
             return; \
         } \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
             if (offset_c + j < n) { \
                 _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
@@ -730,7 +730,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     } \
     __attribute__((overloadable)) void tile_store_t_full(tile_type t, \
             global element_type *ptr, int ld, int offset_r, int offset_c) { \
-        ptr += ld * offset_r + offset_c; \
+        ptr += (off_t)ld * offset_r + offset_c; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr++) { \
             _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
                 int i = ld * (i0 + get_sub_group_local_id()); \
@@ -745,7 +745,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             tile_store_t_full(t, ptr, ld, offset_r, offset_c); \
             return; \
         } \
-        ptr += ld * offset_r + offset_c; \
+        ptr += (off_t)ld * offset_r + offset_c; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr++) { \
             if (offset_c + j < n) { \
                 _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
@@ -1047,7 +1047,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     } \
     __attribute__((overloadable)) void tile_atomic_add_full(tile_type t, \
             global element_type *ptr, int ld, int offset_r, int offset_c) { \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
             _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
                 int i = i0 + get_sub_group_local_id(); \
@@ -1063,7 +1063,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             tile_atomic_add_full(t, ptr, ld, offset_r, offset_c); \
             return; \
         } \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
             if (offset_c + j < n) { \
                 _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
@@ -1273,7 +1273,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_load_block(tile_type *t, \
             const global element_type *ptr, int ld, int offset_r, \
             int offset_c) { \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int jj = 0; jj < nbc; jj++, ptr += ld * bc) { \
             _Pragma("unroll") for (int ii = 0; ii < nbr; ii++)(t) \
                     ->x[ii + nbr * jj] \
@@ -1282,7 +1282,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     } \
     __attribute__((overloadable)) void tile_store_block(tile_type t, \
             global element_type *ptr, int ld, int offset_r, int offset_c) { \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int jj = 0; jj < nbc; jj++, ptr += ld * bc) { \
             _Pragma("unroll") for (int ii = 0; ii < nbr; ii++) \
                     block_store(ptr + ii * br, (t).x[ii + nbr * jj]); \
@@ -1305,7 +1305,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_load_block(tile_type *t, \
             const global element_type *ptr, int n, int ld, int offset_r, \
             int offset_c) { \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         n -= offset_c; \
         _Pragma("unroll") for (int jj = 0; jj < nbc; jj++, ptr += ld * bc) { \
             if (jj < n) { \
@@ -1318,7 +1318,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_store_block(tile_type t, \
             global element_type *ptr, int n, int ld, int offset_r, \
             int offset_c) { \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         n -= offset_c; \
         _Pragma("unroll") for (int jj = 0; jj < nbc; jj++, ptr += ld * bc) { \
             if (jj < n) { \
@@ -1367,7 +1367,7 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     __attribute__((overloadable)) void tile_load_packed_vec2(tile_type *t, \
             const global element_type *ptr, int m, int n, int ld, \
             int offset_r, int offset_c) { \
-        ptr += ld * offset_c + offset_r; \
+        ptr += (off_t)ld * offset_c + offset_r; \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
             if (offset_c + j < n) { \
                 _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \

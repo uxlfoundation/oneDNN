@@ -402,6 +402,20 @@ ic64ih14oc24oh14kh5ph2_n"zp_with_top_and_bottom_vpad"
 --dt=u8:s8:u8,s8:s8:s8 ic32ih32oc64oh8kh4sh4ph0n"brgemm_conv_fold_small_ic"
 --dt=bf16,f16,u8:s8:u8,s8:s8:s8 ic8ih23oc64oh8kh16ph0n"brgemm_conv_relo_small_ic"
 
+# test brgemm conv with ow == 1, stride_w > 1 and os blocking
+--reset
+--skip-impl=ref,x64:gemm
+--dir=FWD_I --stag=acdb --dtag=acdb --dt=bf16
+mb1_ic16oc64_ih8oh8kh1ph0_iw4ow1kw4sw4pw0n"brgemm_conv_ow1_kw_eq_sw"
+mb1_ic16oc64_ih8oh8kh1ph0_iw5ow1kw2sw4pw0n"brgemm_conv_ow1_sw_gt_kw"
+mb1_ic16oc64_ih8oh8kh1ph0_iw3ow1kw3sw2pw0n"brgemm_conv_ow1_kw_not_mult_sw"
+
+# test f32 bwd weights with ow == 1 and large kh
+--reset
+--dir=BWD_WB --dt=f32 --stag=aBcd16b --wtag=ABcd16b16a --dtag=aBcd16b
+mb1ic16ih16iw16oc16oh1ow1kh16kw16ph0pw0n"f32_bwd_w_ow1_large_kh"
+mb1ic16ih17iw16oc16oh3ow1kh15kw16ph0pw0n"f32_bwd_w_ow1_large_kh_oh3"
+
 # test 3d 1x1 convolution for correct rtus transform
 --reset
 --skip-impl=ref,x64:gemm

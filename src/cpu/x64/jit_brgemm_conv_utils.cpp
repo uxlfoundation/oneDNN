@@ -582,7 +582,14 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
         LDA = kh_koef * stride_w * ic_stride;
     }
     bool reduce_kw = ow == 1 && !is_reduced_rtus;
-    if (reduce_kw) { LDA *= ext_kw; }
+    if (reduce_kw) {
+        // With os blocking the rows of A are rows of the input buffer, and the
+        // trans kernel rounds the buffer row width up to stride_w.
+        if (!is_rtus && exec_type == exec_trans && is_os_blocking)
+            LDA = kh_koef * inp_ic_block * rnd_up(ext_kw, stride_w);
+        else
+            LDA *= ext_kw;
+    }
 
     LDB = wei_plain ? oc_without_padding : oc_block;
     LDC = use_buffer ? oc_block : oc_without_padding;

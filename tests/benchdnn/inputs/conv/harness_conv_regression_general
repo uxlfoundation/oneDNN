@@ -392,6 +392,16 @@ ic64ih14oc24oh14kh5ph2_n"zp_with_top_and_bottom_vpad"
 --skip-impl=ref,x64:gemm
 --dir=FWD_I --dt=bf16:bf16:f32 mb1_ic48oc16_ih8kh2sh2ph0
 
+# test brgemm conv kw/kh folding and relo with ic not a multiple of the ic
+# padding in the weights layout
+--reset
+--skip-impl=ref,x64:gemm
+--dir=FWD_I --stag=axb --dtag=axb
+--dt=f16 mb1_ic6oc64_ih128oh8kh16sh16ph0_iw128ow8kw16sw16pw0n"brgemm_conv_fold_kw_kh_small_ic"
+--dt=bf16,f16 ic16ih32oc64oh8kh4sh4ph0n"brgemm_conv_fold_small_ic"
+--dt=u8:s8:u8,s8:s8:s8 ic32ih32oc64oh8kh4sh4ph0n"brgemm_conv_fold_small_ic"
+--dt=bf16,f16,u8:s8:u8,s8:s8:s8 ic8ih23oc64oh8kh16ph0n"brgemm_conv_relo_small_ic"
+
 # test 3d 1x1 convolution for correct rtus transform
 --reset
 --skip-impl=ref,x64:gemm

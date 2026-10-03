@@ -137,7 +137,8 @@ the static data, and print the debug output with `ir::print_kernel_dump()`
   that is, the allocatable pools plus the reserved and scratch registers.
 * `reg_alloc.hpp`, `reg_alloc.cpp`: liveness analysis and the linear-scan
   allocator, producing the assignment for each virtual register and the size of
-  the spill frame.
+  the spill frame. On request, the allocator also returns statistics for the
+  debug output.
 * `emitter/emitter.hpp`, `emitter/emitter.cpp`: the lowering pass, which walks the
   allocated IR, dispatches by ISA family, and manages the static-data section.
 * `emitter/backend_avx2.hpp`, `emitter/backend_avx512.hpp`: the per-ISA-family
@@ -146,7 +147,8 @@ the static data, and print the debug output with `ir::print_kernel_dump()`
 * `postops_injector.hpp`, `postops_injector.cpp`: the driver for the JIT post-ops
   injector, which lowers the `inject_postops` operation.
 * `dump.hpp`, `dump.cpp`: the debug output that `ONEDNN_VERBOSE=x64ir=<level>`
-  enables, that is, the kernel summary and the IR dump (see Debug Output).
+  enables, that is, the kernel summary, the spill details, and the IR dump (see
+  Debug Output).
 
 The kernel-specific builders live outside this directory. For example,
 `src/cpu/x64/brgemm/brgemv_ir.{hpp,cpp}` holds the GEMV builder and shows how
@@ -221,7 +223,9 @@ generates. The description includes the IR of the kernel. The IR shows the
 kernel in the same form as the builder code: the operations, the virtual
 registers that they use, and the loops around them. The description also
 includes a short summary. The summary gives numbers from the IR, such as the
-number of operations, and numbers from the generated code, such as its size.
+number of operations, numbers from the register allocation, such as the number
+of spilled virtual registers, and numbers from the generated code, such as its
+size.
 
 The description helps a developer to check a kernel without a debugger. The
 builder creates the IR in C++ code, so the IR is not visible anywhere else.
@@ -234,6 +238,11 @@ cases:
   iteration counts, the pointer increments (`add_imm`), the memory offsets, and
   the data types that the builder produced. A developer can compare them with
   what the builder code is supposed to produce.
+* **Finding spills.** The summary shows how many virtual registers of each
+  register file the allocator keeps on the stack instead of in a register.
+  Level 2 shows which virtual registers these are and why the register file
+  spills. Level 3 shows the physical register or the stack slot of each virtual
+  register in each operation.
 * **Comparing two versions.** The output does not change from run to run. A
   `diff` of the output before and after a change shows how the change affected
   each kernel.
@@ -269,6 +278,9 @@ previous section generates one IR kernel and prints the following:
 begin x64ir #1 jit_brgemv_ir_kernel_t isa=avx2
 ir: 66 ops, 19 vregs (gpr 8, vec 11, mask 0), 2 loops, nesting depth 2, 0 branches
 code: 492 bytes (instructions 492, static data 0)
+alloc gpr: pool 12, vregs 8, peak 7 at op 15, spilled 0, scratch 2 unused
+alloc vec+mask: pool 13, vregs 11, peak 11 at op 21, spilled 0, scratch 3 unused
+alloc: frame 0 bytes, liveness passes 3
 end x64ir #1
 ```
 
@@ -290,46 +302,128 @@ The lines mean the following:
   setup, and the lowered operations. The static data is the constants after
   the postamble, such as mask tables and post-op tables. It includes the
   padding that aligns the constants.
+* `alloc gpr:` and `alloc vec+mask:` describe the register files, one line per
+  file. A register file is the set of physical registers that the allocator
+  assigns to one or more kinds of virtual registers. The name of the file lists
+  these kinds. On AVX2, a mask is a vector register, so masks and vecs share
+  the file `vec+mask`. On AVX-512, the files are `gpr`, `vec`, and `mask`.
+* `pool` is the number of physical registers that the allocator can assign in
+  the file. For example, the gpr pool does not include the stack pointer, the
+  register that holds the kernel arguments, and the scratch registers.
+* `vregs` is the number of virtual registers that use the file.
+* `peak` is the largest number of virtual registers that need a register of the
+  file at the same operation. The index of the first such operation follows. A
+  virtual register needs a register at an operation when the operation reads
+  or writes it, or when a later operation reads its current value.
+* `spilled` is the number of virtual registers that the allocator keeps on the
+  stack. The emitter loads such a value into a scratch register before each
+  read, and it stores the value back after each write.
+* `scratch` is the number of scratch registers that the emitter reserves in the
+  file. Only spill code uses them. `unused` means that the file has no spilled
+  virtual register, so the generated code does not use them.
+* `alloc: frame` gives the size of the stack area for spilled values in bytes.
+  It also gives the number of passes that the liveness analysis needed. The
+  analysis repeats until a pass changes nothing, so loops need more passes.
 * `end x64ir #1` ends the output for the kernel.
 
 ### Level 2: Details
 
-Level 2 prints the same output as level 1 for now.
+Level 2 adds the details of the spills. For each register file that has a
+spilled virtual register, it prints a `hint` line and one `spill` line for each
+spilled virtual register. For a kernel without spills, level 2 prints the same
+output as level 1.
+
+On an AVX-512 machine, the following command generates a BRGEMM kernel that
+spills one gpr:
+
+```
+ONEDNN_VERBOSE=x64ir=2 ./benchdnn --brgemm --bia_dt=f32 --bs=16 16x64:64x32
+```
+
+The command prints the following:
+
+```
+begin x64ir #1 jit_brgemm_ir_kernel_t isa=avx512_core
+ir: 193 ops, 34 vregs (gpr 13, vec 21, mask 0), 3 loops, nesting depth 3, 3 branches
+code: 1330 bytes (instructions 1330, static data 0)
+alloc gpr: pool 12, vregs 13, peak 13 at op 36, spilled 1, scratch 2
+alloc vec: pool 29, vregs 21, peak 19 at op 39, spilled 0, scratch 3 unused
+alloc mask: pool 7, vregs 0, peak 0, spilled 0
+alloc: frame 16 bytes, liveness passes 3
+hint gpr: peak 13 at op 36 > pool 12: the pool is too small for the live vregs
+spill r1@[rsp+0]: weight 11, interval 1..192, refs 1 at depth 0, 1 at depth 1
+end x64ir #1
+```
+
+The new lines mean the following:
+
+* `hint gpr:` tells why the register file spills. The allocator gives each
+  virtual register one interval, from the first operation that needs it to the
+  last. The allocator spills only when more intervals overlap at one operation
+  than the pool has registers. The hint compares this with the peak.
+* When the peak is larger than the pool, as in this example, more virtual
+  registers need a register at one operation than the pool has. Any allocation
+  with this pool spills. The hint says that the pool is too small for the live
+  virtual registers.
+* When the peak fits in the pool, the hint shows the largest overlap instead,
+  for example, `overlap 14 at op 30 > pool 13, peak 12 <= pool`. Then some
+  intervals contain a dead gap. In a dead gap, a virtual register holds no value
+  that a later operation reads, but it keeps its register. The builder can
+  remove a dead gap with a new virtual register for the value after the gap.
+* `spill r1@[rsp+0]` names a spilled virtual register and its stack slot. The
+  slot is a byte offset from `rsp`. When intervals overlap, the allocator
+  spills the virtual register with the lowest weight.
+* `weight` is the spill weight. Each read and each write of the virtual
+  register adds 1 outside loops, 10 inside one loop, 100 inside two loops, and
+  so on. `refs` gives the number of reads and writes at each loop depth. In
+  this example, 1 at depth 0 and 1 at depth 1 give the weight 1 + 10 = 11.
+* `interval` gives the first and the last operation of the interval.
 
 ### Level 3: IR Dump
 
-Level 3 adds the IR dump after the summary. The IR dump has one line per
-operation. The example below shows a part of the output for the same command.
-The lines marked `...` are left out.
+Level 3 adds the IR dump after the lines of level 2. The IR dump has one line
+per operation. The example below shows a part of the output for the command in
+Enabling the Output. The lines marked `...` are left out.
 
 ```
 begin x64ir #1 jit_brgemv_ir_kernel_t isa=avx2
 ir: 66 ops, 19 vregs (gpr 8, vec 11, mask 0), 2 loops, nesting depth 2, 0 branches
 code: 492 bytes (instructions 492, static data 0)
-    0 | load r0, [param+24]
-    1 | load r1, [param+16]
-    2 | mov_imm r2, 0
-    3 | loop r3 = 2 {
-    4 |   vzero f32:v4
+alloc gpr: pool 12, vregs 8, peak 7 at op 15, spilled 0, scratch 2 unused
+alloc vec+mask: pool 13, vregs 11, peak 11 at op 21, spilled 0, scratch 3 unused
+alloc: frame 0 bytes, liveness passes 3
+index | gpr vec+mask | operation
+    0 |   1        1 | load r0@rax, [param+24]
+    1 |   2        1 | load r1@rcx, [param+16]
+    2 |   3        1 | mov_imm r2@rdx, 0
+    3 |   4        1 | loop r3@rbx = 2 {
+    4 |   4        2 |   vzero f32:v4@ymm1
 ...
-   17 |   loop r15 = 32 {
-   18 |     prefetch [r14+512]
-   19 |     vload f32:v16, f32:[r14+0]
-   20 |     prefetch [r13+512]
-   21 |     vload f32:v17, f32:[r13+0]
-   22 |     vdot f32:v4, f32:v17, f32:v16
+   17 |   7        9 |   loop r15@rbp = 32 {
+   18 |   7        9 |     prefetch [r14@r8+512]
+   19 |   7       10 |     vload f32:v16@ymm9, f32:[r14@r8+0]
+   20 |   7       10 |     prefetch [r13@rsi+512]
+   21 |   7       11 |     vload f32:v17@ymm10, f32:[r13@rsi+0]
+   22 |   7       11 |     vdot f32:v4@ymm1, f32:v17@ymm10, f32:v16@ymm9
 ...
-   46 |   } // r15 -= 1, repeat while > 0
-   47 |   vhreduce f32:v4, f32:v18
+   46 |   7        9 |   } // r15@rbp -= 1, repeat while > 0
+   47 |   4        9 |   vhreduce f32:v4@ymm1, f32:v18@ymm0
 ...
-   55 |   vstore_scalar f32:[r0+0], f32:v4
+   55 |   4        9 |   vstore_scalar f32:[r0@rax+0], f32:v4@ymm1
 ...
-   65 | } // r3 -= 1, repeat while > 0
+   65 |   4        1 | } // r3@rbx -= 1, repeat while > 0
 end x64ir #1
 ```
 
-Each line starts with the operation index. An operation inside a loop is
-indented by two spaces for each loop around it.
+The first line of the IR dump names the columns. Each of the other lines has
+three columns:
+
+* The first column is the operation index.
+* The second column is the register pressure. For each register file, it gives
+  the number of virtual registers that need a register of the file at the
+  operation. The largest number in a column is the `peak` of the summary.
+* The third column is the operation. An operation inside a loop is indented by
+  two spaces for each loop around it.
 
 An operation prints as its name, then its operands. The name is the
 `op_kind_t` name, for example, `vload` or `vdot`. The destination operand
@@ -341,24 +435,31 @@ comes first, as in Intel-syntax x64 assembly. Operands print as follows:
   `<dt>`, for example, `f32:v4`.
 * The ids are unique across all three kinds, so `v5` is the virtual register
   with id 5. A debugger shows the same number for the `vreg_t` value.
+* `@` follows each virtual register and gives its location. The location is
+  the physical register, for example, `r0@rax` or `f32:v4@ymm1`. The register
+  names are the names that the emitter uses. On AVX2, vecs and masks are in
+  `ymm` registers. On AVX-512, vecs are in `zmm` registers and masks are in `k`
+  registers. For a spilled virtual register, the location is its stack slot,
+  for example, `r1@[rsp+0]`.
 * `[r<id>+<disp>]` is the memory at the address in `r<id>` plus the byte
   offset `<disp>`. The offset is a decimal number.
 * `[param+<disp>]` is a field of the kernel argument struct at the byte offset
   `<disp>`.
 * A vector load or store puts the data type in memory before the memory
-  operand, for example, `f32:[r13+0]`. A load or store that converts between
-  data types shows two different types. For example, `vload f32:v3,
-  bf16:[r0+0]` reads bf16 values and converts them to f32.
+  operand, for example, `f32:[r13@rsi+0]`. A load or store that converts
+  between data types shows two different types. For example, `vload
+  f32:v3@ymm2, bf16:[r0@rax+0]` reads bf16 values and converts them to f32.
 * `L<id>` is an IR label, the target of `jmp` and `jz`. Loops do not use IR
   labels. The emitter creates the labels for loops during lowering.
 
 Two kinds of operations print in a special form:
 
-* A loop prints as two lines. `loop r3 = 2 {` is the `loop_begin` operation.
-  `r3` is the loop counter, and `2` is the number of iterations. The number of
-  iterations can also come from a register, for example, `loop r4 = r1 {`. The
-  line `} // r3 -= 1, repeat while > 0` is the `loop_end` operation.
-* `L0:` is the `label` operation for the label `L0`. `jz r1, L0` jumps to
+* A loop prints as two lines. `loop r3@rbx = 2 {` is the `loop_begin`
+  operation. `r3` is the loop counter, and `2` is the number of iterations. The
+  number of iterations can also come from a register, for example, `loop
+  r4@rdx = r1@rcx {`. The line `} // r3@rbx -= 1, repeat while > 0` is the
+  `loop_end` operation.
+* `L0:` is the `label` operation for the label `L0`. `jz r1@rcx, L0` jumps to
   `L0` when `r1` is zero.
 
 ## References

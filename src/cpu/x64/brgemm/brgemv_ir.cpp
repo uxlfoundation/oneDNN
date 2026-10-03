@@ -579,8 +579,11 @@ struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
                 {vec_scratch0, vec_scratch1, vec_scratch2},
                 {eltwise_opmask, binary_tail_opmask});
 
-        // Register allocation
-        ir::reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools);
+        // Register allocation. The statistics are for the debug output (see
+        // `ir/dump.hpp`), so they are collected only when it is enabled.
+        ir::reg_alloc_stats_t ra_stats;
+        ir::reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools,
+                ir::verbose_level() > 0 ? &ra_stats : nullptr);
 
         // The injector is created here, not in the emitter, because it spans
         // the whole codegen flow (emits during `emit()`, writes its table after
@@ -626,7 +629,7 @@ struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
         if (postops_injector) postops_injector->maybe_prepare_table();
 
         // Debug output (see `ir/dump.hpp`). Prints nothing unless enabled.
-        ir::print_kernel_dump(*this, ir, data);
+        ir::print_kernel_dump(*this, ir, data, reg_cfg, alloc, ra_stats);
     }
 
 private:

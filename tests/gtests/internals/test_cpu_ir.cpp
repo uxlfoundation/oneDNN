@@ -19,6 +19,7 @@
 #include <memory>
 #include <regex>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -1297,27 +1298,102 @@ std::vector<std::string> split_lines(const std::string &s) {
     return lines;
 }
 
+// Split `s` on ` | `, the column separator of the IR dump.
+std::vector<std::string> split_columns(const std::string &s) {
+    std::vector<std::string> cols;
+    size_t pos = 0;
+    while (true) {
+        const size_t end = s.find(" | ", pos);
+        cols.push_back(s.substr(pos, end - pos));
+        if (end == std::string::npos) break;
+        pos = end + 3;
+    }
+    return cols;
+}
+
 // An operand as the IR dump prints it: the letter of its kind (`r`, `v`, `m`,
-// or `L` for a label), its id, and its data type prefix (empty when there is
-// none). For example, `f32:v5` is ('v', 5, "f32").
-using operand_t = std::tuple<char, int, std::string>;
+// or `L` for a label), its id, its data type prefix, and its location after
+// `@`. The prefix and the location are empty when there is none. For example,
+// `f32:v5@ymm2` is ('v', 5, "f32", "ymm2").
+using operand_t = std::tuple<char, int, std::string, std::string>;
 
 // Return the operands in `text`. A match must be a whole word, so `vload` or
 // `bf16` do not count. A data type prefix belongs to the operand that follows
-// it, so the match cannot start at the `:`.
+// it, so the match cannot start at the `:`. A location belongs to the operand
+// before it, so the match cannot start at the `@`, and the register `r9` in
+// `r16@r9` does not count as an operand.
 std::set<operand_t> operands(const std::string &text) {
     static const std::regex re(
-            "(^|[^A-Za-z0-9_:])(?:([a-z0-9_]+):)?([rvmL])"
-            "([0-9]+)(?![A-Za-z0-9_])");
+            "(^|[^A-Za-z0-9_:@])(?:([a-z0-9_]+):)?([rvmL])"
+            "([0-9]+)(?![A-Za-z0-9_])(?:@(\\[rsp\\+[0-9]+\\]|[a-z0-9]+))?");
     std::set<operand_t> ops;
     for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end;
             ++it)
-        ops.insert(operand_t {
-                (*it)[3].str()[0], std::stoi((*it)[4].str()), (*it)[2].str()});
+        ops.insert(operand_t {(*it)[3].str()[0], std::stoi((*it)[4].str()),
+                (*it)[2].str(), (*it)[5].str()});
     return ops;
 }
 
-// An IR with at least one operation of every kind, so the listing checks
+// Returns the register configuration that an IR kernel for `isa` uses. When
+// `n_regs` is not negative, each register file keeps at most `n_regs`
+// registers, so that the allocation spills.
+reg_config_t make_kernel_reg_config(cpu_isa_t isa, int n_regs = -1) {
+    reg_config_t rc = make_reg_config(isa, abi_param1.getIdx(),
+            Xbyak::Operand::RSP, {gpr_scratch0, gpr_scratch1},
+            {vec_scratch0, vec_scratch1, vec_scratch2},
+            {eltwise_opmask, binary_tail_opmask});
+    if (n_regs >= 0)
+        for (reg_file_t &file : rc.pools.files)
+            if ((int)file.regs.size() > n_regs) file.regs.resize(n_regs);
+    return rc;
+}
+
+// The register allocation of an IR, and the kernel facts that the debug output
+// reads. `info` points to the other members, so the struct is not copied.
+struct dump_input_t {
+    reg_config_t reg_cfg;
+    reg_alloc_result_t alloc;
+    reg_alloc_stats_t stats;
+    kernel_info_t info;
+
+    dump_input_t(const ir_t &ir, cpu_isa_t isa, int n_regs = -1)
+        : reg_cfg(make_kernel_reg_config(isa, n_regs)) {
+        alloc = allocate_registers(ir, reg_cfg.pools, &stats);
+        info.name = "test_kernel";
+        info.isa = isa;
+        info.code_size = 123;
+        info.data_size = 23;
+        info.reg_cfg = &reg_cfg;
+        info.alloc = &alloc;
+        info.ra_stats = &stats;
+    }
+    dump_input_t(const dump_input_t &) = delete;
+    dump_input_t &operator=(const dump_input_t &) = delete;
+
+    bool any_spill() const { return alloc.any_spill; }
+};
+
+// Returns the location of vreg `v` that the IR dump must show: the stack slot
+// of a spilled vreg, or else the physical register under the name that the
+// emitter uses. The AVX-512 backend keeps a vec in a `zmm` and a mask in a `k`
+// register. The AVX2 backend keeps both in a `ymm`.
+std::string expected_location(const ir_t &ir, const dump_input_t &in, int v) {
+    const assignment_t &a = in.alloc.assignments[v];
+    if (a.spilled) return "[rsp+" + std::to_string(a.slot) + "]";
+    const bool is_avx512 = is_superset(in.info.isa, avx512_core);
+    switch (ir.vreg_info()[v].kind) {
+        case reg_kind_t::gpr: return Xbyak::Reg64(a.phys).toString();
+        case reg_kind_t::vec:
+            return is_avx512 ? Xbyak::Zmm(a.phys).toString()
+                             : Xbyak::Ymm(a.phys).toString();
+        case reg_kind_t::mask:
+            return is_avx512 ? Xbyak::Opmask(a.phys).toString()
+                             : Xbyak::Ymm(a.phys).toString();
+    }
+    return "";
+}
+
+// An IR with at least one operation of every kind, so the IR dump checks
 // below cover every kind. Operands of one operation are distinct vregs, so a
 // dropped operand cannot hide behind a repeated one. The IR does not compute
 // anything useful.
@@ -1370,9 +1446,163 @@ ir_t build_every_op_ir() {
     return ir;
 }
 
+// Allocation statistics tests
+//
+// Builds straight-line code in which `x` is dead between its two values. The
+// interval of `x` covers the gap, but `x` needs no register in the gap.
+ir_t build_ir_with_hole() {
+    ir_t ir;
+    const vreg_t acc = ir.new_gpr();
+    const vreg_t x = ir.new_gpr();
+    const vreg_t y = ir.new_gpr();
+    ir.mov_imm(acc, 0);
+    ir.mov_imm(x, 1);
+    ir.add_reg(acc, x); // the first value of `x` dies here
+    ir.mov_imm(y, 2); // op 3: `x` is dead
+    ir.add_reg(acc, y);
+    ir.mov_imm(x, 3);
+    ir.add_reg(acc, x);
+    return ir;
+}
+
+// IRs for the statistics tests: straight-line code, a dead gap, loops, and
+// branches.
+std::vector<ir_t> stats_test_irs() {
+    std::vector<ir_t> irs;
+    irs.push_back(build_gpr_live_set(6));
+    irs.push_back(build_dot_ir());
+    irs.push_back(build_shared_vector_dot_ir(6));
+    irs.push_back(build_ir_with_hole());
+    irs.push_back(build_every_op_ir());
+    return irs;
+}
+
+// Pool sizes for the statistics tests. -1 keeps the full pools.
+const std::vector<int> stats_test_pool_sizes {0, 1, 2, 3, 4, 6, 8, -1};
+
+// Checks that asking for statistics never changes the allocation. The same IR
+// and pools give the same assignments, frame, and spill flag with and without
+// statistics.
+TEST(AllocatorTests, StatisticsDoNotChangeAllocation) {
+    for (const ir_t &ir : stats_test_irs())
+        for (cpu_isa_t isa : {avx2, avx512_core})
+            for (int n_regs : stats_test_pool_sizes) {
+                const reg_config_t rc = make_kernel_reg_config(isa, n_regs);
+                reg_alloc_stats_t stats;
+                const reg_alloc_result_t a = allocate_registers(ir, rc.pools);
+                const reg_alloc_result_t b
+                        = allocate_registers(ir, rc.pools, &stats);
+
+                ASSERT_EQ(a.assignments.size(), b.assignments.size());
+                EXPECT_EQ(a.frame_bytes, b.frame_bytes);
+                EXPECT_EQ(a.any_spill, b.any_spill);
+                for (size_t v = 0; v < a.assignments.size(); v++) {
+                    EXPECT_EQ(
+                            a.assignments[v].spilled, b.assignments[v].spilled);
+                    EXPECT_EQ(a.assignments[v].phys, b.assignments[v].phys);
+                    EXPECT_EQ(a.assignments[v].slot, b.assignments[v].slot);
+                }
+            }
+}
+
+// Checks that the register pressure counts the vregs that need a register,
+// not the intervals. In straight-line code, a vreg needs a register at an
+// operation if the operation reads or writes it, or if a later operation reads
+// it before it is written again. One backward pass computes that. The IR with
+// a dead gap makes sure that the pressure is not the interval overlap.
+TEST(AllocatorTests, PressureCountsVregsThatNeedARegister) {
+    {
+        const ir_t ir = build_ir_with_hole();
+        const dump_input_t in(ir, avx2);
+        const int op = 3, gpr_file = 0;
+        ASSERT_LT(
+                in.stats.pressure[gpr_file][op], in.stats.overlap[gpr_file][op])
+                << "the IR has no dead gap at op " << op;
+    }
+
+    std::vector<int> defs, uses;
+    for (const ir_t &ir : stats_test_irs())
+        for (cpu_isa_t isa : {avx2, avx512_core}) {
+            bool straight_line = true;
+            for (const op_t &op : ir.ops())
+                if (op.kind == op_kind_t::loop_begin || op.kind == op_kind_t::jz
+                        || op.kind == op_kind_t::jmp)
+                    straight_line = false;
+            if (!straight_line) continue;
+
+            const dump_input_t in(ir, isa);
+            const reg_pools_t &pools = in.reg_cfg.pools;
+            ASSERT_EQ(in.stats.pressure.size(), pools.files.size());
+
+            // `live` holds the vregs that are live after op `i`.
+            std::vector<int8_t> live(ir.n_vregs(), 0);
+            for (int i = ir.n_ops() - 1; i >= 0; i--) {
+                ir.def_use(ir.ops()[i], defs, uses);
+                std::vector<int8_t> needs = live;
+                for (int v : defs)
+                    needs[v] = 1;
+                for (int v : uses)
+                    needs[v] = 1;
+
+                std::vector<int> expected(pools.files.size(), 0);
+                for (int v = 0; v < ir.n_vregs(); v++)
+                    if (needs[v])
+                        expected[pools.kind_to_file[(int)ir.vreg_info()[v]
+                                                            .kind]]++;
+                for (size_t f = 0; f < pools.files.size(); f++)
+                    EXPECT_EQ(in.stats.pressure[f][i], expected[f])
+                            << "file " << f << ", op " << i;
+
+                for (int v : defs)
+                    live[v] = 0;
+                for (int v : uses)
+                    live[v] = 1;
+            }
+        }
+}
+
+// Checks the facts that the level-2 hint relies on. The scan spills in a
+// register file if and only if more intervals overlap at some operation than
+// the pool holds. The pressure is never larger than the overlap. The tests
+// cover pools that spill and pools that do not.
+TEST(AllocatorTests, SpillsOnlyWhenIntervalsOverlapMoreThanPool) {
+    int n_spill = 0, n_no_spill = 0;
+    for (const ir_t &ir : stats_test_irs())
+        for (cpu_isa_t isa : {avx2, avx512_core})
+            for (int n_regs : stats_test_pool_sizes) {
+                const dump_input_t in(ir, isa, n_regs);
+                const reg_pools_t &pools = in.reg_cfg.pools;
+                for (int f = 0; f < (int)pools.files.size(); f++) {
+                    SCOPED_TRACE("isa " + std::to_string((int)isa) + ", pool "
+                            + std::to_string(n_regs) + ", file "
+                            + std::to_string(f));
+                    bool spilled = false;
+                    for (int v = 0; v < ir.n_vregs(); v++)
+                        if (pools.kind_to_file[(int)ir.vreg_info()[v].kind] == f
+                                && in.alloc.assignments[v].spilled)
+                            spilled = true;
+
+                    const std::vector<int> &overlap = in.stats.overlap[f];
+                    const std::vector<int> &pressure = in.stats.pressure[f];
+                    const int max_overlap
+                            = *std::max_element(overlap.begin(), overlap.end());
+                    EXPECT_EQ(spilled,
+                            max_overlap > (int)pools.files[f].regs.size());
+                    (spilled ? n_spill : n_no_spill)++;
+
+                    for (int i = 0; i < ir.n_ops(); i++)
+                        EXPECT_LE(pressure[i], overlap[i]) << "op " << i;
+                }
+            }
+    EXPECT_GT(n_spill, 0);
+    EXPECT_GT(n_no_spill, 0);
+}
+
+// Dump tests
+//
 // The output is off unless `x64ir=<level>` asks for it. `all` and
 // `debuginfo=` must not enable it. Otherwise every verbose run would print the
-// listing of every kernel.
+// IR dump of every kernel.
 TEST(DumpTests, OutputIsOffUnlessRequested) {
     EXPECT_EQ(parse_x64ir_level(""), 0);
     EXPECT_EQ(parse_x64ir_level("all"), 0);
@@ -1388,49 +1618,95 @@ TEST(DumpTests, OutputIsOffUnlessRequested) {
 // vregs come from `def_use()`, the same source that liveness uses, so an IR
 // dump that drops, adds, or misnames an operand fails here. The letter of each
 // vreg must match its kind, and a vec vreg must show its data type.
+//
+// With the register allocation, each vreg must also show the location that
+// the allocation gives it, and each line must show the pressure of each
+// register file at the operation. The full pools keep every vreg in a
+// register, and the small pools spill.
 TEST(DumpTests, IrDumpShowsEachOperationWithItsVregs) {
     const ir_t ir = build_every_op_ir();
-    const std::vector<std::string> lines = split_lines(to_string(ir));
-    ASSERT_EQ((int)lines.size(), ir.n_ops());
 
-    const char kind_letter[] = {'r', 'v', 'm'}; // gpr, vec, mask
-    std::vector<int> defs, uses;
-    for (int i = 0; i < ir.n_ops(); i++) {
-        const std::string &line = lines[i];
-        SCOPED_TRACE(line);
-        const size_t sep = line.find(" | ");
-        ASSERT_NE(sep, std::string::npos);
-        EXPECT_EQ(std::stoi(line.substr(0, sep)), i);
+    // Checks the operation columns of `lines`, which start at op 0. `in` is
+    // the allocation, or null for the IR dump without it.
+    const auto check = [&](const std::vector<std::string> &lines,
+                               const dump_input_t *in) {
+        ASSERT_EQ((int)lines.size(), ir.n_ops());
+        const char kind_letter[] = {'r', 'v', 'm'}; // gpr, vec, mask
+        const size_t n_files = in ? in->reg_cfg.pools.files.size() : 0;
+        std::vector<int> defs, uses;
+        for (int i = 0; i < ir.n_ops(); i++) {
+            const std::string &line = lines[i];
+            SCOPED_TRACE(line);
+            const std::vector<std::string> cols = split_columns(line);
+            ASSERT_EQ(cols.size(), in ? 3u : 2u);
+            EXPECT_EQ(std::stoi(cols.front()), i);
 
-        const op_t &op = ir.ops()[i];
-        std::set<operand_t> expected;
-        ir.def_use(op, defs, uses);
-        for (const std::vector<int> *vs : {&defs, &uses})
-            for (int v : *vs) {
-                const vreg_info_t &info = ir.vreg_info()[v];
-                const bool is_vec = info.kind == reg_kind_t::vec;
-                expected.insert(operand_t {kind_letter[(int)info.kind], v,
-                        is_vec ? dnnl_dt2str(info.dt) : ""});
+            if (in) {
+                std::istringstream ss(cols[1]);
+                std::vector<int> pressure;
+                for (int n; ss >> n;)
+                    pressure.push_back(n);
+                ASSERT_EQ(pressure.size(), n_files);
+                for (size_t f = 0; f < n_files; f++)
+                    EXPECT_EQ(pressure[f], in->stats.pressure[f][i]);
             }
-        if (op.label_id != label_t::none)
-            expected.insert(operand_t {'L', (int)op.label_id, ""});
 
-        EXPECT_EQ(operands(line.substr(sep + 3)), expected);
+            const op_t &op = ir.ops()[i];
+            std::set<operand_t> expected;
+            ir.def_use(op, defs, uses);
+            for (const std::vector<int> *vs : {&defs, &uses})
+                for (int v : *vs) {
+                    const vreg_info_t &info = ir.vreg_info()[v];
+                    const bool is_vec = info.kind == reg_kind_t::vec;
+                    expected.insert(operand_t {kind_letter[(int)info.kind], v,
+                            is_vec ? dnnl_dt2str(info.dt) : "",
+                            in ? expected_location(ir, *in, v) : ""});
+                }
+            if (op.label_id != label_t::none)
+                expected.insert(operand_t {'L', (int)op.label_id, "", ""});
+
+            EXPECT_EQ(operands(cols.back()), expected);
+        }
+    };
+
+    {
+        SCOPED_TRACE("without allocation");
+        check(split_lines(to_string(ir)), nullptr);
     }
+    for (cpu_isa_t isa : {avx2, avx512_core})
+        for (int n_regs : {-1, 2}) {
+            SCOPED_TRACE("isa " + std::to_string((int)isa) + ", pool "
+                    + std::to_string(n_regs));
+            const dump_input_t in(ir, isa, n_regs);
+            ASSERT_EQ(in.any_spill(), n_regs >= 0);
+
+            std::vector<std::string> lines
+                    = split_lines(to_string(ir, in.info));
+            ASSERT_FALSE(lines.empty());
+            // The header names one column per register file.
+            const std::vector<std::string> header = split_columns(lines[0]);
+            ASSERT_EQ(header.size(), 3u);
+            std::istringstream ss(header[1]);
+            size_t n_names = 0;
+            for (std::string name; ss >> name;)
+                n_names++;
+            EXPECT_EQ(n_names, in.reg_cfg.pools.files.size());
+
+            lines.erase(lines.begin());
+            check(lines, &in);
+        }
 }
 
 // Checks the structure that tools rely on. The output for a kernel has exactly
 // one begin line and one end line, so `sed` extracts it whole. It ends with a
 // newline, so the output for the next kernel starts on its own line. A higher
 // level keeps every line of a lower level, in the same order, and adds lines.
-// The IR dump appears at level 3.
+// The IR dump appears at level 3. The pools are small, so that level 2 has
+// spills to print.
 TEST(DumpTests, OutputIsFramedAndLevelsAddLines) {
     const ir_t ir = build_every_op_ir();
-    kernel_info_t info;
-    info.name = "test_kernel";
-    info.isa = avx2;
-    info.code_size = 123;
-    info.data_size = 23;
+    const dump_input_t in(ir, avx2, /*n_regs=*/2);
+    ASSERT_TRUE(in.any_spill());
 
     // Returns true if every line of `lower` appears in `higher` in the same
     // order.
@@ -1445,7 +1721,7 @@ TEST(DumpTests, OutputIsFramedAndLevelsAddLines) {
     std::vector<std::string> lower;
     for (int level : {1, 2, 3}) {
         SCOPED_TRACE("level " + std::to_string(level));
-        const std::string s = format_kernel_dump(level, 7, info, ir);
+        const std::string s = format_kernel_dump(level, 7, in.info, ir);
         const std::vector<std::string> lines = split_lines(s);
         ASSERT_GE(lines.size(), 2u);
 
@@ -1460,7 +1736,9 @@ TEST(DumpTests, OutputIsFramedAndLevelsAddLines) {
         EXPECT_EQ(n_markers, 2);
 
         EXPECT_TRUE(keeps_lines(lower, lines));
-        EXPECT_EQ(s.find(to_string(ir)) != std::string::npos, level >= 3);
+        EXPECT_GT(lines.size(), lower.size());
+        EXPECT_EQ(s.find(to_string(ir, in.info)) != std::string::npos,
+                level >= 3);
         lower = lines;
     }
 }

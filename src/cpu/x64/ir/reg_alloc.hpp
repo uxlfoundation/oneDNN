@@ -17,6 +17,7 @@
 #ifndef CPU_X64_IR_REG_ALLOC_HPP
 #define CPU_X64_IR_REG_ALLOC_HPP
 
+#include <cstdint>
 #include <vector>
 
 #include "common/utils.hpp"
@@ -88,9 +89,45 @@ struct reg_pools_t {
     std::vector<int> kind_to_file;
 };
 
+// Statistics of one allocate_registers() call, for the debug output (see
+// `ir/dump.hpp`). The allocator computes these values during the allocation,
+// and it keeps them only when the caller asks for them.
+//
+//   start, end      - live interval [start, end] of each virtual register,
+//                     indexed by virtual register id. `end < 0` means that no
+//                     operation references the virtual register.
+//   weight          - spill weight of each virtual register, as the scan uses
+//                     it
+//   loop_depth      - loop nesting depth of each operation, as the spill
+//                     weights use it
+//   pressure        - [file][op]: the number of virtual registers of the file
+//                     that are live on entry to the operation or that the
+//                     operation writes. The file needs that many registers at
+//                     the operation.
+//   overlap         - [file][op]: the number of virtual registers of the file
+//                     whose interval contains the operation. The scan spills
+//                     in a file if and only if the largest overlap is larger
+//                     than the pool of the file.
+//   liveness_passes - the number of passes of the liveness analysis, including
+//                     the last pass, which changes nothing
+//
+// `pressure` is never larger than `overlap`. It is smaller where a virtual
+// register is dead inside its interval.
+struct reg_alloc_stats_t {
+    std::vector<int> start, end;
+    std::vector<int64_t> weight;
+    std::vector<int> loop_depth;
+    std::vector<std::vector<int>> pressure;
+    std::vector<std::vector<int>> overlap;
+    int liveness_passes = 0;
+};
+
+// Allocates registers for `ir` from `pools`. When `stats` is not null, it also
+// fills `stats`. The statistics do not change the allocation.
+//
 // Export for testing.
-reg_alloc_result_t DNNL_API allocate_registers(
-        const ir_t &ir, const reg_pools_t &pools);
+reg_alloc_result_t DNNL_API allocate_registers(const ir_t &ir,
+        const reg_pools_t &pools, reg_alloc_stats_t *stats = nullptr);
 
 } // namespace ir
 } // namespace x64

@@ -681,8 +681,11 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
                 {vec_scratch0, vec_scratch1, vec_scratch2},
                 /*mask_scratch=*/ {});
 
-        const ir::reg_alloc_result_t alloc
-                = allocate_registers(ir, reg_cfg.pools);
+        // The statistics are for the debug output (see `ir/dump.hpp`), so
+        // they are collected only when it is enabled.
+        ir::reg_alloc_stats_t ra_stats;
+        const ir::reg_alloc_result_t alloc = allocate_registers(ir,
+                reg_cfg.pools, ir::verbose_level() > 0 ? &ra_stats : nullptr);
 
         // `brgemm_ir_supported()` allows only a blocking that fits the vector
         // pool, so a vector spill means that check and the builder disagree
@@ -705,7 +708,7 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
         ir::emit_data_section(*this, data);
 
         // Debug output (see `ir/dump.hpp`). Prints nothing unless enabled.
-        ir::print_kernel_dump(*this, ir, data);
+        ir::print_kernel_dump(*this, ir, data, reg_cfg, alloc, ra_stats);
     }
 
 private:

@@ -203,7 +203,9 @@ namespace {
 // read at 1 on the next turn. One backward pass finds most of it. The entry to
 // loop_end needs the back-edge, so it appears only on the second pass. A third
 // pass changes nothing, which is the fixed point.
-void compute_liveness(
+//
+// Returns the number of passes, including the last pass, which changes nothing.
+int compute_liveness(
         const ir_t &ir, std::vector<std::vector<int8_t>> &live_in) {
     const int n_ops = ir.n_ops();
     const int n_vregs = ir.n_vregs();
@@ -259,9 +261,11 @@ void compute_liveness(
     std::vector<std::vector<int8_t>> live_out(
             n_ops, std::vector<int8_t>(n_vregs, 0));
 
+    int passes = 0;
     bool changed = true;
     while (changed) {
         changed = false;
+        passes++;
         for (int i = n_ops - 1; i >= 0; i--) {
             // live_out[i] = OR over successors `s` of live_in[s]
             for (int v = 0; v < n_vregs; v++) {
@@ -284,6 +288,7 @@ void compute_liveness(
             }
         }
     }
+    return passes;
 }
 
 // Compute the loop nesting depth of each operation. `compute_spill_weights()`
@@ -469,6 +474,43 @@ void alloc_file(const ir_t &ir, int file_idx,
     }
 }
 
+// Count, for each register file and each operation, the virtual registers that
+// need a register there (`pressure`) and the virtual registers whose interval
+// contains the operation (`overlap`). See `reg_alloc_stats_t`.
+//
+// A virtual register needs a register at operation `i` if it is live on entry
+// to `i` or if `i` writes it. A write needs a register even when the value is
+// never read.
+void count_pressure_and_overlap(const ir_t &ir, const reg_pools_t &pools,
+        const std::vector<std::vector<int8_t>> &live_in,
+        const std::vector<int> &start, const std::vector<int> &end,
+        reg_alloc_stats_t &stats) {
+    const int n_ops = ir.n_ops();
+    const int n_vregs = ir.n_vregs();
+    const int n_files = (int)pools.files.size();
+
+    auto file_of = [&](int v) {
+        return pools.kind_to_file[(int)ir.vreg_info()[v].kind];
+    };
+
+    stats.pressure.assign(n_files, std::vector<int>(n_ops, 0));
+    std::vector<int> def_vregs, use_vregs;
+    std::vector<int8_t> needs_reg(n_vregs, 0);
+    for (int i = 0; i < n_ops; i++) {
+        needs_reg = live_in[i];
+        ir.def_use(ir.ops()[i], def_vregs, use_vregs);
+        for (int v : def_vregs)
+            needs_reg[v] = 1;
+        for (int v = 0; v < n_vregs; v++)
+            if (needs_reg[v]) stats.pressure[file_of(v)][i]++;
+    }
+
+    stats.overlap.assign(n_files, std::vector<int>(n_ops, 0));
+    for (int v = 0; v < n_vregs; v++)
+        for (int i = start[v]; i <= end[v]; i++)
+            stats.overlap[file_of(v)][i]++;
+}
+
 } // namespace
 
 // Run full register allocation pipeline.
@@ -502,7 +544,7 @@ void alloc_file(const ir_t &ir, int file_idx,
 // case pressure ever makes it worthwhile. Such splits would have to respect
 // the weights and must not split a value inside a loop that carries it.
 reg_alloc_result_t allocate_registers(
-        const ir_t &ir, const reg_pools_t &pools) {
+        const ir_t &ir, const reg_pools_t &pools, reg_alloc_stats_t *stats) {
     const int n_ops = ir.n_ops();
     const int n_vregs = ir.n_vregs();
 
@@ -510,7 +552,7 @@ reg_alloc_result_t allocate_registers(
     // live_in[i][v] is 1 when virtual register `v` is needed on entry to
     // operation `i`.
     std::vector<std::vector<int8_t>> live_in;
-    compute_liveness(ir, live_in);
+    const int liveness_passes = compute_liveness(ir, live_in);
 
     // Step 2: build a single live interval per virtual register.
     // Each interval [start[v], end[v]] approximates all points where `v` is
@@ -539,8 +581,8 @@ reg_alloc_result_t allocate_registers(
 
     // Step 3: weight each virtual register by how often it is referenced and
     // how deep in the loop nest those references sit.
-    const std::vector<int64_t> weight
-            = compute_spill_weights(ir, compute_loop_depth(ir));
+    const std::vector<int> loop_depth = compute_loop_depth(ir);
+    const std::vector<int64_t> weight = compute_spill_weights(ir, loop_depth);
 
     // Step 4: run linear-scan register allocation per physical register file,
     // sharing a single stack frame so spill slots do not overlap across files.
@@ -555,6 +597,16 @@ reg_alloc_result_t allocate_registers(
 
     constexpr size_t stack_alignment = 16;
     res.frame_bytes = utils::rnd_up(frame, stack_alignment);
+
+    // The statistics only copy and count what the steps above computed.
+    if (stats) {
+        stats->start = start;
+        stats->end = end;
+        stats->weight = weight;
+        stats->loop_depth = loop_depth;
+        stats->liveness_passes = liveness_passes;
+        count_pressure_and_overlap(ir, pools, live_in, start, end, *stats);
+    }
 
     return res;
 }

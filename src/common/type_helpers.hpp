@@ -140,8 +140,26 @@ inline size_t bytes_to_elements(data_type_t data_type, size_t bytes) {
     }
 }
 
-inline size_t data_type_bits(data_type_t data_type) {
-    return elements_to_bytes(data_type, 8);
+inline int data_type_bits(data_type_t data_type) {
+    switch (data_type) {
+        case dnnl_s64:
+        case dnnl_f64: return 64;
+        case dnnl_s32:
+        case dnnl_f32: return 32;
+        case dnnl_bf16:
+        case dnnl_f16: return 16;
+        case dnnl_e8m0:
+        case dnnl_f8_e5m2:
+        case dnnl_f8_e4m3:
+        case dnnl_s8:
+        case dnnl_u8: return 8;
+        case dnnl_f4_e2m1:
+        case dnnl_s4:
+        case dnnl_u4: return 4;
+        case dnnl_u2: return 2;
+        case dnnl_boolean: return 1;
+        default: assert(!"unsupported data type"); return 0;
+    }
 }
 
 template <typename T>

@@ -1480,8 +1480,8 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
     const Reg reg_param = a0;
     const VReg v_mask(0);
     // Nspc f16 max uses e16/m2 at VLEN=256 to process twice as many contiguous
-    // channels. Other layouts and VLENs retain e16/m1 because cross-core tests
-    // show that the larger group can cost more than the saved loop iterations.
+    // channels. Other layouts and VLENs retain e16/m1: the wider group regressed
+    // on tested VLEN=128 and VLEN=1024 hardware.
     // Avg and bf16 retain f32/m2 + e16/m1.
     const VReg v_acc(4), v_tmp(8);
     // bf16 has no e16 arithmetic, so its max compares at f32 like avg already
@@ -1645,7 +1645,8 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
             vmv_v_x(v_acc, t1);
         }
         if (max_train) {
-            vmv_v_x(v_ind, x0); // argmax index accumulator = 0 (e16m1)
+            // Argmax index accumulator: e16, same LMUL as v_acc.
+            vmv_v_x(v_ind, x0);
             if (mt_bin) {
                 // s11 is the binary offset; reload pos_base (a5 is free before the
                 // window sweep, which then reuses it as the iw counter).

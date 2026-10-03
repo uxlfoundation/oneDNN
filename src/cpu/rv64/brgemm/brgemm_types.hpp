@@ -92,6 +92,14 @@ struct brgemm_desc_t {
 
     bool is_f32;
     bool is_int8;
+
+    bool stores_f16() const { return dt_c == data_type::f16; }
+
+    dim_t get_k_block() const {
+        // Round f16 output only once after the full f32 accumulation;
+        // other outputs retain cache-friendly K blocking.
+        return stores_f16() ? reduce_dim : BRGEMM_BK;
+    }
 };
 
 // Runtime parameters passed to the JIT micro-kernel for one M-tile.

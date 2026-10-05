@@ -1767,7 +1767,7 @@ void Generator<hw>::sysgemm2KLoopCopy(const GEMMProblem &problem, const GEMMStra
     auto &Bi_addrs = state.Bi_addrs;
     auto &Ao_addrs = state.Ao_addrs;
     auto &Bo_addrs = state.Bo_addrs;
-    GRFRange ldaMultiples, ldbMultiples;
+    RegisterRange ldaMultiples, ldbMultiples;
     FlagRegister flag12;
     GRF A_swizzle, B_swizzle;
     Subregister lda16, ldb16, ldaK, ldbK;
@@ -1807,7 +1807,7 @@ void Generator<hw>::sysgemm2KLoopCopy(const GEMMProblem &problem, const GEMMStra
     mov(1, slmBase[0], 0);
     mov(1, slmBase[1], -4 * slmStride);
 
-    auto makeLDMultiples = [&](GRFRange &multiples, const Subregister &ld, int n) {
+    auto makeLDMultiples = [&](RegisterRange &multiples, const Subregister &ld, int n) {
         multiples = state.ra.alloc_range(n / 8);
         mov<uint16_t>(8, multiples[0], Immediate::uv(0,1,2,3,4,5,6,7));
         if (n > 8)

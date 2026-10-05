@@ -30,8 +30,8 @@ using std::vector;
 
 // Adjust address registers as needed for a newly-created subblock.
 template <HW hw>
-void Generator<hw>::adjustSubblockAddrs(const RegisterLayout &sublayout, const vector<GRFRange> &subaddrs,
-                                        const RegisterLayout &layout, const vector<GRFRange> &addrs,
+void Generator<hw>::adjustSubblockAddrs(const RegisterLayout &sublayout, const vector<RegisterRange> &subaddrs,
+                                        const RegisterLayout &layout, const vector<RegisterRange> &addrs,
                                         const CommonStrategy &strategy, const CommonState &state)
 {
     auto &atype = layout.addressing();
@@ -178,7 +178,7 @@ void Generator<hw>::addRemainder(RegisterLayout &layout, bool remainderR, bool r
 
 // Add remainder handling to a layout, setting it up again from scratch if required.
 template <HW hw>
-void Generator<hw>::addRemainder(RegisterLayout &layout, vector<GRFRange> &addrs, const Subregister &ld,
+void Generator<hw>::addRemainder(RegisterLayout &layout, vector<RegisterRange> &addrs, const Subregister &ld,
                                  bool remainderR, bool remainderC, RemainderOptions remOpts,
                                  const CommonStrategy &strategy, CommonState &state, int dataRegs)
 {

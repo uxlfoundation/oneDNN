@@ -411,14 +411,14 @@ public:
     RegisterLayout slice(bool column, int x1, int x2, bool overrunOK, bool decoalesce = false) const;
 
     // Slice a layout and accompanying address registers.
-    RegisterLayout slice(std::vector<ngen::GRFRange> &subaddrs, const std::vector<ngen::GRFRange> &addrs,
+    RegisterLayout slice(std::vector<ngen::RegisterRange> &subaddrs, const std::vector<ngen::RegisterRange> &addrs,
                          bool column, int x1, int x2, bool overrunOK) const;
 
     // Slice a layout, also returning indices of associated address registers.
     RegisterLayout slice(std::vector<int> &indices, bool column, int x1, int x2, bool overrunOK) const;
 
     RegisterLayout trySlice(bool column, int x1, int x2, bool overrunOK, bool decoalesce = false) const;
-    RegisterLayout trySlice(std::vector<ngen::GRFRange> &subaddrs, const std::vector<ngen::GRFRange> &addrs,
+    RegisterLayout trySlice(std::vector<ngen::RegisterRange> &subaddrs, const std::vector<ngen::RegisterRange> &addrs,
                             bool column, int x1, int x2, bool overrunOK) const;
     RegisterLayout trySlice(std::vector<int> &indices, bool column, int x1, int x2, bool overrunOK) const;
 
@@ -444,7 +444,7 @@ protected:
 
     void finalize();
 
-    RegisterLayout trySlice(std::vector<ngen::GRFRange> *subaddrs, std::vector<int> *indices, const std::vector<ngen::GRFRange> *addrs,
+    RegisterLayout trySlice(std::vector<ngen::RegisterRange> *subaddrs, std::vector<int> *indices, const std::vector<ngen::RegisterRange> *addrs,
                             bool column, int x1, int x2, bool overrunOK, bool decoalesce = false) const;
 };
 

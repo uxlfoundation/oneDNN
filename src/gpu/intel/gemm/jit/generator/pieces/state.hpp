@@ -93,7 +93,7 @@ public:
 
 // Cached vector of leading dimension multiples (ld*0, ld*1, ld*2, etc.), for address setup.
 struct LDMultiples {
-    ngen::GRFRange range;
+    ngen::RegisterRange range;
     bool a64 = false;
     int count = 0;
 };
@@ -151,8 +151,8 @@ struct CommonState {
     ngen::Subregister lsDescConstant[4];
     ngen::FlagRegister flagSwizzle;
     ngen::EmulationState emulate;
-    ngen::GRFRange eatomicAddRegs[2];
-    ngen::GRFRange remaskRegs[3];
+    ngen::RegisterRange eatomicAddRegs[2];
+    ngen::RegisterRange remaskRegs[3];
     VirtualFlag vflagEAtomicAdd;
     VirtualFlag blockEMask;
     ngen::Label blockDone;
@@ -273,23 +273,23 @@ struct GEMMState : public CommonState {
     ngen::Subregister effAo, effBo;
     ngen::Subregister effAp, effBp, effCp;
     ngen::Subregister effAs, effBs;
-    std::vector<ngen::GRFRange> A_addrs, B_addrs, C_addrs[2];
-    std::vector<ngen::GRFRange> A_addrsRem, B_addrsRem;
-    std::vector<ngen::GRFRange> A_addrsAlt, B_addrsAlt;
-    std::vector<ngen::GRFRange> A_addrsAltRem, B_addrsAltRem;
-    std::vector<ngen::GRFRange> Ai_addrs, Bi_addrs;
-    std::vector<std::vector<ngen::GRFRange>> Ai_addrsK, Bi_addrsK;
-    std::vector<ngen::GRFRange> Ai_addrsRem, Bi_addrsRem;
-    std::vector<ngen::GRFRange> Ao_addrs, Bo_addrs;
-    std::vector<ngen::GRFRange> Ap_addrs, Bp_addrs, Cp_addrs;
-    std::vector<ngen::GRFRange> Ap_addrsAlt, Bp_addrsAlt;
-    std::vector<ngen::GRFRange> A_offsetAddrs, B_offsetAddrs;
-    std::vector<ngen::GRFRange> A_scaleAddrs, B_scaleAddrs, C_scaleAddrs;
-    std::vector<ngen::GRFRange> Ag_addrs, Bg_addrs;
+    std::vector<ngen::RegisterRange> A_addrs, B_addrs, C_addrs[2];
+    std::vector<ngen::RegisterRange> A_addrsRem, B_addrsRem;
+    std::vector<ngen::RegisterRange> A_addrsAlt, B_addrsAlt;
+    std::vector<ngen::RegisterRange> A_addrsAltRem, B_addrsAltRem;
+    std::vector<ngen::RegisterRange> Ai_addrs, Bi_addrs;
+    std::vector<std::vector<ngen::RegisterRange>> Ai_addrsK, Bi_addrsK;
+    std::vector<ngen::RegisterRange> Ai_addrsRem, Bi_addrsRem;
+    std::vector<ngen::RegisterRange> Ao_addrs, Bo_addrs;
+    std::vector<ngen::RegisterRange> Ap_addrs, Bp_addrs, Cp_addrs;
+    std::vector<ngen::RegisterRange> Ap_addrsAlt, Bp_addrsAlt;
+    std::vector<ngen::RegisterRange> A_offsetAddrs, B_offsetAddrs;
+    std::vector<ngen::RegisterRange> A_scaleAddrs, B_scaleAddrs, C_scaleAddrs;
+    std::vector<ngen::RegisterRange> Ag_addrs, Bg_addrs;
     // Auxiliary (quantization) prefetch addresses, advanced with the A/B prefetch schedule (strategy.pfaux).
-    std::vector<ngen::GRFRange> Ap_offsetAddrs, Bp_offsetAddrs;
-    std::vector<ngen::GRFRange> Ap_scaleAddrs, Bp_scaleAddrs;
-    std::vector<ngen::GRFRange> Agp_addrs, Bgp_addrs;
+    std::vector<ngen::RegisterRange> Ap_offsetAddrs, Bp_offsetAddrs;
+    std::vector<ngen::RegisterRange> Ap_scaleAddrs, Bp_scaleAddrs;
+    std::vector<ngen::RegisterRange> Agp_addrs, Bgp_addrs;
     std::vector<GRFMultirange> A_regs, B_regs, C_regs;
     GRFMultirange Ar_regs, Br_regs;                         // Repacked A/B registers.
     GRFMultirange Cr_regs;                                  // C registers to be repacked.
@@ -307,7 +307,7 @@ struct GEMMState : public CommonState {
     GRFMultirange Ar_scaleRegs, Br_scaleRegs;               // Repacked A/B scales.
     GRFMultirange Agr_regs, Bgr_regs;                       // Repacked A/B groupwise reductions.
     std::vector<MaskAssignment> AB_masks, AB_masksCoop;
-    std::vector<ngen::GRFRange> tempMul_regs;
+    std::vector<ngen::RegisterRange> tempMul_regs;
     ngen::Subregister groupCountMN, groupIDMN;              // ud
     ngen::Subregister i0, j0, h0;                           // d
     ngen::Subregister wgI0, wgJ0;                           // d
@@ -433,7 +433,7 @@ struct GEMMState : public CommonState {
     ngen::Subregister nextFlagL3PFA, nextFlagL3PFB;
     ngen::FlagRegister flagL3PFA, flagL3PFB;
     RegisterLayout Apl3_layout, Bpl3_layout;
-    std::vector<ngen::GRFRange> Apl3_addrs, Bpl3_addrs;
+    std::vector<ngen::RegisterRange> Apl3_addrs, Bpl3_addrs;
 
     std::vector<ngen::Subregister> effBinary;
 

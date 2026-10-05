@@ -289,7 +289,7 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
             auto hintV = getHint(HintType::A0, strategy);
             auto hintN = getHint((regUnrollN == 1) ? HintType::A0 : HintType::A0Broadcast, strategy);   // Put V and N in same bundle if we can avoid N<->C conflicts.
             auto hintC = getHint(HintType::C, strategy);
-            GRFRange tempPadding;
+            RegisterRange tempPadding;
 
             for (int copy = 0; copy < V_copies; copy++)
                 V_regs[copy] = state.ra.alloc_range(V_regCount, hintV);

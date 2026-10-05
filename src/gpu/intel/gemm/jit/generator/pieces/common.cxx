@@ -387,11 +387,11 @@ GRF Generator<hw>::loadScalars(Type T, const std::vector<Subregister> &src, cons
 
 // Load a contiguous vector from memory, with optional remainder handling.
 template <HW hw>
-GRFRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, int n, Subregister rem, const CommonStrategy &strategy, CommonState &state)
+RegisterRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, int n, Subregister rem, const CommonStrategy &strategy, CommonState &state)
 {
     MatrixAddressing atype;
     MatrixAddressingStrategy astrategy;
-    vector<GRFRange> addrs;
+    vector<RegisterRange> addrs;
     vector<MaskAssignment> masks;
     Subregister rems[3] = {rem};
     Subregister remTemp;

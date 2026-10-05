@@ -132,7 +132,7 @@ bool tryAllocAddrRegs(vector<GRFRange> &addrRegs, const RegisterLayout &layout,
 
     addrRegs.resize(nblocks);
 
-    GRFRange last;
+    RegisterRange last;
     for (int l = 0; l < nblocks && ok; l++) {
         if (layout[l].offsetAddr == 0) {
             auto count = layout[l].addrGRFs(layout.addressing(), layout.addressingStrategy());
@@ -165,7 +165,7 @@ int getAddr0Offset(const RegisterBlock &block, const MatrixAddressing &atype, co
     return 0;
 }
 
-Subregister getOriginAddr(const RegisterLayout &layout, const vector<GRFRange> &addrRegs, int *shiftOut)
+Subregister getOriginAddr(const RegisterLayout &layout, const vector<RegisterRange> &addrRegs, int *shiftOut)
 {
     auto &atype = layout.addressing();
     auto &astrategy = layout.addressingStrategy();

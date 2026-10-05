@@ -77,7 +77,7 @@ bool tryAllocAddrRegs(std::vector<ngen::GRFRange> &addrRegs, const RegisterLayou
 int getAddr0Offset(const RegisterBlock &block, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy);
 
 // Get a subregister containing the (shifted) address of the (0,0) entry of a layout.
-ngen::Subregister getOriginAddr(const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrRegs,
+ngen::Subregister getOriginAddr(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrRegs,
                                 int *shiftOut = nullptr);
 
 // Check if a block occupies a contiguous portion of registers in the given GRFMultirange.

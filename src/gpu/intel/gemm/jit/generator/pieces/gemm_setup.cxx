@@ -1988,7 +1988,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             divDown(j0qLate, j0qLate, problem.bqGroupN, strategy, state);
     }
 
-    auto setupQAddr = [&](Type T, vector<GRFRange> &addrs, const RegisterLayout &layout,
+    auto setupQAddr = [&](Type T, vector<RegisterRange> &addrs, const RegisterLayout &layout,
                           Subregister ptr, Subregister r0, Subregister c0, Subregister ld,
                           Subregister base = Subregister())
     {
@@ -2070,7 +2070,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     // Load and convert 0D/1D offsets for 2D dequantization.
     if (aoTo2D) {
         RegisterLayout A_offsetLayout;
-        GRFRange aoLoad;
+        RegisterRange aoLoad;
         bool releaseAOLoad = true;
         if (problem.aoPtrDims == 1) {
             bool slmAO = slmA && !lateOffsetA;
@@ -2107,7 +2107,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     }
     if (boTo2D) {
         RegisterLayout B_offsetLayout;
-        GRFRange boLoad;
+        RegisterRange boLoad;
         bool releaseBOLoad = true;
         if (problem.boPtrDims == 1) {
             bool slmBO = slmB && !lateOffsetB;

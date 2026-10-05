@@ -186,7 +186,7 @@ void Generator<hw>::emad(const InstructionModifier &mod, const RegData &dst, con
         auto ttype = withSignedness(dst.getType(), isSigned(src1.getType()) || isSigned(src2.getType()));
         RegData temp;
         Subregister tempSub;
-        GRFRange tempRange;
+        RegisterRange tempRange;
         if (mod.getExecSize() == 1)
             temp = tempSub = state.ra.alloc_sub(ttype);
         else {
@@ -225,7 +225,7 @@ void Generator<hw>::emad(const InstructionModifier &mod, const RegData &dst, con
     } else {
         auto ttype = (isSigned(src1.getType()) || src2 < 0) ? DataType::d : DataType::ud;
         Subregister tempScalar;
-        GRFRange tempGRFs;
+        RegisterRange tempGRFs;
         RegData temp;
         if (mod.getExecSize() == 1)
             temp = tempScalar = state.ra.alloc_sub(ttype);

@@ -137,7 +137,7 @@ static inline int getPartialCrosspack(Type T, const MatrixAddressing &atype, con
 //  the base pointer (a Subregister, MultishiftSubregister or integer) and leading dimension.
 template <HW hw>
 template <typename BO>
-void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const RegisterBlock &block, const Subregister &bld,
+void Generator<hw>::setupAddr(Type T, const RegisterRange &addr, const BO &ptr, const RegisterBlock &block, const Subregister &bld,
                               const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
                               const CommonStrategy &strategy, CommonState &state,
                               const Address2DParams &params, LDMultiples ldMultiples)
@@ -445,7 +445,7 @@ void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const
 
 // Shift an address block by a combination of a fixed and LD offset.
 template <HW hw>
-void Generator<hw>::offsetAddr(const GRFRange &addrDst, const GRFRange &addrSrc,
+void Generator<hw>::offsetAddr(const RegisterRange &addrDst, const RegisterRange &addrSrc,
                                const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
                                int offsetFixed, int offsetLD, const Subregister &ld,
                                const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
@@ -489,7 +489,7 @@ void Generator<hw>::offsetAddr(const GRFRange &addrDst, const GRFRange &addrSrc,
 
 // Output code for initializing address/header GRFs for one block based on another block's headers.
 template <HW hw>
-void Generator<hw>::setupAddrRel(const GRFRange &addrDst, const GRFRange &addrSrc,
+void Generator<hw>::setupAddrRel(const RegisterRange &addrDst, const RegisterRange &addrSrc,
                                  const RegisterBlock &blockDst, const RegisterBlock &blockSrc, const RegisterLayout &layout,
                                  const Subregister &ld, const CommonStrategy &strategy, CommonState &state, const LDMultiples &ldMultiples)
 {
@@ -547,7 +547,7 @@ static inline int findBaseBlock(const RegisterBlock &block, const RegisterLayout
 //  ptr is an integer, Subregister, or MultishiftSubregister holding the base pointer/offset.
 template <HW hw>
 template <typename BO>
-void Generator<hw>::setupAddr(const vector<GRFRange> &addr, const BO &ptr, const RegisterLayout &layout, const Subregister &ld,
+void Generator<hw>::setupAddr(const vector<RegisterRange> &addr, const BO &ptr, const RegisterLayout &layout, const Subregister &ld,
                               const CommonStrategy &strategy, CommonState &state,
                               const Address2DParams &params, const LDMultiples &ldMultiples, int start)
 {
@@ -610,7 +610,7 @@ void Generator<hw>::setupAddr(const vector<GRFRange> &addr, const BO &ptr, const
 // The amount may be an immediate, Subregister, or MultishiftSubregister.
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
-void Generator<hw>::incAddr(const GRFRange &addrDst, const GRFRange &addrSrc, I inc, Ir incR, Ic incC,
+void Generator<hw>::incAddr(const RegisterRange &addrDst, const RegisterRange &addrSrc, I inc, Ir incR, Ic incC,
                             const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
                             const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
                             const CommonStrategy &strategy, CommonState &state)
@@ -624,7 +624,7 @@ void Generator<hw>::incAddr(const GRFRange &addrDst, const GRFRange &addrSrc, I 
 
 template <HW hw>
 template <typename I>
-void Generator<hw>::incAddr(const GRFRange &addrDst, const GRFRange &addrSrc, I inc,
+void Generator<hw>::incAddr(const RegisterRange &addrDst, const RegisterRange &addrSrc, I inc,
                             const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
                             const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
                             const CommonStrategy &strategy, CommonState &state)
@@ -635,7 +635,7 @@ void Generator<hw>::incAddr(const GRFRange &addrDst, const GRFRange &addrSrc, I 
 
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
-void Generator<hw>::incAddrShifted(const GRFRange &addrDst, const GRFRange &addrSrc, I inc, Ir incR, Ic incC,
+void Generator<hw>::incAddrShifted(const RegisterRange &addrDst, const RegisterRange &addrSrc, I inc, Ir incR, Ic incC,
                                    const RegisterBlock &blockDst, const RegisterBlock &blockSrc,
                                    const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
                                    const CommonStrategy &strategy, CommonState &state)
@@ -706,7 +706,7 @@ void Generator<hw>::incAddrShifted(const GRFRange &addrDst, const GRFRange &addr
 // The amount may be an immediate or a subregister.
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
-void Generator<hw>::incAddr(const vector<GRFRange> &addr, I inc, Ir incR, Ic incC, const RegisterLayout &layout,
+void Generator<hw>::incAddr(const vector<RegisterRange> &addr, I inc, Ir incR, Ic incC, const RegisterLayout &layout,
                             const CommonStrategy &strategy, CommonState &state)
 {
     for (int b = 0; b < layout.blocks(); b++) {
@@ -717,7 +717,7 @@ void Generator<hw>::incAddr(const vector<GRFRange> &addr, I inc, Ir incR, Ic inc
 
 template <HW hw>
 template <typename I>
-void Generator<hw>::incAddr(const vector<GRFRange> &addr, I inc, const RegisterLayout &layout,
+void Generator<hw>::incAddr(const vector<RegisterRange> &addr, I inc, const RegisterLayout &layout,
                             const CommonStrategy &strategy, CommonState &state)
 {
     if (layout.addressingStrategy().address2D) stub();
@@ -726,7 +726,7 @@ void Generator<hw>::incAddr(const vector<GRFRange> &addr, I inc, const RegisterL
 
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
-void Generator<hw>::incAddrShifted(const vector<GRFRange> &addr, I inc, Ir incR, Ic incC, const RegisterLayout &layout,
+void Generator<hw>::incAddrShifted(const vector<RegisterRange> &addr, I inc, Ir incR, Ic incC, const RegisterLayout &layout,
                                    const CommonStrategy &strategy, CommonState &state)
 {
     for (int b = 0; b < layout.blocks(); b++) {
@@ -737,7 +737,7 @@ void Generator<hw>::incAddrShifted(const vector<GRFRange> &addr, I inc, Ir incR,
 
 template <HW hw>
 template <typename I>
-void Generator<hw>::incAddrShifted(const vector<GRFRange> &addr, I inc, const RegisterLayout &layout,
+void Generator<hw>::incAddrShifted(const vector<RegisterRange> &addr, I inc, const RegisterLayout &layout,
                                    const CommonStrategy &strategy, CommonState &state)
 {
     if (layout.addressingStrategy().address2D) stub();
@@ -775,7 +775,7 @@ void Generator<hw>::incDecAddr(const A &addr, I inc, const RegisterLayout &layou
 }
 
 template <HW hw>
-void Generator<hw>::incAddrK(const vector<GRFRange> &addr, bool column, int k,
+void Generator<hw>::incAddrK(const vector<RegisterRange> &addr, bool column, int k,
                              const SubregisterPair &ld, const LDIncrements &incs, const RegisterLayout &layout,
                              const CommonStrategy &strategy, CommonState &state)
 {
@@ -789,7 +789,7 @@ void Generator<hw>::incAddrK(const vector<GRFRange> &addr, bool column, int k,
 }
 
 template <HW hw>
-void Generator<hw>::setAddrRemainder(Type T, const GRFRange &addr, const RegisterBlock &block, const Subregister &remR, const Subregister &remC,
+void Generator<hw>::setAddrRemainder(Type T, const RegisterRange &addr, const RegisterBlock &block, const Subregister &remR, const Subregister &remC,
                                      const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
                                      const CommonStrategy &strategy, CommonState &state)
 {
@@ -826,7 +826,7 @@ void Generator<hw>::setAddrRemainder(Type T, const GRFRange &addr, const Registe
 }
 
 template <HW hw>
-void Generator<hw>::setAddrRemainder(const vector<GRFRange> &addr, const RegisterLayout &layout,
+void Generator<hw>::setAddrRemainder(const vector<RegisterRange> &addr, const RegisterLayout &layout,
                                      const Subregister &remR, const Subregister &remC,
                                      const CommonStrategy &strategy, CommonState &state)
 {

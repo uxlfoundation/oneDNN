@@ -1992,7 +1992,7 @@ RegisterLayout RegisterLayout::slice(bool column, int x1, int x2, bool overrunOK
     return result;
 }
 
-RegisterLayout RegisterLayout::slice(vector<GRFRange> &subaddrs, const vector<GRFRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
+RegisterLayout RegisterLayout::slice(vector<RegisterRange> &subaddrs, const vector<RegisterRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
 {
     auto result = trySlice(subaddrs, addrs, column, x1, x2, overrunOK);
     if (!result) stub("Could not slice register layout");
@@ -2011,7 +2011,7 @@ RegisterLayout RegisterLayout::trySlice(bool column, int x1, int x2, bool overru
     return trySlice(nullptr, nullptr, nullptr, column, x1, x2, overrunOK, decoalesce);
 }
 
-RegisterLayout RegisterLayout::trySlice(vector<GRFRange> &subaddrs, const vector<GRFRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
+RegisterLayout RegisterLayout::trySlice(vector<RegisterRange> &subaddrs, const vector<RegisterRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
 {
     return trySlice(&subaddrs, nullptr, &addrs, column, x1, x2, overrunOK);
 }
@@ -2021,7 +2021,7 @@ RegisterLayout RegisterLayout::trySlice(vector<int> &indices, bool column, int x
     return trySlice(nullptr, &indices, nullptr, column, x1, x2, overrunOK);
 }
 
-RegisterLayout RegisterLayout::trySlice(vector<GRFRange> *subaddrs, vector<int> *indices, const vector<GRFRange> *addrs,
+RegisterLayout RegisterLayout::trySlice(vector<RegisterRange> *subaddrs, vector<int> *indices, const vector<RegisterRange> *addrs,
                                         bool column, int x1, int x2, bool overrunOK, bool decoalesce) const
 {
     auto RegisterBlock::*nq      = column ? &RegisterBlock::nc      : &RegisterBlock::nr;

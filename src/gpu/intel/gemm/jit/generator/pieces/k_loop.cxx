@@ -327,8 +327,8 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     auto slmBuffer = [&](Iteration h) { return (h / unrollKSLM) % slmBuffers; };
     auto Ai_layout = [&](Iteration h) -> RegisterLayout& { return slmRemActive(h) ? state.Ai_layoutRem : state.Ai_layout; };
     auto Bi_layout = [&](Iteration h) -> RegisterLayout& { return slmRemActive(h) ? state.Bi_layoutRem : state.Bi_layout; };
-    auto Ai_addrs = [&](Iteration h) -> vector<GRFRange>& { return slmRemActive(h) ? state.Ai_addrsRem : state.Ai_addrs; };
-    auto Bi_addrs = [&](Iteration h) -> vector<GRFRange>& { return slmRemActive(h) ? state.Bi_addrsRem : state.Bi_addrs; };
+    auto Ai_addrs = [&](Iteration h) -> vector<RegisterRange>& { return slmRemActive(h) ? state.Ai_addrsRem : state.Ai_addrs; };
+    auto Bi_addrs = [&](Iteration h) -> vector<RegisterRange>& { return slmRemActive(h) ? state.Bi_addrsRem : state.Bi_addrs; };
     auto Ai_allRegs = [&](Iteration h) -> vector<GRFMultirange>& { return slmRemActive(h) ? state.Ai_regsRem : state.Ai_regs; };
     auto Bi_allRegs = [&](Iteration h) -> vector<GRFMultirange>& { return slmRemActive(h) ? state.Bi_regsRem : state.Bi_regs; };
     auto Ai_regs = [&](Iteration h) -> GRFMultirange& { return Ai_allRegs(h)[slmCopy(h)]; };
@@ -1615,7 +1615,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
 // Increment A pointer after load, inside GEMM k loop.
 template <HW hw>
-void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<GRFRange> &addrs, int ka_inc,
+void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, int ka_inc,
                                            const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ha)
 {
     auto Ta = layout.type();
@@ -1644,14 +1644,14 @@ void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const s
 }
 
 template <HW hw>
-void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<GRFRange> &addrs, const MultishiftSubregister &ka_inc,
+void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, const MultishiftSubregister &ka_inc,
                                            const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ha)
 {
     gemmAIncrementInternal(layout, addrs, ka_inc >> 0, problem, strategy, state, ha);
 }
 
 template <HW hw>
-void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<GRFRange> &addrs, const Subregister &ka_inc,
+void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, const Subregister &ka_inc,
                                            const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ha)
 {
     auto Ta = layout.type();
@@ -1673,7 +1673,7 @@ void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const s
 
 template <HW hw>
 template <typename I>
-void Generator<hw>::gemmAIncrement(const RegisterLayout &layout, const std::vector<GRFRange> &addrs, I ka_inc,
+void Generator<hw>::gemmAIncrement(const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, I ka_inc,
                                    const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ha, int h)
 {
         gemmAIncrementInternal(layout, addrs, ka_inc, problem, strategy, state, ha);
@@ -1681,7 +1681,7 @@ void Generator<hw>::gemmAIncrement(const RegisterLayout &layout, const std::vect
 
 // A load for GEMM k loop.
 template <HW hw>
-void Generator<hw>::gemmALoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<GRFRange> &addrs,
+void Generator<hw>::gemmALoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<RegisterRange> &addrs,
                               const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     loadMatrix(regs, layout, addrs, strategy, state);
@@ -1689,7 +1689,7 @@ void Generator<hw>::gemmALoad(const GRFMultirange &regs, const RegisterLayout &l
 
 template <HW hw>
 template <typename I>
-void Generator<hw>::gemmALoadInc(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<GRFRange> &addrs, I ka_inc,
+void Generator<hw>::gemmALoadInc(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, I ka_inc,
                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     gemmALoad(regs, layout, addrs, problem, strategy, state);
@@ -1697,7 +1697,7 @@ void Generator<hw>::gemmALoadInc(const GRFMultirange &regs, const RegisterLayout
 }
 
 template <HW hw>
-void Generator<hw>::gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<GRFRange> &addrs, int kb_inc,
+void Generator<hw>::gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, int kb_inc,
                                            const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int hb)
 {
     auto Tb = layout.type();
@@ -1725,14 +1725,14 @@ void Generator<hw>::gemmBIncrementInternal(const RegisterLayout &layout, const s
 }
 
 template <HW hw>
-void Generator<hw>::gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<GRFRange> &addrs, const MultishiftSubregister &kb_inc,
+void Generator<hw>::gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, const MultishiftSubregister &kb_inc,
                                            const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int hb)
 {
     gemmBIncrementInternal(layout, addrs, kb_inc >> 0, problem, strategy, state, hb);
 }
 
 template <HW hw>
-void Generator<hw>::gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<GRFRange> &addrs, const Subregister &kb_inc,
+void Generator<hw>::gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, const Subregister &kb_inc,
                                            const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int hb)
 {
     auto Tb = layout.type();
@@ -1754,7 +1754,7 @@ void Generator<hw>::gemmBIncrementInternal(const RegisterLayout &layout, const s
 
 template <HW hw>
 template <typename I>
-void Generator<hw>::gemmBIncrement(const RegisterLayout &layout, const std::vector<GRFRange> &addrs, I kb_inc,
+void Generator<hw>::gemmBIncrement(const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, I kb_inc,
                                    const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int hb, int h)
 {
         gemmBIncrementInternal(layout, addrs, kb_inc, problem, strategy, state, hb);
@@ -1762,7 +1762,7 @@ void Generator<hw>::gemmBIncrement(const RegisterLayout &layout, const std::vect
 
 // B load for GEMM k loop.
 template <HW hw>
-void Generator<hw>::gemmBLoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<GRFRange> &addrs,
+void Generator<hw>::gemmBLoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<RegisterRange> &addrs,
                               const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     loadMatrix(regs, layout, addrs, strategy, state);
@@ -1770,7 +1770,7 @@ void Generator<hw>::gemmBLoad(const GRFMultirange &regs, const RegisterLayout &l
 
 template <HW hw>
 template <typename I>
-void Generator<hw>::gemmBLoadInc(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<GRFRange> &addrs, I kb_inc,
+void Generator<hw>::gemmBLoadInc(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<RegisterRange> &addrs, I kb_inc,
                                  const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     gemmBLoad(regs, layout, addrs, problem, strategy, state);
@@ -1780,8 +1780,8 @@ void Generator<hw>::gemmBLoadInc(const GRFMultirange &regs, const RegisterLayout
 template <HW hw>
 template <bool doA>
 void Generator<hw>::gemmAiBiRemLoadInc(int h, bool incremental, bool incrementalCopy, bool keepAddrTogether, bool willRemask, const Subregister &kSLMX,
-                                       const GRFMultirange &Xi_regs, const RegisterLayout &Xi_layout, const vector<GRFRange> &Xi_addrs,
-                                       const vector<RegisterLayout> &Xi_layoutK, const vector<vector<GRFRange>> &Xi_addrsK,
+                                       const GRFMultirange &Xi_regs, const RegisterLayout &Xi_layout, const vector<RegisterRange> &Xi_addrs,
+                                       const vector<RegisterLayout> &Xi_layoutK, const vector<vector<RegisterRange>> &Xi_addrsK,
                                        const GRFMultirange &Xo_regs, const RegisterLayout &Xo_layout,
                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
@@ -2007,12 +2007,12 @@ void Generator<hw>::kLoopActivateABRemainder(bool active, bool doA, bool doB, co
     if (doB) adjustSubblockAddrs(state.B_layoutRem, state.B_addrsRem, state.B_layout, state.B_addrs, strategy, state);
 
     if (doA && strategy.slmA && (state.effCoopA == CoopSplit::K) && !ai2D) {
-        vector<GRFRange> tempAddrs;
+        vector<RegisterRange> tempAddrs;
         auto tempLayout = state.Ai_layout.slice(tempAddrs, state.Ai_addrs, true, 0, 1, state.Ai_strategy.padded);
         adjustSubblockAddrs(tempLayout, tempAddrs, state.Ai_layout, state.Ai_addrs, strategy, state);
     }
     if (doB && strategy.slmB && (state.effCoopB == CoopSplit::K) && !bi2D) {
-        vector<GRFRange> tempAddrs;
+        vector<RegisterRange> tempAddrs;
         auto tempLayout = state.Bi_layout.slice(tempAddrs, state.Bi_addrs, false, 0, 1, state.Bi_strategy.padded);
         adjustSubblockAddrs(tempLayout, tempAddrs, state.Bi_layout, state.Bi_addrs, strategy, state);
     }

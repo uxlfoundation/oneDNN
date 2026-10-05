@@ -106,7 +106,7 @@ void Generator<hw>::accumulateSum(bool column,
     int reduce = (canDP4A && hReduce) ? 4 : 1;
     if (x0 % reduce || x1 % reduce) stub();
 
-    GRFRange temp;
+    RegisterRange temp;
     Subregister imm;
 
     for (int y = y0; y < y1; y += yinc) {
@@ -341,7 +341,7 @@ bool Generator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const GEMMStrat
     MatrixAddressing ABs_SLM[2];
     MatrixAddressingStrategy ABs_strategySLM[2];
     MatrixAddressingStrategy ABs_strategySLMAtomic[2];
-    vector<GRFRange> ABs_addrs[2];
+    vector<RegisterRange> ABs_addrs[2];
     GRF temp = state.ra.alloc();
     FlagRegister leader[2];
     Subregister ABs_base[2];

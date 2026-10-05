@@ -1848,11 +1848,11 @@ void RegisterLayout::sort(bool reverse)
     });
 }
 
-void RegisterLayout::assignUniformMask(FlagRegister flag, int idx)
+void RegisterLayout::assignUniformMask(FlagRegister flag, HW hw, int idx)
 {
     for (auto &block: *this) {
         if (block.flag[idx]) stub();     /* Already has a flag? */
-        block.flag[idx] = flag;
+        block.flag[idx] = VirtualFlag(flag, hw);
     }
 }
 

@@ -124,7 +124,7 @@ bool needsPseudoblock(HW hw, Type T, int r, int c,
     return pseudo;
 }
 
-bool tryAllocAddrRegs(vector<GRFRange> &addrRegs, const RegisterLayout &layout,
+bool tryAllocAddrRegs(HW hw, vector<RegisterRange> &addrRegs, const RegisterLayout &layout,
                       CommonState &state, Bundle hint)
 {
     auto nblocks = layout.blocks();
@@ -151,9 +151,10 @@ bool tryAllocAddrRegs(vector<GRFRange> &addrRegs, const RegisterLayout &layout,
     return ok;
 }
 
-void allocAddrRegs(vector<GRFRange> &addrRegs, const RegisterLayout &layout, CommonState &state, Bundle hint)
+void allocAddrRegs(HW hw, vector<RegisterRange> &addrRegs, const RegisterLayout &layout,
+                   CommonState &state, Bundle hint)
 {
-    if (!tryAllocAddrRegs(addrRegs, layout, state, hint))
+    if (!tryAllocAddrRegs(hw, addrRegs, layout, state, hint))
         throw out_of_registers_exception();
 }
 

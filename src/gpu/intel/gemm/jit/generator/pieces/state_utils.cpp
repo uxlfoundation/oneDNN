@@ -52,7 +52,7 @@ void allocEAtomicAddRegs(HW hw, Type T, const RegisterLayout &layout,
 
     state.eatomicAddRegs[0] = state.ra.alloc_range(maxNReg * 2);
     state.eatomicAddRegs[1] = state.ra.alloc_range(maxNReg);
-    state.vflagEAtomicAdd = flag.isValid() ? flag
+    state.vflagEAtomicAdd = flag.isValid() ? VirtualFlag(flag, hw)
                                            : state.allocVFlag(hw);
 }
 
@@ -90,8 +90,8 @@ RegData getMaskFlag(HW hw, VirtualFlag vflag, CommonState &state)
         return state.vflagStorage.sub(hw, vflag.idx, DataType::uw)
                                  .reinterpret(0, vflag.n == 2 ? DataType::ud : DataType::uw);
     } else if (!state.raVFlag.isVirtual(vflag)) {
-        auto pflag = vflag.toPhysical();
-        state.usePhysicalFlag(pflag);
+        auto pflag = vflag.toPhysical(hw);
+        state.usePhysicalFlag(pflag, hw);
         return pflag;
     } else
         stub("Need virtual flag registers");

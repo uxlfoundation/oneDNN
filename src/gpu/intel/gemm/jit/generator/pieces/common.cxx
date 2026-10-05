@@ -171,7 +171,7 @@ FlagRegister Generator<hw>::getPhysicalFlag(VirtualFlag vflag, CommonState &stat
         pflag = vflag;
     }
 
-    return pflag.toPhysical();
+    return pflag.toPhysical(hw);
 }
 
 template <HW hw>
@@ -420,7 +420,7 @@ RegisterRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, i
 
     auto regs = state.ra.alloc_range(layout.regs());
 
-    allocAddrRegs(addrs, layout, state);
+    allocAddrRegs(hw, addrs, layout, state);
     setupAddr(addrs, ptr, layout, Subregister(), strategy, state);
     if (!assignMasks(layout, LoopM, LoopN, masks, strategy, state, true)) stub();
     loadMasks(masks, rems, strategy, state);

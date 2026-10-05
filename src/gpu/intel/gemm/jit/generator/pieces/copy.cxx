@@ -231,7 +231,7 @@ void Generator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
             int n = bytes >> 1;
             flag = raVFlag.tryAlloc(n);
             for (int i = 0; i < n; i++)
-                usedFlags[flag.index() + i] = true;
+                usedFlags[flag.index(hw) + i] = true;
         } else
             raVFlag.release(flag);
     };

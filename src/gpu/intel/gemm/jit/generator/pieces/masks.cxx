@@ -145,7 +145,7 @@ void Generator<hw>::loadMask(MaskAssignment assignment, Subregister index, const
             else {
                 auto sflag = flag;
                 sflag.setType(flagType == DataType::ud ? DataType::d : DataType::w);
-                add(1 | sat, sflag, -index, offset);
+                    add(1 | sat, sflag, -index, offset);
                 asr(1, sflag, sflag, getBytes(flagType) * 8 - 1);
             }
         } else {
@@ -171,10 +171,12 @@ void Generator<hw>::loadMask(MaskAssignment assignment, Subregister index, const
                 mindex = temp;
             }
             uint16_t tshift = vmask.bitRep * (rsizeScaled + div_up(assignment.offset + offset, rdivide));
-            add(1 | sat, temp, -mindex, tshift);
-            if (tshift >= 32)
-                min_(1, temp, temp, vmask.bitRep * rsizeScaled);            // Ensure shift count doesn't overflow.
-            emov(1, mask0, rep1Mask, strategy, state);
+            {
+                add(1 | sat, temp, -mindex, tshift);
+                if (tshift >= 32)
+                    min_(1, temp, temp, vmask.bitRep * rsizeScaled);            // Ensure shift count doesn't overflow.
+                emov(1, mask0, rep1Mask, strategy, state);
+            }
             if (vmask.maskRep == 1) {
                 bool twoStage = (!flag.isARF() && getBytes(mask0Type) > 4);
                 auto flag1 = twoStage ? mask0 : flag;
@@ -182,17 +184,20 @@ void Generator<hw>::loadMask(MaskAssignment assignment, Subregister index, const
                               : shr(1, flag1, mask0, temp);
                 if (twoStage) mov(1, flag, mask);
             } else {
-                vmask.reverse ? stub() // need shl + and
-                              : shr(1, mask0, mask0, temp);
-                if (repMultiplier & 0x10000)
-                    mov(1, mask.uw(1), mask.uw(0));
-                mul(1, flag, mask, uint16_t(repMultiplier));
+                {
+                    vmask.reverse ? stub() // need shl + and
+                                  : shr(1, mask0, mask0, temp);
+                    if (repMultiplier & 0x10000)
+                        mov(1, mask.uw(1), mask.uw(0));
+                    mul(1, flag, mask, uint16_t(repMultiplier));
+                }
             }
 
             state.ra.safeRelease(temp);
             state.ra.safeRelease(mask0);
         }
     }
+
 }
 
 // Output code for loading all masks in a mask assignment list to flag registers.

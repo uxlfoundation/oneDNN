@@ -157,7 +157,7 @@ FlagRegister Generator<hw>::getPhysicalFlag(VirtualFlag vflag, CommonState &stat
         // If flag is not currently active, load it into a physical flag.
         if (pidx == -1) {
             auto freg = state.raVFlag.assignPhysical(vflag);
-            pidx = freg.index();
+            pidx = freg.index(hw);
             mov(1, freg, getMaskFlag(hw, vflag, state));
             for (int i = 0; i < int(vflag.n); i++)
                 state.activeVFlags[pidx + i] = vflag;
@@ -171,7 +171,7 @@ FlagRegister Generator<hw>::getPhysicalFlag(VirtualFlag vflag, CommonState &stat
         pflag = vflag;
     }
 
-    return pflag.toPhysical();
+    return pflag.toPhysical(hw);
 }
 
 template <HW hw>
@@ -420,7 +420,7 @@ RegisterRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, i
 
     auto regs = state.ra.alloc_range(layout.regs());
 
-    allocAddrRegs(addrs, layout, state);
+    allocAddrRegs(hw, addrs, layout, state);
     setupAddr(addrs, ptr, layout, Subregister(), strategy, state);
     if (!assignMasks(layout, LoopM, LoopN, masks, strategy, state, true)) stub();
     loadMasks(masks, rems, strategy, state);

@@ -66,16 +66,16 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                 avg(1, nremQ, (haveVariableOff || haveFixedOff) ? nremQ : remQ, 0);
             remQ = nremQ;
         }
-
-        mov<uint16_t>(8, masks[0][0](1), Immediate::uv(0,1,2,3,4,5,6,7));
-        if (nq > 8)
-            mov<uint16_t>(8, masks[0][8](1), Immediate::uv(8,9,10,11,12,13,14,15));
-        if (GRF::bytes(hw) > 32 && nq > 16)
-            add<uint16_t>(16, masks[0][16](1), masks[0][0](1), 16);
-        add<uint16_t>(n16, masks[0], masks[0], -remQ.w());
-        if (!useCMP) for (int q0 = n16; q0 < nq; q0 += n16)
-            add<uint16_t>(n16, masks[q0 / n16], masks[0], q0);
-
+        {
+            mov<uint16_t>(8, masks[0][0](1), Immediate::uv(0,1,2,3,4,5,6,7));
+            if (nq > 8)
+                mov<uint16_t>(8, masks[0][8](1), Immediate::uv(8,9,10,11,12,13,14,15));
+            if (GRF::bytes(hw) > 32 && nq > 16)
+                add<uint16_t>(16, masks[0][16](1), masks[0][0](1), 16);
+            add<uint16_t>(n16, masks[0], masks[0], -remQ.w());
+            if (!useCMP) for (int q0 = n16; q0 < nq; q0 += n16)
+                add<uint16_t>(n16, masks[q0 / n16], masks[0], q0);
+        }
         switch (T.paddedSize()) {
             case 1:
             case 2:
@@ -92,13 +92,15 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                     mov(n16, masks[q0 / ne].ub(q0 % ne)(1), masks[q0 / n16].ub(1)(2));
                 break;
             case 4:
-                for (int qq0 = div_up(nq, ne16) - 1; qq0 >= 1; qq0--) {
-                    useCMP ? cmp(ne16 | lt | flag, masks[qq0 * 2].d(), masks[qq0].w(), -qq0 * ne16)
-                           : asr(ne16, masks[qq0 * 2].d(), masks[qq0].w(), 15);
+                {
+                    for (int qq0 = div_up(nq, ne16) - 1; qq0 >= 1; qq0--) {
+                        useCMP ? cmp(ne16 | lt | flag, masks[qq0 * 2].d(), masks[qq0].w(), -qq0 * ne16)
+                               : asr(ne16, masks[qq0 * 2].d(), masks[qq0].w(), 15);
+                    }
+                    if (nq > (ne16 / 2))
+                        asr(ne16 / 2, masks[1].d(), masks[0].w(ne16 / 2)(1), 15);
+                    asr(ne16 / 2, masks[0].d(), masks[0].w(), 15);
                 }
-                if (nq > (ne16 / 2))
-                    asr(ne16 / 2, masks[1].d(), masks[0].w(ne16 / 2)(1), 15);
-                asr(ne16 / 2, masks[0].d(), masks[0].w(), 15);
                 break;
             default: stub();
         }
@@ -159,7 +161,6 @@ void Generator<hw>::remaskLayout(int index, bool column,
                 auto mregion = mask(mstride);
                 if (Tr.paddedSize() > 4 && mstride == 1)
                     mregion = mask(1, Tr.size() / 4, 0);
-
                 and_<uint32_t>((necp * Tr) / 4, sub.ud()(1), mregion, sub.ud()(1));
                 x0 += necp / crosspack;
             }

@@ -22,8 +22,7 @@ GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 
-
-FlagRegister VirtualFlag::toPhysical() const
+FlagRegister VirtualFlag::toPhysical(ngen::HW hw) const
 {
     if (n == 2)
         return FlagRegister(idx >> 1);
@@ -59,7 +58,7 @@ FlagRegister VirtualFlagAllocator::tryAlloc(int n)
 
     lock(vflag);
 
-    return vflag.toPhysical();
+    return vflag.toPhysical(hw);
 }
 
 FlagRegister VirtualFlagAllocator::alloc(int n)
@@ -100,7 +99,7 @@ FlagRegister VirtualFlagAllocator::assignPhysical(VirtualFlag vflag)
     if (!pflag)
         throw out_of_registers_exception();
 
-    return pflag.toPhysical();
+    return pflag.toPhysical(hw);
 }
 
 bool VirtualFlagAllocator::lock(VirtualFlag vflag, bool allowAlreadyLocked)

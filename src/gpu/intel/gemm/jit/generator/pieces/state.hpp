@@ -182,7 +182,9 @@ struct CommonState {
     VirtualFlag allocVFlag(ngen::HW hw, int n = 1);
     void wipeActiveVFlags();
     bool vflagsEnabled() const                    { return !vflagStorage.empty(); }
-    void usePhysicalFlag(ngen::FlagRegister flag) { activeVFlags[flag.index()] = flag; }
+    void usePhysicalFlag(ngen::FlagRegister flag, ngen::HW hw) {
+        activeVFlags[flag.index(hw)] = VirtualFlag(flag, hw);
+    }
 
     void allocEmulate64Temp(const ngen::EmulationStrategy &estrategy);
 };

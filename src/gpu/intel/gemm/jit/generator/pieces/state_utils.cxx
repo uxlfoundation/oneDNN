@@ -28,19 +28,25 @@ using std::vector;
 template <HW hw>
 void Generator<hw>::saveMNLocalIDs(const GEMMStrategy &strategy, GEMMState &state)
 {
-    state.lidStorage = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
-    state.lidM = state.lidStorage.uw(0);
-    state.lidN = state.lidStorage.uw(1);
-    mov(1, state.lidM, state.inputs.localIDM);
-    mov(1, state.lidN, state.inputs.localIDN);
+
+    {
+        state.lidStorage = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
+        state.lidM = state.lidStorage.uw(0);
+        state.lidN = state.lidStorage.uw(1);
+        mov(1, state.lidM, state.inputs.localIDM);
+        mov(1, state.lidN, state.inputs.localIDN);
+    }
 }
 
 template <HW hw>
 void Generator<hw>::saveKLocalIDSize(const GEMMStrategy &strategy, GEMMState &state)
 {
-    state.lidszKStorage = state.ra.alloc_sub<uint64_t>(getHint(HintType::LongTerm, strategy));
-    state.lidK = state.lidszKStorage.uw(0);
-    state.lszK = state.lidszKStorage.ud(1);
+
+    {
+        state.lidszKStorage = state.ra.alloc_sub<uint64_t>(getHint(HintType::LongTerm, strategy));
+        state.lidK = state.lidszKStorage.uw(0);
+        state.lszK = state.lidszKStorage.ud(1);
+    }
     mov(1, state.lidK, state.inputs.localIDK);
     mov(1, state.lszK, state.inputs.localSizeK);
 }

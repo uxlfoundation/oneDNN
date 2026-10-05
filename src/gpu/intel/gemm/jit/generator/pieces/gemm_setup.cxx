@@ -1849,12 +1849,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     // Apply panel masks, if defined, to all A/B blocks.
     if (state.panelMaskA.isValid()) {
-        (slmA ? state.Ai_layout : state.A_layout).assignUniformMask(state.panelMaskA);
-        state.Ap_layout.assignUniformMask(state.panelMaskA);
+        (slmA ? state.Ai_layout : state.A_layout).assignUniformMask(state.panelMaskA, hw);
+        state.Ap_layout.assignUniformMask(state.panelMaskA, hw);
     }
     if (state.panelMaskB.isValid()) {
-        (slmB ? state.Bi_layout : state.B_layout).assignUniformMask(state.panelMaskB);
-        state.Bp_layout.assignUniformMask(state.panelMaskB);
+        (slmB ? state.Bi_layout : state.B_layout).assignUniformMask(state.panelMaskB, hw);
+        state.Bp_layout.assignUniformMask(state.panelMaskB, hw);
     }
 
     // Temporary: move add64 out of the way (later: general cramming).
@@ -1871,31 +1871,31 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     gemmAllocAoBoRegs(strategy, state);
 
     // Allocate address registers for A/B loads. We don't need C addresses yet.
-    allocAddrRegs(state.A_addrs, state.A_layout, state);
-    allocAddrRegs(state.B_addrs, state.B_layout, state);
-    allocAddrRegs(state.Ap_addrs, state.Ap_layout, state);
-    allocAddrRegs(state.Bp_addrs, state.Bp_layout, state);
-    allocAddrRegs(state.Ai_addrs, state.Ai_layout, state);
-    allocAddrRegs(state.Bi_addrs, state.Bi_layout, state);
-    allocAddrRegs(state.Ao_addrs, state.Ao_layout, state);
-    allocAddrRegs(state.Bo_addrs, state.Bo_layout, state);
-    allocAddrRegs(state.A_offsetAddrs, state.A_offsetLayout, state);
-    allocAddrRegs(state.B_offsetAddrs, state.B_offsetLayout, state);
-    allocAddrRegs(state.A_scaleAddrs, state.A_scaleLayout, state);
-    allocAddrRegs(state.B_scaleAddrs, state.B_scaleLayout, state);
-    allocAddrRegs(state.C_scaleAddrs, state.C_scaleLayout, state);
-    allocAddrRegs(state.Ag_addrs, state.Ag_layout, state);
-    allocAddrRegs(state.Bg_addrs, state.Bg_layout, state);
+    allocAddrRegs(hw, state.A_addrs, state.A_layout, state);
+    allocAddrRegs(hw, state.B_addrs, state.B_layout, state);
+    allocAddrRegs(hw, state.Ap_addrs, state.Ap_layout, state);
+    allocAddrRegs(hw, state.Bp_addrs, state.Bp_layout, state);
+    allocAddrRegs(hw, state.Ai_addrs, state.Ai_layout, state);
+    allocAddrRegs(hw, state.Bi_addrs, state.Bi_layout, state);
+    allocAddrRegs(hw, state.Ao_addrs, state.Ao_layout, state);
+    allocAddrRegs(hw, state.Bo_addrs, state.Bo_layout, state);
+    allocAddrRegs(hw, state.A_offsetAddrs, state.A_offsetLayout, state);
+    allocAddrRegs(hw, state.B_offsetAddrs, state.B_offsetLayout, state);
+    allocAddrRegs(hw, state.A_scaleAddrs, state.A_scaleLayout, state);
+    allocAddrRegs(hw, state.B_scaleAddrs, state.B_scaleLayout, state);
+    allocAddrRegs(hw, state.C_scaleAddrs, state.C_scaleLayout, state);
+    allocAddrRegs(hw, state.Ag_addrs, state.Ag_layout, state);
+    allocAddrRegs(hw, state.Bg_addrs, state.Bg_layout, state);
     if (strategy.pfaux) {
         if (strategy.prefetchA) {
-            allocAddrRegs(state.Ap_offsetAddrs, state.A_offsetLayout, state);
-            allocAddrRegs(state.Ap_scaleAddrs,  state.A_scaleLayout,  state);
-            allocAddrRegs(state.Agp_addrs,      state.Ag_layout,       state);
+            allocAddrRegs(hw, state.Ap_offsetAddrs, state.A_offsetLayout, state);
+            allocAddrRegs(hw, state.Ap_scaleAddrs,  state.A_scaleLayout,  state);
+            allocAddrRegs(hw, state.Agp_addrs,      state.Ag_layout,       state);
         }
         if (strategy.prefetchB) {
-            allocAddrRegs(state.Bp_offsetAddrs, state.B_offsetLayout, state);
-            allocAddrRegs(state.Bp_scaleAddrs,  state.B_scaleLayout,  state);
-            allocAddrRegs(state.Bgp_addrs,      state.Bg_layout,      state);
+            allocAddrRegs(hw, state.Bp_offsetAddrs, state.B_offsetLayout, state);
+            allocAddrRegs(hw, state.Bp_scaleAddrs,  state.B_scaleLayout,  state);
+            allocAddrRegs(hw, state.Bgp_addrs,      state.Bg_layout,      state);
         }
     }
 

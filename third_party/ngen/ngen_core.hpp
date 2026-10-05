@@ -31,6 +31,7 @@
 #include "ngen_config_internal.hpp"
 
 #include "ngen_utils.hpp"
+#include "ngen_types.hpp"
 
 #ifndef NGEN_NO_OP_NAMES
 #if not +0
@@ -305,6 +306,9 @@ struct Product {
     ProductFamily family = ProductFamily::Unknown;
     int stepping = 0;
     PlatformType type = PlatformType::Unknown;
+
+    int grfPerEU() const;
+    int threadsPerEU(int grfCount) const;
 };
 static_assert(std::is_trivially_copyable<Product>(), "Product must be trivially copyable");
 
@@ -378,6 +382,32 @@ static inline constexpr14 Core getCore(ProductFamily family)
     if (family >= ProductFamily::GenericGen10) return Core::Gen10;
     if (family >= ProductFamily::GenericGen9)  return Core::Gen9;
     return Core::Unknown;
+}
+
+inline int Product::grfPerEU() const
+{
+    switch (getCore(family)) {
+        case HW::XeLP: return 128 * 7;    // 128 GRF/thread, 7 threads/EU.
+        case HW::XeHP:
+        case HW::XeHPG:
+        case HW::XeHPC:
+        case HW::Xe2:
+        case HW::Xe3:
+        case HW::Xe3p:
+            return (family == ProductFamily::CRI) ? 2048 : 1024;
+        default: return 1024;
+    }
+}
+
+inline int Product::threadsPerEU(int grfCount) const
+{
+    if (getCore(family) <= HW::XeLP)
+        return 7;
+    // CRI: 256 GRF/thread is restricted to 4 threads/EU (no accumulators).
+    if (family == ProductFamily::CRI && grfCount == 256)
+        return 4;
+    int maxThreads = (family == ProductFamily::NVLP) ? 10 : 8;
+    return std::min(maxThreads, grfPerEU() / grfCount);
 }
 
 static inline constexpr14 bool hasSystolic(ProductFamily family)
@@ -482,12 +512,8 @@ template <> inline DataType getDataType<uint8_t>()  { return DataType::ub; }
 template <> inline DataType getDataType<int8_t>()   { return DataType::b;  }
 template <> inline DataType getDataType<double>()   { return DataType::df; }
 template <> inline DataType getDataType<float>()    { return DataType::f;  }
-#ifdef NGEN_HALF_TYPE
 template <> inline DataType getDataType<half>()     { return DataType::hf; }
-#endif
-#ifdef NGEN_BFLOAT16_TYPE
 template <> inline DataType getDataType<bfloat16>() { return DataType::bf; }
-#endif
 #ifdef NGEN_BFLOAT8_TYPE
 template <> inline DataType getDataType<bfloat8>() { return DataType::bf8; }
 #endif
@@ -567,25 +593,26 @@ static inline constexpr14 bool dpasSupported(const Product &product,
         return hw >= Core::XeHPC;
     }
 
-    // fp8 (NVL-P / CRI only): A,B bf8/hf8, {f,bf} acc.
+    // fp8 (NVL-P+ only): A,B bf8/hf8, {f,bf} acc.
     const bool aF8 = (src1 == DT::bf8 || src1 == DT::hf8);
     const bool bF8 = (src2 == DT::bf8 || src2 == DT::hf8);
     if (aF8 && bF8) {
-        if (hw != Core::Xe3p) return false;
+        if (hw < Core::Xe3p) return false;
         if (!((dst == DT::f || dst == DT::bf) && (src0 == DT::f || src0 == DT::bf)))
             return false;
-        return product.family == ProductFamily::NVLP
-            || product.family == ProductFamily::CRI;
+        return true;
     }
 
-    // fp4 (CRI only): {f,bf} acc, e2m1 or e3m0. NVL-P has none.
+    // fp4 (CRI+ only): {f,bf} acc, e2m1. e3m0 src with CRI only. NVL-P has none.
     const bool aF4 = (src1 == DT::e2m1 || src1 == DT::e3m0);
     const bool bF4 = (src2 == DT::e2m1 || src2 == DT::e3m0);
     if (aF4 && bF4) {
         if (hw != Core::Xe3p) return false;
         if (!((dst == DT::f || dst == DT::bf) && (src0 == DT::f || src0 == DT::bf)))
             return false;
-        return product.family == ProductFamily::CRI;
+        if (src1 == DT::e3m0 || src2 == DT::e3m0)
+            return product.family == ProductFamily::CRI;
+        return product.family >= ProductFamily::CRI;
     }
 
     return false;
@@ -2552,12 +2579,8 @@ public:
 
     Immediate(float    imm) { set(imm); }
     Immediate(double   imm) { set(imm); }
-#ifdef NGEN_HALF_TYPE
     Immediate(half     imm) { set(imm); }
-#endif
-#ifdef NGEN_BFLOAT16_TYPE
     Immediate(bfloat16 imm) { set(imm); }
-#endif
 
     Immediate hideType() const {
         Immediate result = *this;
@@ -2716,12 +2739,8 @@ public:
             case DataType::q:  val = (double) int64_t(payload); break;
             case DataType::f:  val = utils::bitcast<uint32_t,float>(uint32_t(payload)); break;
             case DataType::df: val = utils::bitcast<uint64_t,double>(payload); break;
-#ifdef NGEN_HALF_TYPE
             case DataType::hf: val = float(half(utils::bitcast<uint16_t,half>(uint16_t(payload)))); break;
-#endif
-#ifdef NGEN_BFLOAT16_TYPE
             case DataType::bf: val = float(bfloat16(utils::bitcast<uint16_t,bfloat16>(uint16_t(payload)))); break;
-#endif
             default:
 #ifdef NGEN_SAFE
                 throw invalid_type_exception();
@@ -2738,12 +2757,8 @@ public:
             case DataType::q:  return Immediate::q(int64_t(val));
             case DataType::f:  return Immediate::f(float(val));
             case DataType::df: return Immediate::df(val);
-#ifdef NGEN_HALF_TYPE
             case DataType::hf: return Immediate::hf(utils::bitcast<half,uint16_t>(half((float)val)));
-#endif
-#ifdef NGEN_BFLOAT16_TYPE
             case DataType::bf: return Immediate::bf(utils::bitcast<bfloat16,uint16_t>(bfloat16((float)val)));
-#endif
             default:
 #ifdef NGEN_SAFE
                 throw invalid_type_exception();

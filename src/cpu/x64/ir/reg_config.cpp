@@ -29,8 +29,10 @@ reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
     reg_config_t rc;
     rc.param_reg = param_reg;
 
-    // TODO: enable Intel APX.
-    const int n_gpr = 16;
+    // Intel APX adds `r16` to `r31` where the machine has it enabled. AVX2* is
+    // excluded, since VEX cannot address memory through them.
+    const bool with_apx = is_superset(isa, avx512_core) && mayiuse(avx10_2);
+    const int n_gpr = with_apx ? 32 : 16;
     const int n_vec = isa_num_vregs(isa);
 
     auto contains = [](const std::vector<int> &v, int i) {

@@ -600,9 +600,8 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
 // a vector register on AVX2*, so the mask and vec kinds share one file. AVX-512
 // masks with k-registers, so the mask kind gets a file of its own.
 //
-// No `mayiuse` guard is needed. `make_reg_config()` reads the ISA through the
-// `cpu_isa_traits_t` tables only and generates no code, so both layouts are
-// checkable on any machine.
+// `make_reg_config()` generates no code, so both layouts are checkable on any
+// machine.
 TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
     const int param_reg = 0, rsp_reg = 4;
     const std::vector<int> reserved_masks {6, 7};
@@ -625,7 +624,8 @@ TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
         ASSERT_EQ(rc.pools.files.size(), 3u);
         EXPECT_EQ(rc.pools.kind_to_file, std::vector<int>({0, 1, 2}));
         EXPECT_EQ(rc.pools.files[1].slot_size, 64u);
-        EXPECT_EQ(rc.pools.files[0].regs.size(), 14u);
+        // `r16` to `r31` are added where the machine has Intel APX enabled.
+        EXPECT_EQ(rc.pools.files[0].regs.size(), mayiuse(avx10_2) ? 30u : 14u);
         EXPECT_EQ(rc.pools.files[1].regs.size(), 32u);
         // The mask file is k1..k7 less the reserved ones. k0 cannot encode a
         // write mask.

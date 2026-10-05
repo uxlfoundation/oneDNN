@@ -264,48 +264,65 @@ void prb_t::skip_invalid(res_t *res) const {
     }
 }
 
+// Intermediates (P, dS, O) are rounded to the dst type.
+float intermediate_min_normal(const prb_t *prb) {
+    switch (prb->dst_dt()) {
+        case dnnl_f32:
+        case dnnl_bf16: return std::numeric_limits<float>::min();
+        case dnnl_f16:
+        case dnnl_f8_e5m2: return std::ldexp(1.f, -14);
+        case dnnl_f8_e4m3: return std::ldexp(1.f, -6);
+        default: return 0.f;
+    }
+}
+
+static float cmp_threshold(const prb_t *prb, data_kind_t kind) {
+    const bool is_bwd = (kind == SRC || kind == SRC_1 || kind == SRC_2);
+    const int nd = prb->ndims;
+    const bool is_gqa = prb->k_dims()[nd - 3] != prb->q_dims()[nd - 3];
+
+    // Roundings (eps/2 each): DST/dV: P, output; dQ/dK: O in D_i (eps), dS,
+    // output; GQA dK/dV: per-head partials.
+    float n_eps = (kind == SRC || kind == SRC_1) ? 2.f : 1.f;
+    if (is_gqa && (kind == SRC_1 || kind == SRC_2)) n_eps += 0.5f;
+
+    // f32 accumulation order differs from the reference. Backward's dP and
+    // D_i sums over the V head dim feed directly into the dS magnitude.
+    const int64_t n_acc = is_bwd
+            ? 1 + prb->n_values + prb->n_keys + prb->n_queries
+            : 1 + prb->n_keys;
+    return n_eps * epsilon_dt(prb->dst_dt())
+            + 8.f * n_acc * epsilon_dt(dnnl_f32);
+}
+
 void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
         data_kind_t kind, const args_t &ref_args) {
     const prb_t *prb = prb_t::from(base_prb);
     const bool is_bwd = (kind == SRC || kind == SRC_1 || kind == SRC_2);
+    const float eps = epsilon_dt(prb->dst_dt());
+    const float err_per_mag = cmp_threshold(prb, kind);
 
-    // Backward chains more matmuls and softmax_backward; needs looser
-    // thresholds due to catastrophic cancellation in S*(dP - Di) and
-    // accumulated atomic adds.
-    const float trh_coeff = is_bwd ? 32.f : 8.f;
-    const float trh = trh_coeff * (1 + prb->n_keys) * epsilon_dt(prb->dst_dt());
+    // Subsumed by the magnitude check since mag >= |exp|.
+    cmp.set_threshold(err_per_mag);
 
-    // This standard point-to-point check  validates any point above 1e-5 against
-    // the *relative* threshold. This works well for well-conditioned points,
-    // but fails for small-magnitude points
-    cmp.set_threshold(trh);
-
-    // That alone is not sufficent SDPA's forward pass: it is a convex combination
-    //     Out = sum(prob_k * V_k),   sum(prob_k) = 1,
-    // so catastrophic cancellation can drive |Out| -> 0.f (observed ~5e-5) while
-    // the absolute error stays pinned at the rounding floor, making
-    // rel_diff = diff/|exp| blow up for a perfectly healthy kernel.
-    //
-    // The small-magnitude points are instead validated against an absolute floor
-    if (!is_bwd) {
-        const dnn_mem_t &absmag = ref_args.find(SDPA_REF_ARG_OUT_ABSMAG);
-        const float eps_dst = epsilon_dt(prb->dst_dt());
-        const dnn_mem_t *mag = &absmag;
-        cmp.set_driver_check_function(
-                [eps_dst, mag](
-                        const compare::compare_t::driver_check_func_args_t &a)
-                        -> bool {
-            return a.diff <= eps_dst * mag->get_f32_elem(a.idx);
-        });
-    } else {
-        // Backward chains more matmuls/softmax_bwd and produces element diffs up
-        // to ~3e-2 for near-zero values; keep its looser empirical floor.
-        const float abs_trh = 5e-2f;
-
-        cmp.set_driver_check_function(
-                [abs_trh](const compare::compare_t::driver_check_func_args_t &a)
-                        -> bool { return a.diff <= abs_trh; });
+    // Cancellation can drive |exp| -> 0, so bound the error by the same
+    // contraction over absolute values (see compute_ref).
+    int mag_arg = SDPA_REF_ARG_OUT_ABSMAG;
+    switch (kind) {
+        case SRC: mag_arg = SDPA_REF_ARG_DQ_ABSMAG; break;
+        case SRC_1: mag_arg = SDPA_REF_ARG_DK_ABSMAG; break;
+        case SRC_2: mag_arg = SDPA_REF_ARG_DV_ABSMAG; break;
+        default: break;
     }
+    const dnn_mem_t *mag = &ref_args.find(mag_arg);
+    // Subnormal outputs may round in opposite directions.
+    const float subnormal_ulp = intermediate_min_normal(prb) * eps;
+    cmp.set_driver_check_function(
+            [err_per_mag, mag, subnormal_ulp](
+                    const compare::compare_t::driver_check_func_args_t &a)
+                    -> bool {
+        return a.diff <= err_per_mag * mag->get_f32_elem(a.idx) + subnormal_ulp;
+    });
 
     cmp.set_zero_trust_percent(is_bwd ? 70.f : 90.f);
 }
@@ -482,8 +499,10 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
+    // DST isn't checked for backward problems.
     if (has_bench_mode_bit(mode_bit_t::corr)
-            && !has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+            && !has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+            && !(prb->dir & FLAG_BWD)) {
         // Reference-only buffer holding the per-element conditioning magnitude
         // sum_k prob_k*|V_k| (same layout as the reference DST). compute_ref fills
         // it; setup_cmp reads it to size a per-element DST threshold. Forward only.
@@ -517,6 +536,21 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         TIME_FILL(SAFE(
                 init_ref_memory_args(ref_mem_map, mem_map, v_prim[1], prb, res),
                 WARN));
+
+        if (has_bench_mode_bit(mode_bit_t::corr)
+                && !has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+            const std::pair<int, int> mag_args[] = {
+                    {SDPA_REF_ARG_DQ_ABSMAG, DNNL_ARG_DIFF_QUERIES},
+                    {SDPA_REF_ARG_DK_ABSMAG, DNNL_ARG_DIFF_KEYS},
+                    {SDPA_REF_ARG_DV_ABSMAG, DNNL_ARG_DIFF_VALUES},
+            };
+            for (const auto &e : mag_args) {
+                const auto &ref_diff = ref_mem_map.at(e.second);
+                ref_mem_map.emplace(e.first,
+                        dnn_mem_t(ref_diff.md_, get_cpu_engine(),
+                                /* prefill = */ false));
+            }
+        }
 
         args = args_t(mem_map);
         ref_args = args_t(ref_mem_map);

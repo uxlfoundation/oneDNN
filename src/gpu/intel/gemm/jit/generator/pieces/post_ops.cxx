@@ -304,7 +304,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 
     RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, false);
 
-    allocAddrRegs(CO_addrs, CO_layout, state);
+    allocAddrRegs(hw, CO_addrs, CO_layout, state);
     setupAddr(CO_addrs, base, CO_layout, ld, strategy, state);
 
     if (!assignMasks(CO_layout, LoopM, LoopN, masks, strategy, state, true)) return false;
@@ -765,8 +765,8 @@ bool Generator<hw>::gemmLoadABOffset(const GEMMProblem &problem, const GEMMStrat
     state.Bs_regs = state.ra.allocRange(state.Bs_layout.regs());
 
     vector<RegisterRange> As_addrs, Bs_addrs;
-    allocAddrRegs(As_addrs, state.As_layout, state);
-    allocAddrRegs(Bs_addrs, state.Bs_layout, state);
+    allocAddrRegs(hw, As_addrs, state.As_layout, state);
+    allocAddrRegs(hw, Bs_addrs, state.Bs_layout, state);
 
     if (state.effAs.isInvalid() && state.effBs.isInvalid())
         gemmCalcABOffsetAddrs(problem, strategy, state);

@@ -428,7 +428,7 @@ bool Generator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const GEMMStrat
             add(1, adjBase, adjBase, ABs_base[isB]);
         }
         makeSLMBaseRelative(adjBase, state);
-        allocAddrRegs(ABs_addrs[isB], ABs_layoutSLM[isB], state);
+        allocAddrRegs(hw, ABs_addrs[isB], ABs_layoutSLM[isB], state);
         setupAddr(ABs_addrs[isB], adjBase, ABs_layoutSLM[isB], Subregister(), strategy, state);
         releaseMaskAssignments(masks, state);
 
@@ -477,7 +477,7 @@ bool Generator<hw>::gemmFinalizeSums(const GEMMProblem &problem, const GEMMStrat
                 *ABs_regs[isB] = state.ra.alloc_range(nregs);
             }
 
-            allocAddrRegs(ABs_addrs[isB], ABs_layoutSLM[isB], state);
+            allocAddrRegs(hw, ABs_addrs[isB], ABs_layoutSLM[isB], state);
             setupAddr(ABs_addrs[isB], ABs_base[isB], ABs_layoutSLM[isB], Subregister(), strategy, state);
         }
         loadMatrix(*ABs_regs[isB], ABs_layoutSLM[isB], ABs_addrs[isB], strategy, state);

@@ -1939,7 +1939,7 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
             if_(16 | mod, labelEndAtomic);
             setDefaultNoMask(false);
         } else
-            block.flag[0] = mod.getFlagReg();
+            block.flag[0] = VirtualFlag(mod.getFlagReg(), hw);
 
         atomicAddMatrixBlock(Tc_ext, Cacc, block, problem.C, strategy.C, header[0], problem, strategy, state);
 
@@ -2234,7 +2234,7 @@ void Generator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, co
     and_(16 | ne | state.flagAP, null.ud(), state.inputs.flags, FlagStoreSums);
     if_(16 | state.flagAP, noAccess);
 
-    allocAddrRegs(CO_addrs, CO_layout, state);
+    allocAddrRegs(hw, CO_addrs, CO_layout, state);
     setupAddr(CO_addrs, state.effCO, CO_layout, Subregister(), strategy, state);
 
     if (!assignMasks(CO_layout, LoopM, LoopN, masks, strategy, state, true)) stub();
@@ -2408,7 +2408,7 @@ void Generator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &
 
         C_slmLayout = RegisterLayout(hw, Tc, elementsPerGRF(hw, Tc), sliceRegs, C_slm, C_slmStrategy,
                                      false, false, true, AvoidFragment, 0, maxContig);
-        ok = ok && tryAllocAddrRegs(C_slmAddrs, C_slmLayout, state);
+        ok = ok && tryAllocAddrRegs(hw, C_slmAddrs, C_slmLayout, state);
 
         if (ok) break;
 
@@ -2653,7 +2653,7 @@ void Generator<hw>::gemmPrefetchC(const GEMMProblem &problem, GEMMStrategy &stra
             cmp(1 | gt | state.flagAP, state.lidK, 0);
     }
 
-    allocAddrRegs(state.Cp_addrs, state.Cp_layout, state);
+    allocAddrRegs(hw, state.Cp_addrs, state.Cp_layout, state);
     setupAddr(state.Cp_addrs, state.effCp, state.Cp_layout, state.inputs.ldc[0], strategy, state, Cp_params, state.ldcMultiples[0]);
 
     Label lSkipPrefetchC;

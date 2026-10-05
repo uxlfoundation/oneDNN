@@ -382,7 +382,7 @@ public:
     void sort(bool reverse = false);
 
     // Assign a single mask to all blocks in a layout.
-    void assignUniformMask(ngen::FlagRegister flag, int idx = 0);
+    void assignUniformMask(ngen::FlagRegister flag, ngen::HW hw, int idx = 0);
 
     // Assign runtime-computed descriptor information to all blocks in this layout.
     // Returns true if successful; false if not all blocks in layout are compatible.

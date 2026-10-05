@@ -206,7 +206,7 @@ void Generator<hw>::addRemainder(RegisterLayout &layout, vector<RegisterRange> &
 
     Address2DParams params2D{};
     if (layout.addressingStrategy().address2D) stub();
-    allocAddrRegs(addrs, layout, state);
+    allocAddrRegs(hw, addrs, layout, state);
     setupAddr(addrs, addr0, layout, ld, strategy, state, params2D);
 
     state.ra.safeRelease(addr0);

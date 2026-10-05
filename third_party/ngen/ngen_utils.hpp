@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #ifdef _MSC_VER
 #include <intrin.h>

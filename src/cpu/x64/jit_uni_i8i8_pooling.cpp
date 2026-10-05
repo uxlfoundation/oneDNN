@@ -218,7 +218,9 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
         return static_cast<uint8_t>(v);
     }
 
-    // Unpacking helper
+    // Helper for unpack_dst(). Brings the ll-th part of vreg_dst(jj) into an
+    // XMM. For ll == 0 the data is already in place; otherwise the part is
+    // extracted into vreg_dst_f32_max(ll).
     Xmm xreg_dst_max(int jj, int ll);
 
     void unpack_dst(int jj, int ll, bool is_signed);

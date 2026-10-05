@@ -487,7 +487,6 @@ void jit_uni_binary_injector_t<isa>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs,
         std::size_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
-
     if (vmm_idxs.empty()) return;
     const auto start_idx = *(vmm_idxs.begin());
     const auto end_idx = *(vmm_idxs.rbegin());
@@ -508,10 +507,16 @@ void jit_uni_binary_injector_t<isa>::compute_vector_range(
                         broadcasting_strategy_t::scalar,
                         broadcasting_strategy_t::per_oc_spatial)
                     || rhs_arg_data_type != data_type::f32);
-    const bool dt_helper_vmm_needed
-            = !binary_op_with_unaligned_mem_operand_allowed_
-            || rhs_arg_data_type != data_type::f32 || should_preserve_vmm_tail;
-    const auto tail_load_mode = rhs_arg_params.tail_load_mode;
+
+    const bool need_tail_handling_in_range = rhs_arg_static_params_.is_tail
+            && tail_exists_in_range
+            && rhs_arg_static_params_.use_exact_tail_scalar_bcast;
+
+    // When these conditions are met we can avoid repeatedly loading the
+    // an unchanging scalar RHS
+    const bool can_load_scalar_once
+            = rhs_broadcasting_strategy == broadcasting_strategy_t::scalar
+            && !need_tail_handling_in_range && vmm_idxs.count(vmm_hint) == 0;
 
     const std::initializer_list<Xbyak_aarch64::XReg> gpr_maybe_preserve_list {
             rhs_arg_static_params_.rhs_addr_reg,
@@ -519,6 +524,11 @@ void jit_uni_binary_injector_t<isa>::compute_vector_range(
 
     const std::initializer_list<Xbyak_aarch64::VReg> vmm_maybe_preserve_list {
             Xbyak_aarch64::VReg(vmm_hint)};
+
+    const bool dt_helper_vmm_needed = can_load_scalar_once
+            || !binary_op_with_unaligned_mem_operand_allowed_
+            || rhs_arg_data_type != data_type::f32 || should_preserve_vmm_tail;
+    const auto tail_load_mode = rhs_arg_params.tail_load_mode;
 
     // Phase 2 Protect temporary registers content.
     const injector_utils::register_preserve_guard_t<to_vla_sve(isa)>
@@ -540,6 +550,31 @@ void jit_uni_binary_injector_t<isa>::compute_vector_range(
     rhs_address_t rhs_arg_addr(Xbyak_aarch64::XReg(0));
 
     // Phase 3 Apply binary post-op over all vmms.
+    // Phase 3.a: fast path:
+    if (can_load_scalar_once) {
+        const Vmm rhs_vmm(vmm_hint);
+        rhs_arg_addr = prepare_rhs_arg_addr(start_idx, rhs_arg_idx, post_op,
+                rhs_arg_params, rhs_broadcasting_strategy);
+        execute_broadcast_no_tail(
+                rhs_arg_data_type, rhs_vmm, remove_bcast_bit(rhs_arg_addr));
+
+        // The integral types would have been converted to s32 by the broadcast
+        // load, so convert them to f32 here.
+        if (utils::one_of(rhs_arg_data_type, data_type::s32, data_type::s8,
+                    data_type::u8)) {
+            host_->uni_scvtf(rhs_vmm.s, rhs_vmm.s);
+        }
+
+        for (const auto vmm_idx : vmm_idxs) {
+            const Vmm dst_vmm(vmm_idx);
+            execute_binary(post_op.binary.alg, dst_vmm, host_->P_ALL_ONE,
+                    dst_vmm, rhs_vmm);
+        }
+
+        return;
+    }
+
+    // Phase 3.b: general path:
     for (const auto vmm_idx : vmm_idxs) {
         if (vmm_idx == start_idx
                 || rhs_arg_params_differ(vmm_idx, vmm_idx - 1, rhs_arg_params,
@@ -1411,8 +1446,12 @@ void jit_uni_binary_injector_t<isa>::inject_binary(
             load_rhs(rhs_arg_data_type, tmp_vmm, rhs_addr, tail_load_mode,
                     with_tail);
 
-        if (rhs_arg_data_type != data_type::f32)
+        // The integral types would have been converted to s32 by the
+        // broadcast/load, so convert them to f32 here.
+        if (utils::one_of(rhs_arg_data_type, data_type::s32, data_type::s8,
+                    data_type::u8)) {
             host_->uni_scvtf(tmp_vmm.s, tmp_vmm.s);
+        }
 
         execute_binary(alg, dst, host_->P_ALL_ONE, dst, tmp_vmm);
     } else {

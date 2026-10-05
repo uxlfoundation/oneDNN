@@ -131,6 +131,14 @@ constexpr Xbyak::Operand::Code abi_save_gpr_regs[] = {
 #endif
 };
 
+#ifdef _WIN32
+// Intel APX gprs that the Windows ABI makes nonvolatile.
+constexpr Xbyak::Operand::Code abi_save_apx_gpr_regs[] = {
+        Xbyak::Operand::R30,
+        Xbyak::Operand::R31,
+};
+#endif
+
 constexpr Xbyak::Operand::Code abi_param_regs[] = {
 #ifdef _WIN32
         Xbyak::Operand::RCX, Xbyak::Operand::RDX, Xbyak::Operand::R8,
@@ -182,8 +190,19 @@ private:
     const size_t num_abi_save_gpr_regs
             = sizeof(abi_save_gpr_regs) / sizeof(abi_save_gpr_regs[0]);
 
+    // `preamble()` saves the Intel APX gprs whenever it is enabled, regardless
+    // of the kernel ISA, because any kernel may use them.
+#ifdef _WIN32
+    const size_t num_abi_save_apx_gpr_regs = mayiuse(avx10_2)
+            ? sizeof(abi_save_apx_gpr_regs) / sizeof(abi_save_apx_gpr_regs[0])
+            : 0;
+#else
+    const size_t num_abi_save_apx_gpr_regs = 0;
+#endif
+
     const size_t size_of_abi_save_regs
             = num_abi_save_gpr_regs * rax.getBit() / 8
+            + num_abi_save_apx_gpr_regs * rax.getBit() / 8
             + xmm_to_preserve * xmm_len;
 
 public:
@@ -270,6 +289,11 @@ public:
             if (i == 0) mov(rbp, rsp);
         }
 
+#ifdef _WIN32
+        for (size_t i = 0; i < num_abi_save_apx_gpr_regs; ++i)
+            push(Xbyak::Reg64(abi_save_apx_gpr_regs[i]));
+#endif
+
         if (may_use_rbp() && is_valid_isa(avx512_core)) {
             // Initialize RBP as scaled EVEX offset base
             mov(reg_EVEX_max_8b_offt, 2 * EVEX_max_8b_offt);
@@ -333,6 +357,11 @@ public:
     }
 
     void postamble() {
+#ifdef _WIN32
+        for (size_t i = 0; i < num_abi_save_apx_gpr_regs; ++i)
+            pop(Xbyak::Reg64(
+                    abi_save_apx_gpr_regs[num_abi_save_apx_gpr_regs - 1 - i]));
+#endif
         for (size_t i = 0; i < num_abi_save_gpr_regs; ++i)
             pop(Xbyak::Reg64(abi_save_gpr_regs[num_abi_save_gpr_regs - 1 - i]));
         if (xmm_to_preserve) {

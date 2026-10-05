@@ -177,6 +177,28 @@ dnn_mem_t transpose_2d(dnnl_engine_t eng, const dnn_mem_t &src, int64_t d0,
     return dst;
 }
 
+// Element-wise |src| of a 3D f32 memory.
+dnn_mem_t abs_3d(dnnl_engine_t eng, const dnn_mem_t &src, int64_t d0,
+        int64_t d1, int64_t d2) {
+    auto dst = make_3d(eng, d0, d1, d2);
+    const float *s = static_cast<float *>(src);
+    float *d = static_cast<float *>(dst);
+    for (int64_t i = 0; i < d0 * d1 * d2; i++)
+        d[i] = std::fabs(s[i]);
+    return dst;
+}
+
+// Rounding a nonzero p has error <= eps/2 * (p + smallest normal `tau`).
+dnn_mem_t prob_mag(dnnl_engine_t eng, const dnn_mem_t &p, int64_t d0,
+        int64_t d1, int64_t d2, float tau) {
+    auto dst = make_3d(eng, d0, d1, d2);
+    const float *s = static_cast<float *>(p);
+    float *d = static_cast<float *>(dst);
+    for (int64_t i = 0; i < d0 * d1 * d2; i++)
+        d[i] = s[i] > 0.f ? s[i] + tau : 0.f;
+    return dst;
+}
+
 } // anonymous namespace
 
 // Scale all elements of `mem` by 1/sqrt(head_size), or by the user-provided
@@ -350,7 +372,9 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
                 avp[i] = std::fabs(vp[i]);
 
             auto absmag = make_3d(eng, MB, SQ, V);
-            exec_matmul(eng, strm, score2_dp, abs_v, absmag);
+            auto p_mag = prob_mag(
+                    eng, score2_dp, MB, SQ, SK, intermediate_min_normal(prb));
+            exec_matmul(eng, strm, p_mag, abs_v, absmag);
             std::memcpy(static_cast<float *>(absmag_m),
                     static_cast<float *>(absmag), MB * SQ * V * sizeof(float));
         }
@@ -426,6 +450,71 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
                     dK_full, diff_k_m, outer_batch, q_heads, kv_heads, H * SK);
             reduce_kv_heads(
                     dV_full, diff_v_m, outer_batch, q_heads, kv_heads, SK * V);
+        }
+
+        // dQ/dK/dV over absolute values; P*(dP - D) -> P*(|dP| + sum P|dP|).
+        const dnn_mem_t &dq_mag_m = args.find(SDPA_REF_ARG_DQ_ABSMAG);
+        const dnn_mem_t &dk_mag_m = args.find(SDPA_REF_ARG_DK_ABSMAG);
+        const dnn_mem_t &dv_mag_m = args.find(SDPA_REF_ARG_DV_ABSMAG);
+        if (dq_mag_m.nelems() > 0 && dk_mag_m.nelems() > 0
+                && dv_mag_m.nelems() > 0) {
+            const float tau = intermediate_min_normal(prb);
+            auto abs_dO = abs_3d(eng, dO, MB, SQ, V);
+            auto abs_v_t = abs_3d(eng, v_t, MB, V, SK);
+            auto dS_mag = make_3d(eng, MB, SQ, SK);
+            exec_matmul(eng, strm, abs_dO, abs_v_t, dS_mag);
+
+            float *dsm = static_cast<float *>(dS_mag);
+            if (!prb->attr.dropout.is_def()) {
+                const dnn_mem_t &dropout_mask
+                        = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
+                for (int64_t i = 0, n = MB * SQ * SK; i < n; i++)
+                    maybe_dropout(prb->attr, dsm[i], i, dropout_mask);
+            }
+
+            const float *p = static_cast<float *>(score2);
+            for (int64_t r = 0; r < MB * SQ; r++) {
+                const float *pr = p + r * SK;
+                float *mr = dsm + r * SK;
+                float d_mag = 0.f;
+                for (int64_t k = 0; k < SK; k++)
+                    d_mag += pr[k] * mr[k];
+                for (int64_t k = 0; k < SK; k++)
+                    mr[k] = pr[k] * (mr[k] + d_mag);
+            }
+            scale_scores(prb, args, dS_mag, MB * SQ * SK);
+            // Unscaled: dS may be rounded before or after the (<= 1) scale.
+            for (int64_t i = 0; i < MB * SQ * SK; i++)
+                if (p[i] > 0.f) dsm[i] += tau;
+
+            auto abs_k_t = abs_3d(eng, k_t, MB, SK, H);
+            auto dq_mag = make_3d(eng, MB, SQ, H);
+            exec_matmul(eng, strm, dS_mag, abs_k_t, dq_mag);
+
+            auto abs_q_t = abs_3d(eng, q_t, MB, H, SQ);
+            auto dk_mag = make_3d(eng, MB, H, SK);
+            exec_matmul(eng, strm, abs_q_t, dS_mag, dk_mag);
+
+            auto p_mag_t = transpose_2d(
+                    eng, prob_mag(eng, score2_dp, MB, SQ, SK, tau), MB, SQ, SK);
+            auto dv_mag = make_3d(eng, MB, SK, V);
+            exec_matmul(eng, strm, p_mag_t, abs_dO, dv_mag);
+
+            std::memcpy(static_cast<float *>(dq_mag_m),
+                    static_cast<float *>(dq_mag), MB * SQ * H * sizeof(float));
+            if (!is_gqa) {
+                std::memcpy(static_cast<float *>(dk_mag_m),
+                        static_cast<float *>(dk_mag),
+                        MB * H * SK * sizeof(float));
+                std::memcpy(static_cast<float *>(dv_mag_m),
+                        static_cast<float *>(dv_mag),
+                        MB * SK * V * sizeof(float));
+            } else {
+                reduce_kv_heads(dk_mag, dk_mag_m, outer_batch, q_heads,
+                        kv_heads, H * SK);
+                reduce_kv_heads(dv_mag, dv_mag_m, outer_batch, q_heads,
+                        kv_heads, SK * V);
+            }
         }
     }
 }

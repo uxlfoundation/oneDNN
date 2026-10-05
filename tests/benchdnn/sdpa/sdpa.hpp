@@ -52,6 +52,10 @@ namespace sdpa {
 // tighter per-element DST threshold. Negative so init_ref_memory_args skips it
 // (it only fills positive args) and it is never treated as a compared kind.
 static constexpr int SDPA_REF_ARG_OUT_ABSMAG = -1000;
+// Backward counterparts: the dQ/dK/dV contractions over absolute values.
+static constexpr int SDPA_REF_ARG_DQ_ABSMAG = -1001;
+static constexpr int SDPA_REF_ARG_DK_ABSMAG = -1002;
+static constexpr int SDPA_REF_ARG_DV_ABSMAG = -1003;
 
 enum mask_type_t {
     MASK_NONE = 0,
@@ -270,6 +274,7 @@ struct cfg_t : public base_cfg_t {
 };
 
 dnnl_status_t init_pd(init_pd_args_t &init_pd_args);
+float intermediate_min_normal(const prb_t *prb);
 void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
         data_kind_t kind, const args_t &ref_args);
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,

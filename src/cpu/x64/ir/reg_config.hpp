@@ -56,6 +56,7 @@ struct reg_config_t {
 // Some registers are reserved and are not included in the allocatable pools:
 // - `rsp_reg` (stack pointer)
 // - `param_reg` (parameter pointer)
+// - `rbp` (frame pointer) when the build option `DNNL_SAFE_RBP` was specified.
 // - `reserved_masks` opmasks, on AVX-512 only
 //
 // Spilled values need no reserved register. The allocator gives each operation

@@ -883,7 +883,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
             // Reinterpret X/maxXBlock to underlying type.
             auto X_logical = X;
-            if (T.is3()) {
+            if (T.is3() && !prefetch) {
                 // u3 is addressed in packed groups with a 4-byte pitch
                 // (see the crosspack = 4 assignment below). Type::operator/
                 // floors when converting bytes to dwords, which is fine for
@@ -915,7 +915,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             }
             xblock = std::min(X, maxBlockBytes / Tblock);
             xblock = std::max(xblock, 4 / Tblock);
-            // Block2D transpose messages only support power-of-2 widths (the
+            // Data-loading Block2D transpose messages only support power-of-2 widths (the
             // hardware's array length must be 1 for transpose, so unlike the
             // regular Block2D path, an odd remaining width can't be covered
             // by widening the message -- e.g. a tail width of 3 dwords, as
@@ -924,7 +924,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             // recurses on the leftover remainder, so the rest of the data is
             // covered by additional, separately-addressed power-of-2-width
             // messages instead of a single invalid multiple-of-3 one.
-            if (transpose) xblock = rounddown_pow2(xblock);
+            if (transpose && (!T.is3() || !prefetch)) xblock = rounddown_pow2(xblock);
             int yblockLimit = writable ? 8 : 32;
 
             if (isPacked(atype.layout) && 2 * xblock <= X && static_cast<uint32_t>(X_logical) == atype.packSize) {
@@ -966,7 +966,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             if (T.is3() && transpose) crosspack = 4;
 
             // Convert size from underlying type to our actual type.
-            if (T.is3()) {
+            if (T.is3() && !prefetch) {
                 int bytes = xblock * Tblock;
                 xblock = div_up(bytes * 8, T.bits());
 
@@ -1470,7 +1470,7 @@ void RegisterBlock::getBlock2DWH(int &w, int &h, int &count, const MatrixAddress
     bool transpose = (isColMajor(atype.layout) != colMajor);
     w = isColMajor(atype.layout) ? nr : nc;
     h = isColMajor(atype.layout) ? nc : nr;
-    if (transpose && extra == 3) {
+    if (transpose && extra == 3 && !prefetch) {
         int offset = isColMajor(atype.layout) ? offsetR : offsetC;
         w = div_up((offset + w) * extra, ebytes * 8)
                 - div_up(offset * extra, ebytes * 8);
@@ -1706,7 +1706,8 @@ bool RegisterLayout::appendBlocks(int r, int c, int roff, int coff, RemainderOpt
     if (!blockTemplate.valid() || rblock == 0 || cblock == 0)
         return false;       /* Cannot handle requested block and remainder. */
 
-    if (T.is3() && astrategy.accessType == AccessType::Block2DTranspose) {
+    if (T.is3() && astrategy.accessType == AccessType::Block2DTranspose
+            && !astrategy.prefetch) {
         bool memCM = isColMajor(atype.layout);
         int offset = memCM ? roff : coff;
         int &width = memCM ? rblock : cblock;
@@ -2108,7 +2109,7 @@ void RegisterLayout::finalize()
     int offsetBytes = 0;
     for (auto &block: *this) {
         if (T.is3() && astrategy.accessType == AccessType::Block2DTranspose
-                && block.isLoadBlock()) {
+                && !astrategy.prefetch && block.isLoadBlock()) {
             int width, height, count;
             block.getBlock2DWH(width, height, count, atype, astrategy.prefetch);
             block.msgRegs = GRF::bytesToGRFs(hw, width * height * block.ebytes * count);

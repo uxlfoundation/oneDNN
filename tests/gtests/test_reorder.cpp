@@ -100,17 +100,15 @@ TEST_P(fp4_reorder_test_t, PreservesBitsAndZeroPadding) {
 CPU_INSTANTIATE_TEST_SUITE_P(FP4, fp4_reorder_test_t,
         ::testing::Values(fp4_reorder_params_t {{2, 16}, fmt::ab, fmt::ab},
                 fp4_reorder_params_t {{4, 16}, fmt::ab, fmt::ba},
-                fp4_reorder_params_t {{34, 50}, fmt::ab, fmt::BA16a64b2a},
-                fp4_reorder_params_t {{34, 50}, fmt::BA16a64b2a, fmt::ba},
+                fp4_reorder_params_t {{34, 50}, fmt::ab, fmt::BA16a64b},
+                fp4_reorder_params_t {{34, 50}, fmt::BA16a64b, fmt::ba},
+                fp4_reorder_params_t {{33, 49}, fmt::BA16a16b, fmt::BA16a16b},
+                fp4_reorder_params_t {{33, 49}, fmt::BA16a16b, fmt::BA16a64b},
+                fp4_reorder_params_t {{1, 17}, fmt::ab, fmt::BA16a16b},
+                fp4_reorder_params_t {{1, 17}, fmt::BA16a16b, fmt::ab},
+                fp4_reorder_params_t {{3, 34, 50}, fmt::abc, fmt::aCB16b32c},
                 fp4_reorder_params_t {
-                        {33, 49}, fmt::BA16a16b2a, fmt::BA16a16b2a},
-                fp4_reorder_params_t {
-                        {33, 49}, fmt::BA16a16b2a, fmt::BA16a64b2a},
-                fp4_reorder_params_t {{1, 17}, fmt::ab, fmt::BA16a16b2a},
-                fp4_reorder_params_t {{1, 17}, fmt::BA16a16b2a, fmt::ab},
-                fp4_reorder_params_t {{3, 34, 50}, fmt::abc, fmt::aCB16b32c2b},
-                fp4_reorder_params_t {
-                        {3, 33, 49}, fmt::aCB16b16c2b, fmt::aCB16b64c2b}));
+                        {3, 33, 49}, fmt::aCB16b16c, fmt::aCB16b64c}));
 
 TEST_P(reorder_simple_test_t_f32_bf16, TestsReorder) {
     Test();

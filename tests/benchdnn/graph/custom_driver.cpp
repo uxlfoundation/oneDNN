@@ -300,8 +300,9 @@ void add_md_size(const_dnnl_memory_desc_t md, const dims_t &dims,
             && !has_bench_mode_modifier(mode_modifier_t::no_ref_memory);
     mem_size_args.total_size_mapped += mapped_mem_factor * mem_size;
 
-    const auto ref_md = dnn_mem_t::init_md(
-            static_cast<int>(dims.size()), dims.data(), dnnl_f32, tag::abx);
+    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> ref_md;
+    DNN_SAFE_V(dnn_mem_t::init_md(ref_md, static_cast<int>(dims.size()),
+            dims.data(), dnnl_f32, tag::abx));
     const auto ref_md_size = dnnl_memory_desc_get_size(ref_md);
     const size_t ref_mem_idx = mem_size_args.want_input ? 0 : 1;
     mem_size_args.total_ref_md_size[ref_mem_idx] = ref_md_size;
@@ -327,8 +328,9 @@ void collect_mem_size(
         const auto &tag = std::get<0>(arg_md);
         const auto &dims = std::get<1>(arg_md);
         const auto dt = std::get<2>(arg_md);
-        const auto md = dnn_mem_t::init_md(
-                static_cast<int>(dims.size()), dims.data(), dt, tag);
+        benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> md;
+        DNN_SAFE_V(dnn_mem_t::init_md(
+                md, static_cast<int>(dims.size()), dims.data(), dt, tag));
         mem_size_args.want_input = exec_arg != DNNL_ARG_DST;
         add_md_size(md, dims, mem_size_args);
     }

@@ -69,7 +69,10 @@ dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
     : engine_(engine), is_mapped_(false) {
     const int ndims = query_md_ndims(md);
     if (ndims > 0) {
-        auto md_wrapper = dnn_mem_t::init_md(ndims, query_md_dims(md), dt, tag);
+        benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> md_wrapper;
+        if (dnn_mem_t::init_md(md_wrapper, ndims, query_md_dims(md), dt, tag)
+                != dnnl_success)
+            return;
         md_ = md_wrapper.release();
         active_ = (initialize(prefill) == OK);
     }
@@ -92,7 +95,10 @@ dnn_mem_t::dnn_mem_t(int ndims, const dnnl_dims_t dims, dnnl_data_type_t dt,
         const std::string &tag, const engine_t &engine, bool prefill)
     : engine_(engine), is_mapped_(false) {
     if (ndims > 0) {
-        auto md_wrapper = dnn_mem_t::init_md(ndims, dims, dt, tag);
+        benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> md_wrapper;
+        if (dnn_mem_t::init_md(md_wrapper, ndims, dims, dt, tag)
+                != dnnl_success)
+            return;
         md_ = md_wrapper.release();
         active_ = (initialize(prefill) == OK);
     }
@@ -666,42 +672,55 @@ dnnl_memory_desc_t dnn_mem_t::pad_memory_desc(
     return ret;
 }
 
-benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md() {
+dnnl_status_t dnn_mem_t::init_md(
+        benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> &md_out) {
     dnnl_memory_desc_t zero_md {};
-    DNN_SAFE_V(dnnl_memory_desc_create_with_tag(
+    DNN_SAFE_STATUS(dnnl_memory_desc_create_with_tag(
             &zero_md, 0, nullptr, dnnl_data_type_undef, dnnl_format_tag_undef));
-    return zero_md;
+    md_out.reset(zero_md);
+    return dnnl_success;
 }
 
-benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md(int ndims,
+dnnl_status_t dnn_mem_t::init_md(
+        benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> &md_out, int ndims,
         const dnnl_dims_t dims, dnnl_data_type_t data_type,
         const std::string &tag_, const dims_t &strides_) {
     dnnl_memory_desc_t md {};
+    dnnl_status_t status = dnnl_success;
     const bool use_strides = !strides_.empty();
     // Ignore tag_ in case strides_ are explicitly provided
     if (use_strides) {
         const std::vector<dnnl_dim_t> &strides(strides_);
-        DNN_SAFE_V(dnnl_memory_desc_create_with_strides(
-                &md, ndims, dims, data_type, strides.data()));
-        return md;
+        status = dnnl_memory_desc_create_with_strides(
+                &md, ndims, dims, data_type, strides.data());
+    } else {
+        auto tag = normalize_tag(tag_, ndims);
+        if (tag == tag::undef || tag == tag::any || ndims == 0
+                || is_enum_tag(tag)) {
+            dnnl_format_tag_t enum_tag = (tag == tag::undef || ndims == 0)
+                    ? dnnl_format_tag_undef
+                    : tag == tag::any ? dnnl_format_tag_any
+                                      : str2fmt_tag(tag.c_str());
+            status = dnnl_memory_desc_create_with_tag(
+                    &md, ndims, dims, data_type, enum_tag);
+        } else {
+            status = dnnl_memory_desc_create_with_string_tag(
+                    &md, ndims, dims, data_type, tag.data());
+        }
     }
 
-    auto tag = normalize_tag(tag_, ndims);
-    if (tag == tag::undef || tag == tag::any || ndims == 0
-            || is_enum_tag(tag)) {
-        dnnl_format_tag_t enum_tag = (tag == tag::undef || ndims == 0)
-                ? dnnl_format_tag_undef
-                : tag == tag::any ? dnnl_format_tag_any
-                                  : str2fmt_tag(tag.c_str());
-        DNN_SAFE_V(dnnl_memory_desc_create_with_tag(
-                &md, ndims, dims, data_type, enum_tag));
-        return md;
+    if (status != dnnl_success) {
+        BENCHDNN_PRINT(0,
+                "Error: failed to create a memory descriptor: ndims=%d, "
+                "dims=%s, data_type=%s, tag=%s, strides=%s, status=%s\n",
+                ndims, dims2str(dims_t(dims, dims + ndims)).c_str(),
+                dt2str(data_type), tag_.c_str(), dims2str(strides_).c_str(),
+                status2str(status));
+        return status;
     }
 
-    DNN_SAFE_V(dnnl_memory_desc_create_with_string_tag(
-            &md, ndims, dims, data_type, tag.data()));
-
-    return md;
+    md_out.reset(md);
+    return dnnl_success;
 }
 
 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_csr_md(int ndims,

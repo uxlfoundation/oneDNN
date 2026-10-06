@@ -17,6 +17,7 @@
 #include <algorithm>
 
 #include "cpu/x64/ir/reg_config.hpp"
+#include "cpu/x64/jit_generator.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -42,13 +43,16 @@ reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
     };
 
     // GPR file includes every gpr except the stack pointer (`rsp`), the
-    // argument pointer, and the scratch registers. The spill slot size is
-    // 8 bytes.
+    // argument pointer, the scratch registers and the frame pointer (`rbp`) if
+    // requested. The spill slot size is 8 bytes.
+    const bool with_rbp = jit_generator_t::may_use_rbp();
     reg_file_t gpr_file;
     gpr_file.slot_size = 8;
     for (int i = 0; i < n_gpr; i++) {
-        if (i != rsp_reg && i != param_reg && !contains(gpr_scratch, i))
-            gpr_file.regs.push_back(i);
+        if (i == rsp_reg || i == param_reg || contains(gpr_scratch, i))
+            continue;
+        if (i == Xbyak::Operand::RBP && !with_rbp) continue;
+        gpr_file.regs.push_back(i);
     }
 
     // Vector file includes every vector register except the scratch registers.

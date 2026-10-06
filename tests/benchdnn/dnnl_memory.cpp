@@ -627,7 +627,14 @@ int dnn_mem_t::gpu_fill_random(size_t size, int buffer_index) const {
     }
     static constexpr uint32_t seed = 123456789;
     auto mem = m_padded_ ? m_padded_ : m_;
-    stream_t stream(engine_);
+    // Creating a stream per buffer is expensive (~tens of ms on some
+    // drivers), so reuse one for the test engine.
+    const bool is_test_engine = engine_ == get_test_engine();
+    std::unique_ptr<stream_t> local_stream;
+    if (!is_test_engine) local_stream.reset(new stream_t(engine_));
+    static stream_t *test_stream = nullptr;
+    if (is_test_engine && !test_stream) test_stream = new stream_t(engine_);
+    stream_t &stream = is_test_engine ? *test_stream : *local_stream;
     DNN_SAFE(dnnl_impl_gpu_fill_random(stream, size, mem, buffer_index, seed),
             WARN);
     DNN_SAFE(dnnl_stream_wait(stream), WARN);

@@ -13,7 +13,7 @@
 
 [Highlights](#highlights) | [Used By](#used-by) | [Quick Start](#quick-start) |
 [Installation](#installation) | [Documentation](#documentation) |
-[System Requirements](#system-requirements) | [Validated Configurations](#validated-configurations)
+[System Requirements](#system-requirements)
 
 [Support](#support) | [Governance](#governance) | [Contributing](#contributing) |
 [License](#license) | [Security](#security)
@@ -383,47 +383,6 @@ Runtime-specific dependencies:
 | :----------------------- | :---------------------------- | :---------
 | `ONEDNN_CPU_RUNTIME=OMP` | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.dylib`)
 | `ONEDNN_CPU_RUNTIME=TBB` | any                           | TBB (`libtbb.dylib`)
-
-## Validated Configurations
-
-x86-64 CPU engine was validated on RedHat\* Enterprise Linux 8 with
-* GNU Compiler Collection 8.5, 9.5, 11.1, 11.3
-* Clang\* 11.0, 14.0.6
-* [Intel oneAPI DPC++/C++ Compiler] 2025.1
-
-on Windows Server\* 2019 with
-* Microsoft Visual Studio 2022 with MSVC 19.43
-* [Intel oneAPI DPC++/C++ Compiler] 2025.1
-
-on macOS 14 (Sonoma) with
-* Apple LLVM version 15.0
-
-AArch64 CPU engine was validated on Ubuntu 22.04 with
-* GNU Compiler Collection 10.0, 13.0
-* Clang\* 17.0
-* [Arm Compiler for Linux] 24.04
-* [Arm Compute Library (ACL)] built for armv8-a arch, latest stable version
-available at the time of release
-
-on macOS 14 (Sonoma) with
-* Apple LLVM version 15.0
-
-GPU engine was validated on Ubuntu\* 22.04 with
-* GNU Compiler Collection 8.5, and 9.5
-* Clang\* 11.0
-* [Intel oneAPI DPC++/C++ Compiler] 2025.1
-* [Intel Software for General Purpose GPU capabilities] latest stable version
-available at the time of release
-
-on Windows Server\* 2019 with
-* Microsoft Visual Studio 2022 with MSVC 19.43
-* [Intel oneAPI DPC++/C++ Compiler] 2025.1
-* [Intel Arc & Iris Xe Graphics Driver] latest stable version available at the
-time of release
-
-[Intel Software for General Purpose GPU capabilities]: https://dgpu-docs.intel.com/index.html
-[Intel Arc & Iris Xe Graphics Driver]: https://www.intel.com/content/www/us/en/download/785597/intel-arc-iris-xe-graphics-windows.html
-[Arm Compiler for Linux]: https://developer.arm.com/Tools%20and%20Software/Arm%20Compiler%20for%20Linux
 
 ## Support
 

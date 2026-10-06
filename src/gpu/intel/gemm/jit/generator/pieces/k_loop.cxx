@@ -977,12 +977,12 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         int ha = h % k_load;
         int har = h % k_repack;
 
-        auto sublayout = layout;
+        auto sublayout = layout.int3UnpackLayout();
         auto Ar_sublayout = state.Ar_layout;
         bool s4Shift = true;
 
         if (repackA) {
-            auto layoutCopy = layout;
+            auto layoutCopy = sublayout;
             layoutCopy.unlinkFromMemory();
             sublayout = layoutCopy.slice(true, ha, ha + k_repack, false);
             if (Ar_sublayout.cols() > k_repack){
@@ -1028,12 +1028,13 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     auto doRepackB = [&](RegisterLayout &layout, GRFMultirange &regs, bool repackB, int h, int k_load, int k_repack) {
         k_repack = std::max(k_repack, 1);
         int hbr = h % k_repack;
+        auto unpackLayout = layout.int3UnpackLayout();
 
         if (dequantizeB)
-            gemmDequantizeAB(false, layout, state.Br_layout, regs, state.Br_regs, h, k_load, k_repack, kbq_load, problem, strategy, state);
+            gemmDequantizeAB(false, unpackLayout, state.Br_layout, regs, state.Br_regs, h, k_load, k_repack, kbq_load, problem, strategy, state);
         else
         if (repackB)
-            copyRegisters(layout, state.Br_layout, regs, state.Br_regs, hbr, 0, false, strategy, state);
+            copyRegisters(unpackLayout, state.Br_layout, regs, state.Br_regs, hbr, 0, false, strategy, state);
         else if (convertB)
             convert(regs, Tb_load, Tb, strategy, state);
     };

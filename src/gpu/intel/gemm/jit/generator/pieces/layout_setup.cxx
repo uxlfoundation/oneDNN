@@ -107,7 +107,6 @@ void Generator<hw>::updateBlock2DSizes(GRF addr, const RegisterBlock &dst, const
 {
     int bw, bh, bcount;
     dst.getBlock2DWH(bw, bh, bcount, atype, prefetch);
-
     if (dst.nr != src.nr || dst.nc != src.nc || dst.count != src.count)
         mov(1, addr.ud(7), (bw - 1) | ((bh - 1) << 8) | ((bcount - 1) << 16));
 }

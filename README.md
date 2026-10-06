@@ -2,12 +2,23 @@
 
 # oneAPI Deep Neural Network Library (oneDNN)
 
+<div align="center">
+
 [![Release](https://img.shields.io/github/v/release/uxlfoundation/oneDNN)](https://github.com/uxlfoundation/oneDNN/releases)
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/onednn)](https://anaconda.org/conda-forge/onednn)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://uxlfoundation.github.io/oneDNN)
 [![Slack](https://img.shields.io/badge/slack-%23onednn-4A154B?logo=slack)](https://slack-invite.uxlfoundation.org/)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/8762/badge)](https://www.bestpractices.dev/projects/8762)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/uxlfoundation/oneDNN/badge)](https://securityscorecards.dev/viewer/?uri=github.com/uxlfoundation/oneDNN)
+
+[Highlights](#highlights) | [Used By](#used-by) | [Quick Start](#quick-start) |
+[Installation](#installation) | [Documentation](#documentation) |
+[System Requirements](#system-requirements) | [Validated Configurations](#validated-configurations)
+
+[Support](#support) | [Governance](#governance) | [Contributing](#contributing) |
+[License](#license) | [Security](#security)
+
+</div>
 
 **oneDNN is an open-source, cross-platform library of optimized deep learning
 operations for CPUs and GPUs.** It provides highly optimized
@@ -23,22 +34,6 @@ AMD\* GPU, OpenPOWER\* Power ISA (PPC64), IBMz\* (s390x), and RISC-V.
 oneDNN project is part of the [UXL Foundation].
 
 [UXL Foundation]: http://www.uxlfoundation.org
-
-
-## Table of Contents
-
-- [Highlights](#highlights)
-- [Used By](#used-by)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Documentation](#documentation)
-- [System Requirements](#system-requirements)
-- [Validated Configurations](#validated-configurations)
-- [Support](#support)
-- [Governance](#governance)
-- [Contributing](#contributing)
-- [License](#license)
-- [Security](#security)
 
 ## Highlights
 

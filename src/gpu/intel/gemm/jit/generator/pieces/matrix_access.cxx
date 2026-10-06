@@ -53,7 +53,7 @@ void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &
 {
     if (layout.empty()) return;
 
-    if (layout.type().is3() || layout.type().is4()) return;
+    //if (layout.type().is3() || layout.type().is4()) return;
     auto &astrategy = layout.addressingStrategy();
 
     // PERF EXPERIMENT ONLY -- produces incorrect results.

@@ -107,6 +107,8 @@ void Generator<hw>::updateBlock2DSizes(GRF addr, const RegisterBlock &dst, const
 {
     int bw, bh, bcount;
     dst.getBlock2DWH(bw, bh, bcount, atype, prefetch);
+    if (getenv("U3_DEBUG")) fprintf(stderr, "[U3DBG] dst nr=%d nc=%d offR=%d offC=%d bw=%d bh=%d bcount=%d | src nr=%d nc=%d offR=%d offC=%d\n",
+        dst.nr, dst.nc, dst.offsetR, dst.offsetC, bw, bh, bcount, src.nr, src.nc, src.offsetR, src.offsetC);
 
     if (dst.nr != src.nr || dst.nc != src.nc || dst.count != src.count)
         mov(1, addr.ud(7), (bw - 1) | ((bh - 1) << 8) | ((bcount - 1) << 16));

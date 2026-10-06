@@ -1022,20 +1022,13 @@ status_t gen_kernel_t::get_kernel(
         break; \
     }
 
-    try {
-        switch (desc()->hw_) {
-            REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
-            REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
-            REG_XE2_ISA(ARCH_DISPATCH(Xe2))
-            REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-            REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
-            default: assert(!"Unsupported architecture"); break;
-        }
-    } catch (const std::runtime_error &err) {
-        // Print kernel generation errors only in debug mode
-        VDEBUGINFO(1, primitive, gpu, "%s,%s,%s", "jit::gemm", err.what(),
-                dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_)
-                        .c_str());
+    switch (desc()->hw_) {
+        REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
+        REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
+        REG_XE2_ISA(ARCH_DISPATCH(Xe2))
+        REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+        REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
+        default: assert(!"Unsupported architecture"); break;
     }
 #undef ARCH_DISPATCH
 

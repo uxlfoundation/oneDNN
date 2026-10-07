@@ -268,7 +268,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
                     post_op_tail_opmask_idx_
                             = post_op_tail ? jpp.c_tail / post_ops_simd_w : 0;
                     break;
-                default: assert(!"unsupported algorithm");
+                default: assert(!"unsupported pooling algorithm");
             }
 
             static constexpr bool preserve_gpr = true;
@@ -559,7 +559,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::load_src(int jj, int ll, int c_tail) {
             load_src_avg_op(jj, ll, offset, masked, jpp.tail[ll]);
             break;
         }
-        default: assert(!"unsupported algorithm");
+        default: assert(!"unsupported pooling algorithm");
     }
 }
 

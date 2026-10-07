@@ -317,6 +317,10 @@ jobs:
   # TODO: Find an elegant way to integrate this build with the rest of the workflow.
   windows:
     name: build windows-msvc 
+    # FIXME: This job is temporarily disabled because of:
+    # 1. This upstream issue: https://github.com/uxlfoundation/oneDNN/issues/6116
+    # 2. The internal compiler error in MSVC: https://github.com/uxlfoundation/oneDNN/pull/6136
+    if: false
     runs-on: windows-11-arm
     steps:
       - name: Print system info
@@ -344,7 +348,9 @@ jobs:
   # This job adds a check named "CI AArch64" that represents overall
   # workflow status and can be used in branch rulesets
   status:
-    needs: [smoke-test, unit-test, perf-test, windows]
+    # FIXME: See above for the reason we have temporarily disabled the MSVC job
+    #needs: [smoke-test, unit-test, perf-test, windows]
+    needs: [smoke-test, unit-test, perf-test]
     runs-on: ubuntu-24.04
     name: "CI AArch64"
     steps:

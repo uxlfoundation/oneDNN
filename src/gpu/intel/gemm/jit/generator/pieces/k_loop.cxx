@@ -1045,27 +1045,78 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         ls.swapLast2();
 
     // A/B 2D quantization parameter loads.
+    // Per-group loads: when one A/B load spans several scale groups (kaq/kbq > 1), load the
+    //  scale/offset layouts one k-group at a time (every aqGroupK/bqGroupK), each into its
+    //  own slice of the layout. The load for the group starting at k = T is then only issued
+    //  if k remains beyond T, so a k remainder that is group-aligned (but not aligned to
+    //  kaq/kbq groups) never reads scales past the end of the tensor. Address increments
+    //  stay at kaq_load/kbq_load (kaq_loadLate/kbq_loadLate for late); every slice load
+    //  must be issued before the increment following its group block.
+    //  The same logic serves both the regular and the late (applied after compute) layouts.
+    //  The per-group slices are built in kLoopSetup (state.{A,B}q_layoutsRem[Late]).
+
+    // Load the scale/offset for the group containing iteration h from a split.
+    auto loadQuantSplit = [&](bool isA, const QuantRemLayouts &s, int groupK, bool hasScale, bool hasOffset, Iteration h) {
+        int g = (h / groupK) % s.nGroups;
+        if (isA) {
+            if (hasOffset) gemmALoad(state.A_offsetRegs, s.offsetLayouts[g], s.offsetAddrs[g], problem, strategy, state);
+            if (hasScale)  gemmALoad(state.A_scaleRegs,  s.scaleLayouts[g], s.scaleAddrs[g],  problem, strategy, state);
+        } else {
+            if (hasOffset) gemmBLoad(state.B_offsetRegs, s.offsetLayouts[g], s.offsetAddrs[g], problem, strategy, state);
+            if (hasScale)  gemmBLoad(state.B_scaleRegs,  s.scaleLayouts[g], s.scaleAddrs[g],  problem, strategy, state);
+        }
+    };
+
+    // Split loads are only used for chunks that are not guaranteed to fit within k (the k remainder).
+    //  This is decided per-iteration rather than per-phase, since lookahead loads for the
+    //  trailing partial chunk may be issued before the remainder phase begins.
+    auto inKRemainder = [&](Iteration h, int loadK) { return h.remaining() < loadK - (h % loadK); };
+
     auto reqLoadAq = every(kaq_load) | lookahead(ka_repackMain);
     auto reqLoadBq = every(kbq_load) | lookahead(kb_loadMain);
     auto reqLoadAqLate = every(kaq_loadLate) | lookahead(kaq_loadLate);
     auto reqLoadBqLate = every(kbq_loadLate) | lookahead(kbq_loadLate);
+    auto reqLoadAqSplit = every(aqGroupK) | lookahead(ka_repackMain);
+    auto reqLoadBqSplit = every(bqGroupK) | lookahead(kb_loadMain);
+    auto reqLoadAqLateSplit = every(aqGroupK) | lookahead(kaq_loadLate);
+    auto reqLoadBqLateSplit = every(bqGroupK) | lookahead(kbq_loadLate);
 
     auto doLoadAq = [&](Iteration h, bool late) {
+        auto &split = late ? state.Aq_layoutsRemLate : state.Aq_layoutsRem;
+        if (split.enabled && inKRemainder(h, late ? kaq_loadLate : kaq_load)) {
+            loadQuantSplit(true, split, aqGroupK, late ? as2DLate : as2D, late ? ao2DLate : ao2D, h);
+            return;
+        }
         if (late ? ao2DLate : ao2D) gemmALoad(state.A_offsetRegs, state.A_offsetLayout, state.A_offsetAddrs, problem, strategy, state);
         if (late ? as2DLate : as2D) gemmALoad(state.A_scaleRegs,  state.A_scaleLayout,  state.A_scaleAddrs,  problem, strategy, state);
         if (late && ag2DLate)       gemmALoad(state.Ag_regs,      state.Ag_layout,      state.Ag_addrs,      problem, strategy, state);
     };
 
     auto doLoadBq = [&](Iteration h, bool late) {
+        auto &split = late ? state.Bq_layoutsRemLate : state.Bq_layoutsRem;
+        if (split.enabled && inKRemainder(h, late ? kbq_loadLate : kbq_load)) {
+            loadQuantSplit(false, split, bqGroupK, late ? bs2DLate : bs2D, late ? bo2DLate : bo2D, h);
+            return;
+        }
         if (late ? bo2DLate : bo2D) gemmBLoad(state.B_offsetRegs, state.B_offsetLayout, state.B_offsetAddrs, problem, strategy, state);
         if (late ? bs2DLate : bs2D) gemmBLoad(state.B_scaleRegs,  state.B_scaleLayout,  state.B_scaleAddrs,  problem, strategy, state);
         if (late && bg2DLate)       gemmBLoad(state.Bg_regs,      state.Bg_layout,      state.Bg_addrs,      problem, strategy, state);
     };
 
-    if (readA && dequantize2DA)     ls.schedule(reqLoadAq,     [&](Iteration h) { doLoadAq(h, false); });
-    if (readB && dequantize2DB)     ls.schedule(reqLoadBq,     [&](Iteration h) { doLoadBq(h, false); });
-    if (readA && dequantize2DALate) ls.schedule(reqLoadAqLate, [&](Iteration h) { doLoadAq(h, true);  });
-    if (readB && dequantize2DBLate) ls.schedule(reqLoadBqLate, [&](Iteration h) { doLoadBq(h, true);  });
+    // If a split is enabled, schedule the full load outside the remainder and the split load inside it.
+    auto scheduleQLoad = [&](bool split, int loadK, LoopSequencer::Requirements reqFull, LoopSequencer::Requirements reqSplit, LoopSequencer::ActionFunc action) {
+        if (!split) {
+            ls.schedule(reqFull, action);
+            return;
+        }
+        ls.schedule_if(reqFull,  action, [=](Iteration h) { return !inKRemainder(h, loadK); });
+        ls.schedule_if(reqSplit, action, [=](Iteration h) { return  inKRemainder(h, loadK); });
+    };
+
+    if (readA && dequantize2DA)     scheduleQLoad(state.Aq_layoutsRem.enabled,     kaq_load,     reqLoadAq,     reqLoadAqSplit,     [&](Iteration h) { doLoadAq(h, false); });
+    if (readB && dequantize2DB)     scheduleQLoad(state.Bq_layoutsRem.enabled,     kbq_load,     reqLoadBq,     reqLoadBqSplit,     [&](Iteration h) { doLoadBq(h, false); });
+    if (readA && dequantize2DALate) scheduleQLoad(state.Aq_layoutsRemLate.enabled, kaq_loadLate, reqLoadAqLate, reqLoadAqLateSplit, [&](Iteration h) { doLoadAq(h, true);  });
+    if (readB && dequantize2DBLate) scheduleQLoad(state.Bq_layoutsRemLate.enabled, kbq_loadLate, reqLoadBqLate, reqLoadBqLateSplit, [&](Iteration h) { doLoadBq(h, true);  });
 
     // Outer product(s).
     // If outer products batched across k (dp4a/dpas/k-chaining), trigger every opCount loops.

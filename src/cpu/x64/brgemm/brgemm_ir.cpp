@@ -32,9 +32,8 @@
 
 #include "cpu/x64/brgemm/brgemm_ir.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
-#include "cpu/x64/ir/emitter/emitter.hpp"
+#include "cpu/x64/ir/codegen.hpp"
 #include "cpu/x64/ir/ir.hpp"
-#include "cpu/x64/ir/reg_alloc.hpp"
 #include "cpu/x64/jit_generator.hpp"
 
 #define GET_OFF(field) offsetof(brgemm_kernel_params_t, field)
@@ -632,17 +631,7 @@ void build_brgemm(const brgemm_desc_t &brg, ir::ir_t &ir) {
     }
 }
 
-// generate() runs the full IR pipeline:
-//
-// - Build IR for the given `brgemm_desc_t` descriptor
-// - Allocate registers
-// - Emit code
-// - Wrap in standard preamble, stack frame, and postamble
-//
-// TODO: Generalize the IR pipeline runner so it is shared across all kernels,
-// while allowing different builder implementations to plug into the same
-// fixed sequence:
-// IR build -> register allocation -> preamble -> codegen -> postamble).
+// IR-based BRGEMM kernel.
 struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_ir_kernel_t)
 
@@ -652,33 +641,7 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
     void generate() override {
         ir::ir_t ir;
         build_brgemm(brg_, ir);
-
-        const int rsp_idx = Xbyak::Operand::RSP;
-        const int param_idx = abi_param1.getIdx();
-
-        // Build register configuration for code emission.
-        //
-        // The bias is applied by the IR, so no post-ops injector runs here and
-        // no opmask is reserved for one. The allocator gets the whole mask
-        // file.
-        const ir::reg_config_t reg_cfg = ir::make_reg_config(
-                brg_.isa_impl, param_idx, rsp_idx, /*reserved_masks=*/ {});
-
-        const ir::reg_alloc_result_t alloc
-                = allocate_registers(ir, reg_cfg.pools);
-
-        preamble();
-
-        if (alloc.frame_bytes > 0) sub(rsp, (uint32_t)alloc.frame_bytes);
-
-        ir::data_section_t data;
-        ir::emit(*this, ir, alloc, reg_cfg, data, /*postops=*/nullptr);
-
-        if (alloc.frame_bytes > 0) add(rsp, (uint32_t)alloc.frame_bytes);
-
-        postamble();
-
-        ir::emit_data_section(*this, data);
+        ir::generate_kernel(*this, ir);
     }
 
 private:

@@ -22,8 +22,8 @@
 // operation's operands into the arguments the injector takes, so it is where
 // the IR and Xbyak worlds meet.
 //
-// The IR operation is builder-independent. An IR-based kernel sets this object
-// up in `generate()`:
+// The IR operation is builder-independent. `generate_kernel()` sets this object
+// up:
 //   1. Create it from the post-ops chain and the destination descriptor.
 //   2. Pass it to the emitter, which calls `init()` once and then `inject()`
 //      per `inject_postops` operation.
@@ -40,8 +40,8 @@
 //   paid once per call.
 // - It does not do the same for opmasks. On AVX-512 the eltwise injector and
 //   the binary injector each take one as a fixed register and restore neither,
-//   so the kernel reserves both and keeps them out of the allocator's mask file
-//   (see `reserved_masks` in `make_reg_config()`):
+//   so `generate_kernel()` reserves both and keeps them out of the allocator's
+//   mask file (see `reserved_masks` in `make_reg_config()`):
 //     eltwise_opmask     - scratch the eltwise injector overwrites. It is
 //                          written before it is read, so it needs no setup.
 //     binary_tail_opmask - active-element pattern the binary injector reads for

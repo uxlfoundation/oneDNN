@@ -14,8 +14,9 @@ does not target non-x64 backends.
 
 The kernel is a class derived from `jit_generator_t`. It knows the concrete ISA
 and data types and can use them directly, for example to set up post-op
-callbacks. Its `generate()` calls the stages below in order. Only the *builder* stage is
-kernel-specific. Everything else is shared.
+callbacks. Its `generate()` runs the builder and passes the IR to
+`generate_kernel()`, which runs the shared stages below in order. Only the
+*builder* stage is kernel-specific.
 
 ```
 generate()
@@ -25,7 +26,7 @@ generate()
 |   | Builder     |  emits target-neutral IR: param loads, loops, math
 |   +-------------+
 |
-|   shared
+|   shared, generate_kernel()
 +-> +-------------+
 |   | Reg config  |  builds ISA-agnostic register pools
 |   +-------------+
@@ -98,11 +99,10 @@ step. They are omitted above for clarity.
 ### Control and Data Flow
 
 The IR is produced in full, then consumed read-only by the allocator and the
-emitter. `generate()` runs a fixed sequence: build the IR, build the register
-configuration, allocate registers, emit the ABI preamble, reserve the spill
-frame, emit the lowered code, tear down the frame, emit the postamble, and write
-the static data. Each kernel assembles this sequence in its own `generate()`
-today. A shared runner for the fixed part is a follow-up.
+emitter. `generate()` builds the IR and passes it to `generate_kernel()`, which
+runs a fixed sequence: build the register configuration, allocate registers,
+emit the ABI preamble, reserve the spill frame, emit the lowered code, tear down
+the frame, emit the postamble, and write the static data.
 
 ## Design Principles
 
@@ -149,10 +149,12 @@ today. A shared runner for the fixed part is a follow-up.
   each self-contained.
 * `postops_injector.hpp`, `postops_injector.cpp`: the driver for the JIT post-ops
   injector, which lowers the `inject_postops` operation.
+* `codegen.hpp`, `codegen.cpp`: `generate_kernel()`, which runs every stage
+  after the builder.
 
 The kernel-specific builders live outside this directory. For example,
 `src/cpu/x64/brgemm/brgemv_ir.{hpp,cpp}` holds the GEMV builder and shows how
-`generate()` runs the full pipeline.
+`generate()` passes the IR and the post-ops inputs to `generate_kernel()`.
 
 ## Developer Guidelines
 

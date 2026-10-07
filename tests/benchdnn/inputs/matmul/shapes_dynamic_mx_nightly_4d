@@ -1,0 +1,6 @@
+# 4D nightly subset of shapes_dynamic_mx_plain_small_4d - plain form
+# (no --reset), used via --batch= from harness_matmul_dynamic_mx_nightly.
+# Constraints: K % 32 == 0, N % 32 == 0. B0 * B1 <= 32; M, K, N <= 512.
+4x3x44x64:4x3x64x416
+2x14x11x64:2x14x64x128
+8x4x17x64:8x4x64x288

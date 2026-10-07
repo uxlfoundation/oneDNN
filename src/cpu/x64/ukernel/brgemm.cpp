@@ -425,6 +425,10 @@ status_t dnnl_brgemm_get_B_pack_type(
 status_t dnnl_brgemm_get_scratchpad_size(const brgemm_t *brgemm, size_t *size) {
     if (brgemm == nullptr) return status::invalid_arguments;
 
+    // The workspace layout is only known once the descriptor is finalized,
+    // so querying it before dnnl_brgemm_finalize() is a usage error.
+    if (!brgemm->is_finalized()) return status::invalid_arguments;
+
     if (size) *size = brgemm->get_scratchpad_size();
     return status::success;
 }

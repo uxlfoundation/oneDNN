@@ -116,10 +116,10 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
         const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils) {
 
-    bool a_dt_ok
-            = one_of(bgmmc.orig_src_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16);
-    bool b_dt_ok
-            = one_of(bgmmc.orig_wei_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16)
+    bool a_dt_ok = one_of(bgmmc.orig_src_dt, dnnl_s8, dnnl_u8, dnnl_bf16,
+            dnnl_f16, dnnl_f8_e4m3, dnnl_f8_e5m2);
+    bool b_dt_ok = one_of(bgmmc.orig_wei_dt, dnnl_s8, dnnl_u8, dnnl_bf16,
+                           dnnl_f16, dnnl_f8_e4m3, dnnl_f8_e5m2)
             || bgmmc.is_xf16_fp8;
 
     bool a_tag_ok = bgmmc.src_tag == dnnl_format_tag_any
@@ -129,10 +129,22 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
             bm_conf_utils.check_b_layout_blocked_by_n(bgmmc.wei_tag),
             bm_conf_utils.check_b_layout_blocked_32_by_n(bgmmc.wei_tag));
 
-    return bgmmc.orig_src_dt == bgmmc.src_dt
+    bool isa_ok = bgmmc.is_ace || bgmmc.is_amx;
+
+    bool native_fp8 = mayiuse(avx10_2_amx_2) || mayiuse(avx10_2_ace);
+
+    // An fp8 operand needs either a native fp8 outer product or, for the
+    // weights only, the xf16 up-convert path.
+    bool a_fp8_ok = IMPLICATION(
+            one_of(bgmmc.orig_src_dt, dnnl_f8_e4m3, dnnl_f8_e5m2), native_fp8);
+    bool b_fp8_ok
+            = IMPLICATION(one_of(bgmmc.orig_wei_dt, dnnl_f8_e4m3, dnnl_f8_e5m2),
+                    native_fp8 || bgmmc.is_xf16_fp8);
+
+    return isa_ok && a_fp8_ok && b_fp8_ok && bgmmc.orig_src_dt == bgmmc.src_dt
             && (bgmmc.orig_wei_dt == bgmmc.wei_dt || bgmmc.is_xf16_fp8)
-            && bgmmc.is_amx && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M
-            && a_dt_ok && a_tag_ok && b_dt_ok && b_tag_ok
+            && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M && a_dt_ok && a_tag_ok
+            && b_dt_ok && b_tag_ok
             && (bgmmc.reduce_kind == matmul_reduce_kind::undef)
             && !bgmmc.packed_sparse_weights;
 }
@@ -158,6 +170,9 @@ bool matmul_amx_blocking_params_macro_t::divs_are_acceptable() const {
         // we cannot split K dimension
         unacceptable_k_div = true;
     }
+    // MXFP8 dst quantization happens in the last-K brgemm call and is not
+    // supported by the parallel reduction epilogue.
+    if (nthr_k_ > 1 && is_mxfp8_dst) unacceptable_k_div = true;
 
     return !unacceptable_m_div && !unacceptable_k_div && !unacceptable_n_div
             && !unacceptable_b_div;
@@ -257,7 +272,12 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
 
     } else if (bgmmc.K <= best_blocking.wei_k_blk && bgmmc.batch == 1) {
 
-        const dim_t m_per_core = div_up(bgmmc.M, bgmmc.nthr);
+        dim_t m_per_core = div_up(bgmmc.M, bgmmc.nthr);
+        if (bgmmc.is_ace) {
+            const dim_t ace_m_dec = ace_m_decomposition;
+            m_per_core = nstl::max(
+                    m_per_core, nstl::min(ace_m_dec, (dim_t)bgmmc.M));
+        }
         best_blocking.set_core_divs(
                 1, static_cast<int>(div_up(bgmmc.M, m_per_core)), 1, 1);
         best_blocking.set_tmul_sizes();
@@ -297,8 +317,16 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
 
         best_blocking.m_per_thread = m_per_core;
         // in this case 2 full are preferable
-        best_blocking.m_decomposition
-                = determine_tmul_size(best_blocking.m_per_thread, 2 * 16);
+        // On ACE the two tiles are a fixed ace_m_decomposition rows; there is
+        // no reduced-row form of the accumulator to fall back to.
+        if (bgmmc.is_ace) {
+            const dim_t ace_m_dec = ace_m_decomposition;
+            best_blocking.m_decomposition
+                    = nstl::min(ace_m_dec, (dim_t)bgmmc.M);
+        } else {
+            best_blocking.m_decomposition
+                    = determine_tmul_size(best_blocking.m_per_thread, 2 * 16);
+        }
         best_blocking.n_tmul = 16; // B blocked layout is a multiply of 16
         best_blocking.n_decomposition = 2 * best_blocking.n_tmul;
         best_blocking.k_tmul = nstl::min(
@@ -984,14 +1012,21 @@ float matmul_amx_blocking_params_macro_t::evaluate_single_core_blocking(
 }
 
 void matmul_amx_blocking_params_macro_t::set_tmul_sizes() {
-    this->m_tmul = determine_tmul_size(this->m_per_thread, 16);
+    // determine_tmul_size() models TMUL's ability to compute on a reduced
+    // number of rows. ACE has no such degree of freedom: an accumulator tile
+    // always spans ace_m_tmul rows.
+    this->m_tmul = is_ace ? static_cast<size_t>(ace_m_tmul)
+                          : determine_tmul_size(this->m_per_thread, 16);
     this->n_tmul = 16; // B blocked layout is a multiply of 16
     this->k_tmul = nstl::min((size_t)wei_k_blk, (size_t)K);
 }
 
 void matmul_amx_blocking_params_macro_t::set_decomposition() {
+    // The M multiplier is the same on both paths (ace_m_tiles == 2); only the
+    // N direction differs, ACE covering ace_n_tiles tiles per iteration.
+    const size_t n_tiles = is_ace ? static_cast<size_t>(ace_n_tiles) : 2;
     m_decomposition = nstl::min((size_t)M, 2 * m_tmul);
-    n_decomposition = nstl::min((size_t)N, 2 * n_tmul);
+    n_decomposition = nstl::min((size_t)N, n_tiles * n_tmul);
 }
 
 bool matmul_amx_blocking_params_macro_t::is_horizontal_selected(
@@ -1028,8 +1063,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
             = blk_candidates(m_per_thread, m_decomposition);
     std::set<dim_t> n_candidates
             = blk_candidates(n_per_thread, n_decomposition);
-    dim_t best_k_h, best_n_h;
-    dim_t best_m_v, best_k_v;
+    dim_t best_k_h = 0, best_n_h = 0;
+    dim_t best_m_v = 0, best_k_v = 0;
     float best_score_h = 0, best_score_v = 0;
     bool horizontal_not_possible = false;
     bool vertical_not_possible = force_horizontal;
@@ -1189,7 +1224,11 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         bool l1_set_issues = k_blk_h < K
                 && l1_eff_factor * a_l1 + 2 * c_l1 + d_post > L1_threshold();
 
-        if (l1_set_issues || is_postops_bound(k_blk_h)) {
+        // ACE always takes this path.
+        // There are no NT loads in AVX instructions for ACE => l1 blocking is not possible.
+        // Select the L2-level blocking directly instead.
+        if (l1_set_issues || is_postops_bound(k_blk_h) || is_ace) {
+            assert(best_n_h != 0);
             // Give up on the L1 blocking
             best_score_h = 0;
             // Calculate k_blk_h and n_blk_h that can fit in the L2 when k_blk is wei_k_blk
@@ -1197,6 +1236,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
             // Give up on the L1.
             k_blk_h = nstl::min(wei_k_blk * best_k_h, K);
             best_k_h = 1;
+            // No effect on ACE: the NT hints are only read by the tile-load
+            // path, which ACE does not use (it loads A/B through ZMMs).
             is_a_nt_ = true;
         }
 
@@ -1249,7 +1290,10 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         is_a_nt_ = true;
         is_b_nt_ = false;
 
-        if (is_postops_bound(k_blk_v)) {
+        // ACE always takes this path, for the same reason as the horizontal
+        // branch above
+        if (is_postops_bound(k_blk_v) || is_ace) {
+            assert(best_m_v != 0);
             // Give up on the L1 blocking
             best_score_v = 0;
             // Calculate k_blk_h and n_blk_h that can fit in the L2 when k_blk is wei_k_blk
@@ -1257,6 +1301,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
             // Give up on the L1.
             k_blk_v = nstl::min(wei_k_blk * best_k_v, K);
             best_k_v = 1;
+            // No effect on ACE, see the horizontal branch.
             is_b_nt_ = true;
         }
 
@@ -1349,7 +1394,10 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
 
     const bool runtime_dims
             = bgmmc.is_runtime_M || bgmmc.is_runtime_N || bgmmc.is_runtime_K;
+    // MXFP8 dst quantization is not supported by the parallel reduction
+    // epilogue, see divs_are_acceptable().
     const int max_nthr_k = !runtime_dims && is_amx_xf16 && bgmmc.batch == 1
+                    && !bgmmc.is_mxfp8_dst
             ? nstl::min<int>(
                       saturate<int>(1, 7, bgmmc.nthr / 8), max_k_parallel_work)
             : 1;

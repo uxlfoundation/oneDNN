@@ -199,11 +199,14 @@ void set_isa_impl(brgemm_desc_t *brg) {
                 avx2_vnni_2, is_isa_ok(avx2_vnni), avx2_vnni, is_isa_ok(avx2),
                 avx2);
     } else if (brg->is_fp8) {
-        // ACE omits fp8 outer products; its kernels do not emit MX-block
-        // scaled TOP4MX*PS forms.
-        brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx10_2_amx_2),
-                avx10_2_amx_2, is_isa_ok(avx10_1_512_amx_fp16),
-                avx10_1_512_amx_fp16, is_isa_ok(avx10_2), avx10_2);
+        // ACE computes fp8 outer products, MX-scaled or not. Listed first for
+        // the same reason as in the bf16/int8 branches: utils::map returns the
+        // first match, so ACE has to precede the TMUL entries to win whenever
+        // both are usable.
+        brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(avx10_2_ace),
+                avx10_2_ace, is_isa_ok(avx10_2_amx_2), avx10_2_amx_2,
+                is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16,
+                is_isa_ok(avx10_2), avx10_2);
     }
 }
 
@@ -893,14 +896,35 @@ status_t brgemm_blocking_ace(brgemm_desc_t *brg) {
     const bool needs_scales = brg->with_src_scales || brg->with_wei_scales;
     const int max_postop_ld_block2 = needs_scales ? 6 : 8;
 
+    // MXFP8 constrains the blocking through the Block Scale Register. One BSR
+    // state covers 32 reduction rows x 64 N columns, and the outer product
+    // selector addresses it with 1 bit of bd block and 2 bits of ld block:
+    //   bd_block2 <= 32 / bd_block = 2,  ld_block2 <= 64 / ld_block = 4.
+    // `is_mxfp8_ace` is set in brgemm_desc_set_attr(), which always runs
+    // before brgemm_desc_finalize() calls this, so it is final here.
+    const int max_mx_bd_block2 = brg->is_mxfp8_ace ? 2 : ntiles;
+    const int max_mx_ld_block2 = brg->is_mxfp8_ace ? 4 : ntiles;
+
+    // The B scales of an ld iteration are fetched as one 64-wide BSR field
+    // based at rnd_dn(ldi->pos(0) * ld_block, 64), so every ld iteration must
+    // start on a 64-column boundary. Iterations step by ld_block2 blocks,
+    // hence ld_block2 * ld_block must be a multiple of 64 -- unless there is
+    // only one iteration, which trivially starts at 0.
+    const auto mx_ld_block2_ok = [&](int ld_block2) {
+        if (!brg->is_mxfp8_ace) return true;
+        return (ld_block2 * brg->ld_block) % 64 == 0 || ldb <= ld_block2;
+    };
+
     dim_t best_loads_number = LLONG_MAX;
     auto best_bd_block2 = 1;
     auto best_ld_block2 = 1;
-    const int max_bd_block2 = static_cast<int>(nstl::min<dim_t>(ntiles, bdb));
+    const int max_bd_block2 = static_cast<int>(
+            nstl::min<dim_t>(nstl::min<dim_t>(ntiles, bdb), max_mx_bd_block2));
     for (int bd_block2 = 1; bd_block2 <= max_bd_block2; bd_block2++) {
         const int ld_block2 = static_cast<int>(nstl::min<dim_t>(
                 nstl::min<dim_t>(nstl::max<dim_t>(1, ldb), ntiles / bd_block2),
-                max_postop_ld_block2));
+                nstl::min(max_postop_ld_block2, max_mx_ld_block2)));
+        if (!mx_ld_block2_ok(ld_block2)) continue;
 
         // Calculate the number of loads for one iteration by reduce_dim
         const auto loads_number
@@ -912,6 +936,8 @@ status_t brgemm_blocking_ace(brgemm_desc_t *brg) {
             best_ld_block2 = ld_block2;
         }
     }
+    // Every candidate was rejected by the MX alignment rule above.
+    if (best_loads_number == LLONG_MAX) return status::unimplemented;
     brg->bd_block2 = best_bd_block2;
     brg->ld_block2 = best_ld_block2;
 
@@ -919,11 +945,20 @@ status_t brgemm_blocking_ace(brgemm_desc_t *brg) {
             brg, brg->bd_block, brg->ld_block, brg->bd_block2, brg->ld_block2);
 
     // check hints for blocking parameters
+    // The hints are clamped to the MXFP8 caps: a hint that exceeds what the
+    // BSR selector can address would otherwise silently undo the search above.
+    const auto hint_bd_block2 = brg->brgattr.hint_bd_block2
+            ? nstl::min(brg->brgattr.hint_bd_block2, max_mx_bd_block2)
+            : brg->bd_block2;
+    const auto hint_ld_block2 = brg->brgattr.hint_ld_block2
+            ? nstl::min(brg->brgattr.hint_ld_block2, max_mx_ld_block2)
+            : brg->ld_block2;
     recalc_blocking(brg, brg->brgattr.hint_bd_block, brg->brgattr.hint_ld_block,
-            brg->brgattr.hint_bd_block2 ? brg->brgattr.hint_bd_block2
-                                        : brg->bd_block2,
-            brg->brgattr.hint_ld_block2 ? brg->brgattr.hint_ld_block2
-                                        : brg->ld_block2);
+            hint_bd_block2, hint_ld_block2);
+
+    // A hint may also have changed ld_block/ld_block2 in a way that breaks the
+    // 64-column alignment the MX B-scale fetch relies on.
+    if (!mx_ld_block2_ok(brg->ld_block2)) return status::unimplemented;
 
     // The hints above are unclamped, and brgemm_init_tiles() returns early on
     // the ACE palette without reaching its AMX_TILES_NUM check, so the budget

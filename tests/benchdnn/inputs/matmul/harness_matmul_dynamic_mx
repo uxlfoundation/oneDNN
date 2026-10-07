@@ -1,0 +1,308 @@
+# MXFP8 matmul harness (MX block scales).
+#
+# --dt=<a>:<b>:<c> -- a = src, b = weights, c = dst. One triple per run.
+# src/wei always use static MX block scales (user-provided): e8m0,
+# per_tensor mask, group 1x32 (src) and 32x1 (wei).
+# dst is either f32 (no dst scales) or f8_e4m3/f8_e5m2 with optional dynamic
+# mx dst scales (computed by the library): e8m0, group 1x32.
+# Note: `mx` (dynamic_mx) is valid on dst only; src/wei scales are inputs.
+#
+# Tags are left as `any`: the shape set mixes 2D, 3D and 4D cases.
+# Shapes come from shapes_dynamic_mx_plain_small (K % 32 == 0, N % 32 == 0;
+# M, K, N <= 512; 3D batch <= 16; 4D total batch <= 32).
+
+# ---------------------------------------------------------------------------
+# f32 destination, no dst scales, no post-ops.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# fp8 destination, no dst scales, no post-ops.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# fp8 destination with mx dst scales, no post-ops.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# Eltwise post-ops, f32 destination.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=relu,tanh,linear:2:-1,gelu_erf
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=relu,tanh,linear:2:-1,gelu_erf
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# Eltwise post-ops, fp8 destination without dst scales.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=relu,linear:2:-1,gelu_tanh
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=relu,linear:2:-1,gelu_tanh
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# Eltwise post-ops, fp8 destination with mx dst scales.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=relu,linear:2:-1,gelu_tanh
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=relu,linear:2:-1,gelu_tanh
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# Sum post-op.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=sum,sum:2,sum+relu
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=sum,sum:2,sum+relu
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=sum,sum:2+relu
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=sum,sum:2+relu
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# Binary post-ops (per-oc and per-tensor).
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=add:f32,mul:f32:per_oc,add:f32:per_oc+relu,sub:f32
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=add:f32,mul:f32:per_oc,add:f32:per_oc+relu,sub:f32
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=add:f32,mul:f32:per_oc,add:f8_e4m3:per_oc
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=add:f32,mul:f32:per_oc,add:f8_e5m2:per_oc
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# Chained post-ops.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f32
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=,sum:2+relu+mul:f32:per_oc,linear:2:-1+add:f32+tanh
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=,sum:2+relu+mul:f32:per_oc,linear:2:-1+add:f32+tanh
+--batch=shapes_dynamic_mx_plain_small
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=,sum:2+relu+mul:f32:per_oc,linear:2:-1+add:f32+tanh
+--batch=shapes_dynamic_mx_plain_small
+
+# ---------------------------------------------------------------------------
+# With bias. Bias is 1xN only, so --bia_mask selects the N dim per rank:
+# 2 (2D), 4 (3D), 8 (4D). f8_e4m3 bias requires src f8_e4m3 (bia_dt == src_dt).
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f32
+--stag=any --wtag=any --dtag=any
+--bia-dt=f32,f8_e4m3
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=,relu
+--bia_mask=2 --batch=shapes_dynamic_mx_plain_small_2d
+--bia_mask=4 --batch=shapes_dynamic_mx_plain_small_3d
+--bia_mask=8 --batch=shapes_dynamic_mx_plain_small_4d
+
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--bia-dt=f32,f8_e4m3
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--attr-post-ops=,relu
+--bia_mask=2 --batch=shapes_dynamic_mx_plain_small_2d
+--bia_mask=4 --batch=shapes_dynamic_mx_plain_small_3d
+--bia_mask=8 --batch=shapes_dynamic_mx_plain_small_4d
+
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--bia-dt=f32
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=,relu
+--bia_mask=2 --batch=shapes_dynamic_mx_plain_small_2d
+--bia_mask=4 --batch=shapes_dynamic_mx_plain_small_3d
+--bia_mask=8 --batch=shapes_dynamic_mx_plain_small_4d
+
+--reset
+--skip-impl=ref
+--dt=f8_e5m2:f8_e5m2:f8_e5m2
+--stag=any --wtag=any --dtag=any
+--bia-dt=f32
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=,relu
+--bia_mask=2 --batch=shapes_dynamic_mx_plain_small_2d
+--bia_mask=4 --batch=shapes_dynamic_mx_plain_small_3d
+--bia_mask=8 --batch=shapes_dynamic_mx_plain_small_4d
+
+# ---------------------------------------------------------------------------
+# src/wei MX block scales without batch dims in the mask (one scales plane
+# shared by all batches): per_ocic selects the M|K (src) and K|N (wei) bits.
+# ---------------------------------------------------------------------------
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f32,f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_ocic:e8m0:1x32+wei:per_ocic:e8m0:32x1
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small_3d
+--batch=shapes_dynamic_mx_plain_small_4d
+
+--reset
+--skip-impl=ref
+--dt=f8_e4m3:f8_e4m3:f8_e4m3
+--stag=any --wtag=any --dtag=any
+--attr-scales=src:per_ocic:e8m0:1x32+wei:per_ocic:e8m0:32x1+dst:mx:e8m0:1x32
+--attr-post-ops=
+--batch=shapes_dynamic_mx_plain_small_3d

@@ -1,0 +1,10 @@
+# Nightly subset of shapes_dynamic_mx_plain_small (the weekly set), used via
+# --batch= from harness_matmul_dynamic_mx_nightly.
+# Constraints: K % 32 == 0, N % 32 == 0. M, K, N <= 512; 3D batch <= 16,
+# 4D total batch <= 32.
+#
+# Split by rank so that rank-dependent options (e.g. --bia_mask) can target
+# a single rank.
+--batch=shapes_dynamic_mx_nightly_2d
+--batch=shapes_dynamic_mx_nightly_3d
+--batch=shapes_dynamic_mx_nightly_4d

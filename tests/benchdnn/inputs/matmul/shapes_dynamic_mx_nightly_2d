@@ -1,0 +1,20 @@
+# 2D nightly subset of shapes_dynamic_mx_plain_small_2d - plain form
+# (no --reset), used via --batch= from harness_matmul_dynamic_mx_nightly.
+# Constraints: K % 32 == 0, N % 32 == 0. Every dimension (M, K, N) <= 512.
+# small M/N, M tails, K=32 / N=32
+7x32:32x32
+47x32:32x32
+42x32:32x64
+# M%32==0, larger K/N
+64x352:352x480
+32x384:384x128
+# large M, small N (N<M), M tails
+503x160:160x64
+478x128:128x32
+512x288:288x64
+# small M, large N (M<N)
+9x32:32x256
+58x64:64x352
+# larger M/K/N, large K
+377x224:224x416
+313x288:288x384

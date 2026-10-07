@@ -1,0 +1,10 @@
+# 4D shapes for MXFP8 (dynamic_mx) matmul testing - plain form (no --reset),
+# intended to be used via --batch= from harness_matmul_dynamic_mx.
+# Constraints: K % 32 == 0, N % 32 == 0 (mx group size along K and N).
+# B0 * B1 <= 32; M, K, N <= 512.
+
+# 4D small B, M<N
+4x3x44x64:4x3x64x416
+3x5x43x32:3x5x32x160
+2x14x11x64:2x14x64x128
+8x4x17x64:8x4x64x288

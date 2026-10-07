@@ -448,10 +448,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         brg.skip_wei_scales = bgmmc_.apply_scales_in_buffer_b;
         // Fill up the scales info in case it's computing in brgemm
         if (!brg.skip_wei_scales && bgmmc_.with_wei_scales) {
-            // A batch-only mask is still a single scalar per brgemm call
-            // (brgemm has no batch concept), not a per-N vector.
-            brg.is_single_wei_scale
-                    = !bgmmc_.is_wei_scale_per_n && !bgmmc_.is_wei_scale_per_k;
+            brg.is_single_wei_scale = bgmmc_.is_single_wei_scale();
             brg.is_per_n_wei_scales = bgmmc_.is_wei_scale_per_n;
             // For grouped (per-K) wei scales: K_blk == group_size and
             // brgemm_batch_size == 1, so each brgemm call covers exactly one

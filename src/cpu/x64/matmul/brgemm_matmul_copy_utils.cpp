@@ -2681,7 +2681,7 @@ protected:
         const bool only_per_k
                 = conf_->is_wei_scale_per_k && !conf_->is_wei_scale_per_n;
         const bool require_scales = conf_->apply_scales_in_buffer_b
-                && (conf_->is_wei_scale_common || only_per_k);
+                && (conf_->is_single_wei_scale() || only_per_k);
         if (!require_scales) return;
 
         const auto &scales_dt = conf_->wei_scales_dt;

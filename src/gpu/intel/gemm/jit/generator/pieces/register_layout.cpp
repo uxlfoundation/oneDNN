@@ -2092,7 +2092,7 @@ RegisterLayout RegisterLayout::tryUpgradeToBlock2D(const MatrixAddressing &atype
 
     int r0 = -1, c0 = -1, b0 = -1;
     int nr = 0, nc = 0;
-    bool ok = true;
+    bool ok = true, lastDense = false;
 
     auto make2DBlock = [&] {
         if (r0 < 0 || c0 < 0) return;
@@ -2105,7 +2105,14 @@ RegisterLayout RegisterLayout::tryUpgradeToBlock2D(const MatrixAddressing &atype
         if ((block.offsetBytes & omask) || (block.bytes & omask))          return RegisterLayout();
         if (!transpose && (block.colMajor ? block.nr : block.nc) * T > 64) return RegisterLayout();    /* avoid lots of small blocks */
 
-        bool consecutive = (block.offsetBytes == (b0 + GRF::bytes(hw)));
+        // 2D block messages pad each row in GRF to the next power of two.
+        int inner = block.colMajor ? block.nr : block.nc;
+        int outer = block.colMajor ? block.nc : block.nr;
+        int ld2D = roundup_pow2(inner);
+        if (block.crosspack != 1 || (outer > 1 && block.ld != ld2D)) return RegisterLayout();
+
+        // Only merge with the previous block if it had no trailing padding.
+        bool consecutive = lastDense && (block.offsetBytes == (b0 + GRF::bytes(hw)));
         if (regCM && block.offsetC == c0 + nc && consecutive && nr == block.nr)
             nc++;
         else if (!regCM && block.offsetR == r0 + nr && consecutive && nc == block.nc)
@@ -2116,9 +2123,11 @@ RegisterLayout RegisterLayout::tryUpgradeToBlock2D(const MatrixAddressing &atype
             nr = block.nr; nc = block.nc;
         }
         b0 = block.offsetBytes;
+        lastDense = (block.bytes == ld2D * outer * T);
     }
 
     make2DBlock();
+    if (!ok) return RegisterLayout();
 
     layout2D.sort();
     layout2D.postprocess();

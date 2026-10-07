@@ -273,12 +273,9 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
                     return true;
                 };
 
-                // u3 has no dedicated catalog entries (no native hardware
-                // register representation for 3-bit data; u3 operands are
-                // unpacked to/from u8 via CopyPlan::planInt3Upconvert
-                // around the matched kernel). Fall back to u4 ('f') kernel
-                // strategies, since both are sub-byte compressed integer
-                // types requiring similar unroll/copy handling.
+                // u3 operands are unpacked to/from u8 via
+                // CopyPlan::planInt3Upconvert. If no dedicated u3 strategy
+                // matches, fall back to u4 ('f') kernel strategies.
                 //
                 // u3 can also appear as the external type of a bracketed
                 // mixed-precision tag, e.g. "[kO]", when jit/pd.cpp promotes

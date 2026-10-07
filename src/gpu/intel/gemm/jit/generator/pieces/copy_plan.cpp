@@ -1466,7 +1466,7 @@ void CopyPlan::planEarlyInt4Upconversions()
 // straddling lanes 2/5 are computed individually. Every element of the
 // n*8-element destination block is written by exactly one lane, so the
 // 0x7 mask is applied once, in bulk, over the whole block afterwards
-// rather than per-lane.
+// rather than per-lane, using dword operations for contiguous output.
 //
 // If the ultimate destination type is not an integer type (e.g. hf/bf),
 // the unpacked values are written to finalDst reinterpreted as raw uw,
@@ -1876,7 +1876,9 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         // elements starting at finalDst's original (unmodified) position
         // -- the 0x7 mask (and optional converting mov) can therefore be
         // applied once, covering every group at once, instead of once
-        // per group. That single mask/mov is emitted here using this
+        // per group. Contiguous, dword-aligned output is masked as
+        // packed dwords (four bytes or two words per instruction). That
+        // single mask/mov is emitted here using this
         // group's 2 extra (otherwise-invalidated) split slots, but only
         // on the LAST group's iteration -- earlier groups' extra slots
         // are invalidated instead. legalizeSIMD() will later fracture the
@@ -1890,7 +1892,22 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
             auto finalDstFlat = finalDst;
             finalDstFlat.stride = finalStride;
             if (!directWrite) finalDstFlat.type = DataType::uw;
-            setOp(allOps[next++], Opcode::and_, totalElemsAll, finalDstFlat, finalDstFlat, CopyOperand(int(7)));
+            auto maskDst = finalDstFlat;
+            int maskBytes = getBytes(maskDst.type);
+            int maskElems = totalElemsAll;
+            uint32_t mask = 7;
+            if (finalStride == 1 && finalDstFlat.absByteOffset(hw) % 4 == 0
+                    && (totalElemsAll * maskBytes) % 4 == 0) {
+                maskDst.type = DataType::ud;
+                maskDst.offset = finalDstFlat.offset * maskBytes / 4;
+                maskElems = totalElemsAll * maskBytes / 4;
+                if (maskBytes == 1)
+                    mask = 0x07070707;
+                else if (maskBytes == 2)
+                    mask = 0x00070007;
+            }
+            setOp(allOps[next++], Opcode::and_, maskElems, maskDst, maskDst,
+                    CopyOperand(Immediate::ud(mask)));
 
             // When the real destination type isn't itself an integer
             // type (e.g. hf/bf), the masked uw values now sitting in

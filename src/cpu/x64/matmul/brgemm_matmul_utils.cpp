@@ -2005,7 +2005,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     }
     if (bgmmc.with_wei_scales) {
         const auto &wei_scale_mask = wei_scales.get_mask();
-        bgmmc.is_wei_scale_common = wei_scale_mask == 0;
         bgmmc.is_wei_scale_per_k = wei_scale_mask & 1 << (bgmmc.ndims - 2);
         bgmmc.is_wei_scale_per_n = wei_scale_mask & 1 << (bgmmc.ndims - 1);
         bgmmc.apply_scales_in_buffer_b = bgmmc.is_wei_scale_per_k
@@ -2016,7 +2015,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
         // only common and per-oc-channel scales are supported
         // only per-ic-channel scales is supprted with weight decompression
-        VCONDCHECK_BG(bgmmc.is_wei_scale_common || bgmmc.is_wei_scale_per_n
+        VCONDCHECK_BG(bgmmc.is_single_wei_scale() || bgmmc.is_wei_scale_per_n
                         || IMPLICATION(bgmmc.is_wei_scale_per_k,
                                 bgmmc.with_wei_decompression),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -2028,10 +2027,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
-    // AMX is not supported src scales with common non-f32 weights scales
-    // combination.
+    // AMX is not supported src scales with a single (scalar) non-f32
+    // weights scale combination.
     VCONDCHECK_BG(IMPLICATION(bgmmc.is_amx && bgmmc.with_src_scales
-                                  && bgmmc.is_wei_scale_common,
+                                  && bgmmc.is_single_wei_scale(),
                           bgmmc.wei_scales_dt == f32),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
@@ -2134,8 +2133,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
-    // Downgrade to per-N to avoid the expensive K-scales JIT path which
-    // is not needed for this case.
+    // A per-K group spanning all of K is really just a single group, so the per-K JIT path is
+    // redundant; clear per-K here. If is_wei_scale_per_n is true this downgrades to per-N;
+    // otherwise it uses per-batch or common scales.
     if (bgmmc.is_wei_scale_per_k && !bgmmc.is_runtime_K
             && bgmmc.wei_scales_k_gsize >= bgmmc.K) {
         bgmmc.is_wei_scale_per_k = false;
@@ -2145,7 +2145,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // brgemm epilogue, which requires an f32 accumulator. Plain int8 (s32
     // accumulator) is therefore only supported through the grouped
     // quantization path. A per-K group spanning all of K was already
-    // downgraded to per-N above.
+    // folded away above.
     const bool is_wei_scale_per_k_grouped
             = bgmmc.is_wei_scale_per_k && !wei_scales.has_default_groups();
     VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_scale_per_k,

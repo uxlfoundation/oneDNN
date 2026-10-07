@@ -271,7 +271,6 @@ struct brgemm_matmul_conf_t {
     size_t wei_scales_dt_sz = 0;
     bool is_wei_scale_per_n = false;
     bool is_wei_scale_per_k = false;
-    bool is_wei_scale_common = false;
     dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
 
@@ -336,6 +335,12 @@ struct brgemm_matmul_conf_t {
                 (has_zero_point_a || s8s8_compensation_required), blocked_B);
         return need_to_calculate_compensation_for_a
                 || need_to_calculate_compensation_for_b;
+    }
+
+    // True for a batch-only mask too, since brgemm has no batch concept.
+    // A method, not a cached field, so it can't go stale vs. the flags below.
+    inline bool is_single_wei_scale() const {
+        return !is_wei_scale_per_n && !is_wei_scale_per_k;
     }
 };
 

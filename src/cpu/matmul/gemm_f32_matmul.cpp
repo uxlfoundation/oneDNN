@@ -88,17 +88,21 @@ status_t gemm_f32_matmul_t::pd_t::init(const engine_t *engine) {
                 && IMPLICATION(is_runtime_value(N()), !has_prelu);
     };
 
-    const bool problem_dt_correct = src_md()->data_type == src_type
-            && weights_md()->data_type == weights_type
-            && desc()->accum_data_type == acc_type
-            && dst_md()->data_type == dst_type;
-
     VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
             VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
     VDISPATCH_MATMUL(platform::has_optimized_gemm(), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-    VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+
+    // Don't report verbose for this line as gemm-based implementations are
+    // differentiating over src data type - they are mutually excluded.
+    if (src_md()->data_type != src_type) return status::unimplemented;
+
+    const bool problem_dt_correct = weights_md()->data_type == weights_type
+            && desc()->accum_data_type == acc_type
+            && dst_md()->data_type == dst_type;
+
+    VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(
             attr()->has_default_values(primitive_attr_t::skip_mask_t::scales
                             | primitive_attr_t::skip_mask_t::post_ops

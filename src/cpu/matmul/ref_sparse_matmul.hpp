@@ -44,13 +44,15 @@ struct ref_sparse_matmul_t : public primitive_t {
             memory_desc_wrapper src_d(src_md());
             memory_desc_wrapper wei_d(weights_md(0));
 
+            // Don't report verbose for these lines as implementations are
+            // differentiating over sparse feature - they are mutually excluded.
+            if (!wei_d.is_sparse_desc() && !src_d.is_sparse_desc())
+                return status::unimplemented;
+            if (!(wei_d.is_sparse_desc() ^ src_d.is_sparse_desc()))
+                return status::unimplemented;
+
             VDISPATCH_MATMUL(dst_md()->ndims == 2, VERBOSE_BAD_NDIMS, "dst",
                     dst_md()->ndims);
-
-            VDISPATCH_MATMUL(wei_d.is_sparse_desc() || src_d.is_sparse_desc(),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_MATMUL(wei_d.is_sparse_desc() ^ src_d.is_sparse_desc(),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             VDISPATCH_MATMUL(IMPLICATION(src_d.is_sparse_desc(),
                                      utils::one_of(src_d.encoding(),

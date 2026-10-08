@@ -50,9 +50,13 @@ struct jit_uni_sparse_matmul_t : public primitive_t {
             memory_desc_wrapper src_d(src_md());
             memory_desc_wrapper wei_d(weights_md(0));
 
+            // Don't report verbose for this line as implementations are
+            // differentiating over sparse feature - they are mutually excluded.
+            if (!src_d.is_sparse_desc() || wei_d.is_sparse_desc())
+                return status::unimplemented;
+
             const bool problem_dt_correct
                     = utils::everyone_is(f32, src_type, wei_type, dst_type)
-                    && src_d.is_sparse_desc() && !wei_d.is_sparse_desc()
                     && utils::everyone_is(s32, src_d.metadata_type(0),
                             src_d.metadata_type(1));
 

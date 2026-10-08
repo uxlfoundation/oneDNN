@@ -343,7 +343,17 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(
     const memory_desc_wrapper key_mdw(desc()->key_md());
     auto ldk = static_cast<int>(
             gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
-    problem_kq.A.setAlignment(alignment_for_md(key_mdw, ldk));
+    const int k_align = alignment_for_md(key_mdw, ldk);
+    VDISPATCH_SDPA(!(utils::one_of(arch(), compute::gpu_arch_t::xe2,
+                             compute::gpu_arch_t::xe3)
+                           && utils::one_of(key_mdw.data_type(), data_type::f16,
+                                   data_type::bf16)
+                           && k_align < 4 && desc()->queries() == 1
+                           && desc()->keys() > 64),
+            "decode over keys with %d-byte aligned rows is not supported on "
+            "xe2/xe3",
+            k_align);
+    problem_kq.A.setAlignment(k_align);
     problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
         problem_kq.B.crosspack = 2;
@@ -906,9 +916,23 @@ status_t micro_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     conf.key_zp_data_t = key_zp_dt();
     conf.value_zp_data_t = value_zp_dt();
 
-    auto ldq
-            = gemm_desc_t::get_ld(*desc()->qry_md()) * qry_mdw.data_type_size();
-    auto lda = gemm_desc_t::get_ld(*dst_md()) * dst_mdw.data_type_size();
+    // GQA Q == 1: the kernel steps Q, dst and mask by the head stride
+    const bool gqa_q1 = (desc()->queries() == 1 && conf.kv_group_size > 1);
+
+    auto ldq = (gqa_q1 ? qry_mdw.strides()[1]
+                       : gemm_desc_t::get_ld(*desc()->qry_md()))
+            * qry_mdw.data_type_size();
+    auto lda = (gqa_q1 ? dst_mdw.strides()[1] : gemm_desc_t::get_ld(*dst_md()))
+            * dst_mdw.data_type_size();
+    if (gqa_q1) {
+        conf.q_align = alignment_for_md(qry_mdw, ldq);
+        conf.a_align = alignment_for_md(dst_mdw, lda);
+
+        // Per-head mask can't be broadcast
+        const memory_desc_wrapper msk_mdw(desc()->attn_mask_md());
+        if (conf.with_attn_mask && msk_mdw.dims()[1] > 1)
+            conf.broadcast_mask_q = false;
+    }
 
     int kq_scale_mask = (static_cast<int>(with_key_scales()) << 1)
             | static_cast<int>(with_quantize_common(desc()->kq_scales));

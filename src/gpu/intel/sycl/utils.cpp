@@ -306,8 +306,8 @@ status_t get_kernel_binary(
             break;
         }
         case xpu::sycl::backend_t::opencl: {
-            auto ocl_kernel
-                    = ::sycl::get_native<::sycl::backend::opencl>(kernel);
+            auto ocl_kernel = xpu::ocl::make_wrapper(
+                    ::sycl::get_native<::sycl::backend::opencl>(kernel));
             CHECK(gpu::intel::ocl::get_ocl_kernel_binary(ocl_kernel, binary));
             break;
         }

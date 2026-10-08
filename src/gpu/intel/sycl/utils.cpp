@@ -300,9 +300,7 @@ status_t create_ocl_engine(
 
 status_t get_kernel_binary(
         const ::sycl::kernel &kernel, xpu::binary_t &binary) {
-    auto devs = kernel.get_context().get_devices();
-    assert(!devs.empty());
-    switch (xpu::sycl::get_backend(devs[0])) {
+    switch (xpu::sycl::get_backend(kernel)) {
         case xpu::sycl::backend_t::ze: {
             CHECK(get_ze_kernel_binary(kernel, binary));
             break;

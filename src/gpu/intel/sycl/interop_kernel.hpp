@@ -43,9 +43,7 @@ public:
 
     status_t get_kernel_binary(xpu::binary_t &binary) const override;
     status_t dump() const override;
-    std::string name() const override {
-        return sycl_kernel_.get_info<::sycl::info::kernel::function_name>();
-    }
+    std::string name() const override { return get_kernel_name(sycl_kernel_); }
     const compute::program_src_t &src() const { return src_; }
     status_t check_alignment(
             const compute::kernel_arg_list_t &arg_list) const override;

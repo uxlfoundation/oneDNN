@@ -44,6 +44,7 @@ backend_t get_gpu_backend();
 bool is_host(const ::sycl::device &dev);
 bool is_host(const ::sycl::platform &plat);
 backend_t get_backend(const ::sycl::device &dev);
+backend_t get_backend(const ::sycl::kernel &kernel);
 bool are_equal(const ::sycl::device &lhs, const ::sycl::device &rhs);
 
 status_t check_device(engine_kind_t eng_kind, const ::sycl::device &dev,

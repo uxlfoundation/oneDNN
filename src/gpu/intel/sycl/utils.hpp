@@ -58,6 +58,8 @@ status_t create_ocl_engine(
 
 status_t get_kernel_binary(const ::sycl::kernel &kernel, xpu::binary_t &binary);
 
+std::string get_kernel_name(const ::sycl::kernel &kernel);
+
 status_t get_kernel_bundle_binary(const gpu::intel::sycl::engine_t *engine,
         const ::sycl::kernel_bundle<::sycl::bundle_state::executable> &bundle,
         xpu::binary_t &binary);

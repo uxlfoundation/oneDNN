@@ -93,10 +93,8 @@ bool is_host(const ::sycl::platform &plat) {
     return is_host(devices[0]);
 }
 
-backend_t get_backend(const ::sycl::device &dev) {
-    if (is_host(dev)) return backend_t::host;
-
-    switch (dev.get_backend()) {
+static backend_t to_backend(::sycl::backend backend) {
+    switch (backend) {
         case ::sycl::backend::opencl: return backend_t::opencl;
         case ::sycl::backend::ext_oneapi_level_zero: return backend_t::ze;
         case ::sycl::backend::ext_oneapi_cuda: return backend_t::nvidia;
@@ -104,6 +102,15 @@ backend_t get_backend(const ::sycl::device &dev) {
         default: break;
     }
     return backend_t::unknown;
+}
+
+backend_t get_backend(const ::sycl::device &dev) {
+    if (is_host(dev)) return backend_t::host;
+    return to_backend(dev.get_backend());
+}
+
+backend_t get_backend(const ::sycl::kernel &kernel) {
+    return to_backend(kernel.get_backend());
 }
 
 bool is_intel_platform(const ::sycl::platform &plat) {

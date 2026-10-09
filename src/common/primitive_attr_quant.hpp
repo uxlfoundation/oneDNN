@@ -266,6 +266,8 @@ struct quant_entries_t {
         return false;
     }
 
+    const std::map<int, quant_entry_t> &get_entries() const { return entries_; }
+
     bool operator==(const quant_entries_t &rhs) const {
         return entries_ == rhs.entries_;
     }

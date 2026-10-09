@@ -79,6 +79,49 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
     const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
 
+    if (prb->alg == alg_t::dynamic_quantize) {
+        const dnn_mem_t &scales
+                = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+        const int64_t M = src.dims()[0];
+        const int64_t N = src.dims()[1];
+        const int64_t sm = scales.dims()[0];
+        const int64_t sn = scales.dims()[1];
+        const int64_t rows_per_group = M / sm;
+        const int64_t cols_per_group = N / sn;
+        constexpr float scale_eps = 1.0e-30f;
+
+        benchdnn_parallel_nd(sm, sn, [&](int64_t gm, int64_t gn) {
+            const int64_t m_start = gm * rows_per_group;
+            const int64_t n_start = gn * cols_per_group;
+            float absmax = 0.f;
+            for (int64_t m = m_start; m < m_start + rows_per_group; ++m) {
+                for (int64_t n = n_start; n < n_start + cols_per_group; ++n) {
+                    const float value = src.get_f32_elem(m * N + n);
+                    if (!std::isfinite(value)) continue;
+                    absmax = MAX2(absmax, std::abs(value));
+                }
+            }
+
+            const float scale = MAX2(absmax / 127.f, scale_eps);
+            const int64_t scale_off = gm * sn + gn;
+            scales.set_elem(scale_off, scale);
+
+            for (int64_t m = m_start; m < m_start + rows_per_group; ++m) {
+                for (int64_t n = n_start; n < n_start + cols_per_group; ++n) {
+                    const int64_t off = m * N + n;
+                    const float value = src.get_f32_elem(off);
+                    float quantized = 0.f;
+                    if (std::isfinite(value)) {
+                        quantized = nearbyintf(value / scale);
+                        quantized = MAX2(-127.f, MIN2(127.f, quantized));
+                    }
+                    dst.set_elem(off, quantized);
+                }
+            }
+        });
+        return;
+    }
+
     float *dst_ptr = (float *)dst;
 
     const auto &ndims = prb->ndims;

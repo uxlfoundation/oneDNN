@@ -40,6 +40,8 @@ alg_t str2alg(const char *str) {
     CASE(reduction_norm_lp_power_p_max);
     CASE(norm_lp_power_p_sum);
     CASE(reduction_norm_lp_power_p_sum);
+    CASE(dynamic_quantize);
+    CASE(reduction_dynamic_quantize);
 
 #undef CASE
     assert(!"unknown algorithm");
@@ -56,6 +58,7 @@ const char *alg2str(alg_t alg) {
     if (alg == norm_lp_sum) return "norm_lp_sum";
     if (alg == norm_lp_power_p_max) return "norm_lp_power_p_max";
     if (alg == norm_lp_power_p_sum) return "norm_lp_power_p_sum";
+    if (alg == dynamic_quantize) return "dynamic_quantize";
     assert(!"unknown algorithm");
     return "undef";
 }
@@ -70,6 +73,7 @@ dnnl_alg_kind_t alg2alg_kind(alg_t alg) {
     if (alg == norm_lp_sum) return dnnl_reduction_norm_lp_sum;
     if (alg == norm_lp_power_p_max) return dnnl_reduction_norm_lp_power_p_max;
     if (alg == norm_lp_power_p_sum) return dnnl_reduction_norm_lp_power_p_sum;
+    if (alg == dynamic_quantize) return dnnl_reduction_dynamic_quantize;
     assert(!"unknown algorithm");
     return dnnl_alg_kind_undef;
 }

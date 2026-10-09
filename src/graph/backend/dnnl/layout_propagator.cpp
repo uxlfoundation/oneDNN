@@ -1763,9 +1763,7 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    UNUSED(p_engine);
     UNUSED(pd_cache);
-    UNUSED(fpmath);
     UNUSED(use_block_layout);
     UNUSED(rewriter);
 
@@ -1810,9 +1808,20 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
     }
     status_t status = fill_layout_info(dst_val, expected_md);
 
-    // fill scratchpads dimensions and data type to scratchpad value_t
+    // Size the scratchpad output from the sdpa primitive descriptor (built here
+    // and discarded) so memory planning reserves a real buffer before
+    // compile_ops creates the executable. GPU micro-SDPA needs no user
+    // scratchpad, but the CPU BRGEMM primitive does.
     value_ptr scratchpad_val = op->get_output_value(output_idx++);
-    const memory::desc scratchpad_desc;
+    memory::desc scratchpad_desc;
+    std::unique_ptr<dnnl_primitive_desc, pd_deleter_t> sdpa_pd;
+    if (create_sdpa_pd(sdpa_pd, op, p_engine, fpmath) == status::success) {
+        const_dnnl_memory_desc_t c_scratchpad_md = dnnl_primitive_desc_query_md(
+                sdpa_pd.get(), dnnl_query_scratchpad_md, 0);
+        dnnl_memory_desc_t cloned_md = nullptr;
+        dnnl_memory_desc_clone(&cloned_md, c_scratchpad_md);
+        scratchpad_desc = memory::desc(cloned_md);
+    }
     status = fill_layout_info(scratchpad_val, scratchpad_desc);
 
     if (op->get_attr<bool>(op_attr::is_training)) {
@@ -1886,11 +1895,15 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for sdpa_bwd diff_value");
 
+    const auto mask_type = static_cast<attn_mask_type_t>(
+            op->get_attr<int64_t>(op_attr::mask_type));
+
+    VCHECK_LAYOUT_PROPAGATOR(mask_type != attn_mask_type::select,
+            status::unimplemented, "sdpa_bwd does not support select masks");
+
     // scratchpad (output 3): create the pd to get the real scratchpad size
     {
         const bool with_scale = op->get_attr<bool>(op_attr::with_scale);
-        const auto mask_type = static_cast<attn_mask_type_t>(
-                op->get_attr<int64_t>(op_attr::mask_type));
         const bool is_invert_scale = op->has_attr(op_attr::is_invert_scale)
                 ? op->get_attr<bool>(op_attr::is_invert_scale)
                 : false;
@@ -1942,8 +1955,9 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
         status = create_sdpa_pd(hint_fwd_pd, p_engine.get(), md_q.get(),
                 md_k.get(), md_v.get(), md_dst.get(), md_attn_mask.get(),
                 md_scale.get(), is_invert_scale, kv_head_number, mask_type,
-                softmax_alg, impl::prop_kind::forward_training, attr.get(),
-                qk_attr.get(), vs_attr.get());
+                softmax_alg, /* fill_md = */ nullptr,
+                /* invert_select = */ false, impl::prop_kind::forward_training,
+                attr.get(), qk_attr.get(), vs_attr.get());
         VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
                 "failed to create hint fwd pd for sdpa_bwd scratchpad");
 

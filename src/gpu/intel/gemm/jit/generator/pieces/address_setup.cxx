@@ -310,9 +310,13 @@ void Generator<hw>::setupAddr(Type T, const RegisterRange &addr, const BO &ptr, 
             auto boffX  = memCM ? block.offsetR : block.offsetC;
             auto boffY  = memCM ? block.offsetC : block.offsetR;
 
-            boffX *= T;
-            if (boffX % block.ebytes) stub();
-            boffX /= block.ebytes;
+            if (T.is3() && astrategy.accessType == AccessType::Block2DTranspose)
+                boffX = div_up(boffX * T.bits(), block.ebytes * 8);
+            else {
+                boffX *= T;
+                if (boffX % block.ebytes) stub();
+                boffX /= block.ebytes;
+            }
 
             // If the base address may not be aligned to HW requirements,
             //  we need to emit code to align it down and offset x/width appropriately.
@@ -350,7 +354,14 @@ void Generator<hw>::setupAddr(Type T, const RegisterRange &addr, const BO &ptr, 
                              : mov(1, addr[0].ud(2), fixedX * T - 1);
                 ny.isValid() ? add(1, addr[0].ud(3), ny, -1)
                              : mov(1, addr[0].ud(3), fixedY - 1);
-                offX.isValid() ? addScaled(1, addr[0].ud(5), boffX, offX, int(T.paddedSize()), block.ebytes * T.perByte(), state) :
+                // u3's byte address for a group of 8 columns advances by
+                // block.ebytes bytes per group of 8 elements (see
+                // RegisterBlock::find()), so the scaling denominator is
+                // 8 * block.ebytes rather than block.ebytes * (8 / T.bits());
+                // the numerator (T.paddedSize()) is unchanged.
+                offX.isValid() ? addScaled(1, addr[0].ud(5), boffX, offX, int(T.paddedSize()),
+                                            T.is3() ? (8 * block.ebytes) : (block.ebytes * std::max(1, 8 / T.bits())),
+                                            state, astrategy.prefetch ? false : true) :
                   doBaseAdjust ? add(1, addr[0].ud(5), baseAdjustElems, boffX)
                                : mov(1, addr[0].ud(5), boffX);
                 offY.isValid() ? add(1, addr[0].ud(6), offY, boffY)
@@ -689,11 +700,35 @@ void Generator<hw>::incAddrShifted(const RegisterRange &addrDst, const RegisterR
             if (addrDst != addrSrc)
                 mov<uint32_t>(8, addrDst[0], addrSrc[0]);
             if (astrategy.address2D) {
+                // blockDst.extra holds T.bits(), which is non-power-of-2 for u3;
+                // prefetch blocks don't need an exact address so allow the
+                // conservative round-up in that case (harmless for non-u3 types).
+                // u3's non-power-of-2 bit width means this scaled increment
+                // essentially never divides out evenly (a sub-block's column
+                // delta isn't generally a multiple of the whole 32-bit
+                // addressing granularity); demanding exactness here would
+                // make nearly every u3 address increment stub out, so round
+                // instead for u3 just like for prefetches.
+                bool exact = !astrategy.prefetch && is_zero_or_pow2(int(blockDst.extra));
                 if (isColMajor(atype.layout)) {
-                    if (cincR != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincR, blockDst.extra, blockDst.ebytes * 8, state, true);
+                    if (cincR != 0) {
+                        if (blockDst.extra == 3 && blockDst.offsetR != blockSrc.offsetR)
+                            add(1, addrDst[0].d(5), addrDst[0].d(5),
+                                    div_up(blockDst.offsetR * 3, blockDst.ebytes * 8)
+                                    - div_up(blockSrc.offsetR * 3, blockDst.ebytes * 8));
+                        else
+                            addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincR, blockDst.extra, blockDst.ebytes * 8, state, exact);
+                    }
                     if (cincC != 0) add(1, addrDst[0].d(6), addrDst[0].d(6), cincC);
                 } else {
-                    if (cincC != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincC, blockDst.extra, blockDst.ebytes * 8, state, true);
+                    if (cincC != 0) {
+                        if (blockDst.extra == 3 && blockDst.offsetC != blockSrc.offsetC)
+                            add(1, addrDst[0].d(5), addrDst[0].d(5),
+                                    div_up(blockDst.offsetC * 3, blockDst.ebytes * 8)
+                                    - div_up(blockSrc.offsetC * 3, blockDst.ebytes * 8));
+                        else
+                            addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincC, blockDst.extra, blockDst.ebytes * 8, state, exact);
+                    }
                     if (cincR != 0) add(1, addrDst[0].d(6), addrDst[0].d(6), cincR);
                 }
             } else

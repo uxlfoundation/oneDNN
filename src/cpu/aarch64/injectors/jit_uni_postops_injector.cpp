@@ -157,7 +157,7 @@ void jit_uni_postops_injector_t<isa>::set_lambda_injector(
 }
 
 post_ops_ok_args_t::post_ops_ok_args_t(const cpu_isa_t isa,
-        const std::vector<post_op_type> &accepted_post_op_types,
+        const std::initializer_list<post_op_type> accepted_post_op_types,
         const post_ops_t &post_ops, const memory_desc_wrapper *dst_d,
         const bool sum_at_pos_0_only, const bool sum_requires_scale_one,
         const bool sum_requires_zp_zero, const bool sum_requires_same_params,

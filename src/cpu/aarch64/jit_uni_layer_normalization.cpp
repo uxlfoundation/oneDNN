@@ -468,11 +468,10 @@ status_t jit_uni_layer_normalization_fwd_t<isa>::pd_t::init(
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     auto post_ops_ok = [&]() -> bool {
-        const std::vector<injector::post_op_type> accepted_post_ops
-                = {injector::eltwise, injector::binary};
         const memory_desc_wrapper dst_d(dst_md());
-        injector::post_ops_ok_args_t post_ops_args(isa, accepted_post_ops,
-                attr()->post_ops_, &dst_d, true, true, true, true,
+        injector::post_ops_ok_args_t post_ops_args(isa,
+                {injector::eltwise, injector::binary}, attr()->post_ops_,
+                &dst_d, true, true, true, true,
                 get_supported_bcast_strategies(dst_d.ndims()));
         return injector::post_ops_ok(post_ops_args);
     };

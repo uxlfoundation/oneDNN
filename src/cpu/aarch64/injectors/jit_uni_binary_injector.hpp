@@ -41,9 +41,6 @@ using dnnl::impl::cpu::binary_injector_utils::prepare_binary_args;
 
 bool binary_args_matches_tag(format_tag_t tag, const post_ops_t &post_ops);
 
-bool binary_args_broadcast_supported(const post_ops_t &post_ops,
-        const memory_desc_wrapper &dst_d,
-        const bcast_set_t &supported_strategy_set);
 bool any_binary_postop_rhs_non_scalar_broadcast(
         const post_ops_t &post_ops, const memory_desc_wrapper &dst_d);
 
@@ -359,7 +356,7 @@ struct rhs_arg_dynamic_params_t {
 /*
  * Checks if src1 data type is supported by binary injector.
  */
-bool is_data_supported(cpu_isa_t isa, data_type_t data_type);
+bool is_data_supported(data_type_t data_type);
 
 /*
  * Checks if broadcast of src1 is supported by binary injector.
@@ -371,7 +368,8 @@ bool is_bcast_supported(const dnnl::impl::memory_desc_t &src1_desc,
 /*
  * Checks if binary injection for given args is supported.
  */
-bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
+bool is_supported(cpu_isa_t isa, alg_kind_t alg,
+        const dnnl::impl::memory_desc_t &src1_desc,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set);
 

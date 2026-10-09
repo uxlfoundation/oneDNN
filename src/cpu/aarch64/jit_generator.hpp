@@ -670,11 +670,11 @@ public:
     }
 
     void uni_mov(const Xbyak_aarch64::VReg &d, const Xbyak_aarch64::VReg &s) {
-        mov(d.b16, s.b16);
+        if (d.getIdx() != s.getIdx()) { mov(d.b16, s.b16); }
     }
 
     void uni_mov(const Xbyak_aarch64::ZReg &d, const Xbyak_aarch64::ZReg &s) {
-        mov(d.d, s.d);
+        if (d.getIdx() != s.getIdx()) { mov(d.d, s.d); }
     }
 
     void uni_dup(const Xbyak_aarch64::VReg4S &dst, int32_t value) {

@@ -484,11 +484,7 @@ void jit_uni_binary_kernel_t<isa>::compute_dst_body(int unroll, bool tail) {
         // avoid multiple multiplication on input scale for broadcasted vreg
         // not needed for different layouts
         if (!conf_.is_src_different_layouts) {
-            if (isa == asimd)
-                mov(VReg16B(vreg_tmp.getIdx()),
-                        VReg16B(vreg_tmp_src1.getIdx()));
-            else
-                mov(ZRegD(vreg_tmp.getIdx()), ZRegD(vreg_tmp_src1.getIdx()));
+            uni_mov(vreg_tmp, vreg_tmp_src1);
         }
         perform_op(
                 vreg_tmp_src0, vreg_tmp, vreg_scales_src0_, vreg_scales_src1_);

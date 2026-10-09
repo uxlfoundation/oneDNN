@@ -546,7 +546,7 @@ TEST_F(attr_quantization_test_t, TestMatmul) {
                     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_scales(arg, (1 << 1) + (1 << 0))));
                     // Groups non divisible by 32 are not supported.
-                    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                    CHECK_INVALID(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
                                     data_type::f32, {3, 1})));
                     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
@@ -565,7 +565,7 @@ TEST_F(attr_quantization_test_t, TestMatmul) {
                             gen_attr_with_scales(
                                     arg, 1 << 1, data_type::f32, {1, 32})));
                     // Groups non divisible by 32 are not supported.
-                    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                    CHECK_INVALID(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_scales(arg, (1 << 1) + (1 << 0),
                                     data_type::f32, {1, 3})));
                     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,

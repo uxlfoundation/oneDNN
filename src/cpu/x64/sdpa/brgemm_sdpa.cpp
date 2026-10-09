@@ -79,9 +79,11 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
 
     VDISPATCH_SDPA(kq_acc_dt() == f32 && vs_acc_dt() == f32,
             "only f32 accumulation is currently supported");
-    VDISPATCH_SDPA(!with_key_scales() && !with_value_scales() && !with_key_zp()
-                    && !with_value_zp(),
-            "quantized key/value tensors are not yet supported");
+    VDISPATCH_SDPA(!with_query_scales() && !with_key_scales()
+                    && !with_value_scales() && !with_key_zp()
+                    && !with_value_zp() && !with_probs_quant_scales()
+                    && !with_probs_dequant_scales(),
+            "quantization is not yet supported");
     VDISPATCH_SDPA(!with_causal_mask(),
             "an implicit causal mask is not yet supported");
     VDISPATCH_SDPA(IMPLICATION(with_attn_mask(),

@@ -144,10 +144,7 @@ configure_file(
 )
 include_directories_with_host_compiler_before(${PROJECT_BINARY_DIR}/include)
 
-configure_file(
-    "${PROJECT_SOURCE_DIR}/README.binary.in"
-    "${PROJECT_BINARY_DIR}/README"
-)
+include("cmake/readme.cmake")
 
 if(DNNL_INSTALL_MODE STREQUAL "BUNDLE" AND NOT DEFINED CMAKE_INSTALL_LIBDIR)
     # define CMAKE_INSTALL_LIBDIR as "lib" in the case of bundle

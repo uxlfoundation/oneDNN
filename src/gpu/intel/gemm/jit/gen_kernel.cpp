@@ -262,10 +262,7 @@ status_t gen_desc_t::apply_kernel_override(
                 throw std::runtime_error("no catalog entry for dispatch");
             kcatalog::Entry e = *selected;
             e.driverInfo = driver_info_of(st);
-            static const int64_t kv_min_k_cap_per_u = gpu_utils::dev_getenv(
-                    "ONEDNN_GEMM_KV_MIN_K_CAP_PER_U", 65536);
-            aux_params_ = evaluateFixed(e, getDerivedParams(e, eval_params_),
-                    kv_min_k_cap_per_u);
+            aux_params_ = evaluateFixed(e, getDerivedParams(e, eval_params_));
             VDEBUGINFO(1, primitive, gpu, "%s,kv=%d,kb=%d,k0=%lld,wgK=%d",
                     "jit::gemm override dispatch",
                     aux_params_.kParallelVariable, aux_params_.kParallel,

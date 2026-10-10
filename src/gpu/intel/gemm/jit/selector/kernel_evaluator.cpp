@@ -599,8 +599,9 @@ double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Evalu
     return score;
 }
 
-EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, int64_t kvMinKCapPerU)
+EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateParams &dp)
 {
+    constexpr int64_t kvMinKCapPerU = 65536;
     auto &di = e.driverInfo;
     auto k = dp.sizes.k;
     auto u = di.unroll[LoopK];

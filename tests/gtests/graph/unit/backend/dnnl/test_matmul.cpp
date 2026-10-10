@@ -869,12 +869,13 @@ TEST(test_matmul_compile, MatmulInt8WeightScaleSupport) {
     std::vector<int64_t> weight_shape = {3, 3, 4, 2};
     std::vector<int64_t> bias_shape {2};
     std::vector<int64_t> dst_shape = {3, 3, 8, 2};
-    size_t scales_wei_sizes = dst_shape.back();
-    std::vector<float> scale_wei(scales_wei_sizes, 1 / 127.f);
-    std::vector<int64_t> zp_wei(scales_wei_sizes, 0);
 
     std::vector<size_t> axes = {0, 1, 2, 3};
     for (auto &axis : axes) {
+        const size_t scales_wei_size = weight_shape[axis];
+        std::vector<float> scale_wei(scales_wei_size, 1 / 127.f);
+        std::vector<int64_t> zp_wei(scales_wei_size, 0);
+
         graph::op_t dqdata_op(1, graph::op_kind::Dequantize, "dqdata_op");
         dqdata_op.set_attr<std::string>(graph::op_attr::qtype, "per_tensor");
         dqdata_op.set_attr<std::vector<int64_t>>(graph::op_attr::zps, {0});
@@ -948,15 +949,8 @@ TEST(test_matmul_compile, MatmulInt8WeightScaleSupport) {
         std::vector<const graph::logical_tensor_t *> lt_ins {
                 &src_u8, &weight_s8, &bias_f32};
         std::vector<const graph::logical_tensor_t *> lt_outs {&dst_s8};
-        // Matmul only support applying scale per channel along the last
-        // dimension for DNNL_ARG_WEIGHTS.
-        if (axis == weight_shape.size() - 1) {
-            ASSERT_EQ(p.compile(&cp, lt_ins, lt_outs, engine),
-                    graph::status::success);
-        } else {
-            ASSERT_EQ(p.compile(&cp, lt_ins, lt_outs, engine),
-                    graph::status::unimplemented);
-        }
+        ASSERT_EQ(p.compile(&cp, lt_ins, lt_outs, engine),
+                graph::status::success);
     }
 }
 

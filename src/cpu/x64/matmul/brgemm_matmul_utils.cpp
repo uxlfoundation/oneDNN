@@ -301,11 +301,11 @@ status_t check_isa_with_datatype(
 status_t gemv_check_isa_with_datatype(
         const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     // Valid GEMV (dt, isa) combinations:
-    // - f32  -> avx2
+    // - f32  -> avx512_core, avx2
     // - bf16 -> avx512_core_bf16
     // - f16  -> avx512_core_fp16
     // Any other data type or isa is unsupported.
-    const bool ok = (bm_conf_utils.is_f32() && isa == avx2)
+    const bool ok = (bm_conf_utils.is_f32() && one_of(isa, avx512_core, avx2))
             || (bm_conf_utils.is_bf16() && isa == avx512_core_bf16)
             || (bm_conf_utils.is_f16() && isa == avx512_core_fp16);
 
@@ -580,7 +580,8 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     // instantiation can execute the case because GEMM/GEMV dispatching logic
     // relies on it. Here we require the platform to support the exact isa that
     // `gemv_check_isa_with_datatype` mandates for the data type:
-    // f32 -> avx2, bf16 -> avx512_core_bf16, f16 -> avx512_core_fp16.
+    // f32 -> avx512_core or avx2, bf16 -> avx512_core_bf16,
+    // f16 -> avx512_core_fp16.
     // This also rejects any data type not supported by the GEMV path.
     const bool gemv_isa_dt_supported = (bm_conf_utils.is_f32() && mayiuse(avx2))
             || (bm_conf_utils.is_bf16() && mayiuse(avx512_core_bf16))

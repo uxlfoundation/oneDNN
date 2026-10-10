@@ -34,6 +34,7 @@
 #include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/logging.hpp"
+#include "gpu/intel/primitive_attr.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -115,7 +116,8 @@ struct gen_t : public primitive_t {
                     | smask_t::scales | smask_t::scales_data_type
                     | smask_t::scales_groups | smask_t::precomputed_reductions
                     | smask_t::zero_points | smask_t::zero_points_data_type
-                    | smask_t::zero_points_groups | smask_t::post_ops_inplace;
+                    | smask_t::zero_points_groups | smask_t::post_ops_inplace
+                    | smask_t::gpu_attr;
             VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(
@@ -302,22 +304,55 @@ struct gen_t : public primitive_t {
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 
             bool kernel_success = false;
+            // Kernel override: bare int = Nth candidate after sort (rank);
+            // else strategy string.
+            int index = -1;
+            if (is_dev_mode() && attr()->gpu_attr_) {
+                auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
+                        attr()->gpu_attr_.get());
+                const auto &ovr = gpu_attr->kernel_override();
+                // <=9 digits always fit int, so std::stoi cannot overflow.
+                if (!ovr.empty() && ovr.size() <= 9
+                        && ovr.find_first_not_of("0123456789")
+                                == std::string::npos)
+                    index = std::stoi(ovr);
+                else
+                    kernel_desc_.set_kernel_override(ovr);
+            }
             auto lda = ld(DNNL_ARG_A);
             auto ldb = ld(DNNL_ARG_B);
             if (swap_ab_) std::swap(lda, ldb);
             auto entries = kernel_desc_.select_kernel(*dev_info_, mode, problem,
                     alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),
                     d->batch());
+            kernel_count_ = (int)entries.size();
 
-            for (auto &entry : entries) {
+            if (index >= 0) {
+                VDISPATCH_GEMM(index < (int)entries.size(),
+                        "kernel index out of range");
+                // GEMM_KERNEL would replace the pinned candidate's strategy.
+                VDISPATCH_GEMM(
+                        gpu_utils::dev_getenv("GEMM_KERNEL", std::string())
+                                .empty(),
+                        "kernel rank override conflicts with GEMM_KERNEL");
+            }
+
+            for (size_t entry_idx = 0; entry_idx < entries.size();
+                    entry_idx++) {
+                auto *entry = entries[entry_idx];
+                int g = (int)(entry - jit::catalog().entries);
+                if (index >= 0 && (int)entry_idx != index) continue;
+                auto skip = [&](const char *why) {
+                    gpu_debug() << "[" << lpad(g, 4) << "] skip " << entry_idx
+                                << "/" << entries.size() << " " << entry->str()
+                                << why;
+                };
                 kernel_desc_.set_entry(entry);
                 kernel_desc_.set_problem(problem);
                 auto status = kernel_desc_.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
                 bool valid = status == status::success;
-                if (!valid)
-                    gpu_debug() << "skipping:" << entry->str()
-                                << ",Strategy finalization failed.";
+                if (!valid) skip(",Strategy finalization failed.");
                 // Global k-parallel kernels don't support post-ops or non-f32/s32
                 //   accumulation unless fusion is enabled.
                 if (kernel_desc_.driver_info()->kParallel()
@@ -325,9 +360,7 @@ struct gen_t : public primitive_t {
                     bool po_valid = !non_scale_po_
                             && !(with_sum_ && with_c_scales())
                             && utils::one_of(d->c_type(), f32, s32);
-                    if (!po_valid)
-                        gpu_debug() << "skipping:" << entry->str()
-                                    << ",Invalid post op.";
+                    if (!po_valid) skip(",Invalid post op.");
                     valid &= po_valid;
                 }
                 // An in-place binary post-op reads C as its right-hand side,
@@ -338,9 +371,7 @@ struct gen_t : public primitive_t {
                 if (post_ops_.has_inplace_binary()) {
                     bool c_intact = !kernel_desc_.driver_info()->kParallel()
                             && !kernel_desc_.driver_info()->kParallelVariable();
-                    if (!c_intact)
-                        gpu_debug() << "skipping:" << entry->str()
-                                    << ",In-place post op over k-parallel C.";
+                    if (!c_intact) skip(",In-place post op over k-parallel C.");
                     valid &= c_intact;
                 }
                 // Limited post-op support for low-precision accumulation.
@@ -348,18 +379,14 @@ struct gen_t : public primitive_t {
                     bool need_x32_acc = with_binary
                             || !IMPLICATION(with_sum_, sum_at_begin_);
                     valid &= !need_x32_acc;
-                    if (need_x32_acc)
-                        gpu_debug() << "skipping:" << entry->str()
-                                    << ",Invalid post op.";
+                    if (need_x32_acc) skip(",Invalid post op.");
                 }
                 // Ensure kernel can be run deterministically if required.
                 if (attr()->deterministic_) {
                     bool deterministic
                             = !kernel_desc_.driver_info()->nondeterministic();
                     valid &= deterministic;
-                    if (!deterministic)
-                        gpu_debug() << "skipping:" << entry->str()
-                                    << ",Non deterministic kernel.";
+                    if (!deterministic) skip(",Non deterministic kernel.");
                 }
 
                 if (valid) {
@@ -395,14 +422,15 @@ struct gen_t : public primitive_t {
                     status = try_create();
                     if (status == status::success) {
                         kernel_success = true;
-                        if (kernel_desc_.has_entry()) {
-                            gpu_info() << "catalog entry["
-                                       << (entry - jit::catalog().entries)
-                                       << "]:" << entry->str();
-                        } else {
-                            gpu_info() << "catalog entry[overridden]:"
-                                       << entry->str();
-                        }
+                        // Print the finalized, replayable kernel string
+                        // (pin it via --gpu-kernel), not the catalog form.
+                        if (kernel_desc_.has_entry())
+                            gpu_info() << "[" << lpad(g, 4) << "] use "
+                                       << entry_idx << "/" << entries.size()
+                                       << (index >= 0 ? " pin" : "") << " "
+                                       << kernel_str();
+                        else
+                            gpu_info() << "[override] use " << kernel_str();
                         break;
                     }
                 }
@@ -583,6 +611,18 @@ struct gen_t : public primitive_t {
             return &kernel_desc_;
         }
 
+        // Deployed (post-finalize) strategy string; lazily dumped and cached.
+        const std::string &kernel_str() const {
+            if (kernel_str_.empty())
+                kernel_str_ = jit::dump_kernel(kernel_desc_.hw(),
+                        *kernel_desc_.problem(), *kernel_desc_.strategy(),
+                        kernel_desc_.aux_params());
+            return kernel_str_;
+        }
+
+        // Number of selection candidates; ranks `0..kernel_count() - 1`.
+        int kernel_count() const { return kernel_count_; }
+
         int max_k_sliced_groups() const {
             const auto *info = kernel_desc()->driver_info();
 
@@ -602,6 +642,8 @@ struct gen_t : public primitive_t {
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
         kernel_desc_t kernel_desc_;
+        mutable std::string kernel_str_; // lazy dump for the verbose use line
+        int kernel_count_ = 0;
     };
 
     gen_t(const pd_t *apd) : primitive_t(apd) {}

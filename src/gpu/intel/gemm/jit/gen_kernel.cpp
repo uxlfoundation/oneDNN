@@ -48,9 +48,29 @@ using namespace gemmstone;
 using namespace intel::jit;
 
 namespace {
-void entryObserver(
-        const kcatalog::Entry *entry, double score, EvaluateAuxOutput aux) {
-    gpu_debug() << "consider:" << entry->str() << ",score:" << score;
+// score is ~EU-cycles; " [x.xxxms]" wall-time hint (or "" if clock unknown).
+std::string ms_hint(double score, int eu_count, int freq_mhz) {
+    if (eu_count <= 0 || freq_mhz <= 0) return "";
+    char b[40];
+    snprintf(b, sizeof(b), " [%.3fms]", score / (eu_count * freq_mhz * 1e3));
+    return b;
+}
+
+SelectionObserver make_entry_observer(int eu_count, int freq_mhz) {
+    return [eu_count, freq_mhz](const kcatalog::Entry *entry, double score,
+                   EvaluateAuxOutput) {
+        gpu_debug() << "[" << lpad(entry - catalog().entries, 4)
+                    << "] consider score:" << score
+                    << ms_hint(score, eu_count, freq_mhz) << " "
+                    << entry->str();
+    };
+}
+
+// Trailing " | dispatch k0=.. wgK=.." section with evaluator-derived geometry
+// the strategy string can't encode; '|' is unused by the strategy grammar.
+std::string serialize_dispatch(const EvaluateAuxOutput &aux) {
+    return " | dispatch k0=" + std::to_string(aux.k0) + " wgK="
+            + std::to_string(aux.wgK);
 }
 } // anonymous namespace
 
@@ -129,8 +149,8 @@ status_t gen_desc_t::finalize(const char *tags) {
     // Parse strategy string.
     strategy_ = GEMMStrategy(hw_, stepping_);
 #ifdef DNNL_DEV_MODE
-    std::string ovr_strategy;
-    ovr_strategy = gpu_utils::dev_getenv("GEMM_KERNEL", ovr_strategy);
+    std::string ovr_strategy
+            = gpu_utils::dev_getenv("GEMM_KERNEL", kernel_override_);
     if (!ovr_strategy.empty()) {
         entry_ = nullptr;
         std::stringstream ss(ovr_strategy);
@@ -571,7 +591,8 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     eval_params_.deterministic = (mode & mode_deterministic);
     eval_params_.Tc_ext = problem.Tc_ext;
 
-    SelectionObserver observer = entryObserver;
+    SelectionObserver observer = make_entry_observer(
+            dev_info.eu_count(), dev_info.max_clock_mhz());
     tags_ = match_params[0].tags;
     Ts_ = problem.Ts;
     beta_ = problem.beta;
@@ -745,7 +766,8 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.batch = (batch_dims > 0);
     eval_params.Tc_ext = problem_.Tc_ext;
 
-    SelectionObserver observer = entryObserver;
+    SelectionObserver observer = make_entry_observer(
+            dev_info.eu_count(), dev_info.max_clock_mhz());
 
     auto entries = select(
             catalog(), match_params, eval_params, aux_params_, &observer);
@@ -1001,13 +1023,20 @@ dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
 }
 
 std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,
-        const gemmstone::GEMMStrategy &strategy) {
+        const gemmstone::GEMMStrategy &strategy,
+        const gemmstone::EvaluateAuxOutput *aux) {
     auto pstr = problem.toString();
     auto astr = problem.scalarsToString();
     auto sstr = unparseStrategy(hw, problem, strategy);
     if (!astr.empty()) astr += ' ';
-    return pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
+    auto str = pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
             + std::to_string(strategy.unroll[LoopN]) + ' ' + astr + sstr;
+    // Append dispatch geometry for k-parallel kernels.
+    if (aux
+            && (aux->kParallel || aux->kParallelVariable || aux->wgK > 1
+                    || aux->k0 > 0))
+        str += serialize_dispatch(*aux);
+    return str;
 }
 
 status_t gen_kernel_t::get_kernel(
@@ -1054,8 +1083,8 @@ status_t gen_kernel_t::get_kernel(
 
 void gen_kernel_t::maybe_print_verbose() {
     gpu_debug() << "kernel:"
-                << dump_kernel(
-                           desc()->hw_, desc()->problem_, desc()->strategy_);
+                << dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_,
+                           desc()->aux_params());
 }
 
 } // namespace jit

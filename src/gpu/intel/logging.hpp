@@ -18,6 +18,7 @@
 #define GPU_INTEL_LOGGING_HPP
 
 #include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -43,15 +44,41 @@ enum class log_level_t {
 
 // Parses `ONEDNN_VERBOSE` for a `xe=<level>` token independently of the generic
 // `debuginfo=<level>` verbose infrastructure. This provides a mechanism to
-// isolate gpu specific logs.
+// isolate gpu specific logs. Accepts a severity name (`xe=info`, `xe=debug`,
+// `xe=all`) or the equivalent integer on the `debuginfo` scale (`xe=160`).
 inline int get_xe_debug_level() {
     if (!is_dev_mode()) return 0;
     static const int level = [] {
-        for (auto &tok : gpu_utils::split(getenv_string_user("VERBOSE"), ","))
-            if (tok.rfind("xe=", 0) == 0) return std::atoi(tok.c_str() + 3);
+        for (auto &tok : gpu_utils::split(getenv_string_user("VERBOSE"), ",")) {
+            if (tok.rfind("xe=", 0) != 0) continue;
+            auto v = tok.substr(3);
+            if (v == "off") return (int)log_level_t::off;
+            if (v == "warning") return (int)log_level_t::warning;
+            if (v == "suggestion") return (int)log_level_t::suggestion;
+            if (v == "info") return (int)log_level_t::info;
+            if (v == "debug") return (int)log_level_t::debug;
+            if (v == "perf") return (int)log_level_t::perf;
+            if (v == "trace" || v == "all") return (int)log_level_t::trace;
+            // Numeric alias (e.g. xe=160); an unrecognized token is a typo.
+            if (v.empty()
+                    || v.find_first_not_of("0123456789") != std::string::npos) {
+                std::cerr << "Error: ONEDNN_VERBOSE xe=" << v
+                          << " is not a valid level (use a name off/warning/"
+                             "suggestion/info/debug/perf/trace/all or an integer)"
+                          << std::endl;
+                std::abort();
+            }
+            return std::atoi(v.c_str());
+        }
         return 0;
     }();
     return level;
+}
+
+// Left-pad an integer with spaces to at least `width` chars (aligned logs).
+inline std::string lpad(long long v, int width) {
+    auto s = std::to_string(v);
+    return (int)s.size() < width ? std::string(width - s.size(), ' ') + s : s;
 }
 
 template <typename T, typename = void>

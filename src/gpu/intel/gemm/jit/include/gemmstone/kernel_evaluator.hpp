@@ -65,6 +65,9 @@ struct EvaluateAuxOutput {
 DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateParams &p);
 double evaluate(const kcatalog::Entry &e, const EvaluateParams &p, EvaluateAuxOutput &aux);
 double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &p, EvaluateAuxOutput &aux);
+// Model-free evaluate(): fixed rules replace E-model score comparisons; the
+// entry's model is ignored, so an override dispatches alike under any catalog.
+EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateParams &p);
 
 void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux);
 

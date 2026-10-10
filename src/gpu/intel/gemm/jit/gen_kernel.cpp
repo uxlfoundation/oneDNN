@@ -141,15 +141,23 @@ static gemmstone::Scalar stringToScalar(const std::string &val) {
     return val[0] == '-' ? Scalar(Scalar::Variable) : Scalar(std::stoi(val));
 }
 
-status_t gen_desc_t::apply_kernel_override(
-        const std::string &ovr_strategy, const char *tags) {
+status_t gen_desc_t::apply_kernel_override(const std::string &ovr_strategy,
+        const char *tags, const EvaluateParams &eval_params,
+        std::string &resolved) {
+    const auto *selected = entry_;
     try {
         // Warning: will override problem data types (including up/down
         // conversions) - this will cause inaccuracies if precisions/layouts
         // are chosen that are incompatible with the given problem
         entry_ = nullptr;
         const GEMMProblem pd = problem_;
-        const Scalar pd_alpha = problem_.alpha, pd_beta = problem_.beta;
+        // problem_.beta may already be variable from the entry's k blocking.
+        auto pd_scalar = [](double v, bool zero_ok) {
+            return (v == 1.0 || (zero_ok && v == 0.0)) ? Scalar(int(v))
+                                                       : Scalar();
+        };
+        const Scalar pd_alpha = pd_scalar(eval_params.alpha, false);
+        const Scalar pd_beta = pd_scalar(eval_params.beta, true);
         std::stringstream ss(ovr_strategy);
         std::string val;
         // Skip problem tokens printed before `gemm`; the pd sets them.
@@ -227,25 +235,24 @@ status_t gen_desc_t::apply_kernel_override(
         if (block_k > 0 && k_ > block_k && !problem_.beta1())
             problem_.beta = Scalar();
 
-        // Do not inherit the selected entry's dispatch.
-        aux_params_ = EvaluateAuxOutput();
-        aux_params_.kParallelVariable = strategy_.kParallelVariable;
+        GEMMStrategy st = strategy_;
+        adjustStrategy(hw_, problem_, st, tags);
+        st.preflight(hw_, problem_);
         if (have_disp) {
+            aux_params_ = EvaluateAuxOutput();
             aux_params_.k0 = disp_k0;
             aux_params_.wgK = disp_wgK;
             aux_params_.kParallel = strategy_.kParallel;
-        } else if (strategy_.kParallel) {
-            throw std::runtime_error("unknown k0 for global k-parallel");
-        } else if (strategy_.kParallelLocal) {
-            // W model.
-            if (strategy_.wg[LoopK] < 1 || strategy_.unroll[LoopK] < 1)
-                throw std::runtime_error("invalid k-parallel-local geometry");
-            aux_params_.k0
-                    = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
-                            strategy_.unroll[LoopK]);
-            aux_params_.wgK = std::max(1,
-                    std::min(strategy_.wg[LoopK],
-                            int(utils::div_up(k_, aux_params_.k0))));
+            aux_params_.kParallelVariable = strategy_.kParallelVariable;
+            resolved = dump_kernel(hw_, problem_, st, &aux_params_);
+        } else {
+            kcatalog::Entry e = *selected;
+            e.driverInfo = driver_info_of(st);
+            aux_params_ = evaluateFixed(e, getDerivedParams(e, eval_params));
+            VDEBUGINFO(1, primitive, gpu, "%s,kv=%d,kb=%d,k0=%lld,wgK=%d",
+                    "jit::gemm override dispatch",
+                    aux_params_.kParallelVariable, aux_params_.kParallel,
+                    (long long)aux_params_.k0, aux_params_.wgK);
         }
     } catch (const std::exception &e) {
         VDEBUGINFO(1, primitive, gpu, "%s,%s", "jit::gemm kernel override",
@@ -256,14 +263,17 @@ status_t gen_desc_t::apply_kernel_override(
 }
 #endif
 
-status_t gen_desc_t::finalize(const char *tags) {
+status_t gen_desc_t::finalize(
+        const char *tags, const EvaluateParams &eval_params) {
     problem_.CO.setAlignment(problem_.Tco.paddedSize());
 
 #ifdef DNNL_DEV_MODE
+    std::string resolved_in;
     std::string ovr_strategy
             = gpu_utils::dev_getenv("GEMM_KERNEL", kernel_override_);
     if (!ovr_strategy.empty()) {
-        CHECK(apply_kernel_override(ovr_strategy, tags));
+        CHECK(apply_kernel_override(
+                ovr_strategy, tags, eval_params, resolved_in));
     } else {
 #endif
         // Update problem alignments to match catalog entry.
@@ -464,15 +474,32 @@ status_t gen_desc_t::finalize(const char *tags) {
         aux_params_.wgK = strategy_.wg[LoopK];
     update_driver_info();
 
+#ifdef DNNL_DEV_MODE
+    // A resolved override must replay unchanged.
+    if (!resolved_in.empty()) {
+        auto out = dump_kernel(hw_, problem_, strategy_, &aux_params_);
+        // The problem prefix comes from the pd, not the string.
+        auto body = [](const std::string &s) {
+            return s.substr(s.find("gemm "));
+        };
+        if (body(out) != body(resolved_in)) {
+            VDEBUGINFO(1, primitive, gpu, "%s,%s -> %s",
+                    "jit::gemm resolved override changed", resolved_in.c_str(),
+                    out.c_str());
+            return status::unimplemented;
+        }
+    }
+#endif
+
     return status::success;
 }
 
-void gen_desc_t::update_driver_info() {
+gemmstone::CommonDriverInfo gen_desc_t::driver_info_of(
+        const gemmstone::GEMMStrategy &strategy) const {
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: \
-        driver_info_ = gemm_kernel_generator_t<ngen::HW::arch>::driverInfo( \
-                problem_, strategy_); \
-        break;
+        return gemm_kernel_generator_t<ngen::HW::arch>::driverInfo( \
+                problem_, strategy);
 
     switch (hw_) {
         REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
@@ -482,10 +509,13 @@ void gen_desc_t::update_driver_info() {
         REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
         default:
             assert(!"Unsupported architecture");
-            driver_info_ = entry_->driverInfo;
-            break;
+            return entry_ ? entry_->driverInfo : driver_info_;
     }
 #undef ARCH_DISPATCH
+}
+
+void gen_desc_t::update_driver_info() {
+    driver_info_ = driver_info_of(strategy_);
 }
 
 std::vector<const gemmstone::kcatalog::Entry *>
@@ -714,8 +744,9 @@ status_t gen_nocopy_desc_t::finalize() {
     problem_.beta = beta_;
     if (block_k > 0 && k_ > block_k && eval_params_.beta != 1.0f)
         problem_.beta = Scalar();
+    aux_params_ = gemmstone::EvaluateAuxOutput();
     evaluate(*entry_, eval_params_, aux_params_);
-    return gen_desc_t::finalize(tags_.c_str());
+    return gen_desc_t::finalize(tags_.c_str(), eval_params_);
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(
@@ -850,7 +881,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
 
     if (entries.size() < 1) return status::unimplemented;
     entry_ = entries[0];
-    return finalize(match_params.tags);
+    return finalize(match_params.tags, eval_params);
 }
 
 void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
@@ -1107,11 +1138,7 @@ std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,
     if (!astr.empty()) astr += ' ';
     auto str = pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
             + std::to_string(strategy.unroll[LoopN]) + ' ' + astr + sstr;
-    // Append dispatch geometry for k-parallel kernels.
-    if (aux
-            && (aux->kParallel || aux->kParallelVariable || aux->wgK > 1
-                    || aux->k0 > 0))
-        str += serialize_dispatch(*aux);
+    if (aux) str += serialize_dispatch(*aux);
     return str;
 }
 
@@ -1149,7 +1176,8 @@ status_t gen_kernel_t::get_kernel(
     } catch (const std::runtime_error &err) {
         // Print kernel generation errors only in debug mode
         VDEBUGINFO(1, primitive, gpu, "%s,%s,%s", "jit::gemm", err.what(),
-                dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_)
+                dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_,
+                        desc()->aux_params())
                         .c_str());
     }
 #undef ARCH_DISPATCH

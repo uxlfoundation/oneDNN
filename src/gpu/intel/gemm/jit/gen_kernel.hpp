@@ -130,9 +130,13 @@ protected:
     bool disable_systolic_ = false;
     bool relaxed_acc_ = false;
 
-    status_t finalize(const char *tags);
-    status_t apply_kernel_override(
-            const std::string &ovr_strategy, const char *tags);
+    status_t finalize(
+            const char *tags, const gemmstone::EvaluateParams &eval_params);
+    status_t apply_kernel_override(const std::string &ovr_strategy,
+            const char *tags, const gemmstone::EvaluateParams &eval_params,
+            std::string &resolved);
+    gemmstone::CommonDriverInfo driver_info_of(
+            const gemmstone::GEMMStrategy &strategy) const;
     void update_driver_info();
 };
 

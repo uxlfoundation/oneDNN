@@ -909,7 +909,7 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.kParallelLocal)    s << (strategy.shrinkWGK   ? " akr" :
                                           strategy.kInterleave ? " ikr" :
                                                                  " kr");
-    if (strategy.fillGoal)          s << " fg" << strategy.fillGoal * (1. / 16);
+    if (strategy.fillGoal)          s << " fg " << strategy.fillGoal * (1. / 16);
     if (strategy.kInterleave)       s << " ki" << strategy.kInterleaveChunk;
 
     if (strategy.fixedSystolic)
@@ -933,7 +933,11 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.stallAfterLoad)            s << " st";
     if (strategy.fmaBoustrophedon)          s << " fx";
 
-    s << " k" << strategy.unroll[LoopK];
+    // Print the declared k alignment; parsing `kN` sets extraKAlign.
+    if (strategy.extraKAlign > 1) {
+        s << " k" << strategy.extraKAlign;
+        if (strategy.unrollK_masked > 0) s << '/' << strategy.unrollK_masked;
+    }
 
     if (strategy.GRFs != 128)
         s << " grf" << strategy.GRFs;

@@ -102,7 +102,8 @@ The IR is produced in full, then consumed read-only by the allocator and the
 emitter. `generate()` builds the IR and passes it to `generate_kernel()`, which
 runs a fixed sequence: build the register configuration, allocate registers,
 emit the ABI preamble, reserve the spill frame, emit the lowered code, tear down
-the frame, emit the postamble, and write the static data.
+the frame, emit the postamble, write the static data, and print the debug
+output with `ir::print_kernel_dump()` (see Debug Output).
 
 ## Design Principles
 
@@ -128,6 +129,12 @@ the frame, emit the postamble, and write the static data.
 * **Separation of concerns is the invariant to protect.** The builder is
   target-neutral, ISA and data-type knowledge lives only in the emitter and the
   register configuration, and the allocator knows only kinds and control flow.
+
+* **The debug output computes its own statistics.** `dump.cpp` computes what
+  it prints from the IR and the register allocation. The IR infrastructure is
+  not extended for the debug output, so the debug code stays separate from it.
+  The one exception is `data_section_t::begin_offset`, because only the emitter
+  knows where the static data starts.
 * **`def_use()` must match the emitter.** Liveness is computed from the reads and
   writes reported by `def_use()`. If a lowering reads or writes a virtual register
   that `def_use()` does not report, allocation is wrong, so the two must stay in
@@ -151,6 +158,8 @@ the frame, emit the postamble, and write the static data.
   injector, which lowers the `inject_postops` operation.
 * `codegen.hpp`, `codegen.cpp`: `generate_kernel()`, which runs every stage
   after the builder.
+* `dump.hpp`, `dump.cpp`: the debug output that `ONEDNN_VERBOSE=x64ir` enables
+  (see Debug Output).
 
 The kernel-specific builders live outside this directory. For example,
 `src/cpu/x64/brgemm/brgemv_ir.{hpp,cpp}` holds the GEMV builder and shows how
@@ -217,6 +226,130 @@ Additional rules to follow.
 
 The IR, allocator, and emitter have dedicated unit tests
 (`test_internals_cpu_ir`). IR-based kernels are also tested through benchdnn.
+
+## Debug Output
+
+The IR pipeline can print the IR of the kernel that it generates with a short
+summary of the kernel.
+
+The output is useful in these cases:
+
+* **Checking a builder.** The IR dump shows the loops with their counters and
+  iteration counts, the pointer increments (`add_imm`), the memory offsets, and
+  the data types that the builder produced. A developer can compare them with
+  what the builder code is supposed to produce.
+* **Finding spills.** The summary shows the virtual registers that the
+  allocator keeps in stack slots, and the operations that access the slots.
+  The IR dump shows the physical register or the stack slot of each virtual
+  register in each operation.
+* **Checking register capacity.** The summary shows the number of registers
+  available in each register file and the maximum number the kernel needs at
+  once. The difference shows how many more values can be added without spilling.
+* **Comparing two versions.** The output does not change from run to run. A
+  `diff` of the output before and after a change shows how the change affected
+  the kernel.
+
+### Enabling the Output
+
+The output can be enabled only in dev-mode builds (`ONEDNN_DEV_MODE=ON`). Add
+the `x64ir` token to `ONEDNN_VERBOSE` to enable it, for example,
+`ONEDNN_VERBOSE=x64ir` or `ONEDNN_VERBOSE=dispatch,x64ir`.
+`ONEDNN_VERBOSE=all` and `debuginfo=` do not enable it. `all` enables the
+standard verbose output, and backend-specific dumps does not mix with it.
+
+The output is printed only when a kernel is generated. A primitive cache hit
+generates no kernel, so it prints nothing.
+
+### Output Format
+
+The example below is a part of the output for a BRGEMM kernel. The lines
+marked `...` are left out.
+
+```
+begin x64ir jit_brgemm_ir_kernel_t isa=avx512_core
+code: 1339 bytes (instructions 1339 bytes, static data 0 bytes)
+alloc gpr: pool 14, peak 15 at op 39, spilled 1
+alloc vec: pool 32, peak 19 at op 42, spilled 0
+alloc mask: pool 7, peak 0, spilled 0
+spill g1@[rsp+0]: ops 1, 29
+
+index | gpr vec mask | operation
+    0 |   1   0    0 | load g0@rax, [param+24]
+    1 |   2   0    0 | load g1@[rsp+0](temp rcx), [param+16]
+    2 |   3   0    0 | load g2@rdx, [param+96]
+...
+    9 |   9   0    0 | jz g8@r10, L0
+   10 |   9   0    0 | load g0@rax, [param+40]
+   11 |   9   0    0 | L0:
+   12 |  10   0    0 | loop g9@r11 = 2 {
+   13 |  10   1    0 |   vzero f32:v10@zmm0
+...
+   29 |  11  16    0 |   mov_reg g28@r12, g1@[rsp+0](temp rcx)
+   30 |  11  16    0 |   jz g2@rdx, L1
+   31 |  12  16    0 |   loop g30@r13 = g2@rdx {
+   32 |  13  16    0 |     load g31@r14, [g28@r12+0]
+...
+   39 |  15  16    0 |     loop g33@rcx = 16 {
+   40 |  15  17    0 |       vload f32:v26@zmm16, f32:[g32@r15+0]
+   41 |  15  18    0 |       vload f32:v27@zmm17, f32:[g32@r15+64]
+   42 |  15  19    0 |       vload_bcast f32:v29@zmm18, f32:[g31@r14+0]
+   43 |  15  19    0 |       prefetch [g32@r15+512]
+   44 |  15  19    0 |       vdot f32:v10@zmm0, f32:v26@zmm16, f32:v29@zmm18
+...
+  154 |  15  16    0 |     } // g33@rcx -= 1, repeat while > 0
+  155 |  12  16    0 |   } // g30@r13 -= 1, repeat while > 0
+  156 |  10  16    0 |   L1:
+...
+  177 |  10  16    0 |   vstore f32:[g0@rax+0], f32:v10@zmm0
+...
+  195 |  10   0    0 | } // g9@r11 -= 1, repeat while > 0
+end x64ir
+```
+
+The lines mean the following:
+
+* `begin x64ir <name> isa=<isa>` starts the output for one kernel. `end x64ir`
+  ends it.
+* `code:` is the size of the kernel in bytes, the same size that
+  `ONEDNN_JIT_DUMP` writes. It is split into the instructions and the static
+  data.
+* `alloc <file>:` is one line per register file. On AVX2, masks are vector
+  registers, so they are in the `vec` file. `pool` is the number of registers
+  that the allocator can assign. `peak` is the largest register pressure of
+  the file and the first operation with it. A peak above the pool means that
+  the file must spill. `spilled` is the number of virtual registers in stack
+  slots.
+* `spill g1@[rsp+0]: ops 1, 29` is a spilled virtual register, its stack slot,
+  and the operations that load or store the slot.
+* Each line of the IR dump has the operation index, the register pressure of
+  each register file, and the operation. The register pressure is the number of
+  virtual registers of the file that are live on entry to the operation or
+  written by it.
+
+An operation prints as its `op_kind_t` name, then its operands. The
+destination comes first. Operands print as follows:
+
+* `g<id>` and `m<id>` are gpr and mask virtual registers. `<id>` is the
+  `vreg_t` value.
+* `<dt>:v<id>` is a vec virtual register that holds the data type `<dt>`.
+* `@<reg>` shows the physical register assigned to a virtual register, for
+  example, `g0@rax` or `f32:v10@zmm0`.
+* `@[rsp+<off>](temp <reg>)` shows the stack slot and the register used for the
+  operation. `(no temp)` means that the allocator could not find a free temp
+  register and therefore the emitter cannot lower the operation. This indicates
+  a bug in the kernel.
+* `[g<id>+<disp>]` is the memory at `g<id>` plus a decimal byte offset.
+  `[param+<disp>]` is a field of the kernel argument struct.
+* `<dt>:[...]` specifies the in-memory data type of a vector load or store. A
+  converting access shows two types, for example, `vload f32:v3, bf16:[g0+0]`.
+* `L<id>` is an IR label, the target of `jmp` and `jz`.
+
+Two kinds of operations print in a special form:
+
+* `loop g9 = 2 {` is `loop_begin` with the counter `g9` and the iteration count
+  `2`. The count can also be a virtual register, as in `loop g30 = g2 {`.
+  `} // g9 -= 1, repeat while > 0` is `loop_end`.
+* `L0:` is the `label` operation for the label `L0`.
 
 ## References
 

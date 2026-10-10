@@ -117,6 +117,7 @@ protected:
     gemmstone::GEMMStrategy strategy_;
     const gemmstone::kcatalog::Entry *entry_ = nullptr;
     gemmstone::EvaluateAuxOutput aux_params_;
+    gemmstone::EvaluateParams eval_params_;
     gemmstone::CommonDriverInfo driver_info_;
 
     bool efficient_64b_ = false;
@@ -132,6 +133,8 @@ protected:
 
     status_t finalize(const char *tags);
     status_t apply_kernel_override(std::string ovr_strategy, const char *tags);
+    gemmstone::CommonDriverInfo driver_info_of(
+            const gemmstone::GEMMStrategy &strategy) const;
     void update_driver_info();
 };
 
@@ -161,7 +164,6 @@ struct gen_nocopy_desc_t : public gen_desc_t {
 
 private:
     std::string tags_;
-    gemmstone::EvaluateParams eval_params_;
     gemmstone::Type Ts_;
     gemmstone::Scalar beta_;
 };

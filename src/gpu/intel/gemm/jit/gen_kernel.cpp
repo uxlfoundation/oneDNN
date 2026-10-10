@@ -14,6 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstring>
+#include <sstream>
+#include <stdexcept>
+#include <tuple>
+
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 
 #include "common/c_types_map.hpp"
@@ -72,6 +77,28 @@ std::string serialize_dispatch(const EvaluateAuxOutput &aux) {
     return " | dispatch k0=" + std::to_string(aux.k0) + " wgK="
             + std::to_string(aux.wgK);
 }
+
+#ifdef DNNL_DEV_MODE
+// Parses and trims the dispatch section off `str`; returns whether present.
+bool parse_dispatch(std::string &str, int64_t &k0, int &wgK) {
+    auto pos = str.find('|');
+    if (pos == std::string::npos) return false;
+    std::stringstream ss(str.substr(pos + 1));
+    std::string tok;
+    ss >> tok;
+    if (tok != "dispatch") throw std::runtime_error("bad dispatch section");
+    while (ss >> tok) {
+        if (tok.rfind("k0=", 0) == 0)
+            k0 = std::stoll(tok.substr(3));
+        else if (tok.rfind("wgK=", 0) == 0)
+            wgK = std::stoi(tok.substr(4));
+        else
+            throw std::runtime_error("bad dispatch token " + tok);
+    }
+    str.resize(pos);
+    return true;
+}
+#endif
 } // anonymous namespace
 
 bool enable_generator_dsl() {
@@ -117,9 +144,142 @@ static gemmstone::Scalar stringToScalar(std::string val) {
         default: return Scalar(std::stoi(val));
     }
 }
+
+status_t gen_desc_t::apply_kernel_override(
+        std::string ovr_strategy, const char *tags) {
+    try {
+        // Warning: will override problem data types (including up/down
+        // conversions) - this will cause inaccuracies if precisions/layouts
+        // are chosen that are incompatible with the given problem
+        entry_ = nullptr;
+        const auto pd_layout = std::make_tuple(
+                problem_.A.layout, problem_.B.layout, problem_.C.layout);
+        const Scalar pd_alpha = problem_.alpha, pd_beta = problem_.beta;
+        std::stringstream ss(ovr_strategy);
+        std::string val;
+        // Skip problem tokens printed before `gemm`; the pd sets them.
+        for (ss >> val; ss && val != "gemm"; ss >> val) {
+            bool known = false;
+            for (const char *p :
+                    {"batch", "offset", "scale", "suma", "sumb", "bias"})
+                known |= val.rfind(p, 0) == 0;
+            if (!known) throw std::runtime_error("unexpected token " + val);
+        }
+        if (val != "gemm") throw std::runtime_error("expected 'gemm' prefix");
+        ss >> val;
+        const char *pstr = val.c_str();
+        // Cannot modify external data types
+        Type ext_dt;
+        pstr = parsePrecisions(pstr, ext_dt, problem_.Ta);
+        if (ext_dt != problem_.Ta_ext)
+            throw std::runtime_error("invalid external A data type");
+        pstr = parsePrecisions(pstr, ext_dt, problem_.Tb);
+        if (ext_dt != problem_.Tb_ext)
+            throw std::runtime_error("invalid external B data type");
+        if (*pstr == '[') {
+            pstr = parsePrecisions(pstr, problem_.Tc, ext_dt);
+            if (ext_dt != problem_.Tc_ext)
+                throw std::runtime_error("invalid external C data type");
+        } else {
+            pstr = parsePrecision(pstr, problem_.Tc);
+        }
+        ss >> val;
+        pstr = val.c_str();
+        pstr = parseLayout(pstr, problem_.A);
+        pstr = parseLayout(pstr, problem_.B);
+        pstr = parseLayout(pstr, problem_.C);
+        if (std::make_tuple(problem_.A.layout, problem_.B.layout,
+                    problem_.C.layout)
+                != pd_layout)
+            throw std::runtime_error("layout mismatch");
+
+        if (problem_.A.alignment == 0)
+            problem_.A.setAlignment(
+                    problem_.A.defaultAlignment(problem_.Ta_ext));
+        if (problem_.B.alignment == 0)
+            problem_.B.setAlignment(
+                    problem_.B.defaultAlignment(problem_.Tb_ext));
+        if (problem_.C.alignment == 0)
+            problem_.C.setAlignment(
+                    problem_.C.defaultAlignment(problem_.Tc_ext));
+
+        // The real alignment must cover the string's; Xe2/Xe3 bump block 2D
+        // operands to 16 themselves.
+        bool xe2_bump = hw_ == ngen::HW::Xe2 || hw_ == ngen::HW::Xe3;
+        auto align_ok = [&](int pd, int ovr, char req) {
+            return pd % ovr == 0
+                    || (xe2_bump && ovr == 16 && std::strchr(tags, req));
+        };
+        if (!align_ok(pd_align_[0], problem_.A.alignment, kcatalog::ReqBlock2DA)
+                || !align_ok(pd_align_[1], problem_.B.alignment,
+                        kcatalog::ReqBlock2DB)
+                || pd_align_[2] % problem_.C.alignment)
+            throw std::runtime_error("alignment too strong");
+
+        strategy_ = GEMMStrategy(hw_, stepping_);
+        ss >> strategy_.unroll[LoopM];
+        ss >> strategy_.unroll[LoopN];
+
+        ss >> val;
+        problem_.alpha = stringToScalar(val);
+        ss >> val;
+        problem_.beta = stringToScalar(val);
+        // A fixed scalar must match the problem's; `-` accepts any.
+        auto scalar_ok = [](const Scalar &pd, const Scalar &ovr) {
+            return !ovr.fixed() || (pd.fixed() && int(pd) == int(ovr));
+        };
+        if (!scalar_ok(pd_alpha, problem_.alpha)
+                || !scalar_ok(pd_beta, problem_.beta))
+            throw std::runtime_error("alpha/beta mismatch");
+
+        if (!ss) throw std::runtime_error("truncated kernel string");
+        ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
+
+        int64_t disp_k0 = 0;
+        int disp_wgK = 1;
+        bool have_disp = parse_dispatch(ovr_strategy, disp_k0, disp_wgK);
+
+        parseStrategy(ovr_strategy, problem_, strategy_);
+
+        // Later k-chunks accumulate (catalog parity).
+        auto block_k = strategy_.blocking[LoopK];
+        if (block_k > 0 && k_ > block_k && !problem_.beta1())
+            problem_.beta = Scalar();
+
+        if (have_disp) {
+            aux_params_ = EvaluateAuxOutput();
+            aux_params_.k0 = disp_k0;
+            aux_params_.wgK = disp_wgK;
+            aux_params_.kParallel = strategy_.kParallel;
+            aux_params_.kParallelVariable = strategy_.kParallelVariable;
+        } else if (strategy_.kParallelLocal) {
+            // W model.
+            if (strategy_.wg[LoopK] < 1 || strategy_.unroll[LoopK] < 1)
+                throw std::runtime_error("invalid k-parallel-local geometry");
+            aux_params_.k0
+                    = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
+                            strategy_.unroll[LoopK]);
+            aux_params_.wgK = std::max(1,
+                    std::min(strategy_.wg[LoopK],
+                            int(utils::div_up(k_, aux_params_.k0))));
+        } else {
+            aux_params_.k0 = EvaluateAuxOutput().k0;
+            aux_params_.wgK = EvaluateAuxOutput().wgK;
+        }
+    } catch (const std::exception &e) {
+        VDEBUGINFO(1, primitive, gpu, "%s,%s", "jit::gemm kernel override",
+                e.what());
+        return status::unimplemented;
+    }
+    return status::success;
+}
 #endif
 
 status_t gen_desc_t::finalize(const char *tags) {
+    pd_align_[0] = problem_.A.alignment;
+    pd_align_[1] = problem_.B.alignment;
+    pd_align_[2] = problem_.C.alignment;
+
     // Update problem alignments to match catalog entry.
     // Do not raise an alignment above the actual buffer alignment: catalog
     // entries may accept lower alignments than driverInfo.alignment via
@@ -152,69 +312,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     std::string ovr_strategy
             = gpu_utils::dev_getenv("GEMM_KERNEL", kernel_override_);
     if (!ovr_strategy.empty()) {
-        entry_ = nullptr;
-        std::stringstream ss(ovr_strategy);
-        std::string val;
-        ss >> val;
-        gpu_assert(val == "gemm");
-        ss >> val;
-        const char *pstr = val.c_str();
-        // Cannot modify external data types
-        Type ext_dt;
-        pstr = parsePrecisions(pstr, ext_dt, problem_.Ta);
-        gpu_assert(ext_dt == problem_.Ta_ext) << "Invalid external A data type";
-        pstr = parsePrecisions(pstr, ext_dt, problem_.Tb);
-        gpu_assert(ext_dt == problem_.Tb_ext) << "Invalid external B data type";
-        if (*pstr == '[') {
-            pstr = parsePrecisions(pstr, problem_.Tc, ext_dt);
-            gpu_assert(ext_dt == problem_.Tc_ext)
-                    << "Invalid external C data type";
-        } else {
-            pstr = parsePrecision(pstr, problem_.Tc);
-        }
-        ss >> val;
-        pstr = val.c_str();
-        pstr = parseLayout(pstr, problem_.A);
-        pstr = parseLayout(pstr, problem_.B);
-        pstr = parseLayout(pstr, problem_.C);
-
-        if (problem_.A.alignment == 0)
-            problem_.A.setAlignment(
-                    problem_.A.defaultAlignment(problem_.Ta_ext));
-        if (problem_.B.alignment == 0)
-            problem_.B.setAlignment(
-                    problem_.B.defaultAlignment(problem_.Tb_ext));
-        if (problem_.C.alignment == 0)
-            problem_.C.setAlignment(
-                    problem_.C.defaultAlignment(problem_.Tc_ext));
-
-        strategy_ = GEMMStrategy(hw_, stepping_);
-        ss >> strategy_.unroll[LoopM];
-        ss >> strategy_.unroll[LoopN];
-
-        ss >> val;
-        problem_.alpha = stringToScalar(val);
-        ss >> val;
-        problem_.beta = stringToScalar(val);
-
-        ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
-        parseStrategy(ovr_strategy, problem_, strategy_);
-
-        // TODO: override derived values in aux_params_ in a way that's
-        // consistent with the kernel evaluator (typically requires extra
-        // benchmarking data not supplied with the kernel override string)
-        // Currently: assume the W model because it's simple
-        if (strategy_.kParallelLocal) {
-            aux_params_.k0
-                    = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
-                            strategy_.unroll[LoopK]);
-            aux_params_.wgK = std::max(1,
-                    std::min(strategy_.wg[LoopK],
-                            int(utils::div_up(k_, aux_params_.k0))));
-        } else {
-            aux_params_.k0 = EvaluateAuxOutput().k0;
-            aux_params_.wgK = EvaluateAuxOutput().wgK;
-        }
+        CHECK(apply_kernel_override(std::move(ovr_strategy), tags));
     } else {
 #endif
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];

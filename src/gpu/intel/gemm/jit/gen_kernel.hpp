@@ -122,6 +122,7 @@ protected:
     bool efficient_64b_ = false;
 
     std::string kernel_override_;
+    int pd_align_[3] = {1, 1, 1}; // real data alignment
 
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;
@@ -130,6 +131,7 @@ protected:
     bool relaxed_acc_ = false;
 
     status_t finalize(const char *tags);
+    status_t apply_kernel_override(std::string ovr_strategy, const char *tags);
     void update_driver_info();
 };
 

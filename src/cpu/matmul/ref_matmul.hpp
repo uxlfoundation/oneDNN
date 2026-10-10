@@ -108,8 +108,9 @@ struct ref_matmul_t : public primitive_t {
                                     | smask_t::post_ops_inplace,
                             dst_type),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(attr_.post_ops_.check_sum_consistency(dst_type,
-                                     /* is_int8 */ false),
+            VDISPATCH_MATMUL(
+                    attr_.post_ops_.check_sum_consistency(dst_type,
+                            /* is_int8 */ types::is_integral_dt(dst_type)),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -119,13 +120,13 @@ struct ref_matmul_t : public primitive_t {
                             quantization_mode::dynamic_mx,
                             quantization_mode::dynamic_fp},
                     {{DNNL_ARG_SRC, {any_mask}}}));
-            CHECK(attr_zero_points_ok(engine, {DNNL_ARG_WEIGHTS},
+            CHECK(attr_zero_points_ok(engine, {DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
                     {quantization_mode::static_sazp}));
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
-            CHECK(dropout_ok());
+            CHECK(dropout_ok(engine));
 
             init_scratchpad();
 
@@ -138,7 +139,7 @@ struct ref_matmul_t : public primitive_t {
     private:
         void init_scratchpad();
 
-        status_t dropout_ok() const {
+        status_t dropout_ok(const engine_t *engine) const {
             if (attr_.dropout_.has_default_values()) return status::success;
 
             assert(memory_desc_wrapper(dst_md(0)).format_kind()
@@ -146,8 +147,8 @@ struct ref_matmul_t : public primitive_t {
 
             using namespace format_tag;
             // See `ref_dropout(...)` comment which explains the requirement.
-            VDISPATCH_MATMUL_IC(memory_desc_matches_one_of_tag(
-                                        *dst_md(0), ncdhw, nchw, ncw, nc)
+            VDISPATCH_MATMUL(memory_desc_matches_one_of_tag(
+                                     *dst_md(0), ncdhw, nchw, ncw, nc)
                             && IMPLICATION(attr_.dropout_.has_output_mask(),
                                     memory_desc_wrapper(dst_md(0)).similar_to(
                                             attr_.dropout_.dropout_desc_, true,

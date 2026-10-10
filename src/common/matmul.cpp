@@ -297,9 +297,13 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         attr_mask |= smask_t::scales_groups;
     }
 
+    const bool dst_is_int = types::is_integral_dt(dst_dt);
     const bool dst_is_fp8
             = utils::one_of(dst_dt, data_type::f8_e5m2, data_type::f8_e4m3);
     const bool dst_is_fp4 = utils::one_of(dst_dt, data_type::f4_e2m1);
+    // Matmul supports a destination zero point for an integer destination data
+    // type regardless of the source data type.
+    if (dst_is_int) attr_mask |= smask_t::zero_points;
     // grouped dst scales are supported for MXFP
     if (dst_is_fp8 || dst_is_fp4) attr_mask |= smask_t::scales_groups;
 
@@ -316,6 +320,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     const int n_idx = ndims_wei - 1;
     const dim_t K = desc.weights_desc.dims[k_idx_wei];
     const dim_t N = desc.weights_desc.dims[n_idx];
+    const dim_t M = desc.src_desc.dims[m_idx];
 
     assert(ndims_src >= 2);
     assert(ndims_wei >= 2);
@@ -365,6 +370,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     src_scale_group_k = sc.get_group(DNNL_ARG_SRC, 1);
             }
 
+            // A group size must divide the corresponding dimension, otherwise
+            // the quantization is ill-defined.
+            VCHECK_MATMUL(
+                    K % src_scale_group_k == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+
             // Due to hardware specifics, groups, when more than 1, should be
             // multiple of 16.
             VCHECK_MATMUL_UNIMPL(
@@ -388,6 +398,13 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     wei_scale_group_n = sc.get_group(DNNL_ARG_WEIGHTS, 1);
             }
 
+            // A group size must divide the corresponding dimension, otherwise
+            // the quantization is ill-defined.
+            VCHECK_MATMUL(
+                    K % wei_scale_group_k == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VCHECK_MATMUL(
+                    N % wei_scale_group_n == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+
             // Due to hardware specifics, groups, when more than 1, should be
             // multiple of 16.
             VCHECK_MATMUL_UNIMPL(
@@ -410,6 +427,22 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     utils::one_of(mask_dst, 0, dst_qmask_N, dst_qmask_M,
                             dst_qmask_N + dst_qmask_M, full_tensor_mask),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            dim_t dst_scale_group_m = 1;
+            dim_t dst_scale_group_n = 1;
+            if (!sc.get(DNNL_ARG_DST).has_default_groups()) {
+                if (mask_dst & dst_qmask_M)
+                    dst_scale_group_m = sc.get_group(DNNL_ARG_DST, -2);
+                if (mask_dst & dst_qmask_N)
+                    dst_scale_group_n = sc.get_group(DNNL_ARG_DST, -1);
+            }
+
+            // A group size must divide the corresponding dimension, otherwise
+            // the quantization is ill-defined.
+            VCHECK_MATMUL(
+                    M % dst_scale_group_m == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VCHECK_MATMUL(
+                    N % dst_scale_group_n == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check dependency between scales.
@@ -464,6 +497,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
         dim_t src_zp_group_k = 1;
         if (!zp.has_default_values(DNNL_ARG_SRC)) {
+            // Zero points are a quantization property and are only meaningful
+            // for a quantized source data type.
+            VCHECK_MATMUL_UNIMPL(src_is_int8 || src_is_fp8 || src_is_fp4,
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+
             const int mask_src = zp.get_mask(DNNL_ARG_SRC);
 
             VCHECK_MATMUL_UNIMPL(
@@ -498,6 +536,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         dim_t wei_zp_group_k = 1;
         dim_t wei_zp_group_n = 1;
         if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
+            // Zero points are a quantization property and are only meaningful
+            // for a quantized weights data type.
+            VCHECK_MATMUL_UNIMPL(wei_is_int || wei_is_fp8 || wei_is_fp4,
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+
             const int mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
 
             VCHECK_MATMUL(mask_fits_ndims(mask_wei, ndims_wei),
@@ -540,6 +583,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         }
 
         if (!zp.has_default_values(DNNL_ARG_DST)) {
+            // Zero points are a quantization property and are only meaningful
+            // for an integer destination data type.
+            VCHECK_MATMUL_UNIMPL(
+                    types::is_integral_dt(dst_dt), VERBOSE_UNSUPPORTED_ZP_CFG);
+
             const int mask_dst = zp.get_mask(DNNL_ARG_DST);
 
             VCHECK_MATMUL_UNIMPL(mask_dst == 0
@@ -629,9 +677,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                 po.has_default_values({binary, eltwise, prelu, sum}),
                 VERBOSE_UNSUPPORTED_POSTOP);
 
-        // Check sum
-        VCHECK_MATMUL_UNIMPL(
-                po.check_sum_consistency(dst_dt, src_is_int8, true),
+        // Check sum. A non-zero sum zero-point is a property of a quantized
+        // (integer) destination, which is what the zero-point is applied to,
+        // and is independent of the source data type.
+        VCHECK_MATMUL_UNIMPL(po.check_sum_consistency(dst_dt,
+                                     types::is_integral_dt(dst_dt), true),
                 VERBOSE_UNSUPPORTED_POSTOP);
 
         // Note: verbose support is inside the call.

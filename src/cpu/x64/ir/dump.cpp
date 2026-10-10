@@ -407,6 +407,53 @@ std::string ir_dump(const ir_t &ir, cpu_isa_t isa, const reg_pools_t &pools,
     return ss.str();
 }
 
+// Diagnostics
+//
+// Checks that find likely mistakes in the IR, such as operations whose values
+// are never read. They run as a part of the debug output, and each check
+// prints its summary line only when it finds something.
+
+// Returns the line that lists the dead operations, or an empty string when
+// there are none. An operation is dead when it writes at least one vreg, and
+// none of the vregs that it writes is live after it. So none of the values
+// that it writes is ever read. An operation that also writes a scratch vreg,
+// such as the workspace of `vhreduce`, is not dead while another of its writes
+// is read.
+//
+// A vreg is live after operation `i` when it is live on entry to a successor
+// of `i`. Among the operations that write a vreg, only `loop_end` has a
+// successor other than `i + 1`: the first operation of the loop body, by the
+// back-edge. `jmp`, `jz`, and `label` write no vreg (see `ir_t::def_use()`).
+std::string dead_ops_line(const ir_t &ir) {
+    std::vector<std::vector<int8_t>> live_in;
+    compute_liveness(ir, live_in);
+
+    const auto live_after = [&](int i, int v) {
+        const op_t &op = ir.ops()[i];
+        if (i + 1 < ir.n_ops() && live_in[i + 1][v]) return true;
+
+        return op.kind == op_kind_t::loop_end && live_in[op.match + 1][v];
+    };
+
+    std::string s;
+    std::vector<int> defs, uses;
+    for (int i = 0; i < ir.n_ops(); i++) {
+        ir.def_use(ir.ops()[i], defs, uses);
+        assert((defs.empty() || (ir.ops()[i].kind != op_kind_t::jmp
+                                        && ir.ops()[i].kind != op_kind_t::jz))
+                && "dead_ops_line: a branch that writes a vreg needs its "
+                   "successors here");
+        const bool dead = !defs.empty()
+                && std::none_of(defs.begin(), defs.end(),
+                        [&](int v) { return live_after(i, v); });
+        if (!dead) continue;
+        if (!s.empty()) s += ", ";
+        s += std::to_string(i);
+    }
+
+    return s.empty() ? s : "dead ops: " + s + "\n";
+}
+
 } // namespace
 
 bool has_x64ir_token(const std::string &verbose_value) {
@@ -439,6 +486,7 @@ std::string kernel_dump_str(const jit_generator_t &gen, const ir_t &ir,
        << " bytes)\n";
     ss << alloc_lines(ir, pools, alloc, pressure);
     ss << spill_lines(ir, isa, pools, alloc);
+    ss << dead_ops_line(ir);
     ss << "\n" << ir_dump(ir, isa, pools, alloc, pressure);
     ss << "end x64ir\n";
 

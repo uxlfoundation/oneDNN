@@ -245,6 +245,8 @@ The output is useful in these cases:
 * **Checking register capacity.** The summary shows the number of registers
   available in each register file and the maximum number the kernel needs at
   once. The difference shows how many more values can be added without spilling.
+* **Finding dead operations.** The summary lists the operations that write
+  only values that are never read. The builder should not emit them.
 * **Comparing two versions.** The output does not change from run to run. A
   `diff` of the output before and after a change shows how the change affected
   the kernel.
@@ -321,6 +323,9 @@ The lines mean the following:
   slots.
 * `spill g1@[rsp+0]: ops 1, 29` is a spilled virtual register, its stack slot,
   and the operations that load or store the slot.
+* `dead ops: 9, 15, 16` lists the operations that write only values that are
+  never read. Such an operation does no useful work. The line is printed only
+  when the IR has such operations.
 * Each line of the IR dump has the operation index, the register pressure of
   each register file, and the operation. The register pressure is the number of
   virtual registers of the file that are live on entry to the operation or

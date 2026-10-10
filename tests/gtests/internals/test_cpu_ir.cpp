@@ -20,6 +20,7 @@
 #include <memory>
 #include <regex>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -1478,6 +1479,7 @@ alloc gpr: pool 2, peak 3 at op 3, spilled 2
 alloc vec: pool 16, peak 2 at op 4, spilled 0
 spill g1@[rsp+0]: ops 1, 5
 spill g2@[rsp+8]: ops 3, 6
+dead ops: 4
 
 index | gpr vec | operation
     0 |   1   0 | load g0@rax, [param+0]
@@ -1496,6 +1498,7 @@ alloc vec: pool 32, peak 1 at op 4, spilled 0
 alloc mask: pool 7, peak 1 at op 2, spilled 0
 spill g1@[rsp+0]: ops 1, 5
 spill g2@[rsp+8]: ops 3, 6
+dead ops: 4
 
 index | gpr vec mask | operation
     0 |   1   0    0 | load g0@rax, [param+0]
@@ -1522,6 +1525,68 @@ end x64ir
         EXPECT_EQ(kernel_dump_str(gen, ir, data_section_t(), reg_cfg, alloc),
                 c.second);
     }
+}
+
+// Diagnostics tests
+//
+// Checks that the summary lists exactly the dead operations, the operations
+// that write only values that are never read. No pipeline data says which
+// operations are dead, so the IR is built with known dead operations. It also
+// has the cases that must not be listed: a value read only on the next loop
+// iteration, a value read only after a `jz` skips its overwrite, the loop
+// counter, which only the back-edge reads, a `vhreduce` that writes a dead
+// workspace and a live accumulator, and operations that write no vreg.
+TEST(DumpTests, DeadOpsLineListsOpsWhoseValuesAreNeverRead) {
+    using namespace data_type;
+    ir_t ir;
+    const vreg_t ptr = ir.new_gpr();
+    const vreg_t step = ir.new_gpr();
+    const vreg_t n = ir.new_gpr();
+    const vreg_t q = ir.new_gpr();
+    const vreg_t cnt = ir.new_gpr();
+    const vreg_t acc = ir.new_vec(f32);
+    const vreg_t x = ir.new_vec(f32);
+    const vreg_t ws = ir.new_vec(f32);
+    const label_t skip = ir.new_label();
+
+    ir.load_param(ptr, 0);
+    ir.load_param(n, 8);
+    const int overwritten = ir.n_ops();
+    ir.mov_imm(step, 1); // dead: the next operation overwrites `step`
+    ir.mov_imm(step, 64); // read after the `jz` when `n` is 0
+    ir.jz(n, skip);
+    ir.mov_imm(step, 128);
+    ir.label(skip);
+    ir.mov_reg(q, ptr);
+    ir.vzero(acc);
+    const int begin = ir.loop_begin_imm(cnt, 4);
+    ir.vload(x, q, 0, f32);
+    ir.vadd(acc, x);
+    ir.add_imm(q, 64); // read by `vload` on the next iteration only
+    ir.loop_end(cnt, begin);
+    ir.vhreduce(acc, ws);
+    ir.vstore(ptr, 0, acc, f32);
+    ir.add_reg(ptr, step);
+    ir.vstore(ptr, 0, acc, f32);
+    const int after_last_read = ir.n_ops();
+    ir.add_imm(ptr, 64); // dead: nothing reads `ptr` after it
+
+    // The summary needs a generator and an allocation. The generator emits no
+    // code, so the test runs on any machine.
+    const ir_kernel_t gen(ir);
+    const reg_config_t reg_cfg = make_reg_config(
+            gen.max_cpu_isa(), abi_param1.getIdx(), Xbyak::Operand::RSP, {});
+    const reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools);
+    const data_section_t data;
+
+    std::vector<std::string> found;
+    std::istringstream ss(kernel_dump_str(gen, ir, data, reg_cfg, alloc));
+    for (std::string line; std::getline(ss, line);)
+        if (line.rfind("dead ops: ", 0) == 0) found.push_back(line);
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_EQ(found[0],
+            "dead ops: " + std::to_string(overwritten) + ", "
+                    + std::to_string(after_last_read));
 }
 
 } // namespace dnnl

@@ -98,100 +98,6 @@ bool parse_dispatch(std::string &str, int64_t &k0, int &wgK) {
     str.resize(pos);
     return true;
 }
-
-// Copies of the kernel_evaluator.cpp helpers (roundUp wraps at 256).
-int roundDownSmallPow2(uint16_t x) {
-    if (x <= 1) return 1;
-    int y = 0;
-    if (x >= 256) { x >>= 8; y += 8; }
-    if (x >= 16) { x >>= 4; y += 4; }
-    if (x >= 4) { x >>= 2; y += 2; }
-    if (x >= 2) y++;
-    return 1 << y;
-}
-
-int roundUpSmallPow2(uint8_t x) {
-    if (x <= 1) return 1;
-    x--;
-    int y = 0;
-    if (x >= 16) { x >>= 4; y += 4; }
-    if (x >= 4) { x >>= 2; y += 2; }
-    if (x >= 2) y++;
-    return 2 << y;
-}
-
-// Model-free dispatch for a catalog-form override: the E evaluator formulas
-// with its two score comparisons replaced by fixed rules (H1, H2).
-EvaluateAuxOutput override_dispatch(const CommonDriverInfo &di,
-        const DerivedEvaluateParams &dp, const char *&rule) {
-    static const int64_t kv_min_k_cap_per_u
-            = gpu_utils::dev_getenv("ONEDNN_GEMM_KV_MIN_K_CAP_PER_U", 65536);
-    EvaluateAuxOutput aux;
-    int64_t k = dp.sizes.k;
-    int u = di.unroll[LoopK], wg_k = di.wg[LoopK];
-    int pad = di.kPadding() ? 1 : 0;
-    double T = std::max(1.0, dp.threadCount);
-    int cap = dp.hwThreadCapacity, pwc = dp.partialWaveCount;
-    int64_t wg_count = dp.wgCountM * dp.wgCountN * dp.sizes.batch;
-    auto local_k0 = [&](int wgk) {
-        return std::max<int64_t>(
-                utils::rnd_up(utils::div_up(k, int64_t(wgk)), int64_t(u)),
-                2 * u);
-    };
-    if (di.kParallel()) {
-        rule = "kb";
-        int wgc = (dp.deterministic || dp.noCAtomics)
-                ? 1
-                : std::max(1, int(cap / T) - pad);
-        aux.kParallel = true;
-        aux.k0 = std::max<int64_t>(1,
-                utils::rnd_up(
-                        utils::div_up(k, int64_t(wgc) * wg_k), int64_t(u)));
-        aux.wgK = std::min(wg_k, std::max(1, int(utils::div_up(k, aux.k0))));
-    } else if (di.kParallelVariable()) {
-        auto tcount = int64_t(T);
-        bool try_kv = (tcount != T || tcount % cap != 0)
-                && (!dp.deterministic || T > cap);
-        if (try_kv && k * cap >= kv_min_k_cap_per_u * u) {
-            rule = "H1on";
-            aux.kParallelVariable = true;
-            aux.wgK = wg_count < pwc
-                    ? std::min(wg_k,
-                            roundUpSmallPow2(uint8_t(
-                                    utils::div_up(pwc, int(wg_count)))))
-                    : 1;
-            if (T * k / cap <= 32 && !dp.deterministic) {
-                aux.kParallel = true;
-                aux.kParallelVariable = false;
-                aux.k0 = utils::rnd_up(
-                        utils::div_up(k,
-                                int64_t(std::max(1, int(cap / T) - pad))
-                                        * aux.wgK),
-                        int64_t(u));
-            }
-        } else {
-            int fill = T < cap ? std::min(wg_k,
-                               roundDownSmallPow2(
-                                       uint16_t(std::floor(cap / T))))
-                               : 1;
-            bool use_fill = fill > 1 && k >= 2 * u * fill;
-            rule = use_fill ? "H2fill" : "H2none";
-            aux.wgK = use_fill ? fill : 1;
-            if (di.kParallelLocal()) aux.k0 = local_k0(aux.wgK);
-        }
-    } else if (di.shrinkWGK()) {
-        rule = "akr";
-        aux.wgK = roundUpSmallPow2(
-                uint8_t(std::ceil(cap * wg_k * di.fillGoal() / T)));
-    } else {
-        rule = "wg";
-        aux.wgK = wg_k;
-        if (di.kParallelLocal()) aux.k0 = local_k0(aux.wgK);
-    }
-    if (di.fixedWGK()) aux.wgK = wg_k;
-    aux.wgK = std::min(aux.wgK, wg_k);
-    return aux;
-}
 #endif
 } // anonymous namespace
 
@@ -356,11 +262,13 @@ status_t gen_desc_t::apply_kernel_override(
                 throw std::runtime_error("no catalog entry for dispatch");
             kcatalog::Entry e = *selected;
             e.driverInfo = driver_info_of(st);
-            const char *rule = "";
-            aux_params_ = override_dispatch(
-                    e.driverInfo, getDerivedParams(e, eval_params_), rule);
-            VDEBUGINFO(1, primitive, gpu, "%s,rule=%s,k0=%lld,wgK=%d",
-                    "jit::gemm override dispatch", rule,
+            static const int64_t kv_min_k_cap_per_u = gpu_utils::dev_getenv(
+                    "ONEDNN_GEMM_KV_MIN_K_CAP_PER_U", 65536);
+            aux_params_ = evaluateFixed(e, getDerivedParams(e, eval_params_),
+                    kv_min_k_cap_per_u);
+            VDEBUGINFO(1, primitive, gpu, "%s,kv=%d,kb=%d,k0=%lld,wgK=%d",
+                    "jit::gemm override dispatch",
+                    aux_params_.kParallelVariable, aux_params_.kParallel,
                     (long long)aux_params_.k0, aux_params_.wgK);
         }
     } catch (const std::exception &e) {

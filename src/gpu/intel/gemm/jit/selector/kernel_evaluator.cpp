@@ -357,24 +357,54 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
 #undef PARAM
 }
 
+static int kParallelK0(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, int waves)
+{
+    int padWGs = e.driverInfo.kPadding() ? 1 : 0;
+    int wgCountK = std::max(1, int(waves * dp.hwThreadCapacity / dp.threadCount) - padWGs);
+
+    if (dp.deterministic || dp.noCAtomics) wgCountK = 1;    /* k-parallelization is not deterministic */
+
+    auto k0 = int(alignUp(divUp(dp.sizes.k, wgCountK * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
+    return std::max(k0, 1);
+}
+
+static bool tryKV(const DerivedEvaluateParams &dp)
+{
+    if (dp.batch)
+        return false;
+
+    auto tcount = int64_t(dp.threadCount);
+    bool tryKV = (tcount != dp.threadCount) || (tcount % dp.hwThreadCapacity != 0);
+
+    if (dp.noCAtomics)
+        tryKV &= dp.cConvert;   /* atomics will be on temporary C */
+    if (dp.deterministic)
+        tryKV &= (dp.threadCount > dp.hwThreadCapacity);
+
+    return tryKV;
+}
+
+static void kvToKB(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, EvaluateAuxOutput &aux)
+{
+    auto approxK0 = dp.threadCount * dp.sizes.k / dp.hwThreadCapacity;
+    if (approxK0 <= 32 && !dp.deterministic) {
+        aux.kParallel = true;     /* Switch to fixed global k-slicing if k0 is too small */
+        aux.kParallelVariable = false;
+        int padWGs = e.driverInfo.kPadding() ? 1 : 0;
+        int wgCountK = std::max(1, int(dp.hwThreadCapacity / dp.threadCount) - padWGs);
+        aux.k0 = alignUp(divUp(dp.sizes.k, wgCountK * aux.wgK), e.driverInfo.unroll[LoopK]);
+    }
+}
+
 double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, EvaluateAuxOutput &aux)
 {
     if (e.driverInfo.kParallel()) {
         // Consider choosing k0 to get as close as possible to 1 or 2 full waves.
-        int padWGs = e.driverInfo.kPadding() ? 1 : 0;
-        int wgCountK1 = std::max(1, int(dp.hwThreadCapacity / dp.threadCount) - padWGs);
-        int wgCountK2 = std::max(1, int(2 * dp.hwThreadCapacity / dp.threadCount) - padWGs);
+        auto k0_1 = kParallelK0(e, dp, 1);
+        auto k0_2 = kParallelK0(e, dp, 2);
 
-        if (dp.deterministic || dp.noCAtomics) wgCountK1 = wgCountK2 = 1;    /* k-parallelization is not deterministic */
-
-        auto k0_1 = int(alignUp(divUp(dp.sizes.k, wgCountK1 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
-        auto k0_2 = int(alignUp(divUp(dp.sizes.k, wgCountK2 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
-
-        k0_1 = std::max(k0_1, 1);
-        k0_2 = std::max(k0_2, 1);
-
-        wgCountK1 = std::max(1, int(divUp(dp.sizes.k, k0_1 * e.driverInfo.wg[LoopK])));
-        wgCountK2 = std::max(1, int(divUp(dp.sizes.k, k0_2 * e.driverInfo.wg[LoopK])));
+        int wgCountK1 = std::max(1, int(divUp(dp.sizes.k, k0_1 * e.driverInfo.wg[LoopK])));
+        int wgCountK2 = std::max(1, int(divUp(dp.sizes.k, k0_2 * e.driverInfo.wg[LoopK])));
 
         auto dp1 = dp;
         dp1.wgCountK = wgCountK1;
@@ -424,33 +454,14 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
             }
         }
 
-        if (dp.batch)
-            return score;
-
-        auto tcount = int64_t(dp.threadCount);
-        bool tryKV = (tcount != dp.threadCount) || (tcount % dp.hwThreadCapacity != 0);
-
-        if (dp.noCAtomics)
-            tryKV &= dp.cConvert;   /* atomics will be on temporary C */
-        if (dp.deterministic)
-            tryKV &= (dp.threadCount > dp.hwThreadCapacity);
-
-        if (tryKV) {
+        if (tryKV(dp)) {
             EvaluateAuxOutput auxKV;
             auxKV.kParallelVariable = true;
             double scoreKV = evaluateECore(e, dp, auxKV);
             if (scoreKV < score) {
                 score = scoreKV;
                 aux = auxKV;
-
-                auto approxK0 = dp.threadCount * dp.sizes.k / dp.hwThreadCapacity;
-                if (approxK0 <= 32 && !dp.deterministic) {
-                    aux.kParallel = true;     /* Switch to fixed global k-slicing if k0 is too small */
-                    aux.kParallelVariable = false;
-                    int padWGs = e.driverInfo.kPadding() ? 1 : 0;
-                    int wgCountK = std::max(1, int(dp.hwThreadCapacity / dp.threadCount) - padWGs);
-                    aux.k0 = alignUp(divUp(dp.sizes.k, wgCountK * aux.wgK), e.driverInfo.unroll[LoopK]);
-                }
+                kvToKB(e, dp, aux);
             }
         }
 
@@ -586,6 +597,30 @@ double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Evalu
     aux.disableAtomics = dp.noCAtomics;
 
     return score;
+}
+
+EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, int64_t kvMinKCapPerU)
+{
+    auto &di = e.driverInfo;
+    auto k = dp.sizes.k;
+    auto u = di.unroll[LoopK];
+
+    EvaluateAuxOutput aux;
+    aux.kParallel = di.kParallel();
+    if (aux.kParallel)
+        aux.k0 = kParallelK0(e, dp, 1);
+    else if (di.kParallelVariable())
+        aux.kParallelVariable = tryKV(dp) && k * dp.hwThreadCapacity >= kvMinKCapPerU * u;   /* H1 */
+
+    evaluateECore(e, dp, aux);
+
+    if (aux.kParallelVariable)
+        kvToKB(e, dp, aux);
+    else if (di.kParallelVariable() && aux.wgK > 1 && k < 2 * u * aux.wgK)
+        evaluateECore(e, dp, aux, true);    /* H2: no kr for short k slices */
+
+    aux.disableAtomics = dp.noCAtomics;
+    return aux;
 }
 
 void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux)

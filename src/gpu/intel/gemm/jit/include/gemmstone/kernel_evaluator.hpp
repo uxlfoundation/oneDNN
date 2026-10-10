@@ -65,6 +65,8 @@ struct EvaluateAuxOutput {
 DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateParams &p);
 double evaluate(const kcatalog::Entry &e, const EvaluateParams &p, EvaluateAuxOutput &aux);
 double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &p, EvaluateAuxOutput &aux);
+// Model-free evaluate(): fixed rules replace the model score comparisons.
+EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateParams &p, int64_t kvMinKCapPerU);
 
 void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux);
 

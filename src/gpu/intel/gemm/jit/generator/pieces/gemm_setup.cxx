@@ -954,12 +954,14 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
 
     if (problem.aOffset2D()) 
         scale(problem.Tao, inputs.ldao, ldaq);
+    // offset_Aq/offset_Bq address the vector/matrix quantization parameters;
+    // a scalar zero point must not be moved by them.
     if (problem.aoPtrDims >= 0)
-        scale(problem.Tao, inputs.offsetAO, inputs.offsetAq);
+        scale(problem.Tao, inputs.offsetAO, (problem.aoPtrDims >= 1) ? inputs.offsetAq : Subregister());
     if (problem.bOffset2D()) 
         scale(problem.Tbo, inputs.ldbo, ldbq);
     if (problem.boPtrDims >= 0)
-        scale(problem.Tbo, inputs.offsetBO, inputs.offsetBq);
+        scale(problem.Tbo, inputs.offsetBO, (problem.boPtrDims >= 1) ? inputs.offsetBq : Subregister());
     if (problem.aScale2D()) {
         scale(problem.Ta_scale, inputs.ldaScale, ldaq);
         scale(problem.Ta_scale, inputs.offsetAScale, inputs.offsetAq);

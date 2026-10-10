@@ -42,6 +42,62 @@ bool check_memory_storage(const memory_storage_t *storage, const char *name) {
     return false;
 }
 
+namespace {
+
+// Addressing of the 2D quantization parameters (zero points, scales and group
+// sums) of A or B. They always cover the whole matrix, so they are described
+// with the full m/n/k of the problem even when it is launched in blocks.
+struct quant_2d_t {
+    bool enabled = false;
+    bool mn_major = false; // m (A) or n (B) is the contiguous dimension
+    dim_t group_mn = 1;
+    dim_t group_k = 1;
+    dim_t ld = 0;
+
+    // Offset of the parameters for the block starting at (mn, k). The offset
+    // is shared with the zero points, so a zero point vector (indexed by mn
+    // only) keeps a plain row/column offset.
+    dim_t offset(int zp_dims, dim_t mn, dim_t k) const {
+        if (!enabled || zp_dims == 1) return mn;
+        dim_t i = mn / group_mn, j = k / group_k;
+        return mn_major ? i + j * ld : i * ld + j;
+    }
+};
+
+quant_2d_t quant_2d_a(const gemmstone::GEMMProblem &problem, dim_t m, dim_t k) {
+    quant_2d_t q;
+    q.enabled = problem.aOffset2D() || problem.aScale2D()
+            || problem.needsAGroupSums();
+    if (!q.enabled) return q;
+    auto layout = problem.needsAGroupSums() ? problem.Ag.layout
+            : problem.aScale2D()            ? problem.A_scale.layout
+                                            : problem.AO.layout;
+    q.mn_major = isColMajor(layout);
+    q.group_mn = std::max(problem.aqGroupM, 1);
+    q.group_k = std::max(problem.aqGroupK, 1);
+    q.ld = q.mn_major ? utils::div_up(m, q.group_mn)
+                      : utils::div_up(k, q.group_k);
+    return q;
+}
+
+quant_2d_t quant_2d_b(const gemmstone::GEMMProblem &problem, dim_t n, dim_t k) {
+    quant_2d_t q;
+    q.enabled = problem.bOffset2D() || problem.bScale2D()
+            || problem.needsBGroupSums();
+    if (!q.enabled) return q;
+    auto layout = problem.needsBGroupSums() ? problem.Bg.layout
+            : problem.bScale2D()            ? problem.B_scale.layout
+                                            : problem.BO.layout;
+    q.mn_major = !isColMajor(layout);
+    q.group_mn = std::max(problem.bqGroupN, 1);
+    q.group_k = std::max(problem.bqGroupK, 1);
+    q.ld = q.mn_major ? utils::div_up(n, q.group_mn)
+                      : utils::div_up(k, q.group_k);
+    return q;
+}
+
+} // namespace
+
 status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         intel::stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
@@ -137,26 +193,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, *bg);
     }
 
-    if (problem->aOffset2D() || problem->aScale2D()
-            || problem->needsAGroupSums()) {
-        auto layout = problem->needsAGroupSums() ? problem->Ag.layout
-                : problem->aScale2D()            ? problem->A_scale.layout
-                                                 : problem->AO.layout;
-        auto ldaq = into<int32_t>(isColMajor(layout)
-                        ? utils::div_up(m, problem->aqGroupM)
-                        : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
-        arg_list.set(argn++, ldaq);
-    }
-    if (problem->bOffset2D() || problem->bScale2D()
-            || problem->needsBGroupSums()) {
-        auto layout = problem->needsBGroupSums() ? problem->Bg.layout
-                : problem->bScale2D()            ? problem->B_scale.layout
-                                                 : problem->BO.layout;
-        auto ldbq = into<int32_t>(!isColMajor(layout)
-                        ? utils::div_up(n, problem->bqGroupN)
-                        : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
-        arg_list.set(argn++, ldbq);
-    }
+    // m and n are the sizes of the current block; the quantization parameters
+    // are laid out for the full problem.
+    auto full_m = swap_ab ? pd()->desc()->n() : pd()->desc()->m();
+    auto full_n = swap_ab ? pd()->desc()->m() : pd()->desc()->n();
+    auto a_quant = quant_2d_a(*problem, full_m, pd()->desc()->k());
+    auto b_quant = quant_2d_b(*problem, full_n, pd()->desc()->k());
+    if (a_quant.enabled) arg_list.set(argn++, into<int32_t>(a_quant.ld));
+    if (b_quant.enabled) arg_list.set(argn++, into<int32_t>(b_quant.ld));
     if (pd()->with_mx_scale()) {
         auto ldcq = pd()->desc()->m() / problem->cqGroupM;
         arg_list.set(argn++, ldcq);
@@ -605,6 +649,15 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (k_parallel_fixed)
         block_k = into<int32_t>(pd()->kernel_desc()->aux_params()->k0);
 
+    // Quantization groups must not straddle k blocks.
+    if (problem.quantized2DA())
+        block_k = utils::rnd_up(block_k, std::max(problem.aqGroupK, 1));
+    if (problem.quantized2DB())
+        block_k = utils::rnd_up(block_k, std::max(problem.bqGroupK, 1));
+
+    auto a_quant = quant_2d_a(problem, m, k);
+    auto b_quant = quant_2d_b(problem, n, k);
+
     block_m = utils::rnd_up(block_m, nocopy_info()->wgTile(gemmstone::LoopM));
     block_n = utils::rnd_up(block_n, nocopy_info()->wgTile(gemmstone::LoopN));
 
@@ -648,10 +701,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
                 auto off_c = off_c0 + Bm + Bn * ldc;
 
-                auto off_aq = off_aq0;
-                auto off_bq = off_bq0;
-                if (problem.aoPtrDims >= 1 || a_scales) off_aq += Bm;
-                if (problem.boPtrDims >= 1 || b_scales) off_bq += Bn;
+                auto off_aq
+                        = off_aq0 + a_quant.offset(problem.aoPtrDims, Bm, Bk);
+                auto off_bq
+                        = off_bq0 + b_quant.offset(problem.boPtrDims, Bn, Bk);
 
                 auto off_co = off_co0;
                 switch (cmask & 3) {

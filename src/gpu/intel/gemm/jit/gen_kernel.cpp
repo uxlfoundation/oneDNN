@@ -341,18 +341,19 @@ status_t gen_desc_t::apply_kernel_override(
         if (block_k > 0 && k_ > block_k && !problem_.beta1())
             problem_.beta = Scalar();
 
+        GEMMStrategy st = strategy_;
+        adjustStrategy(hw_, problem_, st, tags);
+        st.preflight(hw_, problem_);
         if (have_disp) {
             aux_params_ = EvaluateAuxOutput();
             aux_params_.k0 = disp_k0;
             aux_params_.wgK = disp_wgK;
             aux_params_.kParallel = strategy_.kParallel;
             aux_params_.kParallelVariable = strategy_.kParallelVariable;
+            resolved_in_ = dump_kernel(hw_, problem_, st, &aux_params_);
         } else {
             if (!selected)
                 throw std::runtime_error("no catalog entry for dispatch");
-            GEMMStrategy st = strategy_;
-            adjustStrategy(hw_, problem_, st, tags);
-            st.preflight(hw_, problem_);
             kcatalog::Entry e = *selected;
             e.driverInfo = driver_info_of(st);
             const char *rule = "";
@@ -372,6 +373,9 @@ status_t gen_desc_t::apply_kernel_override(
 #endif
 
 status_t gen_desc_t::finalize(const char *tags) {
+#ifdef DNNL_DEV_MODE
+    resolved_in_.clear();
+#endif
     pd_align_[0] = problem_.A.alignment;
     pd_align_[1] = problem_.B.alignment;
     pd_align_[2] = problem_.C.alignment;
@@ -582,6 +586,19 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (aux_params_.wgK > strategy_.wg[LoopK])
         aux_params_.wgK = strategy_.wg[LoopK];
     update_driver_info();
+
+#ifdef DNNL_DEV_MODE
+    // A resolved override must replay unchanged.
+    if (!entry_ && !resolved_in_.empty()) {
+        auto out = dump_kernel(hw_, problem_, strategy_, &aux_params_);
+        if (out != resolved_in_) {
+            VDEBUGINFO(1, primitive, gpu, "%s,%s -> %s",
+                    "jit::gemm resolved override changed",
+                    resolved_in_.c_str(), out.c_str());
+            return status::unimplemented;
+        }
+    }
+#endif
 
     return status::success;
 }
@@ -1230,11 +1247,7 @@ std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,
     if (!astr.empty()) astr += ' ';
     auto str = pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
             + std::to_string(strategy.unroll[LoopN]) + ' ' + astr + sstr;
-    // Append dispatch geometry for k-parallel kernels.
-    if (aux
-            && (aux->kParallel || aux->kParallelVariable || aux->wgK > 1
-                    || aux->k0 > 0))
-        str += serialize_dispatch(*aux);
+    if (aux) str += serialize_dispatch(*aux);
     return str;
 }
 
@@ -1272,7 +1285,8 @@ status_t gen_kernel_t::get_kernel(
     } catch (const std::runtime_error &err) {
         // Print kernel generation errors only in debug mode
         VDEBUGINFO(1, primitive, gpu, "%s,%s,%s", "jit::gemm", err.what(),
-                dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_)
+                dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_,
+                        desc()->aux_params())
                         .c_str());
     }
 #undef ARCH_DISPATCH

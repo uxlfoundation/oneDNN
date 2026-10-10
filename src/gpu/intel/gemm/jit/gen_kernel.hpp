@@ -124,6 +124,7 @@ protected:
 
     std::string kernel_override_;
     int pd_align_[3] = {1, 1, 1}; // real data alignment
+    std::string resolved_in_; // canonical resolved-form override
 
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;

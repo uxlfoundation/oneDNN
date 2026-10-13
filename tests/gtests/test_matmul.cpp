@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,6 +19,7 @@
 #include "gtest/gtest.h"
 
 #include "oneapi/dnnl/dnnl.hpp"
+#include "tests/test_isa_common.hpp"
 
 #include <vector>
 
@@ -688,5 +690,60 @@ INSTANTIATE_TEST_SUITE_P(TensorDims, attr_test_t,
                 std::make_tuple(memory::dims {2, 10, 10, 10},
                         memory::dims {2, 10, 10, 10}, tag::abcd,
                         memory::data_type::f16, 4)));
+
+#if DNNL_AARCH64
+TEST(AArch64MmlaMatmul, Bf16SelectionAndFallbacks) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets the CPU matmul implementation.");
+
+    auto eng = get_test_engine();
+    SKIP_IF(!aarch64_mmla_test::has_bf16_mmla(),
+            "This test requires SVE128 or SVE256 with BF16.");
+
+    auto create_pd = [&](const memory::desc &src, const memory::desc &weights,
+                             const memory::desc &dst) {
+        auto pd = matmul::primitive_desc(eng, src, weights, dst);
+        // ACL may precede BRGEMM in the implementation list.
+        while (std::string(pd.impl_info_str()).find("brg:sve_")
+                        == std::string::npos
+                && pd.next_impl()) {}
+        EXPECT_NE(std::string(pd.impl_info_str()).find("brg:sve_"),
+                std::string::npos);
+        return pd;
+    };
+
+    const struct {
+        memory::dims src, weights;
+        bool mmla;
+    } cases[] = {{{17, 64}, {64, 64}, true},
+            {{17, 2184}, {2184, 64}, true}, // compact-K packing
+            {{17, 64}, {64, 49}, false}, // N tail
+            {{17, 66}, {66, 64}, false}, // K tail
+            {{1, 64}, {64, 64}, false}, // GEMV
+            {{2, 17, 64}, {2, 64, 64}, true}, // batched weights
+            {{2, 17, 64}, {1, 64, 64}, true}}; // broadcast weights
+    for (const auto &p : cases) {
+        SCOPED_TRACE(::testing::PrintToString(p.src) + " x "
+                + ::testing::PrintToString(p.weights));
+        auto dst_dims = p.src;
+        dst_dims.back() = p.weights.back();
+        const auto plain_tag = p.src.size() == 2 ? tag::ab : tag::abc;
+        const auto src = memory::desc(p.src, data_type::bf16, plain_tag);
+        const auto dst = memory::desc(dst_dims, data_type::f32, plain_tag);
+        const auto selected = create_pd(
+                src, memory::desc(p.weights, data_type::bf16, tag::any), dst);
+        const auto packed = selected.weights_desc();
+        const int k_dim = packed.get_ndims() - 2;
+        EXPECT_EQ(aarch64_mmla_test::matches_weights_desc(
+                          packed, k_dim, k_dim + 1),
+                p.mmla);
+        if (p.mmla) {
+            const auto packed_pd = create_pd(src, packed, dst);
+            EXPECT_EQ(packed_pd.weights_desc(), packed);
+            EXPECT_STREQ(packed_pd.impl_info_str(), selected.impl_info_str());
+        }
+    }
+}
+#endif
 
 } // namespace dnnl

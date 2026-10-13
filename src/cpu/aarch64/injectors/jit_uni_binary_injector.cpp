@@ -624,19 +624,17 @@ rhs_address_t jit_uni_binary_injector_t<isa>::prepare_rhs_arg_addr(
         const rhs_arg_dynamic_params_t &rhs_arg_params,
         const broadcasting_strategy_t rhs_broadcasting_strategy) const {
 
-    static constexpr auto rhs_arg_ptr_size = sizeof(const void *);
     const auto &rhs_addr_reg = rhs_arg_static_params_.rhs_addr_reg;
     const auto &abi_param_offset = rhs_arg_static_params_.abi_param_offset;
-    const auto &rhs_helper_reg = rhs_arg_static_params_.rhs_helper_reg;
+    host_->ldr_imm(rhs_addr_reg, param1_, abi_param_offset);
+
+    static constexpr auto rhs_arg_ptr_size = sizeof(const void *);
+    const auto rhs_addr_offset = rhs_arg_idx * rhs_arg_ptr_size;
+    host_->ldr_imm(rhs_addr_reg, rhs_addr_reg, rhs_addr_offset);
+
     const auto rhs_arg_elem_size
             = types::data_type_size(post_op.binary.src1_desc.data_type);
-
-    host_->add_imm(
-            host_->X_DEFAULT_ADDR, param1_, abi_param_offset, host_->X_TMP_0);
-    host_->ldr(rhs_addr_reg, ptr(host_->X_DEFAULT_ADDR));
-    host_->add_imm(host_->X_DEFAULT_ADDR, rhs_addr_reg,
-            rhs_arg_idx * rhs_arg_ptr_size, host_->X_TMP_0);
-    host_->ldr(rhs_addr_reg, ptr(host_->X_DEFAULT_ADDR));
+    const auto &rhs_helper_reg = rhs_arg_static_params_.rhs_helper_reg;
 
     switch (rhs_broadcasting_strategy) {
         case broadcasting_strategy_t::scalar:

@@ -130,6 +130,8 @@ status_t ref_reorder_t::execute(const exec_ctx_t &ctx) const {
     const auto output_d = ctx.memory_mdw(DNNL_ARG_TO, pd()->dst_md());
     const auto src_dt = input_d.data_type();
     const auto dst_dt = output_d.data_type();
+    const bool copy_fp4_bits = src_dt == data_type::f4_e2m1 && src_dt == dst_dt
+            && pd()->attr()->has_default_values();
 
     input += input_d.blk_off(0) * input_d.data_type_size();
 
@@ -258,7 +260,16 @@ status_t ref_reorder_t::execute(const exec_ctx_t &ctx) const {
 
                 const auto i_off = input_d.off_v(idx);
                 const auto o_off = output_d.off_v(idx);
-                if (src_dt == data_type::e8m0) {
+                if (copy_fp4_bits) {
+                    // Preserve negative zero without floating-point arithmetic.
+                    const auto *src
+                            = reinterpret_cast<const nibble2_t *>(input);
+                    auto *dst = reinterpret_cast<nibble2_t *>(output);
+                    // Clear the unused high nibble of an odd plain row too.
+                    auto pack = o_off % 2 == 0 ? nibble2_t(0) : dst[o_off / 2];
+                    pack.set(src[i_off / 2].get(i_off % 2), o_off % 2);
+                    dst[o_off / 2] = pack;
+                } else if (src_dt == data_type::e8m0) {
                     // Reorder from e8m0 to f32 is used for benchdnn correctness
                     // validation purpose only. A dedicated path is required to
                     // preserve a minimal e8m0 value which gets converted by any

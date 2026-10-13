@@ -44,6 +44,72 @@ using reorder_simple_test_t_s8_s8 = reorder_simple_test_t<s8_s8>;
 
 using fmt = memory::format_tag;
 
+struct fp4_reorder_params_t {
+    memory::dims dims;
+    fmt src_tag;
+    fmt dst_tag;
+};
+
+class fp4_reorder_test_t
+    : public ::testing::TestWithParam<fp4_reorder_params_t> {};
+
+TEST_P(fp4_reorder_test_t, PreservesBitsAndZeroPadding) {
+    const auto eng = get_test_engine();
+    SKIP_IF(eng.get_kind() != engine::kind::cpu, "CPU-only test.");
+    const auto dt = memory::data_type::f4_e2m1;
+    SKIP_IF(unsupported_data_type(dt), "Engine does not support FP4.");
+
+    const auto &p = GetParam();
+    const memory::desc src_md(p.dims, dt, p.src_tag);
+    const memory::desc dst_md(p.dims, dt, p.dst_tag);
+    const impl::memory_desc_wrapper src_mdw(src_md.get());
+    const impl::memory_desc_wrapper dst_mdw(dst_md.get());
+    auto src = test::make_memory(src_md, eng);
+    auto dst = test::make_memory(dst_md, eng);
+    std::vector<uint8_t> expected(dst_md.get_size(), 0);
+    {
+        auto src_data = map_memory<uint8_t>(src);
+        for (size_t i = 0; i < src_md.get_size(); ++i)
+            src_data[i] = 0;
+        for (memory::dim i = 0; i < src_mdw.nelems(); ++i) {
+            // Include all 16 encodings, notably negative zero (0x8), and
+            // vary the pattern across groups so layout errors are visible.
+            const uint8_t bits = static_cast<uint8_t>((i + i / 16 + 1) % 16);
+            const auto src_off = src_mdw.off_l(i);
+            const auto dst_off = dst_mdw.off_l(i);
+            src_data[src_off / 2] |= bits << (4 * (src_off % 2));
+            expected[dst_off / 2] |= bits << (4 * (dst_off % 2));
+        }
+    }
+    {
+        auto dst_data = map_memory<uint8_t>(dst);
+        for (size_t i = 0; i < dst_md.get_size(); ++i)
+            dst_data[i] = 0xff;
+    }
+
+    auto strm = make_stream(eng);
+    reorder(src, dst).execute(strm, src, dst);
+    strm.wait();
+
+    const auto dst_data = map_memory<uint8_t>(dst);
+    // Compare physical bytes to cover padding and the unused tail nibble.
+    for (size_t i = 0; i < expected.size(); ++i)
+        ASSERT_EQ(expected[i], dst_data[i]) << "mismatch at byte " << i;
+}
+
+CPU_INSTANTIATE_TEST_SUITE_P(FP4, fp4_reorder_test_t,
+        ::testing::Values(fp4_reorder_params_t {{2, 16}, fmt::ab, fmt::ab},
+                fp4_reorder_params_t {{4, 16}, fmt::ab, fmt::ba},
+                fp4_reorder_params_t {{34, 50}, fmt::ab, fmt::BA16a64b},
+                fp4_reorder_params_t {{34, 50}, fmt::BA16a64b, fmt::ba},
+                fp4_reorder_params_t {{33, 49}, fmt::BA16a16b, fmt::BA16a16b},
+                fp4_reorder_params_t {{33, 49}, fmt::BA16a16b, fmt::BA16a64b},
+                fp4_reorder_params_t {{1, 17}, fmt::ab, fmt::BA16a16b},
+                fp4_reorder_params_t {{1, 17}, fmt::BA16a16b, fmt::ab},
+                fp4_reorder_params_t {{3, 34, 50}, fmt::abc, fmt::aCB16b32c},
+                fp4_reorder_params_t {
+                        {3, 33, 49}, fmt::aCB16b16c, fmt::aCB16b64c}));
+
 TEST_P(reorder_simple_test_t_f32_bf16, TestsReorder) {
     Test();
 }

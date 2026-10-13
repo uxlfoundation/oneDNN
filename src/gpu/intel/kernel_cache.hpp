@@ -120,6 +120,19 @@ struct gpu_kernel_value_container_t : public kernel_cache::value_impl_t {
     T value;
 };
 
+// Kernel cache value holding a kernel bundle together with host-side data
+// that is determined while generating the kernels and needed to dispatch
+// them, e.g. the work-group configuration of a generated microkernel. Caching
+// the data with the kernels avoids recomputing it on a kernel cache hit.
+template <typename T>
+struct kernel_bundle_with_data_t {
+    static_assert(std::is_trivially_copyable<T>::value,
+            "kernel data must be trivially copyable to be stored in the cache "
+            "blob");
+    compute::kernel_bundle_t bundle;
+    T data {};
+};
+
 // GPU specific interface for kernel_cache::value_t
 struct gpu_kernel_value_t {
     gpu_kernel_value_t() = default;
@@ -191,6 +204,11 @@ struct gpu_kernel_key_container_t final : public gpu_kernel_key_impl_t {
 template <typename K>
 using trivial_key_container_t = gpu_kernel_key_container_t<trivial_key_t<K>>;
 
+// Returns the cached value for the key, creating it on a cache miss.
+status_t get_or_create(const kernel_cache::key_t &key,
+        gpu_kernel_value_t &jit_generator, const impl::engine_t *engine,
+        cache_state_t &kernel_cache_hit);
+
 // Interface to the kernel cache to consolidate cache related logic in one
 // location
 template <typename value_type>
@@ -210,6 +228,27 @@ extern template status_t get_cached_kernels<compute::kernel_bundle_t>(
         const impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         cache_state_t &kernel_cache_hit);
+
+// Same as get_cached_kernels() for keys whose value is a
+// kernel_bundle_with_data_t<T>, additionally returning the cached data.
+template <typename T>
+status_t get_cached_kernels_with_data(
+        std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
+        const impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
+        const std::vector<const char *> &kernel_names, T &data,
+        cache_state_t &kernel_cache_hit) {
+    kernel_cache::key_t key {std::move(key_impl)};
+
+    gpu_kernel_value_t value;
+    CHECK(get_or_create(key, value, engine, kernel_cache_hit));
+
+    const auto &cached = utils::downcast<
+            const gpu_kernel_value_container_t<kernel_bundle_with_data_t<T>> *>(
+            value.impl())
+                                 ->value;
+    data = cached.data;
+    return cached.bundle.get_kernels(kernels, kernel_names);
+}
 
 } // namespace intel
 } // namespace gpu

@@ -75,6 +75,7 @@ struct primitive_t : public gpu::primitive_t {
             impl::engine_t *engine, size_t *size) const override {
         if (!size) return status::invalid_arguments;
         if (version_ != -1) (*size) += sizeof(version_);
+        (*size) += kernel_data_.size();
         return gpu::primitive_t::get_cache_blob_size(engine, size);
     }
 
@@ -82,6 +83,8 @@ struct primitive_t : public gpu::primitive_t {
             impl::engine_t *engine, cache_blob_t &blob) const override {
         if (version_ != -1)
             CHECK(blob.add_value((const uint8_t *)&version_, sizeof(version_)));
+        if (!kernel_data_.empty())
+            CHECK(blob.add_value(kernel_data_.data(), kernel_data_.size()));
         return gpu::primitive_t::get_cache_blob(engine, blob);
     }
 
@@ -100,33 +103,42 @@ struct primitive_t : public gpu::primitive_t {
     status_t create_kernels(impl::engine_t *engine,
             std::vector<compute::kernel_t> &kernels,
             const std::vector<const char *> &kernel_names, const T &params) {
-        auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-        if (cache_blob()) {
-            CHECK(intel_engine->create_kernels_from_cache_blob(
-                    cache_blob(), kernels, kernel_names));
-            for (auto &k : kernels)
-                k.hash_dump("blob");
-            CHECK(register_kernels(kernels));
-            return status::success;
-        }
-
-        auto key = std::make_shared<trivial_key_container_t<T>>(
-                params, intel_engine->engine_id());
-        gpu_assert(key->key.is_valid());
+        if (cache_blob())
+            return load_kernels_from_cache_blob(engine, kernels, kernel_names);
 
         cache_state_t kernel_cache_status;
         CHECK(get_cached_kernels<typename trivial_key_t<T>::value_type>(
-                std::move(key), engine, kernels, kernel_names,
+                make_kernel_key(engine, params), engine, kernels, kernel_names,
                 kernel_cache_status));
-        if (kernel_cache_status == cache_state_t::kernel_hit) {
-            creation_cached_state_ = cache_state_t::kernel_hit;
+        return register_cached_kernels(kernels, kernel_cache_status);
+    }
+
+    // Same as above for parameters whose cached value is a
+    // kernel_bundle_with_data_t<D>: additionally returns the data cached with
+    // the kernels and stores it in the cache blob. A primitive can create at
+    // most one set of kernels with data.
+    template <typename T, typename D>
+    status_t create_kernels(impl::engine_t *engine,
+            std::vector<compute::kernel_t> &kernels,
+            const std::vector<const char *> &kernel_names, const T &params,
+            D &data) {
+        static_assert(std::is_same<typename trivial_key_t<T>::value_type,
+                              kernel_bundle_with_data_t<D>>::value,
+                "kernel parameters must generate a "
+                "kernel_bundle_with_data_t<D>");
+        if (cache_blob()) {
+            // Stored by get_cache_blob() ahead of the kernel binaries.
+            CHECK(cache_blob().get_value(
+                    reinterpret_cast<uint8_t *>(&data), sizeof(data)));
+            set_kernel_data(data);
+            return load_kernels_from_cache_blob(engine, kernels, kernel_names);
         }
 
-        for (auto &k : kernels)
-            k.hash_dump("real");
-        CHECK(register_kernels(kernels));
-
-        return status::success;
+        cache_state_t kernel_cache_status;
+        CHECK(get_cached_kernels_with_data(make_kernel_key(engine, params),
+                engine, kernels, kernel_names, data, kernel_cache_status));
+        set_kernel_data(data);
+        return register_cached_kernels(kernels, kernel_cache_status);
     }
 
     template <typename T>
@@ -134,6 +146,17 @@ struct primitive_t : public gpu::primitive_t {
             const char *kernel_name, const T &params) {
         std::vector<compute::kernel_t> kernels(1);
         VCHECK_KERNEL(create_kernels(engine, kernels, {kernel_name}, params),
+                VERBOSE_KERNEL_CREATION_FAIL, kernel_name);
+        kernel = kernels[0];
+        return status::success;
+    }
+
+    template <typename T, typename D>
+    status_t create_kernel(impl::engine_t *engine, compute::kernel_t &kernel,
+            const char *kernel_name, const T &params, D &data) {
+        std::vector<compute::kernel_t> kernels(1);
+        VCHECK_KERNEL(
+                create_kernels(engine, kernels, {kernel_name}, params, data),
                 VERBOSE_KERNEL_CREATION_FAIL, kernel_name);
         kernel = kernels[0];
         return status::success;
@@ -178,12 +201,55 @@ private:
         return kernel.parallel_for(stream, range, arg_list, deps, out_dep);
     }
 
+    template <typename T>
+    static std::shared_ptr<trivial_key_container_t<T>> make_kernel_key(
+            impl::engine_t *engine, const T &params) {
+        auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        auto key = std::make_shared<trivial_key_container_t<T>>(
+                params, intel_engine->engine_id());
+        gpu_assert(key->key.is_valid());
+        return key;
+    }
+
+    status_t load_kernels_from_cache_blob(impl::engine_t *engine,
+            std::vector<compute::kernel_t> &kernels,
+            const std::vector<const char *> &kernel_names) {
+        auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        CHECK(intel_engine->create_kernels_from_cache_blob(
+                cache_blob(), kernels, kernel_names));
+        for (auto &k : kernels)
+            k.hash_dump("blob");
+        return register_kernels(kernels);
+    }
+
+    status_t register_cached_kernels(std::vector<compute::kernel_t> &kernels,
+            cache_state_t kernel_cache_status) {
+        if (kernel_cache_status == cache_state_t::kernel_hit) {
+            creation_cached_state_ = cache_state_t::kernel_hit;
+        }
+        for (auto &k : kernels)
+            k.hash_dump("real");
+        return register_kernels(kernels);
+    }
+
+    template <typename D>
+    void set_kernel_data(const D &data) {
+        gpu_assert(kernel_data_.empty())
+                << "a primitive can cache data for one set of kernels only";
+        const auto *bytes = reinterpret_cast<const uint8_t *>(&data);
+        kernel_data_.assign(bytes, bytes + sizeof(D));
+    }
+
     // Persistent cache versioning is not used by default. To enable versioning
     // the primitive should:
     // 1) Set the version via set_version() in case of non-cached initialization
     // 2) Retrieve the version from the cache blob and set it via set_version()
     //    in case of cached initialization
     int32_t version_ = -1;
+
+    // Data cached with the kernels by create_kernels(), stored in the cache
+    // blob after the version.
+    std::vector<uint8_t> kernel_data_;
 };
 
 } // namespace intel

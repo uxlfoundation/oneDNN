@@ -251,11 +251,11 @@ unsigned get_jit_profiling_flags() {
 }
 
 static setting_t<std::string> jit_profiling_jitdumpdir;
+static std::mutex jitdumpdir_mutex;
 dnnl_status_t init_jit_profiling_jitdumpdir(
         const char *jitdumpdir, bool overwrite) {
 #ifdef __linux__
-    static std::mutex m;
-    std::lock_guard<std::mutex> g(m);
+    std::lock_guard<std::mutex> g(jitdumpdir_mutex);
 
     if (jit_profiling_jitdumpdir.initialized() && !overwrite)
         return status::success;
@@ -284,14 +284,10 @@ std::string get_jit_profiling_jitdumpdir() {
     if (!jit_profiling_jitdumpdir.initialized()) {
         auto status = init_jit_profiling_jitdumpdir(nullptr, false);
         if (status != status::success) return std::string();
-
-        jitdumpdir = jit_profiling_jitdumpdir.get();
-    } else {
-        static std::mutex m;
-        std::lock_guard<std::mutex> g(m);
-
-        jitdumpdir = jit_profiling_jitdumpdir.get();
     }
+
+    std::lock_guard<std::mutex> g(jitdumpdir_mutex);
+    jitdumpdir = jit_profiling_jitdumpdir.get();
 #endif
     return jitdumpdir;
 }

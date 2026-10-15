@@ -73,8 +73,6 @@ The basic kernel types are:
 * `symm{ll,lu,rl,ru}`: SYMM kernel -- like GEMM, but A (left) or B (right) is a symmetric matrix, of which only the lower or upper triangle is stored in memory.
 * `hemm{ll,lu,rl,ru}`: HEMM kernel -- similar to SYMM, but A/B are Hermitian symmetric.
 
-More information on non-GEMM kernels is available [here](algorithms/level_3_blas.md).
-
 ### Kernel Type Modifiers
 
 For some kernel types, *modifiers* may be added before the basic kernel type:
@@ -156,6 +154,7 @@ gemmstone supports the following precisions:
 | int16    | W      | w        |
 | int8     | O      | o        |
 | int4     | F      | f        |
+| int2     | P      | p        |
 
 By default, alpha/beta have the same type as C, but this can be overridden by adding the type for alpha/beta at the end: `OoIS` means A int8, B uint8, C int32, alpha/beta single precision.
 

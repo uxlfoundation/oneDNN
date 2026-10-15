@@ -75,6 +75,14 @@ struct gpu_primitive_attr_t : public primitive_attr_item_t {
     void set_use_dpas(bool value) { use_dpas_ = value; }
 
     const std::string &kernel_override() const { return kernel_override_; }
+    // Candidate rank if the override is a bare integer, else -1.
+    int kernel_rank() const {
+        const auto &s = kernel_override_;
+        // <=9 digits always fit int, so std::stoi cannot overflow.
+        bool is_rank = !s.empty() && s.size() <= 9
+                && s.find_first_not_of("0123456789") == std::string::npos;
+        return is_rank ? std::stoi(s) : -1;
+    }
     void set_kernel_override(const std::string &value) {
         kernel_override_ = value;
     }

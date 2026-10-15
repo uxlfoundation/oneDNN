@@ -16,6 +16,7 @@
 
 #include "gpu/intel/gemm/with_post_ops.hpp"
 #include "gpu/intel/gemm/host_scalars.hpp"
+#include "gpu/intel/primitive_attr.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -44,6 +45,11 @@ status_t with_post_ops_t::pd_t::init(const impl::engine_t *engine) {
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
             VERBOSE_UNSUPPORTED_ATTR);
+    // A rank indexes this problem's candidates, not the nested gemm's.
+    const auto *gpu_attr = utils::downcast<const gpu_primitive_attr_t *>(
+            attr()->gpu_attr_.get());
+    VDISPATCH_GEMM(!gpu_attr || gpu_attr->kernel_rank() < 0,
+            "kernel rank override through post-op decomposition");
     VDISPATCH_GEMM(
             !utils::one_of(d->c_type(), u4, s4, u2), VERBOSE_UNSUPPORTED_DT);
 

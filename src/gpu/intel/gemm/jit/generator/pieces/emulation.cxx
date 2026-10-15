@@ -115,11 +115,11 @@ void Generator<hw>::emov(const ngen::InstructionModifier &mod, ngen::RegData dst
 
 template <HW hw>
 template <typename DT>
-void Generator<hw>::emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy,  CommonState &state,  ngen::SourceLocation loc)
+void Generator<hw>::emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc)
 {
-    const bool is_xe3p = (hw == ngen::HW::Xe3p);
-    const bool dstBf = dst.getType() == DataType::bf;
-    const bool src1F = src1.getType() == DataType::f;
+    bool is_xe3p = (hw == ngen::HW::Xe3p);
+    bool dstBf = dst.getType() == DataType::bf;
+    bool src1F = src1.getType() == DataType::f;
     // Xe3p has specific restrictions for mixed bf16/f32 mul.
     if (is_xe3p && (dstBf && src1F) && dst.getByteHS() != src1.getByteHS()){
         bool bcastSrc1 = src1.getHS() == 0 && src1.getVS() == 0;

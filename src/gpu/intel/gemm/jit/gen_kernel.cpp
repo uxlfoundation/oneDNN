@@ -55,6 +55,35 @@ void entryObserver(
         const kcatalog::Entry *entry, double score, EvaluateAuxOutput aux) {
     gpu_debug() << "consider:" << entry->str() << ",score:" << score;
 }
+
+// Trailing " | dispatch k0=.. wgK=.." section with evaluator-derived geometry
+// the strategy string can't encode.
+std::string serialize_dispatch(const EvaluateAuxOutput &aux) {
+    return " | dispatch k0=" + std::to_string(aux.k0)
+            + " wgK=" + std::to_string(aux.wgK);
+}
+
+#ifdef DNNL_DEV_MODE
+// Parses and trims the dispatch section off `str`; returns whether present.
+bool parse_dispatch(std::string &str, int64_t &k0, int &wgK) {
+    auto pos = str.find('|');
+    if (pos == std::string::npos) return false;
+    std::stringstream ss(str.substr(pos + 1));
+    std::string tok;
+    ss >> tok;
+    if (tok != "dispatch") throw std::runtime_error("bad dispatch section");
+    while (ss >> tok) {
+        if (tok.rfind("k0=", 0) == 0)
+            k0 = std::stoll(tok.substr(3));
+        else if (tok.rfind("wgK=", 0) == 0)
+            wgK = std::stoi(tok.substr(4));
+        else
+            throw std::runtime_error("bad dispatch token " + tok);
+    }
+    str.resize(pos);
+    return true;
+}
+#endif
 } // anonymous namespace
 
 bool enable_generator_dsl() {
@@ -173,6 +202,11 @@ status_t gen_desc_t::apply_kernel_override(
 
         if (!ss) throw std::runtime_error("truncated kernel string");
         std::string rest = ss.str().substr(ss.tellg());
+
+        int64_t disp_k0 = 0;
+        int disp_wgK = 1;
+        bool have_disp = parse_dispatch(rest, disp_k0, disp_wgK);
+
         parseStrategy(rest, problem_, strategy_);
 
         // Later k-chunks accumulate (catalog parity).
@@ -181,11 +215,15 @@ status_t gen_desc_t::apply_kernel_override(
             problem_.beta = Scalar();
 
         // Do not inherit the selected entry's dispatch.
-        if (strategy_.kParallel)
-            throw std::runtime_error("unknown k0 for global k-parallel");
         aux_params_ = EvaluateAuxOutput();
         aux_params_.kParallelVariable = strategy_.kParallelVariable;
-        if (strategy_.kParallelLocal) {
+        if (have_disp) {
+            aux_params_.k0 = disp_k0;
+            aux_params_.wgK = disp_wgK;
+            aux_params_.kParallel = strategy_.kParallel;
+        } else if (strategy_.kParallel) {
+            throw std::runtime_error("unknown k0 for global k-parallel");
+        } else if (strategy_.kParallelLocal) {
             // W model.
             if (strategy_.wg[LoopK] < 1 || strategy_.unroll[LoopK] < 1)
                 throw std::runtime_error("invalid k-parallel-local geometry");
@@ -1046,13 +1084,20 @@ dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
 }
 
 std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,
-        const gemmstone::GEMMStrategy &strategy) {
+        const gemmstone::GEMMStrategy &strategy,
+        const gemmstone::EvaluateAuxOutput *aux) {
     auto pstr = problem.toString();
     auto astr = problem.scalarsToString();
     auto sstr = unparseStrategy(hw, problem, strategy);
     if (!astr.empty()) astr += ' ';
-    return pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
+    auto str = pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
             + std::to_string(strategy.unroll[LoopN]) + ' ' + astr + sstr;
+    // Append dispatch geometry for k-parallel kernels.
+    if (aux
+            && (aux->kParallel || aux->kParallelVariable || aux->wgK > 1
+                    || aux->k0 > 0))
+        str += serialize_dispatch(*aux);
+    return str;
 }
 
 status_t gen_kernel_t::get_kernel(
@@ -1097,10 +1142,14 @@ status_t gen_kernel_t::get_kernel(
     return status::runtime_error;
 }
 
+std::string gen_desc_t::str() const {
+    return dump_kernel(hw_, problem_, strategy_, &aux_params_);
+}
+
 void gen_kernel_t::maybe_print_verbose() {
     gpu_debug() << "kernel:"
-                << dump_kernel(
-                           desc()->hw_, desc()->problem_, desc()->strategy_);
+                << dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_,
+                           desc()->aux_params());
 }
 
 } // namespace jit

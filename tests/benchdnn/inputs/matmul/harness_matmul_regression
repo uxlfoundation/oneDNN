@@ -69,3 +69,5 @@
 # wei zero-point mask combining batch + per-K bits but no per-N bit
 --reset --dt=u8:s8:f32 --stag=abc --wtag=abc --dtag=abc --attr-scales=wei:common:1.25:f32 --attr-zero-points=wei:3:s8:64x1 2x16x128:2x128x64_n"wei_zp_batch_and_per_k_mask"
 
+# int4 weights decompression with 1 row and n > 65536: blocked launches must address grouped scales/zero points with the full problem size
+--reset --dt=f16:u4:f16 --stag=ab --wtag=ba --dtag=ab --attr-fpmath=f16:true --attr-scales=wei:per_ocic:f16:128x1 --attr-zero-points=,wei:common:8:u8,wei:per_oc:u8,wei:per_ocic:u8:128x1 1x256:256x65537

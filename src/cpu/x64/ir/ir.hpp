@@ -237,18 +237,23 @@ struct vreg_info_t {
 //                  parallel to `acc`. Locates each accumulator in the
 //                  destination tensor so binary post-ops address the matching
 //                  right-hand-side slice
+//   is_tail      - every accumulator holds a partial (tail) vector, so loads
+//                  relative to the output stop at the kernel's tail count
 //
-// `base_ptr` and `out_byte_off` are unused by an eltwise-only chain.
+// `base_ptr`, `out_byte_off` and `is_tail` are unused by an eltwise-only chain.
 //
-// How many elements of an accumulator are active is not recorded here. That is
-// a detail of hooking the Xbyak injector up to the IR, not of the IR itself.
-// The count is fixed for a kernel, so the lowering takes it once instead (see
+// How many elements a tail accumulator holds is not recorded here. That is a
+// detail of hooking the Xbyak injector up to the IR, not of the IR itself. The
+// count is fixed for a kernel, so the lowering takes it once instead (see
 // `postops_injector_t`), and the register that carries the pattern is
-// ISA-specific. Neither belongs in a target-neutral IR.
+// ISA-specific. Neither belongs in a target-neutral IR. Whether an operation
+// works on tail accumulators is per operation, because one kernel can apply
+// post-ops to both full and tail vectors.
 struct inject_postops_args_t {
     std::vector<vreg_t> acc;
     vreg_t base_ptr = vreg_t::none;
     std::vector<dim_t> out_byte_off;
+    bool is_tail = false;
 };
 
 // An `ir_t` is the operation list plus, for each virtual register, its info
@@ -332,10 +337,10 @@ struct DNNL_API ir_t {
 
     // post-ops
     // Apply post-ops to `acc` in place. `base_ptr` and `out_byte_off` describe
-    // where each accumulator lands in the output (see
-    // `inject_postops_args_t`).
+    // where each accumulator lands in the output, and `is_tail` whether every
+    // accumulator is a partial vector (see `inject_postops_args_t`).
     void inject_postops(const std::vector<vreg_t> &acc, vreg_t base_ptr,
-            const std::vector<dim_t> &out_byte_off);
+            const std::vector<dim_t> &out_byte_off, bool is_tail);
 
     // control flow
     // Pass the returned op index to `loop_end` to close the loop.

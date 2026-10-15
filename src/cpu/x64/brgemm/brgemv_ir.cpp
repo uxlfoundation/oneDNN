@@ -475,16 +475,17 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         }
 
         if (cfg.with_injector_postops) {
-            // Each accumulator is horizontally reduced to one scalar, which is
-            // the active element count `generate()` gives the injector. The
-            // output offset matches the store displacement below, so a sum
-            // post-op reads each element from the address its result is
-            // written to.
+            // Each accumulator is horizontally reduced to one scalar, so every
+            // accumulator is a tail of the one active element `generate()`
+            // gives the injector. The output offset matches the store
+            // displacement below, so a sum post-op reads each element from the
+            // address its result is written to.
             std::vector<dim_t> out_byte_off(m_block);
             for (int r = 0; r < m_block; r++)
                 out_byte_off[r] = cfg.dt_sz_y * (dim_t)r * cfg.incy;
 
-            ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off);
+            ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off,
+                    /*is_tail=*/true);
         }
 
         ir.if_end(if_post_ops);

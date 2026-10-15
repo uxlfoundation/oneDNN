@@ -38,7 +38,9 @@ namespace ir {
 //   dst_orig_off   - byte offset in the kernel argument struct of the
 //                    destination origin pointer
 //   tail_elems     - right-hand-side elements a partial (tail) load reads. 0
-//                    means every accumulator holds a full vector
+//                    means the kernel has no tail accumulators. An
+//                    `inject_postops` operation marks whether its accumulators
+//                    are tails
 struct postops_config_t {
     const post_ops_t *post_ops = nullptr;
     const memory_desc_t *dst_md = nullptr;

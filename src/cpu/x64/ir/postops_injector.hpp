@@ -84,7 +84,7 @@ struct postops_injector_t {
     //                      accumulator address into its position in the
     //                      destination tensor
     // tail_elems         - right-hand-side elements a partial (tail) load
-    //                      reads. 0 means every accumulator holds a full vector
+    //                      reads. 0 means the kernel has no tail accumulators
     // eltwise_opmask     - AVX-512 opmask the eltwise injector uses as scratch
     // binary_tail_opmask - AVX-512 opmask holding the `tail_elems` pattern for
     //                      the binary injector
@@ -107,8 +107,10 @@ struct postops_injector_t {
     // `out_byte_off` give each accumulator's output address: binary reaches its
     // right-hand-side argument through it, sum reads the previous destination
     // value from it. `base_phys` is -1 for a chain that needs neither.
+    // `is_tail` marks every accumulator as a partial vector, so those accesses
+    // stop at `tail_elems`.
     void DNNL_API inject(const std::vector<int> &acc_phys, int base_phys,
-            const std::vector<dim_t> &out_byte_off);
+            const std::vector<dim_t> &out_byte_off, bool is_tail);
 
     // Emit the post-ops constant table. Call once, after the postamble. Only
     // eltwise and sum post-ops have a table, so this is a no-op without one.

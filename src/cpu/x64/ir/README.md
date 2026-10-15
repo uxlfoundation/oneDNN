@@ -93,8 +93,10 @@ step. They are omitted above for clarity.
   operation itself carries only that index. The table also holds each
   accumulator's output offset, which a binary post-op needs to address its
   right-hand-side argument and a sum post-op needs to read the previous
-  destination value. The injector saves and restores its own registers and does
-  not participate in IR allocation.
+  destination value, and whether the accumulators are partial (tail) vectors.
+  The tail element count is fixed for the kernel, but one kernel can mix full
+  and tail vectors, so each operation marks its own. The injector saves and
+  restores its own registers and does not participate in IR allocation.
 
 ### Control and Data Flow
 

@@ -78,7 +78,7 @@ private:
     static constexpr size_t vreg_len_preserve = 8;
     static constexpr size_t vreg_to_preserve = 8; // VREG8 - VREG15
 
-    static constexpr size_t num_abi_save_gpr_regs = 12;
+    static constexpr size_t num_abi_save_gpr_regs = 10;
 
     static constexpr size_t preserved_stack_size
             = xreg_len * (2 + num_abi_save_gpr_regs)
@@ -103,7 +103,7 @@ public:
     // Callee-saved registers
     const std::array<Xbyak_aarch64::XReg, num_abi_save_gpr_regs>
             abi_save_gpr_regs
-            = {x16, x17, x19, x20, x21, x22, x23, x24, x25, x26, x27, x28};
+            = {x19, x20, x21, x22, x23, x24, x25, x26, x27, x28};
 
     static constexpr int MAX_CODE_SIZE = 256 * 1024;
 

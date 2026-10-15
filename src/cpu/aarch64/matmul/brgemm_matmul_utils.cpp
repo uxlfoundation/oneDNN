@@ -21,6 +21,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 
@@ -51,6 +52,7 @@ using namespace format_tag;
 
 int get_default_n_block(
         format_tag_t matrix_b_tag, brgemm_matmul_conf_t &bgmmc) {
+    if (bgmmc.use_mmla) return brgemm_utils::mmla_n_block(bgmmc.isa);
     // Note: consider using weights mem_descriptor 'inner_blks' to
     // return B's inner block for non-default cases.
     switch (matrix_b_tag) {
@@ -190,6 +192,19 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
 status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
         memory_desc_t &B_md, bool init_n_tag) const {
     using namespace data_type;
+    if (bgmmc.use_mmla) {
+        auto want_B_md = B_md;
+        CHECK(brgemm_utils::init_mmla_wei_md(want_B_md, bgmmc.ndims - 2,
+                bgmmc.ndims - 1, brgemm_utils::mmla_n_block(bgmmc.isa)));
+        if (B_any_layout)
+            B_md = want_B_md;
+        else if (B_md != want_B_md)
+            return status::unimplemented;
+        // Packed MMLA weights use B_md, not a public format tag.
+        bgmmc.wei_tag = format_tag::undef;
+        return status::success;
+    }
+
     if (B_any_layout) {
         const int default_n_block = init_n_tag
                 ? get_default_n_block(format_tag::undef, bgmmc)
@@ -272,6 +287,12 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
 
 status_t brgemm_matmul_conf_utils_t::update_and_check_B_tag(
         memory_desc_t &B_md, int n_blk_size) const {
+
+    // Packed MMLA weights fix N blocking, so the heuristic cannot shrink it.
+    if (bgmmc.use_mmla)
+        return n_blk_size == brgemm_utils::mmla_n_block(bgmmc.isa)
+                ? status::success
+                : status::unimplemented;
 
     if (n_blk_fixed && n_blk_size != bgmmc.wei_n_blk)
         return status::unimplemented;
@@ -543,6 +564,18 @@ struct matmul_brgemm_blocking_params_t {
     }
 };
 
+int get_mmla_brgemm_batch_size(const brgemm_matmul_conf_t &bgmmc,
+        const matmul_brgemm_blocking_params_t::matmul_params_t &matmul,
+        int k_blk) {
+    // Batch compact full K panels; the driver submits the remainder separately.
+    // Keep wide panels unbatched to preserve locality.
+    constexpr int max_batched_k_block = 128;
+    if (!bgmmc.use_mmla || k_blk > max_batched_k_block) return 1;
+
+    constexpr int max_mmla_brgemm_batch_size = 16;
+    return nstl::min(max_mmla_brgemm_batch_size, matmul.K / k_blk);
+}
+
 float compute_blocking_heuristic_sve_512(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const matmul_brgemm_blocking_params_t::matmul_params_t &matmul,
@@ -645,6 +678,7 @@ float compute_blocking_heuristic_sve_256(brgemm_matmul_conf_t &bgmmc,
     //It is found that for M<512 k_blk of 128 works better than 1024 for most of the shapes.
     int default_k_blk = (matmul.M >= 512) ? 1024 : 128;
     int k_blk = nstl::min(matmul.K, default_k_blk);
+    const int batch_size = get_mmla_brgemm_batch_size(bgmmc, matmul, k_blk);
     int start_nthr_k = 1;
 
     // for cases with low parallel work, reduce 'min_m_blk' to
@@ -689,7 +723,7 @@ float compute_blocking_heuristic_sve_256(brgemm_matmul_conf_t &bgmmc,
 
         matmul_brgemm_blocking_params_t cur_params(matmul, nthr);
         cur_params.update_params(
-                1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
+                1, m_blk, n_chunk_size, n_blk, batch_size, k_blk, nthr_k);
 
         float cur_imbalance = cur_params.get_imbalance();
         if (cur_imbalance < best_imbalance) {
@@ -726,7 +760,7 @@ float compute_blocking_heuristic_sve_128(brgemm_matmul_conf_t &bgmmc,
 
     int default_k_blk = (matmul.M >= 256) ? 512 : 64;
     int k_blk = nstl::min(matmul.K, default_k_blk);
-    int batch_size = 1;
+    int batch_size = get_mmla_brgemm_batch_size(bgmmc, matmul, k_blk);
     // Limit K panels to 256 elements. Batch up to 16 panels per call to
     // amortize kernel entry and keep C accumulators live across panels.
     if (is_f32 && matmul.M >= 128) {
@@ -968,15 +1002,34 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.bcast_B_desc.set_params(
             weights_d.dims(), dst_d.dims(), bgmmc.batch_ndims, bgmmc.batch);
 
+    const int mmla_m_block = brgemm_utils::mmla_bd_blk();
+    const int mmla_n_block = brgemm_utils::mmla_n_block(isa);
+    const int mmla_k_block = brgemm_utils::mmla_rd_block();
+    // Batch dims stay in the driver; BF16 MMLA selection permits only M tails.
+    bgmmc.use_mmla = one_of(isa, sve_128, sve_256) && bm_conf_utils.is_bf16()
+            && bgmmc.M >= mmla_m_block && bgmmc.N >= mmla_n_block
+            && bgmmc.K >= mmla_k_block && bgmmc.N % mmla_n_block == 0
+            && bgmmc.K % mmla_k_block == 0;
+    if (bgmmc.use_mmla) {
+        auto mmla_weights_md = weights_md;
+        bgmmc.use_mmla = brgemm_utils::init_mmla_wei_md(mmla_weights_md,
+                                 bgmmc.ndims - 2, bgmmc.ndims - 1, mmla_n_block)
+                        == status::success
+                && (weights_d.format_kind() == format_kind::any
+                        || weights_md == mmla_weights_md);
+    }
+
     // Dispatch small shapes to VNNI for better performance
     bool is_small_shapes = false;
 
     VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
 
     // required granularity for k dimension
-    bgmmc.required_k_granularity = 1;
+    bgmmc.required_k_granularity = bgmmc.use_mmla ? mmla_k_block : 1;
     VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
-    bgmmc.wei_k_blk = data_type_vnni_simd_elems<sve_512>(bgmmc.wei_dt);
+    bgmmc.wei_k_blk = bgmmc.use_mmla
+            ? mmla_k_block
+            : data_type_vnni_simd_elems<sve_512>(bgmmc.wei_dt);
 
     VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md),
             VERBOSE_UNSUPPORTED_TAG);

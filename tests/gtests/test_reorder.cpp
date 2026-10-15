@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
-* Copyright 2023 Arm Ltd. and affiliates
+* Copyright 2023, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@
 #include "oneapi/dnnl/dnnl.hpp"
 
 #include "test_reorder_common.hpp"
+
+#include "tests/test_isa_common.hpp"
 
 namespace dnnl {
 
@@ -56,6 +58,56 @@ TEST_P(reorder_simple_test_t_f32_f32, TestsReorder) {
 TEST_P(reorder_simple_test_t_s8_s8, TestsReorder) {
     Test();
 }
+
+#if DNNL_AARCH64
+namespace {
+
+template <typename data_t>
+void check_mmla_weights_round_trip(
+        const engine &eng, memory::data_type src_type) {
+    const auto weights_type = data_traits_t<data_t>::data_type;
+    const auto src_md
+            = memory::desc({1, 64, 16, 16}, src_type, memory::format_tag::nhwc);
+    const auto weights_md = memory::desc(
+            {64, 64, 3, 3}, weights_type, memory::format_tag::any);
+    const auto dst_md = memory::desc(
+            {1, 64, 16, 16}, memory::data_type::f32, memory::format_tag::nhwc);
+    const auto pd = convolution_forward::primitive_desc(eng,
+            prop_kind::forward_inference, algorithm::convolution_direct, src_md,
+            weights_md, memory::desc(), dst_md, {1, 1}, {1, 1}, {1, 1});
+    const auto packed_md = pd.weights_desc();
+    auto strm = make_stream(eng);
+    const auto plain_md = memory::desc(
+            packed_md.get_dims(), weights_type, memory::format_tag::oihw);
+    ASSERT_TRUE(aarch64_mmla_test::matches_weights_desc(packed_md, 1, 0));
+    EXPECT_EQ(packed_md.get_size(), plain_md.get_size());
+
+    auto plain = memory(plain_md, eng);
+    auto packed = memory(packed_md, eng);
+    auto round_trip = memory(plain_md, eng);
+    const auto logical_elements = plain_md.get_size() / sizeof(data_t);
+    fill_data<data_t>(logical_elements, plain);
+
+    reorder(plain, packed).execute(strm, plain, packed);
+    reorder(packed, round_trip).execute(strm, packed, round_trip);
+    strm.wait();
+
+    check_reorder<data_t, data_t>(plain_md, packed_md, plain, packed);
+    check_reorder<data_t, data_t>(packed_md, plain_md, packed, round_trip);
+}
+
+} // namespace
+
+TEST(AArch64MmlaWeights, DescriptorSizeAndRoundTrip) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets AArch64 CPU weight preparation.");
+
+    using namespace aarch64_mmla_test;
+    SKIP_IF(!has_bf16_mmla(), "This test requires SVE128 or SVE256 with BF16.");
+    check_mmla_weights_round_trip<bfloat16_t>(
+            get_test_engine(), memory::data_type::bf16);
+}
+#endif
 
 INSTANTIATE_TEST_SUITE_P(ACLCases, reorder_simple_test_t_f32_bf16,
         ::testing::Values(cfg_bf16 {fmt::ab, fmt::BA4b4a, {128, 128}},

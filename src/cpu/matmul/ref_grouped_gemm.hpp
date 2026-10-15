@@ -90,7 +90,7 @@ struct ref_grouped_t : public primitive_t {
             const bool is_fp_wei = utils::one_of(
                     wei_type, f32, bf16, f16, f8_e5m2, f8_e4m3, f4_e2m1);
             const bool is_int_src = utils::one_of(src_type, u8, s8);
-            const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4);
+            const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4, u3);
 
             // Supported configurations: fp src + int wei (weight-only quantization),
             // int src + int wei, fp src + fp wei
@@ -108,6 +108,12 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
                                      attr()->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
+                    VERBOSE_UNSUPPORTED_DT);
 
             // Check for supported quantization schemes
             const auto &attr_scales = attr()->scales_;
@@ -271,6 +277,12 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
                             && utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
+                    VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_MATMUL(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

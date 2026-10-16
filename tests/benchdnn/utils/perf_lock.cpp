@@ -16,14 +16,16 @@
 
 #include "utils/perf_lock.hpp"
 
+#include <cerrno>
 #include <cstdio>
 
 #if defined(_WIN32)
 #include <windows.h>
 #else
 #include <fcntl.h>
-#include <sys/file.h>
 #include <unistd.h>
+#include <sys/file.h>
+#include <sys/stat.h>
 #endif
 
 namespace {
@@ -72,7 +74,7 @@ bool perf_lock_t::acquire() {
         return true;
     }
 
-    HANDLE h = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE,
+    HANDLE h = CreateFileA(filename, GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
             FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return fail("open");
@@ -107,7 +109,15 @@ bool perf_lock_t::acquire() {
         return true;
     }
 
-    int fd = open(filename, O_CREAT | O_RDWR, 0666);
+    int fd = open(filename, O_RDONLY | O_CLOEXEC);
+    if (fd < 0 && errno == ENOENT) {
+        fd = open(filename, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0666);
+        // `umask` may have stripped permissions needed by other users.
+        if (fd >= 0)
+            (void)fchmod(fd, 0666);
+        else if (errno == EEXIST)
+            fd = open(filename, O_RDONLY | O_CLOEXEC);
+    }
     if (fd < 0) return fail("open");
 
     // Blocking, exclusive lock, released automatically once the last

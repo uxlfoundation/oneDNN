@@ -1092,7 +1092,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
             outerProduct(h, ka, kb, oc, opRemActive(h), layoutA, layoutB, regsA, regsB, problem, strategy, state);
 
-        if (calcASums && !slmASums && !state.systolicSumA) {
+        if (calcASums && !slmASums && !state.systolicSumA && !state.fmaSumA) {
             int ka_sum = (curPhase == LoopSequencer::PhaseMainLoop) ? ka_sumMain : oc;
             int ha = h % ka;
             if (problem.backward()) {
@@ -1103,7 +1103,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
                 accumulateSum(false, regsA, layoutA, state.As_regs, state.As_layout, strategy, state, ha0, ha0 + ka_sum);
         }
 
-        if (calcBSums && !slmBSums && !state.systolicSumB) {
+        if (calcBSums && !slmBSums && !state.systolicSumB && !state.fmaSumB) {
             int kb_sum = (curPhase == LoopSequencer::PhaseMainLoop) ? kb_sumMain : oc;
             int hb = h % kb;
             if (problem.backward()) {

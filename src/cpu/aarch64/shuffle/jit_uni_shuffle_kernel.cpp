@@ -98,16 +98,15 @@ void jit_uni_shuffle_kernel_t<asimd>::gather_data(const XReg &addr,
     const unsigned number_of_values_to_load
             = is_tail ? conf_.simd_tail : xmm_size_elem;
 
-    const VReg4H v_h(data_idx);
-    const VReg4S v_s(data_idx);
+    const VReg v_data(data_idx);
 
     for (unsigned j = 0; j < number_of_values_to_load; j++) {
         mov(W_TMP_0, VReg4S(indices_idx)[j]);
         add(X_DEFAULT_ADDR, addr, X_TMP_0);
         if (is_bf16)
-            ld1(v_h[j], ptr(X_DEFAULT_ADDR));
+            ld1(v_data.h[j], ptr(X_DEFAULT_ADDR));
         else
-            ld1(v_s[j], ptr(X_DEFAULT_ADDR));
+            ld1(v_data.s[j], ptr(X_DEFAULT_ADDR));
     }
 }
 
@@ -145,17 +144,16 @@ void jit_uni_shuffle_kernel_t<asimd>::store_data(const int data_idx,
 
     const bool is_bf16 = conf_.data_type == bf16;
 
-    const VReg4H v_h(data_idx);
-    const VReg4S v_s(data_idx);
+    const VReg v_data(data_idx);
 
     if (is_tail) {
         for (unsigned i = 0; i < conf_.simd_tail; i++) {
             add_imm(X_DEFAULT_ADDR, reg_dst_addr, offset + i * conf_.dt_size,
                     X_TMP_0);
             if (is_bf16)
-                st1(v_h[i], ptr(X_DEFAULT_ADDR));
+                st1(v_data.h[i], ptr(X_DEFAULT_ADDR));
             else
-                st1(v_s[i], ptr(X_DEFAULT_ADDR));
+                st1(v_data.s[i], ptr(X_DEFAULT_ADDR));
         }
     } else {
         add_imm(X_DEFAULT_ADDR, reg_dst_addr, offset, X_TMP_0);

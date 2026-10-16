@@ -17,20 +17,15 @@
 #ifndef UTILS_PERF_LOCK_HPP
 #define UTILS_PERF_LOCK_HPP
 
-class perf_lock_t {
+class perf_lock_guard_t {
 public:
-    explicit perf_lock_t(bool enabled = true);
-    ~perf_lock_t();
-    perf_lock_t(const perf_lock_t &) = delete;
-    perf_lock_t &operator=(const perf_lock_t &) = delete;
+    explicit perf_lock_guard_t(bool enabled = true);
+    ~perf_lock_guard_t();
+    perf_lock_guard_t(const perf_lock_guard_t &) = delete;
+    perf_lock_guard_t &operator=(const perf_lock_guard_t &) = delete;
 
 private:
     bool active_ = false;
-#if defined(_WIN32)
-    void *handle_ = nullptr;
-#else
-    int fd_ = -1;
-#endif
 };
 
 #endif

@@ -478,7 +478,7 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     stream_t stream(engine);
     std::vector<dnnl_exec_arg_t> dnnl_args;
 
-    perf_lock_t gpu_lock(is_gpu(engine));
+    perf_lock_guard_t gpu_lock(is_gpu(engine));
 
     TIME_EXECUTE(execute_unmap_args(args, dnnl_args));
 
@@ -749,7 +749,7 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
     for (int i = 0; i < num_streams; i++)
         v_stream[i] = stream_t(engine, ctx.get_interop_obj());
 
-    perf_lock_t gpu_lock(is_gpu(engine));
+    perf_lock_guard_t gpu_lock(is_gpu(engine));
 
     std::vector<std::vector<dnnl_exec_arg_t>> dnnl_args(num_streams);
     std::vector<dnn_mem_map_t> mem_map(num_streams);

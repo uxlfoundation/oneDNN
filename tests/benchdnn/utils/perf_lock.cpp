@@ -17,7 +17,6 @@
 #include "utils/perf_lock.hpp"
 
 #include <cstdio>
-#include <cstdlib>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -28,7 +27,6 @@
 #endif
 
 namespace {
-thread_local int g_depth = 0;
 
 #if defined(_WIN32)
 constexpr const char *filename = "C:\\ProgramData\\onednn_perf.lock";
@@ -36,79 +34,108 @@ constexpr const char *filename = "C:\\ProgramData\\onednn_perf.lock";
 constexpr const char *filename = "/tmp/onednn_perf.lock";
 #endif
 
-[[noreturn]] void perf_lock_fatal(const char *action) {
-    std::fprintf(stderr,
-            "Error: couldn't %s the performance lock. Aborting to avoid "
-            "running GPU kernels unsynchronized with other processes.\n",
-            action);
-    std::exit(2);
+struct perf_lock_t {
+    bool acquire();
+    void release();
+
+private:
+    bool fail(const char *action) {
+        failed_ = true;
+        std::fprintf(stderr,
+                "Warning: couldn't %s the performance lock. Continuing "
+                "without it; GPU kernels may run unsynchronized with other "
+                "processes.\n",
+                action);
+        return false;
+    }
+
+    int depth_ = 0;
+    bool failed_ = false;
+#if defined(_WIN32)
+    HANDLE handle_ = INVALID_HANDLE_VALUE;
+#else
+    int fd_ = -1;
+#endif
+};
+
+perf_lock_t &state() {
+    thread_local perf_lock_t s;
+    return s;
 }
-} // namespace
 
 #if defined(_WIN32)
 
-perf_lock_t::perf_lock_t(bool enabled) {
-    if (!enabled) return;
+bool perf_lock_t::acquire() {
+    if (failed_) return false;
+    if (depth_ > 0) {
+        depth_++;
+        return true;
+    }
 
-    active_ = true;
-    if (g_depth++ > 0) return;
-
-    // `OPEN_ALWAYS` creates the file if it doesn't exist yet, otherwise
-    // opens the existing one, matching the POSIX `O_CREAT` behavior below.
     HANDLE h = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE,
             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
             FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) perf_lock_fatal("open");
+    if (h == INVALID_HANDLE_VALUE) return fail("open");
 
     OVERLAPPED overlapped = {};
     // Blocking, exclusive lock over the whole file.
     if (!LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK, 0, MAXDWORD, MAXDWORD,
                 &overlapped)) {
         CloseHandle(h);
-        perf_lock_fatal("acquire");
+        return fail("acquire");
     }
     handle_ = h;
+    depth_ = 1;
+    return true;
 }
 
-perf_lock_t::~perf_lock_t() {
-    if (!active_) return;
-    if (--g_depth > 0) return;
+void perf_lock_t::release() {
+    if (--depth_ > 0) return;
 
-    if (!handle_) return;
-    HANDLE h = static_cast<HANDLE>(handle_);
     OVERLAPPED overlapped = {};
-    UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &overlapped);
-    CloseHandle(h);
+    UnlockFileEx(handle_, 0, MAXDWORD, MAXDWORD, &overlapped);
+    CloseHandle(handle_);
+    handle_ = INVALID_HANDLE_VALUE;
 }
 
 #else
 
-perf_lock_t::perf_lock_t(bool enabled) {
-    if (!enabled) return;
-
-    active_ = true;
-    if (g_depth++ > 0) return;
+bool perf_lock_t::acquire() {
+    if (failed_) return false;
+    if (depth_ > 0) {
+        depth_++;
+        return true;
+    }
 
     int fd = open(filename, O_CREAT | O_RDWR, 0666);
-    if (fd < 0) perf_lock_fatal("open");
+    if (fd < 0) return fail("open");
 
     // Blocking, exclusive lock, released automatically once the last
     // descriptor referring to it (held by this or any other process) is
     // closed, including on abnormal process termination.
     if (flock(fd, LOCK_EX) != 0) {
         close(fd);
-        perf_lock_fatal("acquire");
+        return fail("acquire");
     }
     fd_ = fd;
+    depth_ = 1;
+    return true;
 }
 
-perf_lock_t::~perf_lock_t() {
-    if (!active_) return;
-    if (--g_depth > 0) return;
+void perf_lock_t::release() {
+    if (--depth_ > 0) return;
 
-    if (fd_ < 0) return;
     flock(fd_, LOCK_UN);
     close(fd_);
+    fd_ = -1;
 }
 
 #endif
+} // namespace
+
+perf_lock_guard_t::perf_lock_guard_t(bool enabled)
+    : active_(enabled && state().acquire()) {}
+
+perf_lock_guard_t::~perf_lock_guard_t() {
+    if (active_) state().release();
+}

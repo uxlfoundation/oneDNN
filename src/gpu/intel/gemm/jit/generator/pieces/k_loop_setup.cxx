@@ -368,6 +368,85 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
         state.Br_regs = state.ra.allocRange(state.Br_layout.regs(), getHint(HintType::B0, strategy));
     }
 
+    // Split A/B 2D quantization scale/offset layouts into per-k-group slices for k remainder loads.
+    // When one A/B load spans several scale groups (kaq/kbq > 1), the k loop loads the
+    //  scale/offset one k-group at a time in the remainder, so a group-aligned remainder never
+    //  reads scales past the end of the tensor. The same logic serves both the regular and the
+    //  late (applied after compute) layouts. On any slicing failure, the split is disabled.
+    {
+        bool slmA = strategy.slmA, slmB = strategy.slmB;
+        bool ao2D = problem.aOffset2D(), as2D = problem.aScale2D();
+        bool bo2D = problem.bOffset2D(), bs2D = problem.bScale2D();
+        bool ao2DLate = ao2D && problem.needsBGroupSums();
+        bool bo2DLate = bo2D && problem.needsAGroupSums();
+        bool as2DLate = as2D && state.lateScale2DA;
+        bool bs2DLate = bs2D && state.lateScale2DB;
+        bool ag2DLate = problem.needsAGroupSums();
+        bool bg2DLate = problem.needsBGroupSums();
+        ao2D &= !ao2DLate;
+        bo2D &= !bo2DLate;
+        as2D &= !as2DLate;
+        bs2D &= !bs2DLate;
+
+        int aqGroupK = problem.aqGroupK;
+        int bqGroupK = problem.bqGroupK;
+        int kaq_load = aqGroupK * state.kaq;
+        int kbq_load = bqGroupK * state.kbq;
+        int kaq_loadLate = aqGroupK * state.kaqLate;
+        int kbq_loadLate = bqGroupK * state.kbqLate;
+        if (strategy.kInterleaveChunk) {
+            kaq_load = std::min(kaq_load, strategy.kInterleaveChunk);
+            kbq_load = std::min(kbq_load, strategy.kInterleaveChunk);
+            kaq_loadLate = std::min(kaq_loadLate, strategy.kInterleaveChunk);
+            kbq_loadLate = std::min(kbq_loadLate, strategy.kInterleaveChunk);
+        }
+        int ka_repackMain = state.ka_repack;
+        int kb_loadMain = strategy.kb_load;
+
+        auto makeQuantRemLayouts = [&](bool isA, bool hasScale, bool hasOffset, int nGroups, bool eligible) {
+            QuantRemLayouts s;
+            if (!eligible) return s;
+            s.enabled = true;
+            s.nGroups = nGroups;
+            s.scaleAddrs.resize(nGroups);
+            s.offsetAddrs.resize(nGroups);
+            for (int g = 0; g < nGroups && s.enabled; g++) {
+                if (hasScale) {
+                    auto slice = isA ? state.A_scaleLayout.trySlice(s.scaleAddrs[g], state.A_scaleAddrs, true, g, g + 1, false)
+                                     : state.B_scaleLayout.trySlice(s.scaleAddrs[g], state.B_scaleAddrs, false, g, g + 1, false);
+                    if (slice.empty()) s.enabled = false;
+                    s.scaleLayouts.push_back(std::move(slice));
+                }
+                if (hasOffset && s.enabled) {
+                    auto slice = isA ? state.A_offsetLayout.trySlice(s.offsetAddrs[g], state.A_offsetAddrs, true, g, g + 1, false)
+                                     : state.B_offsetLayout.trySlice(s.offsetAddrs[g], state.B_offsetAddrs, false, g, g + 1, false);
+                    if (slice.empty()) s.enabled = false;
+                    s.offsetLayouts.push_back(std::move(slice));
+                }
+            }
+            return s;
+        };
+
+        // Regular: not gated on late params; A/B through SLM don't use these loads.
+        state.Aq_layoutsRem = makeQuantRemLayouts(true, as2D, ao2D, state.kaq,
+                (as2D || ao2D) && !as2DLate && !ao2DLate && !ag2DLate && !slmA
+                && state.kaq > 1 && aqGroupK > 1
+                && kaq_load == aqGroupK * state.kaq && ka_repackMain >= kaq_load);
+        state.Bq_layoutsRem = makeQuantRemLayouts(false, bs2D, bo2D, state.kbq,
+                (bs2D || bo2D) && !bs2DLate && !bo2DLate && !bg2DLate && !slmB
+                && state.kbq > 1 && bqGroupK > 1
+                && kbq_load == bqGroupK * state.kbq && kb_loadMain >= kbq_load);
+        // Late: A is not gated on SLM copy, since late scales are loaded from global memory.
+        state.Aq_layoutsRemLate = makeQuantRemLayouts(true, as2DLate, ao2DLate, state.kaqLate,
+                (as2DLate || ao2DLate) && !ag2DLate
+                && state.kaqLate > 1 && aqGroupK > 1
+                && kaq_loadLate == aqGroupK * state.kaqLate);
+        state.Bq_layoutsRemLate = makeQuantRemLayouts(false, bs2DLate, bo2DLate, state.kbqLate,
+                (bs2DLate || bo2DLate) && !bg2DLate && !slmB
+                && state.kbqLate > 1 && bqGroupK > 1
+                && kbq_loadLate == bqGroupK * state.kbqLate);
+    }
+
     state.remActiveA = state.remActiveB = state.remActiveSLM = false;
     state.slmRemaskA = state.slmRemaskB = false;
     state.firstKLoopSegment = true;

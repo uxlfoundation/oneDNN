@@ -189,9 +189,11 @@ struct dnn_mem_t {
     dnnl_memory_desc_t pad_memory_desc(
             const_dnnl_memory_desc_t md, bool *was_padded = nullptr) const;
     // Initializes zero memory descriptor
-    static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_md();
+    static dnnl_status_t init_md(
+            benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> &md);
     // Initializes memory descriptor from sporadic tag or strides.
-    static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_md(int ndims,
+    static dnnl_status_t init_md(
+            benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> &md, int ndims,
             const dnnl_dims_t dims, dnnl_data_type_t data_type,
             const std::string &tag, const dims_t &strides_ = {});
     // Initializes memory descriptor for CSR encoding.

@@ -90,7 +90,8 @@ int typeSize(StructuredType::Type type) {
         case StructuredType::bf8:
         case StructuredType::hf8:
         case StructuredType::f8_e8m0:
-        case StructuredType::f4_e2m1: return 1;
+        case StructuredType::f4_e2m1:
+        case StructuredType::u3: return 1;
         default: throw std::runtime_error("Unknown type");
     }
 }
@@ -123,6 +124,7 @@ const char *typeName(
             case StructuredType::hf8: return "hf8";
             case StructuredType::f8_e8m0: return "e8m0";
             case StructuredType::f4_e2m1: return "e2m1";
+            case StructuredType::u3: return "k";
             default: throw std::runtime_error("Unknown type");
         }
     else
@@ -149,6 +151,7 @@ const char *typeName(
             case StructuredType::f8_e8m0: return "e8m0";
             case StructuredType::f4_e2m1:
                 return (language == HostLanguage::None) ? "e2m1" : "f4_e2m1";
+            case StructuredType::u3: return "u3";
             default: return "char";
         }
 }

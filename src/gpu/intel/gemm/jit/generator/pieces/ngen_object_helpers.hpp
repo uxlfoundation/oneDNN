@@ -26,6 +26,7 @@ GEMMSTONE_NAMESPACE_START
 
 // DataType queries and helpers.
 static inline bool isInt2(ngen::DataType dt) { return one_of(dt, {ngen::DataType::u2, ngen::DataType::s2});}
+static inline bool isInt3(ngen::DataType dt) { return dt == Type::ngen_u3(); }
 static inline bool isInt4(ngen::DataType dt) { return one_of(dt, {ngen::DataType::u4, ngen::DataType::s4});}
 static inline bool isSubByteInt(ngen::DataType dt) { return isInt2(dt) || isInt4(dt); }
 static inline bool isB(ngen::DataType dt) { return one_of(dt, {ngen::DataType::ub, ngen::DataType::b}); }
@@ -56,8 +57,17 @@ static inline ngen::DataType asSigned(ngen::DataType dt)
     }
 }
 
-static inline int elementsToBytes(int n, ngen::DataType dt) { return n * getBits(dt) >> 3; }
-static inline int bytesToElements(int b, ngen::DataType dt) { return (b * 8) >> getLog2Bits(dt); }
+// u3's 3-bit width isn't a power of two, so ngen::DataType's log2-based
+// getBits()/getLog2Bits() can't encode it; compute byte/element
+// conversions directly instead.
+static inline int elementsToBytes(int n, ngen::DataType dt) {
+    if (dt == Type::ngen_u3()) return (n * 3 + 7) >> 3;
+    return n * getBits(dt) >> 3;
+}
+static inline int bytesToElements(int b, ngen::DataType dt) {
+    if (dt == Type::ngen_u3()) return (b * 8) / 3;
+    return (b * 8) >> getLog2Bits(dt);
+}
 
 // Move subregister to another pipe.
 void movePipes(ngen::Subregister &s, bool sizeCanChange = true);

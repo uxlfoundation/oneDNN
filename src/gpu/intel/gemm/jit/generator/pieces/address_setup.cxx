@@ -310,9 +310,13 @@ void Generator<hw>::setupAddr(Type T, const RegisterRange &addr, const BO &ptr, 
             auto boffX  = memCM ? block.offsetR : block.offsetC;
             auto boffY  = memCM ? block.offsetC : block.offsetR;
 
-            boffX *= T;
-            if (boffX % block.ebytes) stub();
-            boffX /= block.ebytes;
+            if (T.is3() && astrategy.accessType == AccessType::Block2DTranspose)
+                boffX = div_up(boffX * T.bits(), block.ebytes * 8);
+            else {
+                boffX *= T;
+                if (boffX % block.ebytes) stub();
+                boffX /= block.ebytes;
+            }
 
             // If the base address may not be aligned to HW requirements,
             //  we need to emit code to align it down and offset x/width appropriately.
@@ -350,7 +354,11 @@ void Generator<hw>::setupAddr(Type T, const RegisterRange &addr, const BO &ptr, 
                              : mov(1, addr[0].ud(2), fixedX * T - 1);
                 ny.isValid() ? add(1, addr[0].ud(3), ny, -1)
                              : mov(1, addr[0].ud(3), fixedY - 1);
-                offX.isValid() ? addScaled(1, addr[0].ud(5), boffX, offX, int(T.paddedSize()), block.ebytes * T.perByte(), state) :
+                // u3 advances block.ebytes bytes per group of 8 elements,
+                // so the scaling denominator is 8 * block.ebytes.
+                offX.isValid() ? addScaled(1, addr[0].ud(5), boffX, offX, int(T.paddedSize()),
+                                            T.is3() ? (8 * block.ebytes) : (block.ebytes * T.perByte()),
+                                            state, astrategy.prefetch ? false : true) :
                   doBaseAdjust ? add(1, addr[0].ud(5), baseAdjustElems, boffX)
                                : mov(1, addr[0].ud(5), boffX);
                 offY.isValid() ? add(1, addr[0].ud(6), offY, boffY)
@@ -689,11 +697,28 @@ void Generator<hw>::incAddrShifted(const RegisterRange &addrDst, const RegisterR
             if (addrDst != addrSrc)
                 mov<uint32_t>(8, addrDst[0], addrSrc[0]);
             if (astrategy.address2D) {
+                // Prefetches and u3 (non-power-of-2 bits, rarely divides
+                // evenly) don't need exactness; allow conservative round-up.
+                bool exact = !astrategy.prefetch && is_zero_or_pow2(int(blockDst.extra));
                 if (isColMajor(atype.layout)) {
-                    if (cincR != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincR, blockDst.extra, blockDst.ebytes * 8, state, true);
+                    if (cincR != 0) {
+                        if (blockDst.extra == 3 && blockDst.offsetR != blockSrc.offsetR)
+                            add(1, addrDst[0].d(5), addrDst[0].d(5),
+                                    div_up(blockDst.offsetR * 3, blockDst.ebytes * 8)
+                                    - div_up(blockSrc.offsetR * 3, blockDst.ebytes * 8));
+                        else
+                            addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincR, blockDst.extra, blockDst.ebytes * 8, state, exact);
+                    }
                     if (cincC != 0) add(1, addrDst[0].d(6), addrDst[0].d(6), cincC);
                 } else {
-                    if (cincC != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincC, blockDst.extra, blockDst.ebytes * 8, state, true);
+                    if (cincC != 0) {
+                        if (blockDst.extra == 3 && blockDst.offsetC != blockSrc.offsetC)
+                            add(1, addrDst[0].d(5), addrDst[0].d(5),
+                                    div_up(blockDst.offsetC * 3, blockDst.ebytes * 8)
+                                    - div_up(blockSrc.offsetC * 3, blockDst.ebytes * 8));
+                        else
+                            addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincC, blockDst.extra, blockDst.ebytes * 8, state, exact);
+                    }
                     if (cincR != 0) add(1, addrDst[0].d(6), addrDst[0].d(6), cincR);
                 }
             } else
@@ -818,7 +843,8 @@ void Generator<hw>::setAddrRemainder(Type T, const RegisterRange &addr, const Re
         addScaled(1, addr[0].ud(2), -1, remW.uw(), T, state, true);
     }
     if (remH.isValid())
-        addScaled(1, addr[0].ud(3), -1, remH.uw(), T, state, true, multiX);
+        addScaled(1, addr[0].ud(3), -1, remH.uw(), T, state,
+                (T.bits() * multiX) % 8 == 0, multiX);
     if (remW.isValid() && T.paddedSize() < 4)
         or_(1, addr[0].ud(2), addr[0].ud(2), 3);
 

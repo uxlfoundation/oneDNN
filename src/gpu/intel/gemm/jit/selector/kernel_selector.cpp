@@ -182,6 +182,17 @@ const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &c
         }
     }
 
+    // u3 problems also match int4 ("[FO]") patterns; prefer dedicated u3
+    // entries over those, since int4 performance models underestimate u3 cost.
+    auto isU3Entry = [](const kcatalog::Entry *e) {
+        for (int i = 0; i < 2; i++) {
+            const char *p = e->selector.precisions[i];
+            char c = (p[0] == '[') ? p[1] : p[0];
+            if ((c & ~0x20) == 'K') return true;
+        }
+        return false;
+    };
+
     auto less = [&](const EntryData &lhs, const EntryData &rhs){
                       bool lhsFallback = (lhs.entry->restrictions.tags[0] == kcatalog::ReqAlignFallback);
                       int  lhsAlignA = std::max(lhs.entry->restrictions.alignment[0], 4);
@@ -191,6 +202,8 @@ const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &c
                       int  rhsAlignB = std::max(rhs.entry->restrictions.alignment[1], 4);
                       if (rhsFallback && lessAligned(rhsAlignA, rhsAlignB, lhsAlignA, lhsAlignB)) return true;
                       if (lhsFallback && lessAligned(lhsAlignA, lhsAlignB, rhsAlignA, rhsAlignB)) return false;
+                      bool lhsU3 = isU3Entry(lhs.entry), rhsU3 = isU3Entry(rhs.entry);
+                      if (lhsU3 != rhsU3) return lhsU3;
                       if (lhs.score < rhs.score) return true;
                       if (lhs.score > rhs.score) return false;
                       return (lhs.entry < rhs.entry);
@@ -273,6 +286,36 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
                     return true;
                 };
 
+                // u3 normally unpacks via planInt3Upconvert, falling back
+                // to u4 ('f') strategies. If jit/pd.cpp instead promotes
+                // u3 to int8 ("[kO]"), match "[FO]"-style int8 strategies.
+                auto isU3 = [](kcatalog::string str) {
+                    char c = (str[0] == '[') ? str[1] : str[0];
+                    return c && ((c & ~0x20) == 'K');
+                };
+                auto fallbackU3 = [&](kcatalog::string &str) {
+                    if (!isU3(str)) return false;
+                    if (str[0] == '[') {
+                        switch (str[2]) {
+                            // Prefer the dedicated int4-as-int8 bracketed
+                            // strategies (e.g. "[FO]") over plain "O"/"o":
+                            // u3 unpacks to int8 the same way int4 does.
+                            case 'O': str = "[FO]"; return true;
+                            case 'o': str = "[Fo]"; return true;
+                            default: break;
+                        }
+                    }
+                    str = "f";
+                    return true;
+                };
+                bool u3Fallback = false;
+                u3Fallback |= fallbackU3(p.selector.precisions[0]);
+                u3Fallback |= fallbackU3(p.selector.precisions[1]);
+                if (u3Fallback) {
+                    changed = true;
+                    continue;
+                }
+
                 if (match("FO"))
                     p.selector.precisions[0] = "[FO]";
                 else if (match("BB"))
@@ -337,6 +380,12 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen
     }
     if(problem.Tbo.isSubByte() || problem.Tb_scale.isSubByte()){
         unrollReq[LoopN] = std::max(problem.Tbo.perByte(), problem.Tb_scale.perByte());
+    }
+    if(problem.Ta_scale.is3()){
+        unrollReq[LoopM] = 8;
+    }
+    if(problem.Tb_scale.is3()){
+        unrollReq[LoopN] = 8;
     }
 
     ReqBDPASDims = problem.preferBDPAS();

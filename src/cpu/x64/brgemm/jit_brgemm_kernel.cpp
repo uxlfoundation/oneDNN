@@ -45,6 +45,71 @@ using namespace dnnl::impl::utils;
 using namespace Xbyak;
 using namespace injector_utils;
 
+namespace {
+
+// The transA GEMV kernel with `y` as a column vectorizes the accumulators
+// along M, while the binary injector assumes vectorization along the innermost
+// dimension. For 3D dst {B, M, 1}, the injector therefore gets dst and binary
+// rhs mds with the two innermost dimensions swapped ({B, 1, M}). As N == 1,
+// the injector dst md describes the same memory, e.g. with M = 4 and 4 lanes:
+//
+//    dst md {B, M, 1}           injector dst md {B, 1, M}
+//
+//      +----+
+//   ^  | y0 | <- lane 0         <-------- M -------->
+//   |  | y1 | <- lane 1         +----+----+----+----+
+//   M  | y2 | <- lane 2   ===>  | y0 | y1 | y2 | y3 |
+//   v  | y3 | <- lane 3         +----+----+----+----+
+//      +----+              lanes:  0    1    2    3
+//
+// With these mds, the injector gives each lane its own rhs value if the rhs
+// changes along M, and one shared value otherwise:
+//
+//    rhs md                 injector rhs md  lanes 0..3 get
+//    {1, M, 1} (per row)    {1, 1, M}        rhs[0] rhs[1] rhs[2] rhs[3]
+//    {B, 1, 1} (per batch)  {B, 1, 1}        rhs[b] rhs[b] rhs[b] rhs[b]
+//
+// The injector rhs mds are plain dense, as the injector addresses dense rhs by
+// dims only, and the matmul GEMV dispatching ensures dense rhs for 3D dst.
+// PReLU masks are swapped accordingly. Other dst need no swapping, as M is the
+// minibatch dimension for the injector in 2D dst and a spatial one in 4D and
+// higher dst.
+void init_transa_gemv_po_mds(memory_desc_t &dst_md, post_ops_t &post_ops) {
+    const int m = 1, n = 2;
+    assert(dst_md.ndims == 3 && dst_md.dims[n] == 1
+            && memory_desc_wrapper(dst_md).is_plain());
+    auto &strides = dst_md.format_desc.blocking.strides;
+    std::swap(dst_md.dims[m], dst_md.dims[n]);
+    std::swap(dst_md.padded_dims[m], dst_md.padded_dims[n]);
+    std::swap(dst_md.padded_offsets[m], dst_md.padded_offsets[n]);
+    // The injector derives indices from dst strides, so the new unit dimension
+    // gets a dense stride.
+    strides[n] = strides[m];
+    strides[m] = dst_md.dims[n] * strides[n];
+
+    const auto init_rhs_md = [&](memory_desc_t &md) {
+        assert(md.ndims == 3 && md.dims[n] == 1);
+        const dims_t dims = {md.dims[0], md.dims[n], md.dims[m]};
+        memory_desc_init_by_tag(md, 3, dims, md.data_type, format_tag::abc);
+    };
+    for (auto &e : post_ops.entry_) {
+        if (e.is_prelu()) {
+            // PReLU weights are derived from dst dims and the mask, so swap
+            // the mask bits instead.
+            const int bit_m = 1 << m, bit_n = 1 << n;
+            int &mask = e.prelu.mask;
+            mask = (mask & ~(bit_m | bit_n)) | ((mask & bit_m) ? bit_n : 0)
+                    | ((mask & bit_n) ? bit_m : 0);
+        }
+        if (!e.is_binary()) continue;
+        assert(memory_desc_wrapper(e.binary.src1_desc).is_dense(true));
+        init_rhs_md(e.binary.src1_desc);
+        if (e.is_binary_with_ternary_op()) init_rhs_md(e.binary.src2_desc);
+    }
+}
+
+} // namespace
+
 template <typename Wmm>
 struct jit_brgemm_kernel_t : public brgemm_kernel_t {
     jit_brgemm_kernel_t(const brgemm_desc_t &abrg)
@@ -103,7 +168,15 @@ struct jit_brgemm_kernel_t : public brgemm_kernel_t {
             static constexpr bool preserve_gpr = true;
             static constexpr bool preserve_vmm = true;
             static constexpr bool use_exact_tail_scalar_bcast = false;
-            const auto dst_md_wrapper = memory_desc_wrapper(brg.dst_md());
+            const memory_desc_t *po_dst_md = brg.dst_md();
+            post_ops_t post_ops = brg.attr()->post_ops_;
+            if (brg.is_gemv && brg.gemv_acc_is_vector() && !brg.treat_y_as_row
+                    && po_dst_md->ndims == 3) {
+                gemv_po_dst_md_ = *po_dst_md;
+                init_transa_gemv_po_mds(gemv_po_dst_md_, post_ops);
+                po_dst_md = &gemv_po_dst_md_;
+            }
+            const auto dst_md_wrapper = memory_desc_wrapper(po_dst_md);
 
             // The binary injector implicitly assumes it is safe to load
             // the entire vector along the load dimension when ldb_tail
@@ -127,13 +200,13 @@ struct jit_brgemm_kernel_t : public brgemm_kernel_t {
                     binary_injector::get_all_strategies_supported_by_injector(),
                     rhs_sp, f8_e5m2_cvt_.get(), f8_e4m3_cvt_.get()};
 
-            postops_injector_ = utils::make_unique<po_injector_t>(this,
-                    brg.attr()->post_ops_, bsp,
-                    /* inject_sum = */ brg.with_sum);
+            postops_injector_
+                    = utils::make_unique<po_injector_t>(this, post_ops, bsp,
+                            /* inject_sum = */ brg.with_sum);
 
             with_binary_non_scalar_bcast_ = binary_injector::
                     any_binary_postop_rhs_non_scalar_broadcast(
-                            brg.attr()->post_ops_, dst_md_wrapper);
+                            post_ops, dst_md_wrapper);
         }
         if (brg.is_bf16_emu)
             bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
@@ -161,6 +234,10 @@ private:
                     Xbyak::Zmm, Wmm>::type;
     using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using po_injector_t = injector::jit_uni_postops_injector_t<Vmm>;
+    // dst md for the post-ops injector in the transA GEMV case, see
+    // init_transa_gemv_po_mds(). Declared before the injector, which refers
+    // to it.
+    memory_desc_t gemv_po_dst_md_;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
     std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;

@@ -3026,14 +3026,18 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
             = [this](const Vmm vmm, const Xbyak::Address addr,
                       const data_type_t dt, bool is_tail) {
         if (is_superset(brg.isa_impl, avx512_core)) {
-            assert(one_of(brg.dt_a, data_type::bf16, data_type::f16));
-            assert(one_of(brg.dt_b, data_type::bf16, data_type::f16));
+            assert(one_of(
+                    brg.dt_a, data_type::f32, data_type::bf16, data_type::f16));
+            assert(one_of(
+                    brg.dt_b, data_type::f32, data_type::bf16, data_type::f16));
 
             const auto tail_mask
                     = brg.transA ? gemv_partial_mask : rd_tail_mask;
             const auto kmask = is_tail ? tail_mask : gemv_full_mask;
 
-            if (dt == data_type::bf16) {
+            if (dt == data_type::f32) {
+                vmovups(vmm | kmask | T_z, addr);
+            } else if (dt == data_type::bf16) {
                 uni_vpmovzxwd(vmm | kmask | T_z, addr);
                 uni_vpslld(vmm, vmm, 16);
             } else if (dt == data_type::f16) {

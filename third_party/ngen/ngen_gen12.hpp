@@ -1251,6 +1251,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
             unsigned rcount = 1 + dpas.rcount;
             unsigned len;
             TernaryOperand12 o;
+            o.bits = 0;
             unsigned regNum8 = 0;
 
             switch (opNum) {
@@ -1310,6 +1311,8 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                 }
                 default: return false;
             }
+
+            if (o.direct.regFile == RegFileARF) return false;    // null operand
 
             unsigned regNum = o.direct.regNum;
             if (xe3p) regNum |= (regNum8 << 8);

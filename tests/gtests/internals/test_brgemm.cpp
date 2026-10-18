@@ -462,4 +462,66 @@ TEST(brgemm_roll_loops_test, LdStepBeyondInt32) {
 #endif
 }
 
+TEST(brgemm_roll_loops_test, AceVarBsKeepsUker) {
+    SKIP_IF(!dnnl::mayiuse(avx10_2_ace), "ACE is not supported");
+    const dim_t M = 2048, N = 128, K = 64, max_bs = 3;
+
+    brgemm_attr_t attr;
+    attr.use_ace = true;
+    attr.use_uker = true;
+    attr.enable_size_driven_roll = true;
+    attr.max_bs = max_bs;
+    attr.hint_innermost_loop = brgemm_bd_loop_innermost;
+
+    // The bd loop is innermost and cannot roll, so the ACE uker stays too
+    // big and falls back to the base kernel, unless the batch size is only
+    // known at run time.
+    brgemm_desc_t desc;
+    ASSERT_EQ(init_roll_desc(desc, impl::data_type::u8, impl::data_type::s8,
+                      1.f, M, N, K, K, N, N, attr),
+            impl::status::success);
+    ASSERT_FALSE(desc.brgattr.use_uker);
+
+    attr.var_bs = true;
+    ASSERT_EQ(init_roll_desc(desc, impl::data_type::u8, impl::data_type::s8,
+                      1.f, M, N, K, K, N, N, attr),
+            impl::status::success);
+    ASSERT_TRUE(desc.brgattr.use_uker);
+
+    std::vector<int32_t> C(M * N);
+    check_roll_kernel<uint8_t, int8_t, int32_t>(
+            desc, max_bs, {0, 1, 2, 3}, C.data());
+}
+
+TEST(brgemm_roll_loops_test, AceLargeLddKeepsUker) {
+    SKIP_IF(!dnnl::mayiuse(avx10_2_ace), "ACE is not supported");
+    // The ACE uker of AceVarBsKeepsUker is too big and falls back to the
+    // base kernel, unless the D stride does not fit into int32 for it.
+    const dim_t M = 2048, N = 128, K = 64;
+
+    brgemm_attr_t attr;
+    attr.use_ace = true;
+    attr.use_uker = true;
+    attr.enable_size_driven_roll = true;
+    attr.max_bs = 3;
+    attr.hint_innermost_loop = brgemm_bd_loop_innermost;
+
+    for (const dim_t LDD : {N, dim_t(8388608)}) {
+        brgemm_desc_t desc;
+        ASSERT_EQ(brgemm_desc_init(&desc, isa_undef, brgemm_addr,
+                          impl::data_type::u8, impl::data_type::s8, false,
+                          false, brgemm_row_major, 1.f, 0.f, K, N, N, M, N, K),
+                impl::status::success);
+        dnnl::primitive_attr pattr;
+        const memory::desc dst_md(
+                {M, N}, memory::data_type::s32, memory::dims {LDD, 1});
+        ASSERT_EQ(
+                brgemm_desc_set_postops(&desc, pattr.get(), dst_md.get(), LDD),
+                impl::status::success);
+        ASSERT_EQ(brgemm_desc_set_attr(&desc, attr), impl::status::success);
+        ASSERT_EQ(brgemm_desc_finalize(&desc), impl::status::success);
+        ASSERT_EQ(desc.brgattr.use_uker, LDD != N) << "LDD=" << LDD;
+    }
+}
+
 } // namespace dnnl

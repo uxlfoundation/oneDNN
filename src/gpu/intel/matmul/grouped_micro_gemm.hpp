@@ -52,7 +52,6 @@ enum class grouped_axis_t { undefined = -1, m_axis, k_axis, n_axis };
 
 // OpenCL kernel parameters
 struct grouped_ocl_params_t : trivially_serializable_t<grouped_ocl_params_t> {
-    int64_t ngroups = 0;
     // Weights batch stride in units of WEI_DATA_T
     int64_t wei_stride0 = 0;
 

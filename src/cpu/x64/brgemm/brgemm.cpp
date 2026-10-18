@@ -931,6 +931,7 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.hint_bd_block2);
     CMP_BRGEMM_FIELD(brgattr.hint_ld_block2);
     CMP_BRGEMM_FIELD(brgattr.hint_roll_bd_loop);
+    CMP_BRGEMM_FIELD(brgattr.enable_size_driven_roll);
 
     CMP_BRGEMM_FIELD(brgattr.hint_load_nt_A);
     CMP_BRGEMM_FIELD(brgattr.hint_load_nt_B);

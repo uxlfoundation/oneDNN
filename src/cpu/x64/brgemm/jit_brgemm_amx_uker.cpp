@@ -119,6 +119,19 @@ struct jit_brgemm_amx_uker_t : public brgemm_kernel_t {
 
     brgemm_desc_t brg;
 
+    /* Which of the unrolled kernel loops are emitted as a run time loop;
+     * ace_small_enough reports whether the ACE size estimate fits the
+     * budget. */
+    struct roll_loops_t {
+        bool bd = false;
+        bool ace_small_enough = false;
+    };
+
+    /* Chooses the rolled loops; the defaults give the smallest ACE kernel,
+     * for callers that only need to know how small it could get. */
+    static roll_loops_t roll_loops(const brgemm_desc_t &brg,
+            bool apply_post_ops = true, bool skip_accumulation = false);
+
     /* How the unrolled kernel stores its accumulators, exposed here so the
      * roll decision and the code generator do not drift apart. */
     static bool may_load_accumulators(const brgemm_desc_t &brg);
@@ -182,6 +195,9 @@ private:
     const reg64_t reg_zp_comp_pad_a = rsi;
 
     const reg64_savable_t reg_long_offt = {regscratchpad_, r11};
+    // Loop control code adds pointer increments beyond imm32 through it, as
+    // reg_iter_labels_list holds rax only between its restore() and save().
+    const reg64_t reg_tmp_offt = rax;
 
     bool are_post_ops_applicable_ = false;
     bool need_to_apply_alpha_beta_ = false;
@@ -696,6 +712,30 @@ private:
             jit_brgemm_amx_uker_t::reg64_t &reg_src_stride, bool use_memadvice);
 };
 
+// Batch bodies of the unrolled kernel. The var_bs loop emits four bodies
+// for any max_bs.
+static dim_t bs_bodies(const brgemm_desc_t &brg) {
+    return brg.brgattr.var_bs ? 4 : brg.brgattr.max_bs;
+}
+
+// Unrolled ACE kernel size in micro-kernel bodies. rdb_loop() emits one more
+// rd body for the rd tail.
+// TODO: weight the terms, the rd and bs bodies are smaller than the bd and ld
+// ones.
+static dim_t ace_ker_size_est(const brgemm_desc_t &brg) {
+    const dim_t rd_bodies = brg.rdb + (brg.rdb_tail != 0 ? 1 : 0);
+    return static_cast<dim_t>(brg.bdb2) * brg.ldb2 * bs_bodies(brg) * rd_bodies;
+}
+
+// Size that jit_brgemm_amx_uker_t::roll_loops() rolls the ACE kernel down
+// to, calibrated against measured unrolled ACE kernel sizes (bf16 and int8
+// brgemm shapes) to keep them under ~128KB.
+constexpr dim_t ace_ker_size_threshold = 48;
+
+// Plain AMX uker bd roll threshold, calibrated on conv shapes to keep the
+// kernel under ~128KB. Its body differs from ACE, hence a separate threshold.
+constexpr dim_t amx_ker_size_threshold = 800;
+
 bool jit_brgemm_amx_uker_t::may_load_accumulators(const brgemm_desc_t &brg) {
     // if beta == 1 and C datatype is f32 it is better to perform addition by
     // reading tiles directly from C instead of by reading/writing by vectors
@@ -736,6 +776,85 @@ bool jit_brgemm_amx_uker_t::actual_ils(
         const brgemm_desc_t &brg, bool apply_post_ops, bool skip_accumulation) {
     return use_ils(brg) && store_by_vectors(brg, apply_post_ops)
             && !skip_accumulation;
+}
+
+jit_brgemm_amx_uker_t::roll_loops_t jit_brgemm_amx_uker_t::roll_loops(
+        const brgemm_desc_t &brg, bool apply_post_ops, bool skip_accumulation) {
+    roll_loops_t res;
+
+    const bool actual_ils_ = actual_ils(brg, apply_post_ops, skip_accumulation);
+    const bool store_by_vectors_ = store_by_vectors(brg, apply_post_ops);
+
+    // With enable_size_driven_roll, roll the bd loop while the size estimate
+    // exceeds the threshold.
+    dim_t ace_est = ace_ker_size_est(brg);
+    // amx_ker_size_threshold is calibrated against this count.
+    const dim_t amx_est = static_cast<dim_t>(brg.bdb2) * brg.ldb2
+            * bs_bodies(brg) * (brg.rdb ? brg.rdb : 1);
+    const bool size_driven_roll = brg.brgattr.enable_size_driven_roll;
+
+    // A rolled bd loop needs the ld loop innermost, or a single ld block,
+    // so the shared body covers the whole ld range per bd iteration.
+    const bool bd_is_outer
+            = brg.innermost_loop == brgemm_ld_loop_innermost || brg.ldb2 == 1;
+
+    // A rolled bd loop shifts reg_C before the interleaved tile stores of
+    // the previous bd block are emitted, so those must go through the buffer.
+    const auto bdb2_to_unroll
+            = nstl::max<dim_t>(0, brg.bdb2 - (actual_ils_ ? 1 : 0));
+    // A rolled bd body bases its output offsets on the first row of its bd
+    // iteration, so that row must be stored. Mirror fill_imap(): level 2
+    // skips the masked rows when placing the iterations, level 1 does not.
+    const auto bd_starts_are_out = [&]() {
+        if (brg.brgattr.bd_mask_level == 0) return true;
+        const auto *mask = brg.brgattr.bd_mask;
+        const auto skip = [&](dim_t bd) {
+            if (brg.brgattr.bd_mask_level != 2) return bd;
+            for (dim_t i = bd; i < brg.bcast_dim; i++)
+                if (mask[i]) return i;
+            return bd;
+        };
+        dim_t bd = skip(0);
+        for (dim_t bdb = 0; bdb < brg.bdb; bdb += brg.bd_block2) {
+            if (!mask[bd]) return false;
+            for (dim_t i = 0; i < brg.bd_block2 && bdb + i < brg.bdb; i++) {
+                bd += brg.bd_block;
+                if (bd >= brg.bcast_dim) return true;
+                bd = skip(bd);
+            }
+        }
+        return true;
+    };
+    // The M-indexed operands below are addressed by the JIT-time bd position
+    // and are not advanced by a rolled bd loop.
+    const bool bd_can_roll = bd_is_outer && bdb2_to_unroll > 1
+            && (store_by_vectors_ || !brg.interleave_tilestores_)
+            && !brg.with_per_mn_compensation && !brg.is_per_k_src_scales
+            && brg.zp_type_b == brgemm_broadcast_t::none && bd_starts_are_out();
+
+    // Mirror fill_imap() and find_similar(): the first, the interleaved and
+    // an irregular last bd iteration stay separate bodies. Bodies with
+    // different bd masks are not similar, so a masked bd loop is not assumed
+    // to shrink.
+    const bool bd_last_differs = brg.bdb % brg.bd_block2 != 0
+            || brg.bdb_tail != 0 || brg.amx_wary_k_tail();
+    const dim_t bdb2_rolled = brg.brgattr.bd_mask_level != 0
+            ? brg.bdb2
+            : nstl::min<dim_t>(brg.bdb2,
+                      (actual_ils_ ? 3 : 2) + (bd_last_differs ? 1 : 0));
+
+    const bool bd_wanted = brg.brgattr.hint_roll_bd_loop
+            || (size_driven_roll && brg.is_ace()
+                    && ace_est > ace_ker_size_threshold
+                    && bdb2_rolled < brg.bdb2)
+            || (size_driven_roll && !brg.is_ace()
+                    && amx_est > amx_ker_size_threshold
+                    && bdb2_rolled < brg.bdb2);
+    res.bd = bd_can_roll && bd_wanted;
+    if (res.bd) ace_est = ace_est * bdb2_rolled / brg.bdb2;
+
+    res.ace_small_enough = ace_est <= ace_ker_size_threshold;
+    return res;
 }
 
 bool jit_brgemm_amx_uker_t::bi_shift_output(
@@ -2994,8 +3113,8 @@ void jit_brgemm_amx_uker_t::bs_loop(brgemm_iteration_t &bi) {
         else if (real_ils && prev_bi_.bdi->idx > 0 && prev_bi_.ldi->idx == 0)
             bi_shift = &prev_bi_;
         if (bi_shift != nullptr) {
-            add(reg_C, bi_shift->bdi->C_shift);
-            add(reg_D, bi_shift->bdi->D_shift);
+            safe_add(reg_C, bi_shift->bdi->C_shift, reg_tmp_offt);
+            safe_add(reg_D, bi_shift->bdi->D_shift, reg_tmp_offt);
             if (brg.req_comp_pads_with_bcast)
                 add(reg_zp_comp_pad_a, bi_shift->bdi->zp_comp_pad_a_shift);
         }
@@ -3189,8 +3308,8 @@ void jit_brgemm_amx_uker_t::top_loop(brgemm_iteration_t &bi) {
     if (actual_ils(bi.apply_postops, bi.skip_accumulation) && roll_bd_loop
             && tloop.ldis.size() == 1) {
         // update reg_C and reg_D if they they were not updated yet
-        add(reg_C, bi.bdi->C_shift);
-        add(reg_D, bi.bdi->D_shift);
+        safe_add(reg_C, bi.bdi->C_shift, reg_tmp_offt);
+        safe_add(reg_D, bi.bdi->D_shift, reg_tmp_offt);
         if (brg.req_comp_pads_with_bcast)
             add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
     }
@@ -3386,16 +3505,14 @@ void jit_brgemm_amx_uker_t::fill_imap() {
 
 void jit_brgemm_amx_uker_t::init(brgemm_iteration_t &bi) {
     was_prev_bi_ = false;
-    const auto bdb2_to_unroll = nstl::max<dim_t>(0,
-            brg.bdb2
-                    - (actual_ils(bi.apply_postops, bi.skip_accumulation) ? 1
-                                                                          : 0));
-    roll_bd_loop = brg.brgattr.hint_roll_bd_loop && bdb2_to_unroll > 1
-            && (brg.innermost_loop == brgemm_ld_loop_innermost || brg.ldb2 == 1)
-            && get_store_by_vectors(bi.apply_postops)
+
+    const auto roll = jit_brgemm_amx_uker_t::roll_loops(
+            brg, bi.apply_postops, bi.skip_accumulation);
+    roll_bd_loop = roll.bd
             && IMPLICATION(!bi.skip_accumulation,
                     (brg.brgattr.max_bs == 1 || brg.type == brgemm_static_offs)
                             && !brg.brgattr.var_bs);
+
     if (brg.type == brgemm_static_offs && !bi.skip_accumulation) {
         reg_A.restore();
         reg_B.restore();

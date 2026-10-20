@@ -1093,7 +1093,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             }
         }
 
-        if (doOffset) gemmRepack2DOffsetData(Ta_ext, offsetLayout, Ar_offsetLayout, state.A_offsetRegs, state.Ar_offsetRegs, problem, strategy, state);
+        if (doOffset) gemmRepack2DOffsetData(Ta_ext, offsetLayout, Ar_offsetLayout, state.A_offsetRegs, state.Ar_offsetRegs, problem, strategy, state, problem.aOffsetAfterScale);
         if (doScale)  gemmRepack2DQuantizationData(scaleLayout,    Ar_scaleLayout,  state.A_scaleRegs,  state.Ar_scaleRegs,  problem, strategy, state);
         if (doG)      gemmRepack2DQuantizationData(gLayout,        Agr_layout,      state.Ag_regs,      state.Agr_regs,      problem, strategy, state);
     };
@@ -1124,7 +1124,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             }
         }
 
-        if (doOffset) gemmRepack2DOffsetData(Tb_ext, offsetLayout, Br_offsetLayout, state.B_offsetRegs, state.Br_offsetRegs, problem, strategy, state);
+        if (doOffset) gemmRepack2DOffsetData(Tb_ext, offsetLayout, Br_offsetLayout, state.B_offsetRegs, state.Br_offsetRegs, problem, strategy, state, problem.bOffsetAfterScale);
         if (doScale)  gemmRepack2DQuantizationData(scaleLayout,    Br_scaleLayout,  state.B_scaleRegs,  state.Br_scaleRegs,  problem, strategy, state);
         if (doG)      gemmRepack2DQuantizationData(gLayout,        Bgr_layout,      state.Bg_regs,      state.Bgr_regs,      problem, strategy, state);
     };
@@ -1401,12 +1401,12 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     if (slmDequantize2D) ls.schedule(reqSLMRepackQ, [&](Iteration h) {
         if (slmDequantize2DA) {
             if (slmRemActive(h)) doRemaskAq(h, true);
-            if (ao2D) gemmRepack2DOffsetData(Ta_ext, state.A_offsetLayout, state.Ar_offsetLayout, state.A_offsetRegs, state.Ar_offsetRegs, problem, strategy, state);
+            if (ao2D) gemmRepack2DOffsetData(Ta_ext, state.A_offsetLayout, state.Ar_offsetLayout, state.A_offsetRegs, state.Ar_offsetRegs, problem, strategy, state, problem.aOffsetAfterScale);
             if (as2D) gemmRepack2DQuantizationData(state.A_scaleLayout,    state.Ar_scaleLayout,  state.A_scaleRegs,  state.Ar_scaleRegs,  problem, strategy, state);
         }
         if (slmDequantize2DB) {
             if (slmRemActive(h)) doRemaskBq(h, true);
-            if (bo2D) gemmRepack2DOffsetData(Tb_ext, state.B_offsetLayout, state.Br_offsetLayout, state.B_offsetRegs, state.Br_offsetRegs, problem, strategy, state);
+            if (bo2D) gemmRepack2DOffsetData(Tb_ext, state.B_offsetLayout, state.Br_offsetLayout, state.B_offsetRegs, state.Br_offsetRegs, problem, strategy, state, problem.bOffsetAfterScale);
             if (bs2D) gemmRepack2DQuantizationData(state.B_scaleLayout,    state.Br_scaleLayout,  state.B_scaleRegs,  state.Br_scaleRegs,  problem, strategy, state);
         }
     });

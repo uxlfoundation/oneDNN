@@ -125,6 +125,7 @@ struct gen_t : public primitive_t {
                                     attr()->gpu_attr_.get())
                                        ->has_only_kernel_override(),
                     VERBOSE_UNSUPPORTED_ATTR);
+
             VDISPATCH_GEMM(
                     !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k(),
                             d->lda(), d->ldb(), d->ldc(), d->batch()),

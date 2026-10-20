@@ -528,7 +528,7 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
 
 void fp8_conversion_e4m3_t::bcst_f8_to_f32(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
-    if (is_fp8_native()) {
+    if (is_fp16fp8_native()) {
         fp8_conversion_base_t::bcst_f8_to_f32(xmm_out, op_in);
         return;
     }

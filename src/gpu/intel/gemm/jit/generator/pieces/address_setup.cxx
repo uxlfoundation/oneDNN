@@ -393,6 +393,11 @@ void Generator<hw>::setupAddr(Type T, const RegisterRange &addr, const BO &ptr, 
 
             mov(1, addr[0].ud(7), (bw - 1) | ((bh - 1) << 8) | ((bcount - 1) << 16));
 
+#ifdef STANDALONE
+            if (getenv("HACK_WIDTH"))   /* force width to be same as pitch */
+                mov(1, addr[0].ud(2), addr[0].ud(4));
+#endif
+
             state.ra.safeRelease(baStorage);
             break;
         }

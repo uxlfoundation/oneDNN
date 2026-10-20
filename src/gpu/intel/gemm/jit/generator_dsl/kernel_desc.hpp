@@ -65,7 +65,8 @@ struct generator_dsl_desc_t {
     dsl::kernel::options_t options;
 
 private:
-    void apply_strategy_to_iface() {}
+    void apply_strategy_to_iface() {
+    }
 };
 
 // Not all strategies parameters are supported via DSL. This attempts to fixup

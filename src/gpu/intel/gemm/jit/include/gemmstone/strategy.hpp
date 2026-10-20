@@ -173,6 +173,16 @@ struct CommonStrategy {
     ngen::EmulationStrategy emulate;
                                     ZPAD(C, 2)
 
+#ifdef STANDALONE
+    struct TrackingSettings {
+        bool enabled = false;                    // Must be set to enable any tracking.
+        bool startEnd = false;                   //   Track kernel start and end.
+        bool accumDone = false;                  //   Track completion of C accumulation.
+    } tracking;
+
+    bool strongReadCheck = false;               // Enable stronger read checks? (may produce false positives)
+#endif
+
     CommonStrategy() = default;
     CommonStrategy(ngen::HW hw, int stepping = 0);
     void preflight(ngen::HW hw, const CommonProblem &problem);
@@ -186,7 +196,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
                                                  //     k alternate is for multi-tile execution with implicit scaling.
     int unroll[3] = {0};                         // Unrolls in each dimension (m/n/k), indexed by LoopType.
     int unrollK_masked = 0;                      // k unroll to use when masking.
-    int extraKAlign = 1;                         // Additional k alignment when blocking (ka).
+    int extraKAlign = 1;                         // Additional k alignment when blocking.
     LoopType loopOrder[3]
         = {LoopM, LoopN, LoopK};                 // Expected order of loops in driver code (in order from innermost to outermost).
     LoopType fusedLoop = LoopM;                  // Direction of fusing if threads fused.
@@ -320,6 +330,10 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool panelCheck = false;                     // If true, check for out-of-bounds panel reads.
     bool insideSK = false;                       // Inside a superkernel?
                                     ZPAD(O, 3)
+#ifdef STANDALONE
+    bool forceFusedPostOps = false;              // Force fusePostOps even when not needed.
+                                    ZPAD(S, 3)
+#endif
 
     GEMMStrategyPOD() = default;
     GEMMStrategyPOD(ngen::HW hw, int stepping = 0) : CommonStrategy(hw, stepping) {}
@@ -416,6 +430,7 @@ struct GEMMStrategy : public GEMMStrategyPOD
     int bqGroupKGranularity() const { return groupKReduce(slmB ? unrollKSLM : kb_load); }
     static int groupKReduce(int x) { while (x > 16 && (x & 1) == 0) x >>= 1; return x; }
 
+#ifndef STANDALONE
     void serialize(SerializationStream &s) const
     {
         const GEMMStrategyPOD &pod = *this;
@@ -423,7 +438,20 @@ struct GEMMStrategy : public GEMMStrategyPOD
         for (const auto &astrategy: binary)
             s.append(astrategy);
     }
+#endif
 };
+
+#ifdef STANDALONE
+// GEMM superkernel strategy parameters.
+struct GEMMSuperkernelStrategy {
+    std::vector<GEMMStrategy> substrategies;
+    bool multiM, multiN;
+    bool persistent = false;
+
+    void preflight(ngen::HW hw, const GEMMProblem &problem);
+    int subgroupSize() const { return substrategies[0].subgroupSize; }
+};
+#endif
 
 bool useAutoAtomic(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy, bool ignoreBeta = false);
 void downgradeAPFAccess(const GEMMProblem &problem, GEMMStrategy &strategy);

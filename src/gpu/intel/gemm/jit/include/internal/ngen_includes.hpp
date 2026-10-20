@@ -14,8 +14,28 @@
 * limitations under the License.
 *******************************************************************************/
 
+#ifndef GEMMSTONE_INCLUDE_INTERNAL_NGEN_INCLUDES_HPP
+#define GEMMSTONE_INCLUDE_INTERNAL_NGEN_INCLUDES_HPP
+
 #include "gemmstone/config.hpp"
 
+#ifdef STANDALONE
+#   if defined(ZEBIN_OUTPUT)
+#       include "ngen_elf.hpp"
+#   elif defined(OPENCL_OUTPUT)
+#       include "ngen_opencl.hpp"
+#   elif defined(BINARY_OUTPUT)
+#       include "ngen.hpp"
+#       include "ngen_interface.hpp"
+#   else
+#       include "ngen_asm.hpp"
+#       include "ngen_interface.hpp"
+#   endif
+#   include "ngen_register_allocator.hpp"
+#else
 #   include "ngen_asm.hpp"
 #   include "ngen_opencl.hpp"
 #   include "ngen_register_allocator.hpp"
+#endif
+
+#endif

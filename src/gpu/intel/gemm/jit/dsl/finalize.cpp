@@ -26,7 +26,7 @@ void finalize(kernel_t &kernel) {
     auto &stmt = kernel.body;
     ir::ir_context_t ir_ctx(kernel);
     stmt = ir::simplify(stmt, ir_ctx);
-    ir::fixup_if_conditions(kernel);
+        ir::fixup_if_conditions(kernel);
 }
 
 } // namespace dsl

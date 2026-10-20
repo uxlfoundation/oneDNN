@@ -297,6 +297,11 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 
     bool coColMajor = isColMajor(CO.layout);
 
+#ifdef STANDALONE
+    if (problem.readCheck && problem.readCheckC)
+        return true;
+#endif
+
     auto cor  = row    ? strategy.unroll[LoopM] : 1;
     auto coc  = column ? strategy.unroll[LoopN] : 1;
     auto remR = row    && !CO_strategy.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
@@ -487,6 +492,7 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
     return ok;
 }
 
+#ifndef STANDALONE
 template <HW hw>
 void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
@@ -680,7 +686,6 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
     bool maskM = state.remainders[LoopM].isValid()
             && (unrollM > problem.cqGroupM);
     if (maskM && !ngen::utils::is_zero_or_pow2(problem.cqGroupM)) stub();
-    if (problem.cqGroupN > 1) stub("MX C scale groups along N are not supported");
     assignMasks(state.C_scaleLayout, maskM ? LoopM : LoopNone, LoopN, masks, strategy, state);
     if (maskM) {
         Subregister remInd[3];
@@ -701,6 +706,7 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
 
     mark(lSkip);
 }
+#endif
 
 
 // Calculate addresses of A/B sums in packed input data. Sums are stored at the end of each panel.
@@ -836,6 +842,11 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
     bool bOffset = (problem.bOffset != ABOffset::None) && !problem.earlyDequantizeB() && !problem.quantized2DB();
     if (!aOffset && !bOffset)
         return;
+
+#ifdef STANDALONE
+    if (problem.readCheck && problem.readCheckC)
+        return;
+#endif
 
     auto Tao = problem.Tao, Tbo = problem.Tbo, Tc = problem.Tc;
 

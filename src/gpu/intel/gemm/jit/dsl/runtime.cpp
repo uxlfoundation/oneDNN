@@ -219,7 +219,8 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
     }
 
     dsl::hw::attr_t attr = {};
-    if (hw >= ngen::HW::XeHPC) attr |= dsl::hw::attr_t::large_grf;
+    if (hw >= ngen::HW::XeHPC)
+        attr |= dsl::hw::attr_t::large_grf;
 
     {
         auto deviceModPropsExt = ze_intel_device_module_dp_exp_properties_t();

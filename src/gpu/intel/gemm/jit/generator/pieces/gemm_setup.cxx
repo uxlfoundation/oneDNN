@@ -507,6 +507,7 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
         if (problem.allowMatrixOffset())
             mark(lDone);
     }
+#ifndef STANDALONE
     if (doBinary) for (size_t i = 0; i < problem.postOps.len(); i++) {
         if (!problem.postOps[i].is_binary()) continue;
         bool row = problem.postOps.binaryRow[i],
@@ -525,6 +526,7 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
         else if (col)
             eaddScaled(1, offset, offset, j0, T, strategy, state);
     }
+#endif
     if (doC && problem.sumA) eaddScaled(1, offsetCO, offsetCO, i0, Tco, strategy, state);
     if (doC && problem.sumB) eaddScaled(1, offsetCO, offsetCO, j0, Tco, strategy, state);
 
@@ -1141,6 +1143,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     bool slmA = strategy.slmA, slmB = strategy.slmB;
 
     bool cLoadAhead = strategy.cLoadAhead;
+#ifdef STANDALONE
+    cLoadAhead &= !problem.readCheck;
+#endif
     auto unrollM = strategy.unroll[LoopM];
     auto unrollN = strategy.unroll[LoopN];
     auto unrollK = strategy.unroll[LoopK];
@@ -1685,9 +1690,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     state.ka_repack = strategy.repackPeriod(true, problem);
     state.kb_repack = strategy.repackPeriod(false, problem);
     if (state.repackA)
-        state.Ar_layout = RegisterLayout(hw, Ta, unrollM, state.ka_repack, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
+       state.Ar_layout = RegisterLayout(hw, Ta, unrollM, state.ka_repack, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
     if (state.repackB)
-        state.Br_layout = RegisterLayout(hw, Tb, state.kb_repack, unrollN, state.B_layout.colMajor(), crosspackB, tileK_B, tileN_B, true, splitB);
+       state.Br_layout = RegisterLayout(hw, Tb, state.kb_repack, unrollN, state.B_layout.colMajor(), crosspackB, tileK_B, tileN_B, true, splitB);
     int opCountAB = outerProductCount(problem, strategy);
     if ((state.repackA ? state.Ar_layout.cols() : state.A_layout.cols()) < opCountAB)
         stub("A k-granularity too small for outer product count");
@@ -1819,12 +1824,18 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             && assignMasks(state.A_scaleLayout,  LoopM,    LoopK,       masks, strategy, state)
             && assignMasks(state.Ag_layout,      LoopM,    LoopK,       masks, strategy, state)
             && assignMasks(state.Ap_layout,      LoopM,    LoopK,    A_cmasks, strategy, state)
+            && assignMasks(state.Ap_offsetLayout,LoopM,    LoopK,    A_cmasks, strategy, state)
+            && assignMasks(state.Ap_scaleLayout, LoopM,    LoopK,    A_cmasks, strategy, state)
+            && assignMasks(state.Agp_layout,     LoopM,    LoopK,    A_cmasks, strategy, state)
             && assignMasks(state.Ai_layout,      LoopM,    LoopNone, A_cmasks, strategy, state)
             && assignMasks(state.B_layout,       LoopK,    LoopN,       masks, strategy, state)
             && assignMasks(state.B_offsetLayout, LoopK,    LoopN,       masks, strategy, state)
             && assignMasks(state.B_scaleLayout,  LoopK,    LoopN,       masks, strategy, state)
             && assignMasks(state.Bg_layout,      LoopK,    LoopN,       masks, strategy, state)
             && assignMasks(state.Bp_layout,      LoopK,    LoopN,    B_cmasks, strategy, state)
+            && assignMasks(state.Bp_offsetLayout,LoopK,    LoopN,    B_cmasks, strategy, state)
+            && assignMasks(state.Bp_scaleLayout, LoopK,    LoopN,    B_cmasks, strategy, state)
+            && assignMasks(state.Bgp_layout,     LoopK,    LoopN,    B_cmasks, strategy, state)
             && assignMasks(state.Bi_layout,      LoopNone, LoopN,    B_cmasks, strategy, state)
         ;
     };
@@ -1890,14 +1901,14 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     allocAddrRegs(hw, state.Bg_addrs, state.Bg_layout, state);
     if (strategy.pfaux) {
         if (strategy.prefetchA) {
-            allocAddrRegs(hw, state.Ap_offsetAddrs, state.A_offsetLayout, state);
-            allocAddrRegs(hw, state.Ap_scaleAddrs,  state.A_scaleLayout,  state);
-            allocAddrRegs(hw, state.Agp_addrs,      state.Ag_layout,       state);
+            allocAddrRegs(hw, state.Ap_offsetAddrs, state.Ap_offsetLayout, state);
+            allocAddrRegs(hw, state.Ap_scaleAddrs,  state.Ap_scaleLayout,  state);
+            allocAddrRegs(hw, state.Agp_addrs,      state.Agp_layout,      state);
         }
         if (strategy.prefetchB) {
-            allocAddrRegs(hw, state.Bp_offsetAddrs, state.B_offsetLayout, state);
-            allocAddrRegs(hw, state.Bp_scaleAddrs,  state.B_scaleLayout,  state);
-            allocAddrRegs(hw, state.Bgp_addrs,      state.Bg_layout,      state);
+            allocAddrRegs(hw, state.Bp_offsetAddrs, state.Bp_offsetLayout, state);
+            allocAddrRegs(hw, state.Bp_scaleAddrs,  state.Bp_scaleLayout,  state);
+            allocAddrRegs(hw, state.Bgp_addrs,      state.Bgp_layout,      state);
         }
     }
 
@@ -2010,7 +2021,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         setupQAddr(Tao, state.A_offsetAddrs, state.A_offsetLayout, state.inputs.aoPtr,
                    i0o, A_h0o, state.inputs.ldao, state.offsetAo);
         if (strategy.pfaux && strategy.prefetchA)
-            setupQAddr(Tao, state.Ap_offsetAddrs, state.A_offsetLayout, state.inputs.aoPtr,
+            setupQAddr(Tao, state.Ap_offsetAddrs, state.Ap_offsetLayout, state.inputs.aoPtr,
                        i0o, A_h0o, state.inputs.ldao, state.offsetAo);
     }
     if (as2D) {
@@ -2019,14 +2030,14 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         setupQAddr(Ta_scale, state.A_scaleAddrs, state.A_scaleLayout, state.inputs.aScalePtr,
                    i0s, A_h0s, state.inputs.ldaScale, state.offsetAs);
         if (strategy.pfaux && strategy.prefetchA)
-            setupQAddr(Ta_scale, state.Ap_scaleAddrs, state.A_scaleLayout, state.inputs.aScalePtr,
+            setupQAddr(Ta_scale, state.Ap_scaleAddrs, state.Ap_scaleLayout, state.inputs.aScalePtr,
                        i0s, A_h0s, state.inputs.ldaScale, state.offsetAs);
     }
     if (ag2D) {
         setupQAddr(Tag, state.Ag_addrs, state.Ag_layout, state.inputs.agPtr,
                    i0qLate, A_h0qLate, state.inputs.ldag, state.inputs.offsetAg);
         if (strategy.pfaux && strategy.prefetchA)
-            setupQAddr(Tag, state.Agp_addrs, state.Ag_layout, state.inputs.agPtr,
+            setupQAddr(Tag, state.Agp_addrs, state.Agp_layout, state.inputs.agPtr,
                        i0qLate, A_h0qLate, state.inputs.ldag, state.inputs.offsetAg);
     }
     if (bo2D) {
@@ -2035,7 +2046,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         setupQAddr(Tbo, state.B_offsetAddrs, state.B_offsetLayout, state.inputs.boPtr,
                    B_h0o, j0o, state.inputs.ldbo, state.offsetBo);
         if (strategy.pfaux && strategy.prefetchB)
-            setupQAddr(Tbo, state.Bp_offsetAddrs, state.B_offsetLayout, state.inputs.boPtr,
+            setupQAddr(Tbo, state.Bp_offsetAddrs, state.Bp_offsetLayout, state.inputs.boPtr,
                        B_h0o, j0o, state.inputs.ldbo, state.offsetBo);
     }
     if (bs2D) {
@@ -2044,14 +2055,14 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         setupQAddr(Tb_scale, state.B_scaleAddrs, state.B_scaleLayout, state.inputs.bScalePtr,
                    B_h0s, j0s, state.inputs.ldbScale, state.offsetBs);
         if (strategy.pfaux && strategy.prefetchB)
-            setupQAddr(Tb_scale, state.Bp_scaleAddrs, state.B_scaleLayout, state.inputs.bScalePtr,
+            setupQAddr(Tb_scale, state.Bp_scaleAddrs, state.Bp_scaleLayout, state.inputs.bScalePtr,
                        B_h0s, j0s, state.inputs.ldbScale, state.offsetBs);
     }
     if (bg2D) {
         setupQAddr(Tbg, state.Bg_addrs, state.Bg_layout, state.inputs.bgPtr,
                    B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
         if (strategy.pfaux && strategy.prefetchB)
-            setupQAddr(Tbg, state.Bgp_addrs, state.Bg_layout, state.inputs.bgPtr,
+            setupQAddr(Tbg, state.Bgp_addrs, state.Bgp_layout, state.inputs.bgPtr,
                        B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
     }
 
@@ -2193,6 +2204,19 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     if (strategy.tokenAlloc)
         gemmAllocateTokens(problem, strategy, state);
 
+#ifdef STANDALONE
+    // Initialize A/B for mock kernels.
+    if (problem.mock.abLoad && !problem.mock.abInit) {
+        bool random = problem.mock.abRandom;
+        for (auto &A_regs: state.A_regs)
+            mockInitMatrix(Ta_load, A_regs, strategy, random);
+        mockInitMatrix(Ta, state.Ar_regs, strategy, random);
+        for (auto &B_regs: state.B_regs)
+            mockInitMatrix(Tb_load, B_regs, strategy, random);
+        mockInitMatrix(Tb, state.Br_regs, strategy, random);
+    }
+#endif
+
     // Preloading C and fused beta scaling need some extra registers for C headers.
     // Temporarily free up A/B data registers for that purpose.
     releaseRanges(state.A_regs, state);
@@ -2201,6 +2225,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     releaseRanges(state.Br_regs, state);
 
     // Load C now if configured (and perform beta scaling).
+#ifdef STANDALONE
+    if (!problem.mock.cUpdate)
+#endif
     if (cLoadAhead) {
         if (problem.checkBeta0 && !problem.beta.fixed())   stub();
         if (state.C_accCount > 0)                          stub();
@@ -2208,6 +2235,11 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
         status << "Loading C" << status_stream::endl;
         gemmAccessC(COperation::Load, problem, strategy, state);
+
+#ifdef STANDALONE
+        if (problem.readCheck && problem.readCheckC)
+            readCheck(state.C_regs[0], strategy, state);
+#endif
 
         gemmBetaScale(problem, strategy, state);
     }
@@ -2255,6 +2287,13 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             }
         }
     }
+
+#ifdef ASM_OUTPUT
+    std::stringstream s;
+    state.ra.dump(s);
+    state.dump(s);
+    comment(s.str());
+#endif
 
     return true;
 }
@@ -2348,6 +2387,12 @@ void Generator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMMStrategy &
     state.B_scaleLayout.clear();
     state.Ag_layout.clear();
     state.Bg_layout.clear();
+    state.Ap_offsetLayout.clear();
+    state.Bp_offsetLayout.clear();
+    state.Ap_scaleLayout.clear();
+    state.Bp_scaleLayout.clear();
+    state.Agp_layout.clear();
+    state.Bgp_layout.clear();
 
     if (state.systolicSumA || state.systolicSumB || state.fmaSumA || state.fmaSumB)
         setupTeardownAccumulateSum(false, Type::invalid, problem, strategy, state);
@@ -2679,6 +2724,17 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 
     interface.finalize();
 
+#ifdef ASM_OUTPUT
+#ifdef STANDALONE
+    if (!getenv("NO_DUMMY_CL"))
+#endif
+        // The dummy CL needs ngen to rearrange arguments, disabled from XeHPG on.
+        if (hw < HW::XeHPG)
+            interface.generateDummyCL(std::cerr);
+        else
+            std::cerr << "// No dummy CL: fixed argument layout on XeHPG+; package via zebin (eprep/oprep).\n";
+#endif
+
     for (int dim = 0; dim < 3; dim++) {
         localID[dim] = interface.getLocalID(dim);
         localSize[dim] = interface.getLocalSize(dim);
@@ -2754,8 +2810,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.inputs.bgPtr = interface.getArgumentIfExists("bg_ptr");
         state.inputs.surfaceBg = interface.getArgumentSurfaceIfExists("bg_ptr");
     }
+#ifndef STANDALONE
     if (problem.postOps.cStochasticRound)
         state.inputs.sroundSeedPtr = interface.getArgument("sround_seed");
+#endif
 
     state.inputs.offsetA = interface.getArgumentIfExists("offset_A");
     state.inputs.offsetB = interface.getArgumentIfExists("offset_B");
@@ -2876,6 +2934,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     if (strategy.fuseBeta || strategy.fusePostOps)
         state.inputs.statusBuffer = interface.getArgumentIfExists("status");
 
+#ifndef STANDALONE
     size_t poCount = problem.postOps.len();
     state.inputs.binarySrcs.resize(poCount);
     state.inputs.binaryOffsets.resize(poCount);
@@ -2892,6 +2951,14 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             for (int b = 0; b < problem.batchDims; b++)
                 state.inputs.binaryStrides[i].push_back(interface.getArgumentIfExists("stride" + std::to_string(b) + srcName));
     }
+#endif
+
+#ifdef STANDALONE
+    if (strategy.tracking.enabled) {
+        state.tracking.surface = interface.getArgumentSurface("tracking");
+        state.tracking.stride = interface.getArgument("tracking_stride");
+    }
+#endif
 
     Subregister tgids_reordered[3];
     GRF lids_reordered[3];
@@ -3070,8 +3137,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 
     if (state.inputs.flags.isValid())
         state.ra.claim(state.inputs.flags);
+#ifndef STANDALONE
     if (problem.postOps.cStochasticRound)
         state.ra.claim(state.inputs.sroundSeedPtr);
+#endif
     if (state.inputs.slmBase.isValid())
         state.ra.claim(state.inputs.slmBase);
 
@@ -3162,6 +3231,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     // Binary-related arguments are not claimed here, but instead
     //  are reloaded later in the kernel when needed.
 
+#ifdef STANDALONE
+    if (strategy.tracking.enabled)
+        state.ra.claim(state.tracking.stride);
+#endif
 }
 
 // Initialize the state structure.
@@ -3173,6 +3246,9 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
 
     state.useTempC = strategy.needsTempC(problem);
 
+#ifdef STANDALONE
+    if (!state.fusedGEMM.active)
+#endif
     {
         initState(problem, strategy, state);
         gemmInitInterface(problem, strategy, state, inSK);

@@ -84,6 +84,11 @@ private:
     // not found, an empty pointer is returned.
     const deserialized_op_t *get_parent_op(size_t in_lt_id) const;
 
+    // Returns the f8 data type of the probabilities if the partition contains
+    // MatMul -> ... -> SoftMax -> f8 [Dynamic]Quantize -> [Dynamic]Dequantize
+    // -> MatMul, and `dnnl_data_type_undef` otherwise
+    dnnl_data_type_t get_sdpa_f8_probs_dt() const;
+
     // Returns `true` if unfusable transcendental op should have cropped output.
     // `dt` is a target data type for following transform. Updated only when the
     // function returns `true`.

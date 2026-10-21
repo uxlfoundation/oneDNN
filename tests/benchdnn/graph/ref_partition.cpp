@@ -367,6 +367,13 @@ int ref_partition_t::check_partition_correctness(
     bool mistrusted = false, has_eltwise = false, output_has_nans = false;
     const auto &map_kind_to_alg = eltwise::get_eltwise_kind_map();
 
+    // Fused SDPA rounds the scaled unnormalized exp(s - max) to fp8, while the
+    // reference rounds the normalized softmax output. Each rounding contributes
+    // up to half an fp8 epsilon of relative error, so one epsilon covers both
+    const dnnl_data_type_t probs_dt = get_sdpa_f8_probs_dt();
+    const float p2p_threshold
+            = probs_dt != dnnl_data_type_undef ? epsilon_dt(probs_dt) : 0.f;
+
     for (const auto &op : partition_ops_ref_) {
         size_t op_id = op.get().id_;
         const auto &op_kind = op.get().kind_;
@@ -432,7 +439,7 @@ int ref_partition_t::check_partition_correctness(
         // The graph driver allows nans from the branch of Sqrt, but for the
         // other branch, the driver should not tolerate that.
         ref_prim->check_correctness(
-                output_args, has_eltwise, output_has_nans, res);
+                output_args, has_eltwise, output_has_nans, res, p2p_threshold);
         if (res->state == FAILED) {
             if (is_nvidia_gpu()) {
                 res->state = SKIPPED;
@@ -514,6 +521,50 @@ const deserialized_op_t *ref_partition_t::get_parent_op(size_t in_lt_id) const {
     }
 
     return nullptr;
+}
+
+dnnl_data_type_t ref_partition_t::get_sdpa_f8_probs_dt() const {
+    const auto is_one_of
+            = [](const std::string &kind, const char *a, const char *b) {
+        return kind == a || kind == b;
+    };
+    const auto has_matmul_ancestor = [&](const deserialized_op_t &op) {
+        std::vector<const deserialized_op_t *> stack {&op};
+        std::unordered_set<size_t> visited;
+        while (!stack.empty()) {
+            const auto *cur = stack.back();
+            stack.pop_back();
+            for (const auto &in_lt : cur->in_lts_) {
+                const auto *parent = get_parent_op(in_lt.id_);
+                if (!parent || !visited.insert(parent->id_).second) continue;
+                if (parent->kind_ == "MatMul") return true;
+                stack.push_back(parent);
+            }
+        }
+        return false;
+    };
+
+    for (const auto &op_ref : partition_ops_ref_) {
+        const auto &softmax = op_ref.get();
+        if (softmax.kind_ != "SoftMax") continue;
+
+        const deserialized_op_t *quant = nullptr, *dequant = nullptr,
+                                *matmul = nullptr;
+        if (!has_child_op(softmax, &quant)
+                || !is_one_of(quant->kind_, "Quantize", "DynamicQuantize"))
+            continue;
+        const auto dt = convert_dt(quant->out_lts_[0].get_data_type());
+        if (dt != dnnl_f8_e4m3 && dt != dnnl_f8_e5m2) continue;
+        if (!has_child_op(*quant, &dequant)
+                || !is_one_of(
+                        dequant->kind_, "Dequantize", "DynamicDequantize"))
+            continue;
+        if (!has_child_op(*dequant, &matmul) || matmul->kind_ != "MatMul")
+            continue;
+        if (!has_matmul_ancestor(softmax)) continue;
+        return dt;
+    }
+    return dnnl_data_type_undef;
 }
 
 // This function decides when unfusable transcendental op output should be

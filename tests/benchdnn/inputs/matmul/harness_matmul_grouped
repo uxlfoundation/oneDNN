@@ -293,6 +293,15 @@
 --attr-post-ops=mul:f32:0,mul:f16:0,mul:bf16:0
 8x64:4x64x32
 
+# Scales and zero points with different groups
+--reset
+--dt=s8:s8:f32
+--wtag=abc
+--grouped=0:4:balanced
+--attr-scales=src:3:f32:1x64+wei:7:f32:64x1
+--attr-zero-points=src:3:s8:1x32+wei:7:s8:64x1
+32x128:4x128x32
+
 # --- Section B: 2Dx2D variant: variable contraction dim K -------------------
 # src[M, total_K] * wei[total_K, N] -> dst[G, M, N] (dense 3D, allows abc, acb)
 --reset

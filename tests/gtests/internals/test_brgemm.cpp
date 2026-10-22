@@ -27,6 +27,10 @@
 #include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
 
+#if defined(__linux__)
+#include <sys/mman.h>
+#endif
+
 namespace dnnl {
 
 struct brgemm_params_t : test_params_t {
@@ -305,11 +309,12 @@ impl::status_t init_roll_desc(brgemm_desc_t &desc, impl::data_type_t dt_a,
 
 // Runs the kernel on small integers, so the reference is exact. A row masked
 // by bd_mask is not stored, any other row goes to the row equal to the number
-// of stored rows before it. C elements that must stay untouched are checked
-// against a sentinel.
-template <typename a_t, typename b_t, typename c_t>
+// of stored rows before it. Output elements that must stay untouched are
+// checked against a sentinel. With to_D the kernel runs with post-ops and the
+// output is D, otherwise it is C.
+template <typename a_t, typename b_t, typename out_t>
 void check_roll_kernel(const brgemm_desc_t &desc, dim_t max_bs,
-        const std::vector<dim_t> &batch_sizes, c_t *C) {
+        const std::vector<dim_t> &batch_sizes, out_t *out, bool to_D = false) {
     ASSERT_EQ(desc.beta, 0.f);
     ASSERT_TRUE(desc.is_b_data_layout_vnni());
     const dim_t M = desc.bcast_dim, N = desc.load_dim, K = desc.reduce_dim;
@@ -338,13 +343,15 @@ void check_roll_kernel(const brgemm_desc_t &desc, dim_t max_bs,
         batch[b].vvpad.bottom = 0;
     }
 
-    const auto c_off = [&](dim_t m, dim_t n) {
+    const auto out_off = [&](dim_t m, dim_t n) {
+        if (to_D) return m * desc.LDD + n;
         return m * desc.LDC2_M + (n / desc.LDC) * desc.LDC2_N + n % desc.LDC;
     };
     const auto is_stored = [&](dim_t m) {
         return desc.brgattr.bd_mask_level == 0 || desc.brgattr.bd_mask[m];
     };
-    const c_t sentinel = static_cast<c_t>(-777);
+    const out_t sentinel = static_cast<out_t>(-777.f);
+    std::vector<char> C(to_D ? M * desc.LDC * desc.typesize_C : 0);
 
     brgemm_kernel_t *kernel = nullptr;
     ASSERT_EQ(brgemm_kernel_create(&kernel, desc), impl::status::success);
@@ -357,10 +364,14 @@ void check_roll_kernel(const brgemm_desc_t &desc, dim_t max_bs,
     for (const dim_t bs : batch_sizes) {
         for (dim_t m = 0; m < M; m++)
             for (dim_t n = 0; n < N; n++)
-                C[c_off(m, n)] = sentinel;
+                out[out_off(m, n)] = sentinel;
 
         if (use_tiles) amx_tile_configure(palette);
-        brgemm_kernel_execute(kernel, bs, batch.data(), C, wsp.data());
+        if (to_D)
+            brgemm_kernel_execute_postops(kernel, bs, batch.data(), C.data(),
+                    out, brgemm_post_ops_data_t(), wsp.data());
+        else
+            brgemm_kernel_execute(kernel, bs, batch.data(), out, wsp.data());
         if (use_tiles) amx_tile_release();
 
         dim_t m_out = 0;
@@ -374,15 +385,17 @@ void check_roll_kernel(const brgemm_desc_t &desc, dim_t max_bs,
                                 * static_cast<float>(
                                         B[b][(k / k_pack) * desc.LDB * k_pack
                                                 + n * k_pack + k % k_pack]);
-                const c_t ref = static_cast<c_t>(desc.alpha * acc);
-                ASSERT_EQ(C[c_off(m_out, n)], ref)
+                const out_t ref = static_cast<out_t>(desc.alpha * acc);
+                ASSERT_EQ(static_cast<float>(out[out_off(m_out, n)]),
+                        static_cast<float>(ref))
                         << "bs=" << bs << " m=" << m << " n=" << n;
             }
             m_out++;
         }
         for (dim_t m = m_out; m < M; m++)
             for (dim_t n = 0; n < N; n++)
-                ASSERT_EQ(C[c_off(m, n)], sentinel)
+                ASSERT_EQ(static_cast<float>(out[out_off(m, n)]),
+                        static_cast<float>(sentinel))
                         << "bs=" << bs << " m=" << m << " n=" << n;
     }
 
@@ -415,6 +428,94 @@ TEST(brgemm_roll_loops_test, BdMaskDisablesFirstRowOfIteration) {
 
     std::vector<float> C(M * N);
     check_roll_kernel<bfloat16_t, bfloat16_t, float>(desc, 1, {1}, C.data());
+}
+
+TEST(brgemm_roll_loops_test, BdStepBeyondInt32) {
+    SKIP_IF(!dnnl::mayiuse(cpu_isa::avx512_core_amx), "AMX is not supported");
+#if !defined(__linux__)
+    SKIP_IF(true, "Sparse D buffer needs Linux mmap");
+#else
+    // Rows of D are 64 MiB apart, so the D pointer step of a rolled bd loop
+    // over 32 rows does not fit into imm32. Interleaved stores apply the bd
+    // shifts at other points, so run both store modes.
+    const dim_t M = 96, N = 32, K = 32, LDD = dim_t(1) << 25;
+
+    for (const bool ils : {false, true}) {
+        SCOPED_TRACE(ils ? "interleaved stores" : "no interleaved stores");
+        brgemm_attr_t attr;
+        attr.use_uker = true;
+        attr.max_bs = 1;
+        attr.hint_bd_block2 = 2;
+        attr.hint_ld_block2 = 2;
+        attr.hint_roll_bd_loop = true;
+        attr.use_interleave_stores = ils;
+
+        brgemm_desc_t desc;
+        ASSERT_EQ(brgemm_desc_init(&desc, isa_undef, brgemm_addr,
+                          impl::data_type::bf16, impl::data_type::bf16, false,
+                          false, brgemm_row_major, 1.f, 0.f, K, N, N, M, N, K),
+                impl::status::success);
+        dnnl::primitive_attr pattr;
+        const memory::desc dst_md(
+                {M, N}, memory::data_type::bf16, memory::dims {LDD, 1});
+        ASSERT_EQ(
+                brgemm_desc_set_postops(&desc, pattr.get(), dst_md.get(), LDD),
+                impl::status::success);
+        ASSERT_EQ(brgemm_desc_set_attr(&desc, attr), impl::status::success);
+        ASSERT_EQ(brgemm_desc_finalize(&desc), impl::status::success);
+        ASSERT_TRUE(desc.brgattr.use_uker);
+        ASSERT_EQ(desc.interleave_tilestores_, ils);
+
+        const size_t D_size = ((M - 1) * LDD + N) * sizeof(bfloat16_t);
+        void *D = mmap(nullptr, D_size, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+        SKIP_IF(D == MAP_FAILED, "Cannot reserve the sparse D buffer");
+        check_roll_kernel<bfloat16_t, bfloat16_t, bfloat16_t>(
+                desc, 1, {1}, static_cast<bfloat16_t *>(D), true);
+        munmap(D, D_size);
+    }
+#endif
+}
+
+TEST(brgemm_roll_loops_test, LdStepBeyondInt32) {
+    SKIP_IF(!dnnl::mayiuse(cpu_isa::avx512_core_amx), "AMX is not supported");
+#if !defined(__linux__)
+    SKIP_IF(true, "Sparse C buffer needs Linux mmap");
+#else
+    // Each ld block of C is a separate panel 2 GiB + 4 KiB apart, so the C
+    // pointer step of a rolled ld loop does not fit into imm32. With the bd
+    // loop innermost over two bd blocks, the first ld iteration is not split
+    // out of the rolled body, so the body itself has no C displacement.
+    const dim_t M = 32, N = 64, K = 32, LDC = 16;
+    const dim_t LDC2_N = (dim_t(1) << 29) + 1024;
+
+    brgemm_attr_t attr;
+    attr.use_uker = true;
+    attr.max_bs = 1;
+    attr.LDC2_N = LDC2_N;
+    attr.hint_innermost_loop = brgemm_bd_loop_innermost;
+    attr.hint_bd_block2 = 1;
+    attr.hint_ld_block2 = 1;
+    attr.hint_roll_ld_loop = true;
+    attr.use_interleave_stores = false;
+
+    brgemm_desc_t desc;
+    ASSERT_EQ(init_roll_desc(desc, impl::data_type::bf16, impl::data_type::bf16,
+                      1.f, M, N, K, K, N, LDC, attr),
+            impl::status::success);
+    ASSERT_TRUE(desc.brgattr.use_uker);
+    ASSERT_EQ(desc.LDC2_N, LDC2_N);
+    ASSERT_FALSE(desc.save_transform_A());
+
+    const size_t C_size
+            = ((N / LDC - 1) * LDC2_N + M * desc.LDC2_M) * sizeof(float);
+    void *C = mmap(nullptr, C_size, PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    SKIP_IF(C == MAP_FAILED, "Cannot reserve the sparse C buffer");
+    check_roll_kernel<bfloat16_t, bfloat16_t, float>(
+            desc, 1, {1}, static_cast<float *>(C));
+    munmap(C, C_size);
+#endif
 }
 
 } // namespace dnnl

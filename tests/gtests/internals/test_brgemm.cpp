@@ -289,4 +289,132 @@ TEST_P(brgemm_test_t, TestsBRGEMM) {}
 INSTANTIATE_TEST_SUITE_P(TestBRGEMMSimple, brgemm_test_t,
         ::testing::ValuesIn(params_creator_t().create_simple_brgemm_params()));
 
+namespace {
+
+using namespace impl::cpu::x64;
+using impl::dim_t;
+
+impl::status_t init_roll_desc(brgemm_desc_t &desc, impl::data_type_t dt_a,
+        impl::data_type_t dt_b, float alpha, dim_t M, dim_t N, dim_t K,
+        dim_t LDA, dim_t LDB, dim_t LDC, const brgemm_attr_t &attr) {
+    CHECK(brgemm_desc_init(&desc, isa_undef, brgemm_addr, dt_a, dt_b, false,
+            false, brgemm_row_major, alpha, 0.f, LDA, LDB, LDC, M, N, K));
+    CHECK(brgemm_desc_set_attr(&desc, attr));
+    return brgemm_desc_finalize(&desc);
+}
+
+// Runs the kernel on small integers, so the reference is exact. A row masked
+// by bd_mask is not stored, any other row goes to the row equal to the number
+// of stored rows before it. C elements that must stay untouched are checked
+// against a sentinel.
+template <typename a_t, typename b_t, typename c_t>
+void check_roll_kernel(const brgemm_desc_t &desc, dim_t max_bs,
+        const std::vector<dim_t> &batch_sizes, c_t *C) {
+    ASSERT_EQ(desc.beta, 0.f);
+    ASSERT_TRUE(desc.is_b_data_layout_vnni());
+    const dim_t M = desc.bcast_dim, N = desc.load_dim, K = desc.reduce_dim;
+    const dim_t k_pack = 4 / sizeof(b_t);
+    const dim_t K_padded = impl::utils::rnd_up(K, k_pack);
+
+    std::vector<std::vector<a_t>> A(max_bs);
+    std::vector<std::vector<b_t>> B(max_bs);
+    std::vector<brgemm_batch_element_t> batch(max_bs);
+    for (dim_t b = 0; b < max_bs; b++) {
+        A[b].resize(M * desc.LDA);
+        for (dim_t i = 0; i < M * desc.LDA; i++) {
+            const dim_t m = i / desc.LDA, k = i % desc.LDA;
+            A[b][i] = static_cast<a_t>(
+                    static_cast<float>((m * 3 + k * 7 + b) % 5));
+        }
+        B[b].resize(K_padded * desc.LDB, static_cast<b_t>(0.f));
+        for (dim_t k = 0; k < K; k++)
+            for (dim_t n = 0; n < N; n++)
+                B[b][(k / k_pack) * desc.LDB * k_pack + n * k_pack + k % k_pack]
+                        = static_cast<b_t>(static_cast<float>(
+                                (k * 2 + n * 3 + b) % 5 - 2));
+        batch[b].ptr.A = A[b].data();
+        batch[b].ptr.B = B[b].data();
+        batch[b].vvpad.top = 0;
+        batch[b].vvpad.bottom = 0;
+    }
+
+    const auto c_off = [&](dim_t m, dim_t n) {
+        return m * desc.LDC2_M + (n / desc.LDC) * desc.LDC2_N + n % desc.LDC;
+    };
+    const auto is_stored = [&](dim_t m) {
+        return desc.brgattr.bd_mask_level == 0 || desc.brgattr.bd_mask[m];
+    };
+    const c_t sentinel = static_cast<c_t>(-777);
+
+    brgemm_kernel_t *kernel = nullptr;
+    ASSERT_EQ(brgemm_kernel_create(&kernel, desc), impl::status::success);
+    char palette[AMX_PALETTE_SIZE] = {};
+    const bool use_tiles
+            = brgemm_init_tiles(desc, palette) == impl::status::success;
+    std::vector<char> wsp(
+            impl::nstl::max<dim_t>(desc.get_wsp_buffer_size(), 1));
+
+    for (const dim_t bs : batch_sizes) {
+        for (dim_t m = 0; m < M; m++)
+            for (dim_t n = 0; n < N; n++)
+                C[c_off(m, n)] = sentinel;
+
+        if (use_tiles) amx_tile_configure(palette);
+        brgemm_kernel_execute(kernel, bs, batch.data(), C, wsp.data());
+        if (use_tiles) amx_tile_release();
+
+        dim_t m_out = 0;
+        for (dim_t m = 0; m < M; m++) {
+            if (!is_stored(m)) continue;
+            for (dim_t n = 0; n < N; n++) {
+                float acc = 0.f;
+                for (dim_t b = 0; b < bs; b++)
+                    for (dim_t k = 0; k < K; k++)
+                        acc += static_cast<float>(A[b][m * desc.LDA + k])
+                                * static_cast<float>(
+                                        B[b][(k / k_pack) * desc.LDB * k_pack
+                                                + n * k_pack + k % k_pack]);
+                const c_t ref = static_cast<c_t>(desc.alpha * acc);
+                ASSERT_EQ(C[c_off(m_out, n)], ref)
+                        << "bs=" << bs << " m=" << m << " n=" << n;
+            }
+            m_out++;
+        }
+        for (dim_t m = m_out; m < M; m++)
+            for (dim_t n = 0; n < N; n++)
+                ASSERT_EQ(C[c_off(m, n)], sentinel)
+                        << "bs=" << bs << " m=" << m << " n=" << n;
+    }
+
+    brgemm_kernel_destroy(kernel);
+}
+
+} // namespace
+
+TEST(brgemm_roll_loops_test, BdMaskDisablesFirstRowOfIteration) {
+    SKIP_IF(!dnnl::mayiuse(cpu_isa::avx512_core_amx), "AMX is not supported");
+
+    // Level 2 walks the mask, the first two rows are skipped by blocking.
+    const dim_t M = 66, N = 32, K = 32;
+    std::vector<char> mask(M, 1);
+    mask[0] = mask[1] = 0;
+
+    brgemm_attr_t attr;
+    attr.use_uker = true;
+    attr.max_bs = 1;
+    attr.bd_mask_level = 2;
+    attr.bd_mask = mask.data();
+    attr.hint_bd_block2 = 1;
+    attr.hint_roll_bd_loop = true;
+
+    brgemm_desc_t desc;
+    ASSERT_EQ(init_roll_desc(desc, impl::data_type::bf16, impl::data_type::bf16,
+                      1.f, M, N, K, K, N, N, attr),
+            impl::status::success);
+    ASSERT_TRUE(desc.brgattr.use_uker);
+
+    std::vector<float> C(M * N);
+    check_roll_kernel<bfloat16_t, bfloat16_t, float>(desc, 1, {1}, C.data());
+}
+
 } // namespace dnnl

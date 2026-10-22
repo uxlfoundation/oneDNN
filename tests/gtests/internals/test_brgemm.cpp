@@ -27,6 +27,10 @@
 #include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
 
+#if defined(__linux__)
+#include <sys/mman.h>
+#endif
+
 namespace dnnl {
 
 struct brgemm_params_t : test_params_t {
@@ -415,6 +419,47 @@ TEST(brgemm_roll_loops_test, BdMaskDisablesFirstRowOfIteration) {
 
     std::vector<float> C(M * N);
     check_roll_kernel<bfloat16_t, bfloat16_t, float>(desc, 1, {1}, C.data());
+}
+
+TEST(brgemm_roll_loops_test, LdStepBeyondInt32) {
+    SKIP_IF(!dnnl::mayiuse(cpu_isa::avx512_core_amx), "AMX is not supported");
+#if !defined(__linux__)
+    SKIP_IF(true, "Sparse C buffer needs Linux mmap");
+#else
+    // Each ld block of C is a separate panel 2 GiB + 4 KiB apart, so the C
+    // pointer step of a rolled ld loop does not fit into imm32. With the bd
+    // loop innermost over two bd blocks, the first ld iteration is not split
+    // out of the rolled body, so the body itself has no C displacement.
+    const dim_t M = 32, N = 64, K = 32, LDC = 16;
+    const dim_t LDC2_N = (dim_t(1) << 29) + 1024;
+
+    brgemm_attr_t attr;
+    attr.use_uker = true;
+    attr.max_bs = 1;
+    attr.LDC2_N = LDC2_N;
+    attr.hint_innermost_loop = brgemm_bd_loop_innermost;
+    attr.hint_bd_block2 = 1;
+    attr.hint_ld_block2 = 1;
+    attr.hint_roll_ld_loop = true;
+    attr.use_interleave_stores = false;
+
+    brgemm_desc_t desc;
+    ASSERT_EQ(init_roll_desc(desc, impl::data_type::bf16, impl::data_type::bf16,
+                      1.f, M, N, K, K, N, LDC, attr),
+            impl::status::success);
+    ASSERT_TRUE(desc.brgattr.use_uker);
+    ASSERT_EQ(desc.LDC2_N, LDC2_N);
+    ASSERT_FALSE(desc.save_transform_A());
+
+    const size_t C_size
+            = ((N / LDC - 1) * LDC2_N + M * desc.LDC2_M) * sizeof(float);
+    void *C = mmap(nullptr, C_size, PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    SKIP_IF(C == MAP_FAILED, "Cannot reserve the sparse C buffer");
+    check_roll_kernel<bfloat16_t, bfloat16_t, float>(
+            desc, 1, {1}, static_cast<float *>(C));
+    munmap(C, C_size);
+#endif
 }
 
 } // namespace dnnl

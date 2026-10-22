@@ -66,6 +66,16 @@ struct kai_matmul_t : public primitive_t {
 
         int kernel_maxthreads() const;
 
+        enum class nested_reorder_t { src, weights, dst };
+        memory_tracking::key_t reorder_nested_key(
+                nested_reorder_t reorder) const;
+
+        memory_desc_t src_ab_md_, weights_ab_md_, dst_ab_md_;
+        std::shared_ptr<primitive_desc_t> src_ba_to_ab_reorder_pd_;
+        std::shared_ptr<primitive_desc_t> weights_ba_to_ab_reorder_pd_;
+        std::shared_ptr<primitive_desc_t> dst_ab_to_ba_reorder_pd_;
+        bool pack_transposed_weights_ = false;
+
     private:
         // dequant is i8*i8->f32, requant is i8*i8->i8 (not supported in this wrapper yet)
         enum class kai_gemm_type { noquant, dequant, requant };
@@ -104,6 +114,9 @@ struct kai_matmul_t : public primitive_t {
 
 private:
     post_ops_fallback_t post_ops_fallback_;
+    std::shared_ptr<primitive_t> src_ba_to_ab_reorder_;
+    std::shared_ptr<primitive_t> weights_ba_to_ab_reorder_;
+    std::shared_ptr<primitive_t> dst_ab_to_ba_reorder_;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 

@@ -95,9 +95,12 @@ DECLARE_2D_TILE(binary_group_chunk_in_type, binary_scale_grouped_tile_data_t,
 #endif
 
 #if WITH_BINARY_DENSE_SCALE
+// One scale per token, broadcast along the sg_tile_n columns of the C tile.
 #define binary_dense_scale_br ugemm_grouped_sg_tile_m
 #define binary_dense_scale_bc 1
-#define binary_dense_scale_nbr 1
+#define binary_dense_scale_nbr \
+    ((ugemm_grouped_sg_tile_n + ugemm_grouped_sg_tile_m - 1) \
+            / ugemm_grouped_sg_tile_m)
 #define binary_dense_scale_nbc 1
 DECLARE_2D_TILE(binary_dense_tile_type, float, SUBGROUP_SIZE,
         binary_dense_scale_br, binary_dense_scale_bc, binary_dense_scale_nbr,

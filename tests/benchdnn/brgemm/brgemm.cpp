@@ -158,6 +158,9 @@ dnnl_status_t brgemm_attr_init(
         PROCESS_KEY_VAL(hint_ld_block);
         PROCESS_KEY_VAL(hint_ld_block2);
 #if defined(brg_x64)
+        PROCESS_KEY_VAL(hint_roll_ld_loop);
+        PROCESS_KEY_VAL(hint_roll_bs_loop);
+        PROCESS_KEY_VAL(hint_roll_rd_loop);
         PROCESS_KEY_VAL(enable_size_driven_roll);
 #endif
 

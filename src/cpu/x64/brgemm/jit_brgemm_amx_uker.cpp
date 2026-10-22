@@ -3158,10 +3158,22 @@ void jit_brgemm_amx_uker_t::bs_loop(brgemm_iteration_t &bi) {
 
     load_accumulators(bi);
 
+    // The var_bs loop pins bi.bsi to the first element, and ace_load_A()
+    // derives its transformed A slot from bi.bsi->idx, so the loop advances
+    // reg_buf by one slot per batch element.
+    const auto bs_buf_increment = brg.is_ace() && brg.save_transform_A()
+            ? static_cast<dim_t>(brg.all_rdb())
+                    * brg.ace_transformed_A_bd_block2_size()
+            : 0;
+
     if (brg.brgattr.var_bs) {
         if (brg.alpha != 0.f) {
             Label BS_loop_label, end_BS_loop_label, first_BS_loop_label,
                     last_BS_loop_label;
+
+            // The batch size is known only at run time, so restore reg_buf
+            // from its slot instead of rewinding it by a fixed amount.
+            if (bs_buf_increment) reg_buf.save();
 
             mov(reg_BS_loop, ptr[param1 + GET_OFF(BS)]);
             cmp(reg_BS_loop, 0);
@@ -3185,6 +3197,7 @@ void jit_brgemm_amx_uker_t::bs_loop(brgemm_iteration_t &bi) {
             bi.first_bsi = true;
             bi.last_bsi = false;
             bs_loop_body(bi);
+            if (bs_buf_increment) add(reg_buf, bs_buf_increment);
 
             dec(reg_BS_loop);
             cmp(reg_BS_loop, 1);
@@ -3196,6 +3209,7 @@ void jit_brgemm_amx_uker_t::bs_loop(brgemm_iteration_t &bi) {
                 bi.first_bsi = false;
                 bi.last_bsi = false;
                 bs_loop_body(bi);
+                if (bs_buf_increment) add(reg_buf, bs_buf_increment);
                 dec(reg_BS_loop);
                 cmp(reg_BS_loop, 1);
                 jg(BS_loop_label, T_NEAR);
@@ -3207,6 +3221,7 @@ void jit_brgemm_amx_uker_t::bs_loop(brgemm_iteration_t &bi) {
             bs_loop_body(bi);
 
             L_aligned(end_BS_loop_label, 64);
+            if (bs_buf_increment) reg_buf.restore();
         }
         store_accumulators(bi);
     } else {

@@ -846,6 +846,8 @@ jit_brgemm_amx_uker_t::roll_loops_t jit_brgemm_amx_uker_t::roll_loops(
             return bd;
         };
         dim_t bd = skip(0);
+        // A rolled bd loop reads A of its first iteration from row 0.
+        if (bd != 0) return false;
         for (dim_t bdb = 0; bdb < brg.bdb; bdb += brg.bd_block2) {
             if (!mask[bd]) return false;
             for (dim_t i = 0; i < brg.bd_block2 && bdb + i < brg.bdb; i++) {

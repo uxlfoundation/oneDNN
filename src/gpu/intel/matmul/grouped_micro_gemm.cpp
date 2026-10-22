@@ -178,7 +178,6 @@ void init_kernel_ctx_m_axis(
 
     kernel_ctx.define_int(
             "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(conf.src_dt, 1));
-    kernel_ctx.define_int("WEI_STRIDE0", conf.wei_stride0);
     if (!conf.int32_offset) kernel_ctx.use_int32_offset(false);
 
     // Only the quantization data types are consumed by the kernel. The rest of
@@ -756,16 +755,8 @@ status_t grouped_micro_gemm_t::pd_t::init_conf() {
             conf_.wei_zp_host_scalar = wei_quant_.with_zp()
                     && attr()->zero_points_.get(DNNL_ARG_WEIGHTS)
                                .is_host_scalar();
-
-            // Sub-byte weights are addressed in bytes
-            const dim_t wei_stride0 = wei_d.strides()[0];
-            conf_.wei_stride0
-                    = utils::one_of(conf_.wei_dt, data_type::f4_e2m1,
-                              data_type::s4, data_type::u4, data_type::u3)
-                    ? types::elements_to_bytes(conf_.wei_dt, wei_stride0)
-                    : wei_stride0;
-            conf_.int32_offset
-                    = wei_stride0 * ngroups() < std::numeric_limits<int>::max();
+            conf_.int32_offset = wei_d.strides()[0] * ngroups()
+                    < std::numeric_limits<int>::max();
 
             conf_.with_bias = with_bias();
             conf_.bia_dt = weights_md(1)->data_type;
@@ -1026,26 +1017,26 @@ status_t grouped_micro_gemm_t::execute_m_axis(const exec_ctx_t &ctx) const {
 
     dim_t ldsrc = src_md->dims[src_md->ndims - 1];
     dim_t lddst = dst_md->dims[dst_md->ndims - 1];
-    const dims_t &wei_strides_ = wei_md->format_desc.blocking.strides;
-    compute::int64x4_t wei_strides
-            = {static_cast<int64_t>(wei_strides_[wei_md->ndims - 3]),
-                    static_cast<int64_t>(wei_strides_[wei_md->ndims - 2]),
-                    static_cast<int64_t>(wei_strides_[wei_md->ndims - 1]),
-                    static_cast<int64_t>(wei_strides_[wei_md->ndims - 0])};
+    // In units of WEI_DATA_T: sub-byte weights are addressed in bytes
+    const data_type_t wei_dt = wei_md->data_type;
+    dim_t wei_batch_stride
+            = wei_md->format_desc.blocking.strides[wei_md->ndims - 3];
+    if (utils::one_of(wei_dt, data_type::f4_e2m1, data_type::s4, data_type::u4,
+                data_type::u3))
+        wei_batch_stride = types::elements_to_bytes(wei_dt, wei_batch_stride);
+    // Must match the A layout chosen by get_trans() in init_ukernel_problem():
+    // with N == 1 the stride of the size-1 dimension is arbitrary.
+    dim_t ldwei = gemm_desc_t::get_ld(*wei_md);
 
     compute::kernel_arg_list_t arg_list;
 
     arg_list.append(src_data);
     arg_list.append(ldsrc);
-    arg_list.append(wei_data);
-    arg_list.append(wei_strides);
-    arg_list.append(dst_data);
-    arg_list.append(lddst);
     arg_list.append(src_offsets);
-    arg_list.append(dst_offsets);
     arg_list.append(src_scales);
     arg_list.append(src_zero_points);
     arg_list.append(ldsrcq);
+    arg_list.append(wei_data);
     arg_list.append(wei_scales);
     if (pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS).is_host_scalar()) {
         int value = 0;
@@ -1055,9 +1046,14 @@ status_t grouped_micro_gemm_t::execute_m_axis(const exec_ctx_t &ctx) const {
         arg_list.append(wei_zero_points);
     }
     arg_list.append(ldweiq);
-    arg_list.append(n);
-    arg_list.append(k);
-    arg_list.append(pd()->ngroups());
+    arg_list.append(wei_batch_stride);
+    arg_list.append(ldwei);
+    arg_list.append(dst_data);
+    arg_list.append(lddst);
+    arg_list.append(dst_offsets);
+    arg_list.append(into<int>(n));
+    arg_list.append(into<int>(k));
+    arg_list.append(into<int>(pd()->ngroups()));
     arg_list.append(bias_data);
 
     const memory_storage_t *grouped_scale = &memory_storage_t::empty_storage();

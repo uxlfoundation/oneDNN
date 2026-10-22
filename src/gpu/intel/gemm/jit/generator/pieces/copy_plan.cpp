@@ -826,7 +826,7 @@ void CopyPlan::planTypeConversions()
 
         if (is4(st) && one_of(dt, {ngen_b16_h4x(), ngen_b16_l4x()}))
             plan4BitShifts(i);
-        else if (isInt4(st) && isInt4(dt) && st != dt) {
+        else if (isInt4(st) && isInt4(dt)) {
             copyThrough(i, DataType::w);
             rerun = true;
         } else if (isInt4(st) && isInt(dt)) {
@@ -1502,11 +1502,6 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
         if (i.dst.stride > 4) stub("Unsupported stride.");
         i.src0.stride /= 2;
         i.src0.offset /= 2;
-        if (getBits(i.dst.type) < 8) {
-            i.dst.type = DataType::ub;
-            i.dst.stride /= 2;
-            i.dst.offset /= 2;
-        }
 
         if (even) {
             // Low nybbles

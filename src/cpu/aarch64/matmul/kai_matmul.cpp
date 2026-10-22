@@ -29,6 +29,8 @@
 #include <functional>
 #include <memory>
 #include "common/dnnl_thread.hpp"
+#include "common/memory.hpp"
+#include "common/reorder.hpp"
 #include "common/stream.hpp"
 #include "common/utils.hpp"
 #include "common/verbose_msg.hpp"
@@ -93,7 +95,63 @@ double kernel_execute_work(const kai_matmul_t::pd_t &pd) {
     return static_cast<double>(pd.M()) * pd.N() * pd.K() * pd.batch();
 }
 
+enum class ab_reorder_direction { user_to_ab, ab_to_user };
+
+status_t init_ab_reorder(const engine_t *engine, const memory_desc_t *user_md,
+        memory_desc_t &ab_md, std::shared_ptr<primitive_desc_t> &reorder_pd,
+        memory_tracking::registrar_t &scratchpad,
+        memory_tracking::key_t tmp_key, memory_tracking::key_t nested_key,
+        ab_reorder_direction direction) {
+    // Copy user md for dimensions, then select default dense ab strides.
+    ab_md = *user_md;
+    CHECK(memory_desc_init_by_strides(ab_md, nullptr));
+
+    const memory_desc_t *reorder_src_md
+            = direction == ab_reorder_direction::ab_to_user ? &ab_md : user_md;
+    const memory_desc_t *reorder_dst_md
+            = direction == ab_reorder_direction::ab_to_user ? user_md : &ab_md;
+    CHECK(reorder_primitive_desc_create(
+            reorder_pd, engine, reorder_src_md, reorder_dst_md));
+
+    const memory_desc_wrapper ab_d(&ab_md);
+    scratchpad.book(tmp_key, ab_d.size(), 1, 64, 64);
+    scratchpad.book(nested_key, reorder_pd->scratchpad_registry());
+
+    return status::success;
+}
+
+status_t execute_reorder(const exec_ctx_t &ctx,
+        const std::shared_ptr<primitive_t> &reorder,
+        const memory_desc_t *src_md, const memory_desc_t *dst_md,
+        const void *src, void *dst, memory_tracking::key_t nested_key) {
+    if (!reorder) return status::runtime_error;
+
+    auto *engine = ctx.stream()->engine();
+    std::unique_ptr<memory_t, memory_deleter_t> src_mem(new memory_t(
+            engine, src_md, use_runtime_ptr, const_cast<void *>(src)));
+    std::unique_ptr<memory_t, memory_deleter_t> dst_mem(
+            new memory_t(engine, dst_md, use_runtime_ptr, dst));
+
+    exec_args_t reorder_args;
+    reorder_args[DNNL_ARG_SRC] = {src_mem.get(), true};
+    reorder_args[DNNL_ARG_DST] = {dst_mem.get(), false};
+    exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
+
+    auto *nested_grantor = memory_tracking::create_nested_grantor(
+            ctx.get_scratchpad_grantor(), nested_key,
+            reorder->pd()->scratchpad_registry());
+    reorder_ctx.set_scratchpad_grantor(nested_grantor);
+    return reorder->execute(reorder_ctx);
+}
+
 } //namespace
+
+memory_tracking::key_t kai_matmul_t::pd_t::reorder_nested_key(
+        nested_reorder_t reorder) const {
+    // Keep reorder scratchpads separate from those used by post ops.
+    return memory_tracking::names::key_nested_multiple + attr()->post_ops_.len()
+            + static_cast<memory_tracking::key_t>(reorder);
+}
 
 std::unique_ptr<kai::ops::IGemmCommon>
 kai_matmul_t::pd_t::create_kai_gemm_dequant(
@@ -174,13 +232,11 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(
             cpu::matmul::gemm_based::check_gemm_input_format(*src_md()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
-    VDISPATCH_MATMUL(helper.transA() == 'N', VERBOSE_UNSUPPORTED_TAG_S, "src");
     VDISPATCH_MATMUL(
             cpu::matmul::gemm_based::check_gemm_output_format(*dst_md())
                     || cpu::matmul::gemm_based::check_gemm_input_format(
                             *dst_md()),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
-    VDISPATCH_MATMUL(helper.transC() == 'N', VERBOSE_UNSUPPORTED_TAG_S, "dst");
     VDISPATCH_MATMUL(batch_dims_have_default_order(src_d),
             "src batch dimensions must be in order");
     VDISPATCH_MATMUL(batch_dims_have_default_order(wei_d),
@@ -274,8 +330,11 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
     }
     VDISPATCH_MATMUL(num_sum_post_ops(attr_.post_ops_) <= 1,
             "supports at most one sum post op");
-    const post_ops_fusion_t post_ops_fusion
-            = create_post_ops_fusion(attr_.post_ops_, !with_bias());
+    const bool reorder_src = helper.transA() == 'T';
+    const bool reorder_dst = helper.transC() == 'T';
+    // Accumulation needs the existing dst in the kernel's output layout.
+    const post_ops_fusion_t post_ops_fusion = create_post_ops_fusion(
+            attr_.post_ops_, !with_bias() && !reorder_dst);
     VDISPATCH_MATMUL(
             !post_ops_fusion.has_fallback(attr_.post_ops_) || ddt == f32,
             "post ops must be fused into KAI unless dst is f32");
@@ -323,8 +382,11 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
     kai::ops::GemmConfig kernel_cfg = kernel->get_config();
 
     kai_pack_weights_ = !fixed_format() && kernel->B_is_pretransposed();
-    VDISPATCH_MATMUL(fixed_format() || helper.transB() == 'N',
-            VERBOSE_UNSUPPORTED_TAG_S, "weights");
+    const bool transposed_weights = !fixed_format() && helper.transB() == 'T';
+    pack_transposed_weights_ = transposed_weights && kai_pack_weights_
+            && kernel->B_pretranspose_supports_transpose();
+    const bool reorder_weights
+            = transposed_weights && !pack_transposed_weights_;
 
     if (fixed_format()) {
         // Logical dimension indices
@@ -353,6 +415,33 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
         scratchpad.book(memory_tracking::names::key_gemm_asm_tmp_buffer,
                 kernel->get_working_size(), 1);
 
+    if (reorder_src)
+        VDISPATCH_MATMUL_SC(
+                init_ab_reorder(engine, src_md(), src_ab_md_,
+                        src_ba_to_ab_reorder_pd_, scratchpad,
+                        memory_tracking::names::key_matmul_src_trans,
+                        reorder_nested_key(nested_reorder_t::src),
+                        ab_reorder_direction::user_to_ab),
+                VERBOSE_PRIMITIVE_CREATION_FAIL, "src reorder");
+
+    if (reorder_weights)
+        VDISPATCH_MATMUL_SC(
+                init_ab_reorder(engine, weights_md(), weights_ab_md_,
+                        weights_ba_to_ab_reorder_pd_, scratchpad,
+                        memory_tracking::names::key_matmul_pack_space,
+                        reorder_nested_key(nested_reorder_t::weights),
+                        ab_reorder_direction::user_to_ab),
+                VERBOSE_PRIMITIVE_CREATION_FAIL, "weights reorder");
+
+    if (reorder_dst)
+        VDISPATCH_MATMUL_SC(
+                init_ab_reorder(engine, dst_md(), dst_ab_md_,
+                        dst_ab_to_ba_reorder_pd_, scratchpad,
+                        memory_tracking::names::key_matmul_dst_trans,
+                        reorder_nested_key(nested_reorder_t::dst),
+                        ab_reorder_direction::ab_to_user),
+                VERBOSE_PRIMITIVE_CREATION_FAIL, "dst reorder");
+
     // KleidiAI names its B packing transform "pretranspose". Keep the oneDNN
     // flag named as packing so it is distinct from layout reorders such as
     // fixed format.
@@ -371,6 +460,15 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
 }
 
 status_t kai_matmul_t::init(engine_t *engine) {
+    if (pd()->src_ba_to_ab_reorder_pd_)
+        CHECK(pd()->src_ba_to_ab_reorder_pd_->create_primitive(
+                src_ba_to_ab_reorder_, engine));
+    if (pd()->weights_ba_to_ab_reorder_pd_)
+        CHECK(pd()->weights_ba_to_ab_reorder_pd_->create_primitive(
+                weights_ba_to_ab_reorder_, engine));
+    if (pd()->dst_ab_to_ba_reorder_pd_)
+        CHECK(pd()->dst_ab_to_ba_reorder_pd_->create_primitive(
+                dst_ab_to_ba_reorder_, engine));
     post_ops_fallback_ = pd()->post_ops_fallback();
     CHECK(post_ops_fallback_.init_primitives(engine));
     return status::success;
@@ -419,18 +517,41 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     const auto dst_arg = CTX_OUT_MEM(void *, DNNL_ARG_DST);
     VCHECK_MATMUL_EXEC(dst_arg != nullptr, "%s (dst)", VERBOSE_NULL_ARG);
-    auto dst_base = dst_arg;
-
-    if (post_ops_fallback_.has_sum()) {
-        dst_base = scratchpad.get<void>(
-                memory_tracking::names::key_matmul_dst_in_acc_dt);
-    }
+    auto dst_base = pd()->dst_ab_to_ba_reorder_pd_
+            ? scratchpad.get<void>(memory_tracking::names::key_matmul_dst_trans)
+            : (post_ops_fallback_.has_sum()
+                              ? scratchpad.get<void>(memory_tracking::names::
+                                                key_matmul_dst_in_acc_dt)
+                              : dst_arg);
 
     const void *bias_base = pd()->with_bias()
             ? CTX_IN_MEM(const void *, DNNL_ARG_BIAS)
             : nullptr;
     VCHECK_MATMUL_EXEC(!pd()->with_bias() || bias_base != nullptr, "%s (bias)",
             VERBOSE_NULL_ARG);
+
+    if (pd()->src_ba_to_ab_reorder_pd_) {
+        auto *tmp_src_base = scratchpad.get<void>(
+                memory_tracking::names::key_matmul_src_trans);
+        CHECK(execute_reorder(ctx, src_ba_to_ab_reorder_, pd()->src_md(),
+                &pd()->src_ab_md_, src_base, tmp_src_base,
+                pd()->reorder_nested_key(pd_t::nested_reorder_t::src)));
+        src_base = tmp_src_base;
+    }
+
+    // If KleidiAI's packer can consume transposed weights, keep raw_wei pointing at
+    // the user buffer and pass pack_transposed_weights_ to pretranspose_B.
+    // Otherwise, normalize weights to ab once with oneDNN reorder.
+    if (pd()->weights_ba_to_ab_reorder_pd_) {
+        auto *tmp_weights_base = scratchpad.get<void>(
+                memory_tracking::names::key_matmul_pack_space);
+        CHECK(execute_reorder(ctx, weights_ba_to_ab_reorder_,
+                pd()->weights_md(), &pd()->weights_ab_md_, raw_wei,
+                tmp_weights_base,
+                pd()->reorder_nested_key(pd_t::nested_reorder_t::weights)));
+        raw_wei = tmp_weights_base;
+        wei_base = tmp_weights_base;
+    }
 
     if (pd()->kai_pack_weights()) {
         wei_base = scratchpad.get<void>(
@@ -441,9 +562,15 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
     const void *kernel_raw_wei = raw_wei;
     void *kernel_wei_base = wei_base;
 
-    const memory_desc_t *kernel_src_md = pd()->src_md();
-    const memory_desc_t *kernel_wei_md = pd()->weights_md();
-    const memory_desc_t *kernel_dst_md = pd()->dst_md();
+    const memory_desc_t *kernel_src_md = pd()->src_ba_to_ab_reorder_pd_
+            ? &pd()->src_ab_md_
+            : pd()->src_md();
+    const memory_desc_t *kernel_wei_md = pd()->weights_ba_to_ab_reorder_pd_
+            ? &pd()->weights_ab_md_
+            : pd()->weights_md();
+    const memory_desc_t *kernel_dst_md = pd()->dst_ab_to_ba_reorder_pd_
+            ? &pd()->dst_ab_md_
+            : pd()->dst_md();
 
     const memory_desc_wrapper src_d(kernel_src_md);
     const memory_desc_wrapper wei_d(kernel_wei_md);
@@ -478,7 +605,8 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     if (pd()->kai_pack_weights()) {
         parallel_pretranspose_B_array(*kernel, kernel_wei_base, kernel_raw_wei,
-                ld_wei, multi_stride_b, false, thread_partition.team_nthr);
+                ld_wei, multi_stride_b, pd()->pack_transposed_weights_,
+                thread_partition.team_nthr);
     }
 
     if (kernel->get_working_size() != 0) {
@@ -491,6 +619,17 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
             ld_dst, batch_stride_c, multi_stride_c, bias_base, 0);
 
     parallel_execute(*kernel, window_size, thread_partition);
+
+    if (pd()->dst_ab_to_ba_reorder_pd_) {
+        auto *reordered_dst = post_ops_fallback_.has_sum()
+                ? scratchpad.get<void>(
+                          memory_tracking::names::key_matmul_dst_in_acc_dt)
+                : dst_arg;
+        CHECK(execute_reorder(ctx, dst_ab_to_ba_reorder_, &pd()->dst_ab_md_,
+                pd()->dst_md(), dst_base, reordered_dst,
+                pd()->reorder_nested_key(pd_t::nested_reorder_t::dst)));
+        dst_base = reordered_dst;
+    }
 
     if (post_ops_fallback_.len() > 0) {
         if (post_ops_fallback_.has_sum()) {

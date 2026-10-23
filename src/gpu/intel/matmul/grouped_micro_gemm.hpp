@@ -33,7 +33,6 @@
 #include "gpu/intel/primitive_conf.hpp"
 
 #include <array>
-#include <memory>
 #include <vector>
 
 namespace dnnl {
@@ -82,8 +81,7 @@ struct grouped_ocl_params_t : trivially_serializable_t<grouped_ocl_params_t> {
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(grouped_ocl_params_t);
 
-// Kernel cache key: the OpenCL kernel parameters and the microkernel selected
-// by the pd.
+// Kernel cache key: the OpenCL kernel parameters and the selected microkernel.
 struct grouped_micro_params_t : grouped_ocl_params_t {
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> m_axis_kernel_names
@@ -107,14 +105,10 @@ struct grouped_micro_params_t : grouped_ocl_params_t {
 
     gpu_post_ops_t post_ops;
 
-    // Microkernel selected by the pd. Its options and host payload follow from
-    // the device and the problem, so they are not part of the key.
+    // Selected microkernel. Its options and host payload follow from the
+    // device and the problem, so they are not part of the key. It is
+    // regenerated from the candidate on a kernel cache miss.
     gemmstone::microkernel::GEMMCandidate ukernel;
-
-    // Microkernel the pd generated for ukernel. It provides the launch
-    // configuration and creates the kernel on a kernel cache miss. It is
-    // determined by ukernel, so it is not part of the key.
-    std::shared_ptr<const gemmstone::microkernel::Package> ukernel_package;
 };
 
 struct grouped_micro_gemm_t : public primitive_t {
@@ -128,8 +122,20 @@ struct grouped_micro_gemm_t : public primitive_t {
         status_t init(const impl::engine_t *engine);
         status_t init_m_axis(const impl::engine_t *engine);
         status_t init_k_axis(const impl::engine_t *engine);
-        status_t init_conf();
-        status_t init_microkernel(const impl::engine_t *engine);
+
+        // Fills the kernel parameters but the microkernel
+        status_t init_conf(grouped_micro_params_t &conf) const;
+
+        // Axis partitioned by the grouped src
+        grouped_axis_t axis() const {
+            switch (memory_desc_wrapper(src_md())
+                            .sparse_desc()
+                            .grouped_desc.variable_dim_idx) {
+                case 0: return grouped_axis_t::m_axis;
+                case 1: return grouped_axis_t::k_axis;
+                default: return grouped_axis_t::undefined;
+            }
+        }
 
         bool transc() const {
             if (dst_md()->format_kind != dnnl_format_kind_sparse)
@@ -145,13 +151,16 @@ struct grouped_micro_gemm_t : public primitive_t {
                     .grouped_desc.group_count;
         }
 
+        // Quantization of src and weights
+        quantization_t src_quant() const {
+            return quantization_t(attr(), src_md(), DNNL_ARG_SRC);
+        }
+        quantization_t wei_quant() const {
+            return quantization_t(attr(), weights_md(0), DNNL_ARG_WEIGHTS);
+        }
+
         // Group sizes of the src quantization along m and k
         std::array<int, 2> src_group_sizes() const;
-
-        int sg_size_ = 0;
-        quantization_t src_quant_;
-        quantization_t wei_quant_;
-        grouped_micro_params_t conf_;
     };
     status_t init(impl::engine_t *engine) override;
 
@@ -164,7 +173,15 @@ private:
     status_t execute_k_axis(const exec_ctx_t &ctx) const;
     // grouped_micro_gemm_m_axis.cl, dispatched for the m_axis workload
     status_t execute_m_axis(const exec_ctx_t &ctx) const;
+
+    // Classification of each post-op entry
+    std::array<po_kind_t, 3> po_chain
+            = {{po_kind_t::none, po_kind_t::none, po_kind_t::none}};
+    // Microkernel generated for conf_.ukernel, providing the launch
+    // configuration
+    gemmstone::microkernel::Package ukernel_package_;
     compute::kernel_t kernel_;
+    int sg_size_ = 0;
 };
 
 } // namespace matmul

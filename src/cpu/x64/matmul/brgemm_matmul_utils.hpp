@@ -378,6 +378,8 @@ struct brgemm_matmul_conf_utils_t {
                 && check_b_layout_blocked_by_n(bgmmc.wei_tag);
     }
 
+    bool is_int4_blocked_B_supported() const;
+
     inline bool use_buffer_b(bool use_heuristic = true) const {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_xf16_fp8) return true;
@@ -440,7 +442,18 @@ struct brgemm_matmul_conf_utils_t {
         return is_prime_num && IMPLICATION(bgmmc.M_blk < 48, maybe_ldb_tail);
     }
 
-    inline bool check_n_blk_fixed() const { return n_blk_fixed; }
+    inline bool check_n_blk_fixed() const {
+        return n_blk_fixed || is_int4_any_blocked_B();
+    }
+
+    // Int4 weights with `any` get one fixed blocked layout, independent of M
+    // and of the ISA, so that every primitive with the same weights shares
+    // one packed copy. Its N block is the inner product `AB16b32a4b` one.
+    static constexpr int int4_any_B_n_blk = 32;
+
+    inline bool is_int4_any_blocked_B() const {
+        return B_any_layout && bgmmc.is_int4_weights && bgmmc.blocked_B;
+    }
 
     inline bool check_is_transposed(format_tag_t tag) const {
         return tag == transposed_tensor_layout_tag;

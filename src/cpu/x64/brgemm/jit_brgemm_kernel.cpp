@@ -3436,12 +3436,13 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
         }
     };
 
+    // SW-prefetch distance (see `gemv_pf_rd_blocks()`).
+    const dim_t pf_A_off = brg.gemv_pf_rd_blocks() * rdb_A_offset();
+    const bool do_pf = brg.gemv_pf_rd_blocks() > 0;
+
     if (!brg.transA) {
-        // GEMV is bandwidth-bound and the HW prefetcher doesn't keep enough
-        // loads in flight for these streams so SW-prefetch ahead of the load:
-        // the B vector once and each of the A rows. The distance is empirically
-        // tuned.
-        constexpr dim_t gemv_pf_dist = 512; // bytes = 8 cache lines
+        // Prefetch the B vector once and each of the A rows.
+        const dim_t pf_B_off = brg.gemv_pf_rd_blocks() * rdb_B_offset();
 
         maybe_set_avx_mask(is_rd_tail);
 
@@ -3450,7 +3451,7 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
 
         const auto b_addr = ptr[reg_aux_B];
 
-        if (!is_rd_tail) prefetcht0(ptr[reg_aux_B + gemv_pf_dist]);
+        if (do_pf && !is_rd_tail) prefetcht0(ptr[reg_aux_B + pf_B_off]);
 
         if (brg.gemv_use_vdpbf16ps()) {
             if (is_rd_tail)
@@ -3465,8 +3466,8 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
             const auto acc = accm(1, bd, 0);
             const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
 
-            if (!is_rd_tail)
-                prefetcht0(ptr[reg_aux_A + A_offset(bd, 0) + gemv_pf_dist]);
+            if (do_pf && !is_rd_tail)
+                prefetcht0(ptr[reg_aux_A + A_offset(bd, 0) + pf_A_off]);
 
             if (brg.gemv_use_vdpbf16ps()) {
                 if (is_rd_tail) {
@@ -3481,30 +3482,12 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
             }
         }
     } else {
-        // Same idea as the non-transA path but here each A row is strided by
-        // LDA per reduce step so the prefetch distance is in reduce steps not
-        // bytes. Only enabled for the avx512 path (bf16/f16): it moves half the
-        // bytes of f32 so it's latency-bound (stalls on strided misses) and
-        // benefits from prefetch. f32/avx2 is normally BW-bound so the HW
-        // prefetcher is usually enough, but for large-stride, long-running
-        // loops (row_bytes >= 2048, rdb >= 32) the stride is wide enough that
-        // SW prefetch still helps; gate it on both so short/narrow loops keep
-        // relying on the HW prefetcher.
-        constexpr dim_t gemv_pf_rd_steps_ahead = 8;
-        const dim_t row_bytes = rdb_A_offset();
-        const dim_t pf_offset = gemv_pf_rd_steps_ahead * row_bytes;
-
-        const bool do_f32_pf = brg.is_f32 && brg.isa_impl == avx2
-                && brg.rdb >= 32 && row_bytes >= 2048;
-        const bool do_pf = is_superset(brg.isa_impl, avx512_core) || do_f32_pf;
         bcast_and_convert_to_f32(gemv_load_b(), ptr[reg_aux_B], brg.dt_b);
         for (int bd = 0; bd < bd_block; bd++) {
             const bool is_tail_acc
                     = gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
             const auto a_addr = ptr[reg_aux_A + A_offset(bd, 0)];
-            if (do_pf) {
-                prefetcht0(ptr[reg_aux_A + A_offset(bd, 0) + pf_offset]);
-            }
+            if (do_pf) prefetcht0(ptr[reg_aux_A + A_offset(bd, 0) + pf_A_off]);
             maybe_set_avx_mask(is_tail_acc);
             load_and_convert_to_f32(
                     gemv_load_a(), a_addr, brg.dt_a, is_tail_acc);

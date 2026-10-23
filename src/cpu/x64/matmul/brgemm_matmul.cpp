@@ -1757,13 +1757,12 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         const dim_t comp_offset = bgmmc_.b_dt_sz
                 * (weights_d.size() - weights_d.additional_buffer_size());
-        s8s8_compensation_ptr_ = (bgmmc.s8s8_compensation_required)
-                ? ((bgmmc.use_buffer_b)
-                                  ? scratchpad.template get<int32_t>(
-                                            key_brgemm_primitive_buffer_comp)
-                                  : const_cast<int32_t *>(
-                                            reinterpret_cast<const int32_t *>(
-                                                    &data_B_ptr_[comp_offset])))
+        s8s8_compensation_ptr_ = !bgmmc.s8s8_compensation_required ? nullptr
+                : bgmmc.use_buffer_b ? scratchpad.template get<int32_t>(
+                                               key_brgemm_primitive_buffer_comp)
+                : bgmmc.wei_md_has_compensation()
+                ? const_cast<int32_t *>(reinterpret_cast<const int32_t *>(
+                          &data_B_ptr_[comp_offset]))
                 : nullptr;
         assert(IMPLICATION(bgmmc.s8s8_compensation_required,
                 bgmmc_.b_dt_sz == bgmmc_.tr_b_dt_sz));
@@ -1789,7 +1788,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
 
         reorder_zp_a_comp_ptr_ = nullptr;
-        if (bgmmc_.has_zero_point_a && bgmmc_.blocked_B) {
+        if (bgmmc_.has_zero_point_a && bgmmc_.wei_md_has_compensation()) {
             // Store the pointer to computed in reorder compensation values to
             // scale them locally by zp_a value just before usage in post-ops.
             // Using the single global scaling before parallel section might
@@ -2408,7 +2407,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     int32_t *get_s8s8_comp_ptr(int ithr, dim_t b, dim_t n_blk_idx) const {
-        if (!bgmmc_.s8s8_compensation_required) return nullptr;
+        if (!bgmmc_.s8s8_compensation_required
+                || s8s8_compensation_ptr_ == nullptr)
+            return nullptr;
 
         const dim_t n_blk_local = bgmmc_.use_buffer_b
                 ? n_blk_idx % bgmmc_.N_chunk_size
@@ -2580,7 +2581,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 + ithr * bgmmc_.zp_a_comp_elems_per_thr
                 + n_blk_local * bgmmc_.zp_a_comp_shift_n;
 
-        if (bgmmc_.blocked_B) {
+        if (bgmmc_.wei_md_has_compensation()) {
             // Scale computed in reorder compensation values by zp_a value
             // locally just before usage. Using the single global scaling before
             // parallel section might produce significant overhead for small

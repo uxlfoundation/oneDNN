@@ -337,6 +337,15 @@ struct brgemm_matmul_conf_t {
                 || need_to_calculate_compensation_for_b;
     }
 
+    // Int8 weights in a blocked layout carry the s8s8 and src zero-point
+    // compensations (per-N sums of the weights, memory_extra_flags::
+    // compensation_conv_*) in the extra buffer of the memory descriptor,
+    // filled by the reorder into that layout. The int8 grouped quantization
+    // path applies them per K group via the per-(M, N) tile instead.
+    inline bool wei_md_has_compensation() const {
+        return blocked_B && !with_int8_grouped_quantization;
+    }
+
     // True for a batch-only mask, since brgemm has no batch concept.
     // False when there are no weights scales at all.
     // A method, not a cached field, so it can't go stale vs. the flags below.

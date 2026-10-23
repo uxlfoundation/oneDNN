@@ -374,13 +374,13 @@ onednn_option(SAFE_RBP OFF
 
 onednn_option(X64_USE_ZEN OFF
     "Enable ZenDNN integration. When ON, uses a discoverable ZenDNN package
-    if present, otherwise builds ZenDNN from source. Requires ZenDNN >= 6.1.1
+    if present, otherwise builds ZenDNN from source. Requires ZenDNN >= 6.1.2
     and ONEDNN_CPU_RUNTIME=OMP, and fails otherwise.")
 set(ZENDNNROOT "" CACHE STRING "Path to ZenDNN installation root")
 
 if(DNNL_X64_USE_ZEN)
     set(ZENDNN_RELEASE_URL "https://github.com/amd/ZenDNN.git")
-    set(ZENDNN_RELEASE_TAG "v6.1.1")
+    set(ZENDNN_RELEASE_TAG "v6.1.2")
     onednn_option(ZENDNN_SOURCE "${ZENDNN_RELEASE_URL}@${ZENDNN_RELEASE_TAG}"
         "ZenDNN source to build when no ZenDNN package is found: an absolute
         path to a ZenDNN source tree, or <git url>@<tag or commit> to fetch

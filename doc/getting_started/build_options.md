@@ -335,7 +335,7 @@ of GEMM operations. The following options are supported:
 | ONEDNN_ENABLE_CPU_ISA_HINTS       | **ON**  | OFF              | Enables [CPU ISA hints](@ref dev_guide_cpu_isa_hints)                                          |
 | [ONEDNN_SAFE_RBP]                 | **OFF** | ON               | Enables restriction for JIT kernels to pollute RBP vector register content                     |
 | [ONEDNN_X64_USE_ZEN]              | **OFF** | ON               | Enables integration with the ZenDNN library for AMD (Zen) CPUs                                  |
-| [ONEDNN_ZENDNN_SOURCE]            | [ZenDNN\@v6.1.1][ZenDNN] | \<path\>, \<url\>\@\<tag\> | ZenDNN source to build when no ZenDNN package is found           |
+| [ONEDNN_ZENDNN_SOURCE]            | [ZenDNN\@v6.1.2][ZenDNN] | \<path\>, \<url\>\@\<tag\> | ZenDNN source to build when no ZenDNN package is found           |
 
 [ONEDNN_ENABLE_PRIMITIVE_CPU_ISA]: @ref opt_enable_primitive_cpu_isa
 [ONEDNN_ENABLE_GEMM_KERNELS_ISA]: @ref opt_enable_gemm_kernels_isa
@@ -427,7 +427,7 @@ When `ONEDNN_X64_USE_ZEN=ON`, the following additional requirements apply
 * Requires CMake 3.26 or later.
 * Requires GCC 11.2 or later, or Clang 14 or later; other compilers are
   rejected.
-* Requires ZenDNN version 6.1.1 or later. For a package, the version comes
+* Requires ZenDNN version 6.1.2 or later. For a package, the version comes
   from its package config; for a source build, from the `project()`
   declaration in the ZenDNN `CMakeLists.txt`.
 * Requires `ONEDNN_CPU_RUNTIME=OMP`; ZenDNN only supports the OpenMP threading

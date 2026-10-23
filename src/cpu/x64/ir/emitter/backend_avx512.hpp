@@ -70,6 +70,7 @@ struct avx512_backend_t {
     // Load a full vector. The pair of data types selects the form:
     //   f32  -> f32   plain move
     //   bf16 -> bf16  plain move
+    //   bf16 -> f32   half a register read and widened
     //   f16  -> f32   half a register read and widened
     void vload(int d, int base, dim_t disp, data_type_t mem_dt,
             data_type_t reg_dt) {
@@ -78,6 +79,9 @@ struct avx512_backend_t {
         if (mem_dt == reg_dt
                 && utils::one_of(reg_dt, data_type::f32, data_type::bf16)) {
             gen().vmovups(Xbyak::Zmm(d), addr);
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
+            gen().vpmovzxwd(Xbyak::Zmm(d), addr);
+            gen().vpslld(Xbyak::Zmm(d), Xbyak::Zmm(d), 16);
         } else if (mem_dt == data_type::f16 && reg_dt == data_type::f32) {
             gen().vcvtph2ps(Xbyak::Zmm(d), addr);
         } else {
@@ -112,13 +116,22 @@ struct avx512_backend_t {
         else { JIT_ASSERT(!"vstore_scalar: dtype not implemented"); }
     }
 
-    // Load one element and replicate it across `dst`.
+    // Load one element and replicate it across `dst`. A bf16 or f16 element is
+    // widened to f32.
     void vload_bcast(int d, int base, dim_t disp, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
             gen().vbroadcastss(Xbyak::Zmm(d), addr);
-        else { JIT_ASSERT(!"vload_bcast: dtype not implemented"); }
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
+            gen().vpbroadcastw(Xbyak::Zmm(d), addr);
+            gen().vpslld(Xbyak::Zmm(d), Xbyak::Zmm(d), 16);
+        } else if (mem_dt == data_type::f16 && reg_dt == data_type::f32) {
+            gen().vpbroadcastw(Xbyak::Ymm(d), addr);
+            gen().vcvtph2ps(Xbyak::Zmm(d), Xbyak::Ymm(d));
+        } else {
+            JIT_ASSERT(!"vload_bcast: dtype not implemented");
+        }
     }
 
     void vadd(int d, int s, data_type_t dt) { // dst += s0
@@ -134,8 +147,9 @@ struct avx512_backend_t {
     }
 
     // dst += a * b. The multiplicand dtype `src_dt` selects the instruction.
-    // The accumulator (dst) is always f32. An f16 multiplicand arrives here as
-    // f32, widened by the load (see `vload`).
+    // The accumulator (dst) is always f32. An f16 multiplicand, and a bf16 one
+    // that is not consumed by `vdpbf16ps`, arrives here as f32, widened by the
+    // load (see `vload`).
     void vdot(int d, int a, int b, data_type_t src_dt) {
         if (src_dt == data_type::f32) {
             gen().vfmadd231ps(Xbyak::Zmm(d), Xbyak::Zmm(a), Xbyak::Zmm(b));
@@ -198,6 +212,9 @@ struct avx512_backend_t {
             gen().vmovups(Xbyak::Zmm(d) | k | gen().T_z, addr);
         } else if (mem_dt == data_type::bf16 && reg_dt == data_type::bf16) {
             gen().vmovdqu16(Xbyak::Zmm(d) | k | gen().T_z, addr);
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
+            gen().vpmovzxwd(Xbyak::Zmm(d) | k | gen().T_z, addr);
+            gen().vpslld(Xbyak::Zmm(d), Xbyak::Zmm(d), 16);
         } else if (mem_dt == data_type::f16 && reg_dt == data_type::f32) {
             gen().vmovdqu16(Xbyak::Ymm(d) | k | gen().T_z, addr);
             gen().vcvtph2ps(Xbyak::Zmm(d), Xbyak::Ymm(d));

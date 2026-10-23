@@ -3095,9 +3095,17 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
                     types::data_type_size(f32));
     }
 
-    if (bgmmc.use_buffer_c)
+    if (bgmmc.use_buffer_c) {
+        // With parallel reduction the buffers are per K-thread, not per
+        // thread. When post_ops_applicable is false, K-thread 0 accumulates
+        // directly in dst.
+        const int num_buffers_c = bgmmc.nthr_k > 1
+                ? bgmmc.nthr_k - !bgmmc.post_ops_applicable
+                : bgmmc.nthr;
         scratchpad.book(key_brgemm_primitive_buffer,
-                bgmmc.nthr * bgmmc.buffer_c_per_thread_sz, default_data_align);
+                num_buffers_c * bgmmc.buffer_c_per_thread_sz,
+                default_data_align);
+    }
 
     if (bgmmc.use_buffer_reduce) {
         const bool is_reduce_f32 = bgmmc.reduce_dt == f32;

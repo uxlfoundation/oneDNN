@@ -497,6 +497,42 @@ struct brgemm_desc_t {
         return !transA && is_bf16;
     }
 
+    // GEMV software prefetch distance in reduction blocks. A load is preceded
+    // by a prefetch of the address this many blocks ahead along the reduction
+    // dimension. 0 disables the software prefetch.
+    //
+    // GEMV is bandwidth-bound and the HW prefetcher doesn't keep enough loads
+    // in flight for these streams.
+    //
+    // non-transA:
+    //   - A rows and x are contiguous along the reduction dimension, so the
+    //     distance is a fixed, empirically tuned 512 bytes (8 cache lines)
+    //
+    // transA:
+    //   - each reduction step reads the next A row, LDA elements away, so the
+    //     distance is a number of rows
+    //   - always enabled for the avx512 path (bf16/f16): it moves half the
+    //     bytes of f32 so it's latency-bound (stalls on strided misses) and
+    //     benefits from prefetch
+    //   - f32/avx2 is normally BW-bound so the HW prefetcher is usually
+    //     enough, but for large-stride, long-running loops (row_bytes >= 2048,
+    //     rdb >= 32) the stride is wide enough that SW prefetch still helps
+    int gemv_pf_rd_blocks() const {
+        assert(is_gemv);
+        if (!transA) {
+            constexpr int pf_bytes = 512;
+            assert(rd_block_A_size() == rd_block_B_size());
+            assert(pf_bytes % rd_block_A_size() == 0);
+            return pf_bytes / rd_block_A_size();
+        }
+        constexpr int pf_rd_blocks = 8;
+        if (is_superset(isa_impl, avx512_core)) return pf_rd_blocks;
+        const dim_t row_bytes = static_cast<dim_t>(rd_block) * LDA * typesize_A;
+        const bool f32_pf
+                = is_f32 && isa_impl == avx2 && rdb >= 32 && row_bytes >= 2048;
+        return f32_pf ? pf_rd_blocks : 0;
+    }
+
     // Returns true if GEMV uses a single scale value.
     bool gemv_single_wei_scale() const {
         assert(is_gemv);

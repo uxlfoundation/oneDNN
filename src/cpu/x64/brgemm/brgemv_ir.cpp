@@ -76,6 +76,8 @@ namespace {
 //   k_tail       - remaining K elements after the full blocks
 //   mblk_*_off   - byte offset to advance A/y pointers between M blocks
 //   kblk_*_off   - byte offset to advance A/x pointers between K blocks
+//   pf_*_off     - byte distance along K at which A/x are SW-prefetched ahead
+//                  of their loads. 0 disables the prefetch
 //   with_bias    - whether a bias is added to the output
 //   treat_y_as_row - whether the output y is a row. When true the bias is
 //                    indexed per M row, otherwise broadcast from bias[0]
@@ -121,6 +123,8 @@ struct brgemv_ir_conf_t {
         , mblk_y_off(dt_sz_y * m_block * incy)
         , kblk_a_off(dt_sz_a * k_block)
         , kblk_x_off(dt_sz_x * k_block)
+        , pf_a_off(brg.gemv_pf_rd_blocks() * kblk_a_off)
+        , pf_x_off(brg.gemv_pf_rd_blocks() * kblk_x_off)
         , with_bias(brg.with_bias)
         , treat_y_as_row(brg.treat_y_as_row)
         , dt_bias(brg.dt_bias)
@@ -149,6 +153,7 @@ struct brgemv_ir_conf_t {
     const dim_t m_blocks, m_tail, k_blocks, k_tail;
     const dim_t mblk_a_off, mblk_y_off;
     const dim_t kblk_a_off, kblk_x_off;
+    const dim_t pf_a_off, pf_x_off;
     const bool with_bias, treat_y_as_row;
     const data_type_t dt_bias;
     const int dt_sz_bias;
@@ -437,16 +442,14 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         const std::vector<ir::vreg_t> &acc, ir::vreg_t a_ptr,
         ir::vreg_t x_ptr) {
     // GEMV is bandwidth-bound, so SW-prefetch ahead of each load: the x vector
-    // once and every A row. The distance is empirically tuned.
-    constexpr dim_t gemv_pf_dist = 512; // bytes = 8 cache lines
-
+    // once and every A row.
     const ir::vreg_t x = ir.new_vec(cfg.dt_x_reg);
     const ir::vreg_t a = ir.new_vec(cfg.dt_a_reg);
-    ir.prefetch(x_ptr, gemv_pf_dist);
+    if (cfg.pf_x_off > 0) ir.prefetch(x_ptr, cfg.pf_x_off);
     ir.vload(x, x_ptr, 0, cfg.dt_x);
     for (int i = 0; i < (int)acc.size(); i++) {
         const dim_t a_off = cfg.dt_sz_a * (dim_t)i * cfg.lda;
-        ir.prefetch(a_ptr, a_off + gemv_pf_dist);
+        if (cfg.pf_a_off > 0) ir.prefetch(a_ptr, a_off + cfg.pf_a_off);
         ir.vload(a, a_ptr, a_off, cfg.dt_a);
         ir.vdot(acc[i], a, x);
     }

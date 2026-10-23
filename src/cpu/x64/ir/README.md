@@ -93,8 +93,12 @@ step. They are omitted above for clarity.
   operation itself carries only that index. The table also holds each
   accumulator's output offset, which a binary post-op needs to address its
   right-hand-side argument and a sum post-op needs to read the previous
-  destination value. The injector saves and restores its own registers and does
-  not participate in IR allocation.
+  destination value, and the number of valid elements in the accumulators,
+  anything from a scalar to a full register. Kernel generation collects the
+  count of the partially filled accumulators from the table and passes it to
+  the injector, so a right-hand-side load stays within the valid elements. The
+  injector saves and restores its own registers and does not participate in IR
+  allocation.
 
 ### Control and Data Flow
 

@@ -30,6 +30,26 @@ namespace cpu {
 namespace x64 {
 namespace ir {
 
+namespace {
+
+// The post-ops injector takes the valid-element count of a partially filled
+// accumulator once, as a static parameter, while every `inject_postops`
+// operation states the count of its own accumulators. Returns the count shared
+// by the operations that are not a full vector, 0 when all of them are, and -1
+// when a count is out of range or two of them differ.
+int infer_postops_tail_elems(const ir_t &ir, int vlen_elems) {
+    int tail_elems = 0;
+    for (const auto &args : ir.inject_postops_args()) {
+        if (args.n_elems == vlen_elems) continue;
+        if (args.n_elems <= 0 || args.n_elems > vlen_elems) return -1;
+        if (tail_elems != 0 && tail_elems != args.n_elems) return -1;
+        tail_elems = args.n_elems;
+    }
+    return tail_elems;
+}
+
+} // namespace
+
 void generate_kernel(
         jit_generator_t &gen, const ir_t &ir, const postops_config_t &postops) {
     const cpu_isa_t isa = gen.max_cpu_isa();
@@ -55,9 +75,14 @@ void generate_kernel(
     // `inject_postops` operation.
     std::unique_ptr<postops_injector_t> injector;
     if (with_postops) {
+        // The injector works on f32 accumulators.
+        const int vlen_elems = isa_max_vlen(isa) / (int)sizeof(float);
+        const int tail_elems = infer_postops_tail_elems(ir, vlen_elems);
+        JIT_ASSERT(tail_elems >= 0
+                && "inject_postops: invalid or inconsistent element counts");
         injector.reset(new postops_injector_t(gen, isa, *postops.post_ops,
                 *postops.dst_md, abi_param1, postops.rhs_arg_offset,
-                postops.dst_orig_off, postops.tail_elems, eltwise_opmask,
+                postops.dst_orig_off, tail_elems, eltwise_opmask,
                 binary_tail_opmask));
     }
 

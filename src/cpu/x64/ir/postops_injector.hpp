@@ -107,8 +107,11 @@ struct postops_injector_t {
     // `out_byte_off` give each accumulator's output address: binary reaches its
     // right-hand-side argument through it, sum reads the previous destination
     // value from it. `base_phys` is -1 for a chain that needs neither.
+    // `n_elems` is the number of valid leading elements in each accumulator:
+    // `tail_elems` for a partially filled accumulator, the vector length
+    // otherwise.
     void DNNL_API inject(const std::vector<int> &acc_phys, int base_phys,
-            const std::vector<dim_t> &out_byte_off);
+            const std::vector<dim_t> &out_byte_off, int n_elems);
 
     // Emit the post-ops constant table. Call once, after the postamble. Only
     // eltwise and sum post-ops have a table, so this is a no-op without one.

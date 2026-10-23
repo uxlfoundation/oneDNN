@@ -123,7 +123,7 @@ void postops_injector_t::init(jit_generator_t &gen) const {
 }
 
 void postops_injector_t::inject(const std::vector<int> &acc_phys, int base_phys,
-        const std::vector<dim_t> &out_byte_off) {
+        const std::vector<dim_t> &out_byte_off, int n_elems) {
     injector_utils::vmm_index_set_t vmm_idxs;
     for (int idx : acc_phys)
         vmm_idxs.insert(idx);
@@ -140,10 +140,10 @@ void postops_injector_t::inject(const std::vector<int> &acc_phys, int base_phys,
         return;
     }
 
-    // A positive `tail_elems_` means an accumulator holds fewer valid elements
-    // than a full vector, so a right-hand-side load has to stop at that count
-    // to stay in bounds. `init()` has put that pattern in the tail opmask.
-    const bool is_tail = tail_elems_ > 0;
+    // An accumulator holding the tail count has fewer valid elements than a
+    // full vector, so a right-hand-side load has to stop at that count to stay
+    // in bounds. `init()` has put that pattern in the tail opmask.
+    const bool is_tail = tail_elems_ > 0 && n_elems == tail_elems_;
 
     // Map each accumulator to its destination address. A binary post-op uses it
     // to locate the corresponding right-hand-side slice, and the sum operation

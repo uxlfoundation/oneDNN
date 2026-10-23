@@ -843,11 +843,12 @@ status_t brgemm_matmul_conf_utils_t::set_B_flags(memory_desc_t &B_md) const {
     // Set bits for all dimensions except k dimension
     const int compensation_mask
             = ((1 << bgmmc.ndims) - 1 - (1 << (bgmmc.ndims - 2)));
-    if (bgmmc.s8s8_compensation_required && bgmmc.blocked_B) {
+    if (bgmmc.s8s8_compensation_required && bgmmc.wei_md_has_compensation()) {
         want_B_md.extra.flags |= memory_extra_flags::compensation_conv_s8s8;
         want_B_md.extra.compensation_mask = compensation_mask;
     }
-    if (bgmmc.src_zp_type != brgemm_broadcast_t::none && bgmmc.blocked_B) {
+    if (bgmmc.src_zp_type != brgemm_broadcast_t::none
+            && bgmmc.wei_md_has_compensation()) {
         want_B_md.extra.flags
                 |= memory_extra_flags::compensation_conv_asymmetric_src;
         want_B_md.extra.asymm_compensation_mask = compensation_mask;

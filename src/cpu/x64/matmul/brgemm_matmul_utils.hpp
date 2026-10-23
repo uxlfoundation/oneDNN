@@ -378,6 +378,8 @@ struct brgemm_matmul_conf_utils_t {
                 && check_b_layout_blocked_by_n(bgmmc.wei_tag);
     }
 
+    bool is_int4_blocked_B_supported() const;
+
     inline bool use_buffer_b(bool use_heuristic = true) const {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_xf16_fp8) return true;

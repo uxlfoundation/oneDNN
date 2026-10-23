@@ -1609,7 +1609,9 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
         ctx.src_scales_ptr = brgmm_ctx.get_src_scales_ptr(b_idx);
         ctx.wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(b_idx, k, n);
         ctx.zp_b_value_ptr = brgmm_ctx.get_wei_zp_ptr(b_idx, k, n);
-        if (bgmmc.blocked_B && !bgmmc.is_f16_with_int_wei
+        // Blocked f16 weights on avx512_core_fp16 are up-converted to the f32
+        // buffer as is, the blocked layout is the same.
+        if (bgmmc.blocked_B && bgmmc.orig_wei_dt == data_type::f16
                 && isa == avx512_core_fp16) {
             cvt_float16_to_float((float *)ctx.tr_src, (float16_t *)ctx.src,
                     bgmmc.wei_n_blk * ctx.current_K_iters);
@@ -2266,12 +2268,16 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         const auto batch_blocking = std::div(k, batch_block_size);
         const auto k_blk_idx = batch_blocking.quot;
         const auto k_blk_local = k_blk_idx % get_K_chunk_size();
-        const auto k_in_batch = batch_blocking.rem;
+        // Every brgemm batch element has its own block in the buffer (see
+        // get_buf_B_ptr()), so K rows are contiguous within it only: the block
+        // may hold several LDB wide N blocks.
+        const auto gb_blocking = std::div(batch_blocking.rem, bgmmc_.K_blk);
 
         auto offset = ithr * bgmmc_.buffer_b_per_thread_sz;
         offset += k_blk_local * bgmmc_.buffer_b_k_brg_stride;
+        offset += gb_blocking.quot * bgmmc_.buffer_b_gb_stride;
         // div down to the start of the vnni block
-        const auto k_outer = (k_in_batch / vnni_factor) * vnni_factor;
+        const auto k_outer = (gb_blocking.rem / vnni_factor) * vnni_factor;
         offset += k_outer * bgmmc_.buffer_b_k_stride;
         return buf_B_ptr_ + offset;
     }

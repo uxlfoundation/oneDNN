@@ -342,17 +342,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
                              bgmmc_.N % 8 == 0),
             "unsupported configuration");
 
-    // ZP per M,N compensation doesn't support strided cases yet.
+    // Layout / ISA constraints of the per-(M, N) compensation are owned by
+    // its JIT kernel.
     if (bgmmc_.with_per_mn_compensation) {
-        VDISPATCH_MATMUL(bgmmc_.A_strides[0] == 1 && bgmmc_.B_strides[0] == 1,
-                VERBOSE_UNSUPPORTED_TAG);
-        const bool wei_is_subbyte = utils::one_of(wei_dt, s4, u4);
-        if (wei_is_subbyte) {
-            VDISPATCH_MATMUL(
-                    bgmmc_.N_blk % 2 == 0 && bgmmc_.B_strides[1] % 2 == 0,
-                    VERBOSE_UNSUPPORTED_TAG);
-        }
-        // Pre-validate the per-(M, N) JIT kernel constraints
         VDISPATCH_MATMUL(
                 per_mn_comp_kernel_t::is_applicable(&bgmmc_) == status::success,
                 VERBOSE_UNSUPPORTED_FEATURE,
@@ -1055,14 +1047,11 @@ void brgemm_matmul_t<isa>::fill_per_mn_compensation(
             = brgmm_ctx.get_src_zp_ptr(b_idx, k_start, m, &src_zp_nibble_idx);
     const void *wei_zp_ptr = brgmm_ctx.get_wei_zp_ptr(b_idx, k_start, n);
 
-    const bool wei_is_subbyte
-            = utils::one_of(bgmmc.orig_wei_dt, data_type::s4, data_type::u4);
-    const dim_t wei_k_stride
-            = wei_is_subbyte ? bgmmc.B_strides[1] / 2 : bgmmc.B_strides[1];
-
     per_mn_comp_kernel_t::ctx_t kctx;
     kctx.src_batch_ptr = A_data_batch_ptr + k_start * bgmmc.A_strides[0];
-    kctx.wei_batch_ptr = B_data_batch_ptr + k_start * wei_k_stride;
+    // Plain weights at (k_start, n = 0): the kernel applies the N offset.
+    kctx.wei_batch_ptr
+            = brgmm_ctx.get_data_B_kn_ptr(B_data_batch_ptr, k_start, 0);
     kctx.src_zp_ptr = src_zp_ptr;
     kctx.src_zp_nibble_idx = src_zp_nibble_idx;
     kctx.wei_zp_ptr = wei_zp_ptr;
@@ -1104,13 +1093,32 @@ void brgemm_matmul_t<isa>::fill_per_mn_compensation(
         const dim_t stripe_w = nstl::min(bgmmc.LDC, kctx.N_blk - n_origin);
         float *const delta_stripe
                 = kctx.delta_ptr + s * bgmmc.M_blk * bgmmc.LDC;
+        // Blocked weights are addressed from the stripe start, see
+        // per_mn_comp_kernel_t::ctx_t::wei_n_blk_off. `kctx.wei_batch_ptr`
+        // is at (k_start, 0); the stripe adds whole weights N blocks and
+        // columns of VNNI row groups.
+        const dim_t stripe_n = kctx.n_base + n_origin;
+        const void *stripe_wei_ptr = kctx.wei_batch_ptr;
+        dim_t stripe_wei_n_blk_off = 0;
+        if (bgmmc.blocked_B) {
+            const auto n_blocking = std::div(stripe_n, dim_t(bgmmc.wei_n_blk));
+            const dim_t off_elems = n_blocking.quot * bgmmc.B_strides[0]
+                    + n_blocking.rem
+                            * static_cast<dim_t>(
+                                    data_type_vnni_granularity(bgmmc.wei_dt));
+            stripe_wei_ptr = static_cast<const char *>(kctx.wei_batch_ptr)
+                    + types::elements_to_bytes(bgmmc.orig_wei_dt, off_elems);
+            stripe_wei_n_blk_off = n_blocking.rem;
+        }
 
         for (dim_t m_off = 0; m_off < kctx.M_blk; m_off += m_step) {
             per_mn_comp_kernel_t::ctx_t call_ctx = kctx;
             const dim_t rows = nstl::min(m_step, kctx.M_blk - m_off);
 
             call_ctx.m_base = kctx.m_base + m_off;
-            call_ctx.n_base = kctx.n_base + n_origin;
+            call_ctx.n_base = stripe_n;
+            call_ctx.wei_batch_ptr = stripe_wei_ptr;
+            call_ctx.wei_n_blk_off = stripe_wei_n_blk_off;
             call_ctx.M_blk = rows;
             call_ctx.delta_ptr = delta_stripe + m_off * bgmmc.LDC;
             call_ctx.stripe_w = stripe_w;

@@ -355,6 +355,21 @@ void jit_generator_t::uni_str(const ZReg &src, const XReg &addr) {
     str(src, ptr(addr));
 }
 
+void jit_generator_t::jit_breakpoint() {
+#if defined(DNNL_DEV_MODE)
+    // Meaningless magic number. Sort of looks like "xbyak" if you close your
+    // eyes completely.
+    brk(0xb7ac);
+
+    // The nop is just useful to sidestep a quirk of gdb. To skip over the
+    // breakpoint, the user has to manually increment the program counter, but
+    // the gdb UI does not update until the next step-insturction command. This
+    // nop gives us a single instruction margin of error to stop at the real
+    // point of interest.
+    nop();
+#endif
+}
+
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

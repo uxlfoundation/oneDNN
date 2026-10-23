@@ -407,16 +407,16 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     }
 
     if (cfg.with_injector_postops) {
-        // Each accumulator is horizontally reduced to one scalar, which is
-        // the active element count `generate()` gives the injector. The
-        // output offset matches the store displacement in `emit_m_block`, so
-        // a sum post-op reads each element from the address its result is
-        // written to.
+        // Each accumulator is horizontally reduced to one scalar, so a single
+        // element of each is valid. The output offset matches the store
+        // displacement in `emit_m_block`, so a sum post-op reads each element
+        // from the address its result is written to.
         std::vector<dim_t> out_byte_off(n_acc);
         for (int acc_idx = 0; acc_idx < n_acc; acc_idx++)
             out_byte_off[acc_idx] = cfg.dt_sz_y * (dim_t)acc_idx * cfg.incy;
 
-        ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off);
+        ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off,
+                /*n_elems=*/1);
     }
 
     ir.if_end(if_post_ops);
@@ -583,9 +583,6 @@ struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
             postops.dst_md = brg_.dst_md();
             postops.rhs_arg_offset = GET_OFF(post_ops_binary_rhs_arg_vec);
             postops.dst_orig_off = GET_OFF(data_C_ptr_);
-            // A partial right-hand-side load reads the vector tail, or one
-            // element for a scalar accumulator.
-            postops.tail_elems = brg_.gemv_acc_is_vector() ? brg_.gemv_tail : 1;
         }
 
         ir::generate_kernel(*this, ir, postops);

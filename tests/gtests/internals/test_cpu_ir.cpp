@@ -592,7 +592,7 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
     for (int r = 0; r < n; r++)
         out_byte_off[r] = r * (dim_t)sizeof(float);
 
-    ir.inject_postops(acc, base, out_byte_off);
+    ir.inject_postops(acc, base, out_byte_off, /*n_elems=*/1);
 
     const int idx = find_op(ir, op_kind_t::inject_postops);
     ASSERT_NE(idx, -1);
@@ -604,6 +604,7 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
     EXPECT_EQ(args.acc, acc);
     EXPECT_EQ(args.base_ptr, base);
     EXPECT_EQ(args.out_byte_off, out_byte_off);
+    EXPECT_EQ(args.n_elems, 1);
 
     // def_use reports every accumulator as read and written, and the base
     // pointer as read.
@@ -1442,7 +1443,7 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
     std::vector<dim_t> out_byte_off(n);
     for (int r = 0; r < n; r++)
         out_byte_off[r] = r * (dim_t)sizeof(float);
-    ir.inject_postops(acc, c_ptr, out_byte_off);
+    ir.inject_postops(acc, c_ptr, out_byte_off, /*n_elems=*/1);
 
     for (int r = 0; r < n; r++)
         ir.vstore_scalar(
@@ -1513,7 +1514,7 @@ TEST(IntegrationTests, InjectPostopsWorksWithAnyRegisterLayout) {
     acc[1] = ir.new_vec(f32);
     ir.vload(acc[1], a_ptr, vlen, f32);
 
-    ir.inject_postops(acc, c_ptr, {0, vlen});
+    ir.inject_postops(acc, c_ptr, {0, vlen}, simd_w());
     for (int r = 0; r < 2; r++)
         ir.vstore(c_ptr, r * vlen, acc[r], f32);
     for (int i = 0; i < n_live; i++)

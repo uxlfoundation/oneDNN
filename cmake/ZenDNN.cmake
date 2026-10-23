@@ -89,7 +89,7 @@ if(ZENDNNROOT)
 endif()
 
 # Minimum supported ZenDNN version. A missing or too-old ZenDNN fails configure.
-set(ZENDNN_MIN_VERSION "6.1.1")
+set(ZENDNN_MIN_VERSION "6.1.2")
 # find_package replaces a zendnnl_DIR without a package by
 # zendnnl_DIR-NOTFOUND, so keep the requested path for the error below.
 set(_zendnn_requested_dir "${zendnnl_DIR}")

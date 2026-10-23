@@ -216,7 +216,7 @@ to enable AMD (Zen) CPU-tuned kernels. It uses an installed ZenDNN package or
 builds ZenDNN from source. It is `OFF` by
 default; see [ONEDNN_X64_USE_ZEN](@ref opt_x64_use_zen) for the full list of
 requirements (Linux on x86_64, CMake >= 3.26, GCC >= 11.2 or Clang >= 14,
-`ONEDNN_CPU_RUNTIME=OMP`, and ZenDNN >= 6.1.1; Windows builds are
+`ONEDNN_CPU_RUNTIME=OMP`, and ZenDNN >= 6.1.2; Windows builds are
 rejected at configure time).
 
 1. Set up the environment for the compiler
@@ -236,7 +236,7 @@ rejected at configure time).
    [ZenDNN](https://github.com/amd/ZenDNN) release into the build directory.
    Set `-DONEDNN_ZENDNN_SOURCE=<absolute path>` to use a local source tree, or
    `-DONEDNN_ZENDNN_SOURCE=<url>@<tag or commit>` to clone another revision.
-   Configuration also fails if the version is older than 6.1.1.
+   Configuration also fails if the version is older than 6.1.2.
 
 3. Build the library
    ~~~sh

@@ -279,27 +279,39 @@ void init_kernel_ctx_m_axis(
 
 status_t grouped_micro_params_t::create_generator(
         const intel::engine_t &engine, compute::kernel_bundle_t &bundle) const {
-    compute::kernel_ctx_t kernel_ctx;
-    CHECK(get_kernel_ctx(kernel_ctx, *engine.device_info()));
-    return engine.create_kernel_bundle(bundle, get_kernel_names(), kernel_ctx);
-}
+    const compute::device_info_t &dev_info = *engine.device_info();
 
-status_t grouped_micro_params_t::get_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx,
-        const compute::device_info_t &dev_info) const {
-    // Regenerate the microkernel the primitive selected. Generation is
-    // deterministic, so it matches the package the primitive dispatches with.
     gemmstone::microkernel::Package package;
+    grouped_ukernel_config_t config;
+    compute::kernel_ctx_t kernel_ctx;
+    // Exceptions must not escape into the kernel cache
     try {
         package = gemmstone::microkernel::generateGEMM(
                 get_ukernel_options(*this, ukernel.problem),
                 get_host_payload(dev_info), get_hw_info(dev_info), ukernel);
-    } catch (const std::runtime_error &ex) {
+        config.wg_tile_m = package.getSetting("wg_tile_m");
+        config.wg_tile_n = package.getSetting("wg_tile_n");
+        config.sg_per_wg_m = package.getSetting("sg_per_wg_m");
+        config.sg_per_wg_n = package.getSetting("sg_per_wg_n");
+        config.sg_per_wg_k = package.getSetting("sg_per_wg_k");
+        CHECK(compute::validate_microkernel(package, "grouped_gemm"));
+        CHECK(get_kernel_ctx(kernel_ctx, dev_info, package));
+    } catch (const std::exception &ex) {
         VDEBUGINFO(4, primitive, matmul,
                 "grouped_gemm microkernel generation failure: %s", ex.what());
         return status::runtime_error;
     }
+    std::vector<compute::kernel_t> kernels;
+    CHECK(engine.create_kernels(&kernels, get_kernel_names(), kernel_ctx));
+    bundle = compute::kernel_bundle_t(
+            std::move(kernels), get_kernel_names(), config);
+    return status::success;
+}
 
+status_t grouped_micro_params_t::get_kernel_ctx(
+        compute::kernel_ctx_t &kernel_ctx,
+        const compute::device_info_t &dev_info,
+        const gemmstone::microkernel::Package &package) const {
     /* Generate microkernel shims */
     const int sg_size = dev_info.min_subgroup_size();
     kernel_ctx.define_int("SUBGROUP_SIZE", sg_size);
@@ -809,52 +821,39 @@ status_t grouped_micro_gemm_t::pd_t::init_conf(
     return status::success;
 }
 
-namespace {
-
-// Selects the microkernel for the kernel parameters, trying the candidates in
-// order of preference. With a package, the first candidate that generates is
-// stored in conf and its microkernel in package. Otherwise, the first candidate
-// passing preflight is accepted and conf is left unchanged.
-bool select_ukernel(const grouped_micro_gemm_t::pd_t &pd,
-        const compute::device_info_t &dev_info, grouped_micro_params_t &conf,
-        gemmstone::microkernel::Package *package) {
+// Tries the microkernel candidates for the kernel parameters in order of
+// preference, first without strategy requirements and then with the fallback
+// requirements. The microkernel is generated on a kernel cache miss; a
+// candidate that fails to generate or build moves on to the next one.
+bool grouped_micro_gemm_t::select_ukernel(impl::engine_t *engine,
+        grouped_micro_params_t &conf, compute::kernel_bundle_t &bundle) {
     using namespace gemmstone;
     using namespace gemmstone::microkernel;
+
+    const auto &dev_info
+            = *utils::downcast<const intel::engine_t *>(engine)->device_info();
 
     GEMMProblem problem;
     GEMMOptions opts;
     SizeParams sizes;
-    init_ukernel_problem(pd, conf, dev_info, problem, opts, sizes);
+    init_ukernel_problem(*pd(), conf, dev_info, problem, opts, sizes);
 
     const HWInformation hw_info = get_hw_info(dev_info);
     const HostPayload host = get_host_payload(dev_info);
     const StrategyAdjuster adjuster = get_strategy_adjuster(dev_info, problem);
 
-    // Returns true once a candidate is accepted.
+    // Returns true once the kernels of a candidate are created.
     auto try_select = [&](const std::vector<StrategyRequirement> &reqs) {
         try {
             GEMMSelector selector(
                     opts, host, hw_info, sizes, problem, reqs, adjuster);
             GEMMCandidate candidate;
             while (selector.next(candidate)) {
-                if (!package) return true;
-
-                Package generated;
-                try {
-                    generated = generateGEMM(opts, host, hw_info, candidate);
-                } catch (const std::runtime_error &ex) {
-                    VDEBUGINFO(4, primitive, matmul,
-                            "grouped_gemm microkernel generation failure: %s",
-                            ex.what());
-                    continue;
-                }
-                if (compute::validate_microkernel(generated, "grouped_gemm")
-                        != status::success)
-                    continue;
-
                 conf.ukernel = std::move(candidate);
-                *package = std::move(generated);
-                return true;
+                if (create_kernels(
+                            engine, bundle, conf.get_kernel_names(), conf)
+                        == status::success)
+                    return true;
             }
         } catch (const std::runtime_error &ex) {
             VDEBUGINFO(4, primitive, matmul,
@@ -869,15 +868,13 @@ bool select_ukernel(const grouped_micro_gemm_t::pd_t &pd,
     // select alike; for k_axis it follows the operand order.
     const dim_t avg_m = conf.axis == grouped_axis_t::k_axis
             ? sizes.n
-            : utils::rnd_up_pow2(pd.M() / pd.ngroups());
+            : utils::rnd_up_pow2(pd()->M() / pd()->ngroups());
 
     // Select without strategy requirements first, then with the fallback
     // requirements.
     return try_select({})
             || try_select(fallback_reqs(dev_info, problem, opts, avg_m));
 }
-
-} // namespace
 
 status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     assert(engine->kind() == engine_kind::gpu);
@@ -947,13 +944,25 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
     CHECK(pd()->init_conf(conf_));
     std::copy(std::begin(conf_.po_chain), std::end(conf_.po_chain),
             std::begin(po_chain));
-    if (!select_ukernel(*pd(), *intel_engine->device_info(), conf_,
-                &ukernel_package_)) {
-        VERROR(primitive, gpu, "%s,%s", pd()->info(engine),
-                "no grouped_gemm microkernel could be generated");
-        return status::runtime_error;
+
+    const auto &kernel_names = conf_.get_kernel_names();
+    compute::kernel_bundle_t bundle;
+    if (cache_blob()) {
+        // The launch configuration precedes the kernels in the cache blob
+        CHECK(cache_blob().get_value(
+                (uint8_t *)&ukernel_config_, sizeof(ukernel_config_)));
+        VCHECK_KERNEL(create_kernels(engine, bundle, kernel_names, conf_),
+                VERBOSE_KERNEL_CREATION_FAIL, kernel_names[0]);
+    } else {
+        if (!select_ukernel(engine, conf_, bundle)) {
+            VERROR(primitive, gpu, "%s,%s", pd()->info(engine),
+                    "no grouped_gemm microkernel could be generated or built");
+            return status::runtime_error;
+        }
+        ukernel_config_ = bundle.info<grouped_ukernel_config_t>();
     }
-    return create_kernel(engine, kernel_, conf_.get_kernel_names()[0], conf_);
+
+    return bundle.get_kernels(kernel_names, kernel_);
 }
 
 status_t grouped_micro_gemm_t::execute_k_axis(const exec_ctx_t &ctx) const {
@@ -997,14 +1006,13 @@ status_t grouped_micro_gemm_t::execute_k_axis(const exec_ctx_t &ctx) const {
     arg_list.append(m);
     arg_list.append(n);
 
-    const auto &ukernel = ukernel_package_;
-    const size_t wg_tile_m = ukernel.getSetting("wg_tile_m");
-    const size_t wg_tile_n = ukernel.getSetting("wg_tile_n");
+    const size_t wg_tile_m = ukernel_config_.wg_tile_m;
+    const size_t wg_tile_n = ukernel_config_.wg_tile_n;
 
     compute::range_t lws = compute::range_t::one(3);
-    lws[0] *= sg_size_ * ukernel.getSetting("sg_per_wg_m");
-    lws[1] *= ukernel.getSetting("sg_per_wg_n");
-    lws[2] *= ukernel.getSetting("sg_per_wg_k");
+    lws[0] *= sg_size_ * ukernel_config_.sg_per_wg_m;
+    lws[1] *= ukernel_config_.sg_per_wg_n;
+    lws[2] *= ukernel_config_.sg_per_wg_k;
 
     compute::range_t gws = lws;
     gws[0] *= utils::div_up(m, wg_tile_m);
@@ -1135,12 +1143,11 @@ status_t grouped_micro_gemm_t::execute_m_axis(const exec_ctx_t &ctx) const {
     arg_list.append(*dense_scale);
     arg_list.append(*nvfp4_scale);
 
-    const auto &ukernel = ukernel_package_;
-    size_t sg_per_wg_m = ukernel.getSetting("sg_per_wg_m");
-    size_t sg_per_wg_n = ukernel.getSetting("sg_per_wg_n");
-    size_t sg_per_wg_k = ukernel.getSetting("sg_per_wg_k");
-    size_t wg_tile_m = ukernel.getSetting("wg_tile_m");
-    size_t wg_tile_n = ukernel.getSetting("wg_tile_n");
+    size_t sg_per_wg_m = ukernel_config_.sg_per_wg_m;
+    size_t sg_per_wg_n = ukernel_config_.sg_per_wg_n;
+    size_t sg_per_wg_k = ukernel_config_.sg_per_wg_k;
+    size_t wg_tile_m = ukernel_config_.wg_tile_m;
+    size_t wg_tile_n = ukernel_config_.wg_tile_n;
 
     // Use total_tokens as upper bound for M dimension
     compute::range_t lws = compute::range_t::one(3);

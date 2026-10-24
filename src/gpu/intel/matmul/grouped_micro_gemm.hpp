@@ -78,6 +78,14 @@ struct grouped_ocl_params_t : trivially_serializable_t<grouped_ocl_params_t> {
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(grouped_ocl_params_t);
 
+// Microkernel launch configuration read at execution. Trivially copyable so it
+// is stored in the cache blob as raw bytes.
+struct grouped_ukernel_config_t {
+    int32_t wg_tile_m = 0, wg_tile_n = 0;
+    int32_t sg_per_wg_m = 0, sg_per_wg_n = 0, sg_per_wg_k = 0;
+};
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(grouped_ukernel_config_t);
+
 // Kernel cache key: the OpenCL kernel parameters and the selected microkernel.
 struct grouped_micro_params_t : grouped_ocl_params_t {
     const std::vector<const char *> &get_kernel_names() const {
@@ -93,7 +101,8 @@ struct grouped_micro_params_t : grouped_ocl_params_t {
             compute::kernel_bundle_t &bundle) const;
 
     status_t get_kernel_ctx(compute::kernel_ctx_t &kernel_ctx,
-            const compute::device_info_t &dev_info) const;
+            const compute::device_info_t &dev_info,
+            const gemmstone::microkernel::Package &package) const;
 
     serialization_stream_t serialize() const {
         const grouped_ocl_params_t &ocl = *this;
@@ -104,7 +113,7 @@ struct grouped_micro_params_t : grouped_ocl_params_t {
 
     // Selected microkernel. Its options and host payload follow from the
     // device and the problem, so they are not part of the key. It is
-    // regenerated from the candidate on a kernel cache miss.
+    // generated from the candidate on a kernel cache miss.
     gemmstone::microkernel::GEMMCandidate ukernel;
 };
 
@@ -163,6 +172,22 @@ struct grouped_micro_gemm_t : public primitive_t {
 
     status_t execute(const exec_ctx_t &ctx) const override;
 
+    // The launch configuration precedes the base class data (version, kernel
+    // binaries) in the cache blob; init() reads it back first.
+    status_t get_cache_blob_size(
+            impl::engine_t *engine, size_t *size) const override {
+        if (!size) return status::invalid_arguments;
+        (*size) += sizeof(ukernel_config_);
+        return primitive_t::get_cache_blob_size(engine, size);
+    }
+
+    status_t get_cache_blob(
+            impl::engine_t *engine, cache_blob_t &blob) const override {
+        CHECK(blob.add_value(
+                (const uint8_t *)&ukernel_config_, sizeof(ukernel_config_)));
+        return primitive_t::get_cache_blob(engine, blob);
+    }
+
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
 private:
@@ -170,13 +195,16 @@ private:
     status_t execute_k_axis(const exec_ctx_t &ctx) const;
     // grouped_micro_gemm_m_axis.cl, dispatched for the m_axis workload
     status_t execute_m_axis(const exec_ctx_t &ctx) const;
+    // Creates the kernels of the first microkernel candidate whose kernels
+    // can be created, storing the candidate in conf.ukernel
+    bool select_ukernel(impl::engine_t *engine, grouped_micro_params_t &conf,
+            compute::kernel_bundle_t &bundle);
 
     // Classification of each post-op entry
     std::array<po_kind_t, 3> po_chain
             = {{po_kind_t::none, po_kind_t::none, po_kind_t::none}};
-    // Microkernel generated for conf_.ukernel, providing the launch
-    // configuration
-    gemmstone::microkernel::Package ukernel_package_;
+    // Launch configuration of the selected microkernel
+    grouped_ukernel_config_t ukernel_config_;
     compute::kernel_t kernel_;
     int sg_size_ = 0;
 };

@@ -98,6 +98,8 @@ using SelectionObserver = std::function<void (const kcatalog::Entry *entry, doub
 const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
 const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
 
+char hwTag(ngen::HW hw);
+
 // Extended API for iterating over all matching kernels.
 bool matches(const kcatalog::Entry &e, const MatchParams &pattern);
 bool lessAligned(int alignA1, int alignB1, int alignA2, int alignB2);

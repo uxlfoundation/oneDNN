@@ -67,9 +67,23 @@ static inline gemmstone::Type convert_dnnl_to_kernel_type(data_type_t type) {
 struct gen_desc_t {
     friend struct gen_kernel_t;
 
+    // kv/kb/kr/wgK a strategy states.
+    struct decisions_t {
+        bool kv = false, kb = false, kr = false;
+        int wgK = 1;
+
+        bool operator==(const decisions_t &o) const {
+            return kv == o.kv && kb == o.kb && kr == o.kr && wgK == o.wgK;
+        }
+        bool operator!=(const decisions_t &o) const { return !(*this == o); }
+        std::string str() const;
+    };
+
     const gemmstone::GEMMProblem *problem() const { return &problem_; }
     const gemmstone::GEMMStrategy *strategy() const { return &strategy_; }
     std::string str() const;
+    // Replayable strategy string.
+    const std::string &resolved_str() const { return resolved_str_; }
 
     const gemmstone::CommonDriverInfo *driver_info() const {
         return &driver_info_;
@@ -125,7 +139,10 @@ protected:
     bool efficient_64b_ = false;
 
     std::string kernel_override_;
+    std::string resolved_str_;
     std::string reject_reason_;
+    // Variable beta when k spans several k-blocks (nocopy only).
+    bool k_chunk_beta_ = false;
 
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;
@@ -133,10 +150,21 @@ protected:
     bool disable_systolic_ = false;
     bool relaxed_acc_ = false;
 
-    status_t finalize(const char *tags);
-    status_t apply_kernel_override(
-            const std::string &ovr_strategy, const char *tags);
-    void update_driver_info();
+    status_t finalize(
+            const char *tags, const gemmstone::EvaluateParams &eval_params);
+    // Builds the kernel from a strategy string (both paths).
+    status_t apply_strategy(std::string str, const char *tags,
+            const int (&pd_align)[3],
+            const gemmstone::EvaluateParams &eval_params, bool is_override);
+    // Fixed-rule launch; returns kept decisions; throws.
+    decisions_t resolve_launch(const gemmstone::kcatalog::Entry &base,
+            const char *tags, const gemmstone::EvaluateParams &eval_params);
+    // The strategy's decisions after preflight and the launch.
+    decisions_t kept_decisions(const gemmstone::GEMMStrategy &st) const;
+    void prepare(gemmstone::GEMMStrategy &st, gemmstone::GEMMProblem &problem,
+            const char *tags) const;
+    gemmstone::CommonDriverInfo driver_info_of(
+            const gemmstone::GEMMStrategy &strategy) const;
 };
 
 struct gen_nocopy_desc_t : public gen_desc_t {

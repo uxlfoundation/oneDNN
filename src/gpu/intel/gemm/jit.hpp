@@ -322,8 +322,7 @@ struct gen_t : public primitive_t {
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 
             bool kernel_success = false;
-            // Kernel override: bare int = Nth candidate after sort (rank);
-            // else strategy string.
+            // Int = candidate rank; else strategy string.
             int index = -1;
             if (is_dev_mode()) {
                 auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
@@ -442,14 +441,21 @@ struct gen_t : public primitive_t {
                     status = try_create();
                     if (status == status::success) {
                         kernel_success = true;
-                        if (kernel_desc_.has_entry())
-                            gpu_info() << "[" << lpad(g, 4) << "] use "
-                                       << entry_idx << "/" << entries.size()
-                                       << (index >= 0 ? " pin" : "") << " "
-                                       << kernel_desc_.str();
-                        else
-                            gpu_info()
-                                    << "[override] use " << kernel_desc_.str();
+                        bool has_entry = kernel_desc_.has_entry();
+                        std::string tag = has_entry ? "[" + lpad(g, 4) + "]"
+                                                    : std::string("[override]");
+                        std::string pos = has_entry
+                                ? " " + std::to_string(entry_idx) + "/"
+                                        + std::to_string(entries.size())
+                                        + (index >= 0 ? " pin" : "")
+                                : "";
+                        gpu_info() << tag << " use" << pos << " "
+                                   << kernel_desc_.resolved_str();
+                        gpu_info() << tag << " final " << kernel_desc_.str();
+                        gpu_debug()
+                                << tag << " launch k0="
+                                << kernel_desc_.aux_params()->k0
+                                << " wgK=" << kernel_desc_.aux_params()->wgK;
                         break;
                     }
                     skip("Kernel generation failed.");

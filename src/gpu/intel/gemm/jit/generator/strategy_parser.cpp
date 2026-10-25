@@ -19,6 +19,7 @@
 #include "internal/utils.hpp"
 #include "pieces/layout_utils.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <sstream>
 #include <string>
@@ -826,6 +827,66 @@ const char *parsePrecisions(const char *s, Type &precision1, Type &precision2)
     return s;
 }
 
+static std::string unparseKParallel(const GEMMStrategy &s)      { return std::string(s.kParallel ? " kb" : "") + (s.kParallelVariable ? " kv" : ""); }
+static std::string unparseFuseBeta(const GEMMStrategy &s)       { return !s.fuseBeta ? "" : s.altFusedBeta ? " afb" : " fb"; }
+static std::string unparseFusePostOps(const GEMMStrategy &s)    { return s.fusePostOps ? " fp" : ""; }
+static std::string unparseKParallelLocal(const GEMMStrategy &s) { return !s.kParallelLocal ? "" : s.shrinkWGK ? " akr" : s.kInterleave ? " ikr" : " kr"; }
+static std::string unparseKInterleave(const GEMMStrategy &s)    { return s.kInterleave ? " ki" + std::to_string(s.kInterleaveChunk) : ""; }
+static std::string unparseAutoAtomic(const GEMMStrategy &s)     { return s.autoatomic ? "" : " nau"; }
+
+// Settings rewriteKParallel edits, by keyword ignoring a numeric suffix.
+static const struct {
+    std::vector<std::string> words;
+    std::string (*unparse)(const GEMMStrategy &);
+} kParallelFamilies[] = {
+    {{"kb", "kv"},         unparseKParallel},
+    {{"fb", "afb"},        unparseFuseBeta},
+    {{"fp"},               unparseFusePostOps},
+    {{"kr", "akr", "ikr"}, unparseKParallelLocal},
+    {{"ki"},               unparseKInterleave},
+    {{"nau"},              unparseAutoAtomic},
+};
+
+std::string rewriteKParallel(const std::string &str, const GEMMStrategy &from, const GEMMStrategy &to)
+{
+    std::vector<std::string> words;
+    std::stringstream ss(str);
+    for (std::string w; ss >> w;)
+        words.push_back(w);
+    auto t = words;
+
+    // Replace each family whose meaning changed in place, appending if absent.
+    for (auto &f: kParallelFamilies) {
+        auto want = f.unparse(to);
+        if (f.unparse(from) == want) continue;
+        auto owned = [&](const std::string &w) {
+            auto stem = w.substr(0, w.find_last_not_of("0123456789") + 1);
+            return std::find(f.words.begin(), f.words.end(), stem) != f.words.end();
+        };
+        auto i = std::find_if(t.begin(), t.end(), owned) - t.begin();
+        t.erase(std::remove_if(t.begin() + i, t.end(), owned), t.end());
+        std::stringstream ws(want);
+        for (std::string w; ws >> w;)
+            t.insert(t.begin() + i++, w);
+    }
+
+    // The k-thread count, keeping wg's m/n as written.
+    int wgK = std::max(1, to.wg[LoopK]);
+    if (std::max(1, from.wg[LoopK]) != wgK) {
+        auto wg = std::find(t.begin(), t.end(), "wg");
+        if (wg == t.end() || wg + 1 == t.end())
+            throw std::runtime_error("k-thread count without wg");
+        auto &v = *(wg + 1);
+        v = v.substr(0, v.find('x', v.find('x') + 1)) + (wgK > 1 ? "x" + std::to_string(wgK) : "");
+    }
+
+    if (t == words) return str;
+    std::string result;
+    for (auto &w: t)
+        result += (result.empty() ? "" : " ") + w;
+    return result;
+}
+
 std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     std::stringstream s;
@@ -932,11 +993,9 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.forceFixedWGK)             s << " ffk";
 
 
-    if (strategy.kParallelLocal)    s << (strategy.shrinkWGK   ? " akr" :
-                                          strategy.kInterleave ? " ikr" :
-                                                                 " kr");
+    s << unparseKParallelLocal(strategy);
     if (strategy.fillGoal)          s << " fg " << strategy.fillGoal * (1. / 16);
-    if (strategy.kInterleave)       s << " ki" << strategy.kInterleaveChunk;
+    s << unparseKInterleave(strategy);
 
     if (strategy.fixedSystolic)
         s << " fs";
@@ -1022,10 +1081,7 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.mSplitThresh)          s << " ms" << strategy.mSplitThresh;
     if (strategy.nSplitThresh)          s << " ns" << strategy.nSplitThresh;
     if (strategy.cInterleave)           s << " cti";
-    if (strategy.kParallel)             s << " kb";
-    if (strategy.kParallelVariable)     s << " kv";
-    if (strategy.fuseBeta)              s << (strategy.altFusedBeta ? " afb" : " fb");
-    if (strategy.fusePostOps)           s << " fp";
+    s << unparseKParallel(strategy) << unparseFuseBeta(strategy) << unparseFusePostOps(strategy);
     if (strategy.zeroTempC)             s << " zt";
     if (strategy.relaxedAccumulation)   s << " rx";
     if (strategy.kPadding)              s << " pk" << strategy.kPadding;

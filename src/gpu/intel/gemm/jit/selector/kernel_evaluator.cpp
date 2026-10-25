@@ -570,6 +570,22 @@ double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Evalu
     return score;
 }
 
+EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateParams &dp)
+{
+    EvaluateAuxOutput aux;
+    auto &di = e.driverInfo;
+
+    aux.kParallel = di.kParallel();
+    aux.kParallelVariable = di.kParallelVariable();
+    if (aux.kParallel)
+        aux.k0 = kParallelK0(e, dp);
+
+    evaluateECore(e, dp, aux);
+
+    aux.disableAtomics = dp.noCAtomics;
+    return aux;
+}
+
 void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux)
 {
     strategy.setKParallel(aux.kParallel, aux.kParallelVariable);

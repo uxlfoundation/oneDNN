@@ -293,6 +293,7 @@ status_t gen_desc_t::finalize(
 
     const auto *base = entry_;
     std::string str = kernel_override_;
+    int row_wg_k = 0;
     try {
         if (str.empty()) {
             // Update problem alignments to match catalog entry.
@@ -328,6 +329,7 @@ status_t gen_desc_t::finalize(
             row.unroll[LoopM] = um;
             row.unroll[LoopN] = un;
             parseStrategy(entry_->strategy, problem_, row);
+            row_wg_k = decisions_of(row).wgK;
             EvaluateAuxOutput sel;
             evaluate(*entry_, eval_params, sel);
             auto st = row;
@@ -397,9 +399,11 @@ status_t gen_desc_t::finalize(
         if (wg_tile_m > 0 && wg_tile_n > 0) {
             dim_t m_tiles = dim_t(utils::div_up(m_, wg_tile_m));
             dim_t n_tiles = dim_t(utils::div_up(n_, wg_tile_n));
-            dim_t thread_per_tg = strategy_.wg[LoopM] * strategy_.wg[LoopN];
-            if (!strategy_.kParallelVariable)
-                thread_per_tg *= std::max(strategy_.wg[LoopK], 1);
+            dim_t thread_per_mn = strategy_.wg[LoopM] * strategy_.wg[LoopN];
+            int wg_k = strategy_.kParallelVariable
+                    ? 1
+                    : std::max(aux_params_.wgK, 1);
+            dim_t thread_per_tg = thread_per_mn * wg_k;
             dim_t thread_gpu = eu_count_
                     * compute::device_info_t::threads_per_eu(
                             product_, strategy_.GRFs);
@@ -412,6 +416,32 @@ status_t gen_desc_t::finalize(
             if (strategy_.fused)
                 if (strategy_.wg[LoopM] % 2 || strategy_.wg[LoopN] % 2)
                     use_linear_m = use_linear_n = false; /* cannot swap */
+
+            // One wave even with the row's k-threads: keep the catalog order.
+            dim_t row_k = strategy_.kParallelVariable
+                    ? 1
+                    : std::max(row_wg_k, wg_k);
+            bool keep_order
+                    = m_tiles * n_tiles * thread_per_mn * row_k <= thread_gpu;
+
+            // Mostly full wave: walk the dimension with fewer tiles fastest.
+            bool both = use_linear && use_linear_m && use_linear_n
+                    && 2 * m_tiles * n_tiles > tiles_gpu;
+            auto order0 = strategy_.loopOrder[0];
+            bool walk_n
+                    = both ? n_tiles < m_tiles : use_linear_n && !use_linear_m;
+            bool walk_m
+                    = both ? m_tiles < n_tiles : use_linear_m && !use_linear_n;
+            if (!keep_order && (walk_n || walk_m)) {
+                strategy_.loopOrder[0] = walk_n ? LoopN : LoopM;
+                strategy_.loopOrder[1] = walk_n ? LoopM : LoopN;
+            }
+            // Log the order and fused loop: a replay has no catalog row.
+            if (strategy_.loopOrder[0] != order0) {
+                resolved_str_
+                        += strategy_.loopOrder[0] == LoopN ? " nmk" : " mnk";
+                resolved_str_ += strategy_.fusedLoop == LoopN ? " fn" : " fm";
+            }
 
             if (use_linear) {
                 if (strategy_.kParallelVariable)
@@ -427,13 +457,6 @@ status_t gen_desc_t::finalize(
                     strategy_.blocking[LoopN] = 16777216;
                 }
             } else if (use_linear_m || use_linear_n) {
-                if (use_linear_n && !use_linear_m) {
-                    strategy_.loopOrder[0] = LoopN;
-                    strategy_.loopOrder[1] = LoopM;
-                } else if (use_linear_m && !use_linear_n) {
-                    strategy_.loopOrder[0] = LoopM;
-                    strategy_.loopOrder[1] = LoopN;
-                }
                 strategy_.cWalkOrder = WalkOrder::SimpleLinear;
             }
         }

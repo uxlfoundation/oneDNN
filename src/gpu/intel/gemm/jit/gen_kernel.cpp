@@ -77,12 +77,18 @@ decisions_t decisions_of(const GEMMStrategy &s) {
     return d;
 }
 
-// Model's kv/kb.
+// Model's kv/kb; wgK only where no fixed rule sets it.
 decisions_t selector_decisions(
         const GEMMStrategy &row, const EvaluateAuxOutput &aux) {
     auto d = decisions_of(row);
     d.kv = aux.kParallelVariable;
     d.kb = aux.kParallel;
+    bool by_rule = row.fixedWGK() || row.shrinkWGK || aux.kParallelVariable
+            || (aux.kParallel && row.kParallel);
+    if (d.kr && !by_rule && aux.wgK < d.wgK) {
+        d.kr = aux.wgK > 1;
+        d.wgK = d.kr ? aux.wgK : 1;
+    }
     return d;
 }
 

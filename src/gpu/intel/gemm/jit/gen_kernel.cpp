@@ -483,6 +483,8 @@ status_t gen_desc_t::finalize(
     if (kept != want)
         return reject("decisions changed: " + want.str() + " -> " + kept.str()
                 + "," + resolved_str_);
+    if ((kept.kb || kept.kv) && !strategy_.C.atomic)
+        return reject("k-parallel without C atomics");
 
     // Override: fixed beta would be reapplied on later k-chunks.
     if (!entry_ && k_ > strategy_.blocking[LoopK] && problem_.beta.fixed()

@@ -655,6 +655,11 @@ void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrat
 
     if (strategy.persistentLoop() && !strategy.linearOrder()) strategy.cWalkOrder = WalkOrder::SimpleLinear;
 
+    if (strategy.kParallelLocal && strategy.wg[LoopK] < 2)
+        throw std::runtime_error("kr needs wg MxNxK with K > 1");
+    if (!strategy.kInterleave && strategy.kInterleaveChunk > 0)
+        throw std::runtime_error("ki needs ikr");
+
     size_t poCount = problem.postOps.len();
     strategy.binary.resize(poCount);
     for (auto &astrategy: strategy.binary) {

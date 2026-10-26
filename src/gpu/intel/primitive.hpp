@@ -114,14 +114,17 @@ struct primitive_t : public gpu::primitive_t {
                 params, intel_engine->engine_id());
         gpu_assert(key->key.is_valid());
 
+        using value_type = typename trivial_key_t<T>::value_type;
         cache_state_t kernel_cache_status;
-        CHECK(get_cached_kernels<typename trivial_key_t<T>::value_type>(
-                std::move(key), engine, kernels, kernel_names,
-                kernel_cache_status));
+        value_type value;
+        CHECK(get_cached_kernels<value_type>(
+                std::move(key), engine, value, kernel_cache_status));
         if (kernel_cache_status == cache_state_t::kernel_hit) {
             creation_cached_state_ = cache_state_t::kernel_hit;
         }
 
+        CHECK(to_kernel_bundle(std::move(value))
+                        .get_kernels(kernels, kernel_names));
         for (auto &k : kernels)
             k.hash_dump("real");
         CHECK(register_kernels(kernels));
@@ -176,6 +179,19 @@ private:
             const compute::kernel_arg_list_t &arg_list,
             const xpu::event_t &deps, xpu::event_t &out_dep) {
         return kernel.parallel_for(stream, range, arg_list, deps, out_dep);
+    }
+
+    // A kernel cache value as a bundle keyed by kernel name
+    static compute::kernel_bundle_t to_kernel_bundle(
+            compute::kernel_t &&kernel) {
+        const std::string name = kernel.name();
+        std::vector<compute::kernel_t> kernels;
+        kernels.emplace_back(std::move(kernel));
+        return compute::kernel_bundle_t(std::move(kernels), {name.c_str()});
+    }
+    static compute::kernel_bundle_t to_kernel_bundle(
+            compute::kernel_bundle_t &&bundle) {
+        return std::move(bundle);
     }
 
     // Persistent cache versioning is not used by default. To enable versioning

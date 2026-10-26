@@ -588,11 +588,14 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     bool block2DB = (hw >= HW::XeHPC) && systolic && (problem.B.alignment % min2DAlignmentB) == 0;
     bool useNewDP = (hw >= HW::XeHP);
 
+    // u3 is computed as u4, so size its loads as u4
+    Type Ta_load = problem.Ta_ext.is3() ? Type(Type::u4) : problem.Ta_ext;
+
     s.ka_load = s.kb_load = 16;
     if (!systolic) {
         // Keep eight bytes per integer operand without enlarging the other
         // operand's load for mixed-precision inputs. Preserve floating-point defaults.
-        s.ka_load = problem.Ta_ext.isInteger() ? 8 / problem.Ta_ext : 4;
+        s.ka_load = Ta_load.isInteger() ? 8 / Ta_load : 4;
         s.kb_load = problem.Tb_ext.isInteger() ? 8 / problem.Tb_ext : 4;
     }
 
@@ -604,11 +607,11 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     } else if (!block2DA) {
         s.A.accessType = AccessType::Block;
         if (systolic)
-            s.ka_load = (problem.A.layout == MatrixLayout::T) ? 64 / problem.Ta_ext / m_iter : 16;
+            s.ka_load = (problem.A.layout == MatrixLayout::T) ? 64 / Ta_load / m_iter : 16;
         s.slmA = (hw >= HW::XeHP);
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
-        s.ka_load = 64 / problem.Ta_ext / m_iter;
+        s.ka_load = 64 / Ta_load / m_iter;
     } else if (problem.A.layout == MatrixLayout::N) {
         s.A.accessType = AccessType::Block2DVNNI;
         s.ka_load =  s.unroll[LoopM] / m_iter;

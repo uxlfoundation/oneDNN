@@ -124,14 +124,22 @@ int verify_input(const settings_t &s, const settings_t &def) {
     for (const auto &i_post_ops : s.post_ops) {
         for (int idx = 0; idx < i_post_ops.len(); ++idx) {
             const auto &e = i_post_ops.entry[idx];
-            if (e.is_binary_kind()) {
-                if (e.binary.tag == "any") {
-                    BENCHDNN_PRINT(0, "%s\n",
-                            "ERROR: brgemm driver: binary post-op requires "
-                            "specifying `<alg>:<dt>:<policy>:<tag>` with a "
-                            "concrete format tag (e.g. `add:f32:per_oc:ab`).");
-                    return FAIL;
-                }
+            if (!e.is_binary_kind()) continue;
+
+            if (e.binary.tag == "any") {
+                BENCHDNN_PRINT(0, "%s\n",
+                        "ERROR: brgemm driver: binary post-op requires "
+                        "specifying `<alg>:<dt>:<policy>:<tag>` with a "
+                        "concrete format tag (e.g. `add:f32:per_oc:ab`).");
+                return FAIL;
+            }
+            if (static_cast<int>(e.binary.tag.length()) != s.prb_vdims.ndims) {
+                BENCHDNN_PRINT(0,
+                        "ERROR: brgemm driver: binary post-op format tag '%s' "
+                        "is invalid. BRGeMM requires a %dD format tag (e.g. "
+                        "'ab').\n",
+                        e.binary.tag.c_str(), s.prb_vdims.ndims);
+                return FAIL;
             }
         }
     }

@@ -317,6 +317,9 @@ struct kernel_args_t {
 #endif
     size_t scratchpad_size_;
     bool generate_skip_accumulation_;
+
+    // A benchdnn infrastructure unit, kept here for re-use between
+    // `init_kernel` and `init_memory_args`.
     attr_args_t attr_args_;
 
     // Input members
@@ -397,9 +400,10 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
     }
 
     benchdnn_dnnl_wrapper_t<dnnl_primitive_attr_t> dnnl_attr;
-    DNN_SAFE(create_dnnl_attr(dnnl_attr, prb->attr, kernel_args.attr_args_, prb->ndims),
+    DNN_SAFE(create_dnnl_attr(
+                     dnnl_attr, prb->attr, kernel_args.attr_args_, prb->ndims),
             WARN);
-            
+
     dims_t dst_strides = {prb->get_ldd(), 1};
     auto dst_md = dnn_mem_t::init_md(
             prb->ndims, prb->dst_dims.data(), prb->dst_dt(), "", dst_strides);
@@ -463,7 +467,8 @@ int init_kernel(kernel_args_t &kernel_args, res_t *res) {
     kernel_args.attr_args_.prepare_post_ops_mds(
             prb->attr, prb->ndims, prb->dst_dims.data(), dnnl_matmul);
     benchdnn_dnnl_wrapper_t<dnnl_primitive_attr_t> dnnl_attr;
-    DNN_SAFE(create_dnnl_attr(dnnl_attr, prb->attr,  kernel_args.attr_args_, prb->ndims),
+    DNN_SAFE(create_dnnl_attr(
+                     dnnl_attr, prb->attr, kernel_args.attr_args_, prb->ndims),
             WARN);
     auto dnnl_post_ops = query_post_ops(dnnl_attr);
 

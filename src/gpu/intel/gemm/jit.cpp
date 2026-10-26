@@ -609,6 +609,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (bq_2d)
         ldbq = into<int32_t>(bq_n_major ? utils::div_up(n, problem.bqGroupN)
                                         : utils::div_up(k, problem.bqGroupK));
+    if (swap_ab ? pd()->b_q2d_k_broadcast() : pd()->a_q2d_k_broadcast())
+        ldaq = 0;
+    if (swap_ab ? pd()->a_q2d_k_broadcast() : pd()->b_q2d_k_broadcast())
+        ldbq = 0;
 
     auto block_m = nocopy_info()->blocking[0];
     auto block_n = nocopy_info()->blocking[1];

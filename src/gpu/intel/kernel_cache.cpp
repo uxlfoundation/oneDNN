@@ -51,48 +51,29 @@ status_t get_or_create(const kernel_cache::key_t &key,
 
 template <typename value_type>
 status_t get_cached_kernels(std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        const impl::engine_t *engine, std::vector<kernel_t> &kernels,
-        const std::vector<const char *> &kernel_names,
+        const impl::engine_t *engine, value_type &value,
         cache_state_t &kernel_cache_hit) {
-    kernel_cache::key_t key {std::move(key_impl)};
-
-    gpu_kernel_value_t value;
-    CHECK(get_or_create(key, value, engine, kernel_cache_hit));
-
     static_assert(std::is_same<value_type, kernel_t>()
                     || std::is_same<value_type, kernel_bundle_t>(),
             "Only support caching kernel_t or kernel_bundle_t");
 
-    if (std::is_same<value_type, kernel_t>()) {
-        if (kernel_names.size() != 1) return status::runtime_error;
-        const kernel_t &kernel = utils::downcast<
-                const gpu_kernel_value_container_t<kernel_t> *>(value.impl())
-                                         ->value;
-        // As there is only one kernel, allow the kernel_name to be unspecified
-        if (kernel_names[0] && std::string(kernel_names[0]) != kernel.name())
-            return status::runtime_error;
+    kernel_cache::key_t key {std::move(key_impl)};
 
-        kernels[0] = kernel;
-        return status::success;
-    } else if (std::is_same<value_type, kernel_bundle_t>()) {
-        const kernel_bundle_t &bundle = utils::downcast<
-                const gpu_kernel_value_container_t<kernel_bundle_t> *>(
-                value.impl())
-                                                ->value;
-        return bundle.get_kernels(kernels, kernel_names);
-    }
-    return status::runtime_error;
+    gpu_kernel_value_t cached;
+    CHECK(get_or_create(key, cached, engine, kernel_cache_hit));
+    value = utils::downcast<const gpu_kernel_value_container_t<value_type> *>(
+            cached.impl())
+                    ->value;
+    return status::success;
 }
 
 template status_t get_cached_kernels<kernel_t>(
         std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        const impl::engine_t *engine, std::vector<kernel_t> &kernels,
-        const std::vector<const char *> &kernel_names,
+        const impl::engine_t *engine, kernel_t &value,
         cache_state_t &kernel_cache_hit);
 template status_t get_cached_kernels<kernel_bundle_t>(
         std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        const impl::engine_t *engine, std::vector<kernel_t> &kernels,
-        const std::vector<const char *> &kernel_names,
+        const impl::engine_t *engine, kernel_bundle_t &value,
         cache_state_t &kernel_cache_hit);
 
 } // namespace intel

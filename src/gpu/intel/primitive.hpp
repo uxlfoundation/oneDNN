@@ -96,17 +96,24 @@ struct primitive_t : public gpu::primitive_t {
     status_t create_kernel(impl::engine_t *engine, compute::kernel_t *kernel,
             const char *kernel_name, const compute::kernel_ctx_t &kernel_ctx);
 
+    // Creates the kernels in kernel_names and registers them in that order.
+    // Only those kernels are stored in the cache blob, so only those may be
+    // used from the bundle. The generator's info is only available when the
+    // kernels come from the kernel cache; with a cache blob the primitive
+    // restores that state from its blob.
     template <typename T>
     status_t create_kernels(impl::engine_t *engine,
-            std::vector<compute::kernel_t> &kernels,
+            compute::kernel_bundle_t &bundle,
             const std::vector<const char *> &kernel_names, const T &params) {
         auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        std::vector<compute::kernel_t> kernels;
         if (cache_blob()) {
             CHECK(intel_engine->create_kernels_from_cache_blob(
                     cache_blob(), kernels, kernel_names));
             for (auto &k : kernels)
                 k.hash_dump("blob");
             CHECK(register_kernels(kernels));
+            bundle = compute::kernel_bundle_t(std::move(kernels), kernel_names);
             return status::success;
         }
 
@@ -122,9 +129,10 @@ struct primitive_t : public gpu::primitive_t {
         if (kernel_cache_status == cache_state_t::kernel_hit) {
             creation_cached_state_ = cache_state_t::kernel_hit;
         }
+        bundle = to_kernel_bundle(std::move(value));
 
-        CHECK(to_kernel_bundle(std::move(value))
-                        .get_kernels(kernels, kernel_names));
+        // Register in kernel_names order, the order the cache blob is read
+        CHECK(bundle.get_kernels(kernels, kernel_names));
         for (auto &k : kernels)
             k.hash_dump("real");
         CHECK(register_kernels(kernels));
@@ -135,11 +143,12 @@ struct primitive_t : public gpu::primitive_t {
     template <typename T>
     status_t create_kernel(impl::engine_t *engine, compute::kernel_t &kernel,
             const char *kernel_name, const T &params) {
-        std::vector<compute::kernel_t> kernels(1);
-        VCHECK_KERNEL(create_kernels(engine, kernels, {kernel_name}, params),
+        // The kernel is looked up by name in the bundle
+        if (!kernel_name) return status::invalid_arguments;
+        compute::kernel_bundle_t bundle;
+        VCHECK_KERNEL(create_kernels(engine, bundle, {kernel_name}, params),
                 VERBOSE_KERNEL_CREATION_FAIL, kernel_name);
-        kernel = kernels[0];
-        return status::success;
+        return bundle.get_kernels({kernel_name}, kernel);
     }
 
     static status_t parallel_for(const exec_ctx_t &ctx,

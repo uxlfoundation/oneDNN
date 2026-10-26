@@ -313,6 +313,21 @@ public:
         return status::success;
     }
 
+    // Assigns the kernels named by kernel_names to kernels, in order. A null
+    // name leaves its kernel empty.
+    template <typename... Kernels>
+    status_t get_kernels(const std::vector<const char *> &kernel_names,
+            Kernels &...kernels) const {
+        if (kernel_names.size() != sizeof...(kernels))
+            return status::invalid_arguments;
+        std::vector<kernel_t> found;
+        CHECK(get_kernels(found, kernel_names));
+        kernel_t *outs[] = {&kernels...};
+        for (size_t i = 0; i < found.size(); i++)
+            *outs[i] = std::move(found[i]);
+        return status::success;
+    }
+
     template <typename T>
     const T &info() const {
         gpu_assert(info_) << "kernel bundle has no info";

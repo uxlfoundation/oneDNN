@@ -25,6 +25,7 @@
 
 #include "cpu/rv64/brgemm/brgemm.hpp"
 #include "cpu/rv64/rvv_brgemm_inner_product.hpp"
+#include "cpu/rv64/rvv_weights_layout.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -70,12 +71,9 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_INNER_PRODUCT(weights_md(0)->ndims == 2, VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_INNER_PRODUCT(dst_md(0)->ndims == 2, VERBOSE_UNSUPPORTED_TAG);
 
-    // Set default formats
-    // brgemm requires weights in ba format (OC-contiguous)
+    // Set default formats; the weights follow the kernel's M tile below
     if (src_md_.format_kind == format_kind::any)
         CHECK(memory_desc_init_by_tag(src_md_, format_tag::ab));
-    if (weights_md_.format_kind == format_kind::any)
-        CHECK(memory_desc_init_by_tag(weights_md_, format_tag::ba));
     if (dst_md_.format_kind == format_kind::any)
         CHECK(memory_desc_init_by_tag(dst_md_, format_tag::ab));
     if (bias_md_.format_kind == format_kind::any)
@@ -89,34 +87,14 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
             OC() >= 16, VERBOSE_IMPL_HEURISTIC_FAIL, "OC too small for brgemm");
     VDISPATCH_INNER_PRODUCT(IC_total_padded() >= 64,
             VERBOSE_IMPL_HEURISTIC_FAIL, "IC too small for brgemm");
-    // The brgemm kernel accesses weights (ba format) with stride OC * 4 bytes
-    // between K rows. Two complementary guards prevent regressions:
-    //
-    // Guard A: When MB < 4, the JIT kernel's N-loop falls entirely into the
-    // single-column tail (no pipelining). Combined with L1D cache set
-    // conflicts (stride is a multiple of way_size when OC % 1024 == 0 for
-    // typical 32KB 8-way L1D), this causes severe regression vs gemm_ip.
-    VDISPATCH_INNER_PRODUCT(MB() >= 4 || OC() % 1024 != 0,
-            VERBOSE_IMPL_HEURISTIC_FAIL,
-            "small MB with cache-conflicting OC stride");
-    // Guard B: When MB > 4, each additional 4-column group re-loads the
-    // entire A matrix from L2+. With OC >= 2048 the stride (>= 8KB) spans
-    // multiple pages, causing severe TLB thrashing that compounds with the
-    // repeated loads. The gemm driver avoids this via copy_A packing.
-    VDISPATCH_INNER_PRODUCT(MB() <= 4 || OC() < 2048,
-            VERBOSE_IMPL_HEURISTIC_FAIL,
-            "large MB with large OC causes TLB thrashing");
 
     const memory_desc_wrapper src_d(src_md(0));
-    const memory_desc_wrapper wei_d(weights_md(0));
     const memory_desc_wrapper dst_d(dst_md(0));
 
-    // All must be plain dense
+    // Src and dst must be plain dense
     VDISPATCH_INNER_PRODUCT(src_d.blocking_desc().inner_nblks == 0
-                    && wei_d.blocking_desc().inner_nblks == 0
                     && dst_d.blocking_desc().inner_nblks == 0
-                    && src_d.is_dense(false) && wei_d.is_dense(false)
-                    && dst_d.is_dense(false),
+                    && src_d.is_dense(false) && dst_d.is_dense(false),
             VERBOSE_UNSUPPORTED_TAG);
 
     // Src and Dst must be row-major (last stride == 1)
@@ -127,14 +105,9 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
             dst_d.blocking_desc().strides[dst_d.ndims() - 1] == 1,
             VERBOSE_UNSUPPORTED_TAG);
 
-    // Weights must be ba format
-    VDISPATCH_INNER_PRODUCT(
-            wei_d.blocking_desc().strides[0] == 1, VERBOSE_UNSUPPORTED_TAG);
-
     // Create brgemm descriptor and JIT kernel
     const dim_t M = OC();
     const dim_t K = IC_total_padded();
-    const dim_t LDA = M; // weights ba: stride[1] = OC
     const dim_t LDB = K; // src row-major: stride[0] = IC
     const dim_t LDC = M; // dst row-major: stride[0] = OC
 
@@ -143,11 +116,58 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
 
     brgemm_desc_t brg_desc;
     CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_type, src_type,
-            brgemm_col_major, 1.0f, 0.0f, LDA, LDB, LDC, M, MB(), K));
+            brgemm_col_major, 1.0f, 0.0f, M, LDB, LDC, M, MB(), K));
     // f16 dst: narrow the f32 accumulators to f16 on store. The kernel reads
     // typesize_C (2) to advance C between columns; the f32/bf16 paths keep
     // typesize_C = 4 (the accumulator width).
     if (dst_type == f16) CHECK(brgemm_desc_set_dt_c(&brg_desc, dst_type));
+
+    // Weights: OC innermost, blocked by the kernel's M tile (ba when OC is
+    // shorter than one tile), or a user ba
+    const int wei_order[] = {0, 1};
+    if (weights_md_.format_kind == format_kind::any)
+        CHECK(init_m_blocked_md(weights_md_, 0, brg_desc.bd_block, wei_order));
+
+    // The kernel is fitted to the tile the weights are blocked by, which may
+    // not be the one chosen for `any`, and to the rows each call gets
+    dim_t wei_tile = 0;
+    VDISPATCH_INNER_PRODUCT(
+            m_layout_tile(memory_desc_wrapper(weights_md(0)), 0, wei_tile),
+            VERBOSE_UNSUPPORTED_TAG);
+    const dim_t nthr = dnnl_get_max_threads();
+    const dim_t rows_per_call = MB() >= nthr ? utils::div_up(MB(), nthr) : MB();
+    VDISPATCH_INNER_PRODUCT_SC(
+            brgemm_desc_set_weights_tile(&brg_desc,
+                    wei_tile ? static_cast<int>(wei_tile) : brg_desc.bd_block,
+                    rows_per_call),
+            VERBOSE_UNSUPPORTED_TAG);
+    dim_t lda = 0, block_stride = 0;
+    VDISPATCH_INNER_PRODUCT(
+            m_blocked_strides(memory_desc_wrapper(weights_md(0)), 0, 1,
+                    brg_desc.bd_block, lda, block_stride),
+            VERBOSE_UNSUPPORTED_TAG);
+    brg_desc.LDA = lda;
+    brg_desc.stride_a_m_block = block_stride;
+
+    // Plain weights (ba) are read with stride OC * 4 bytes between K rows,
+    // which two complementary guards keep from regressing; blocked weights
+    // are read as contiguous M tiles.
+    //
+    // Guard A: When MB < 4, the JIT kernel's N-loop falls entirely into the
+    // single-column tail (no pipelining). Combined with L1D cache set
+    // conflicts (stride is a multiple of way_size when OC % 1024 == 0 for
+    // typical 32KB 8-way L1D), this causes severe regression vs gemm_ip.
+    const bool strided_wei = lda == M;
+    VDISPATCH_INNER_PRODUCT(!strided_wei || MB() >= 4 || OC() % 1024 != 0,
+            VERBOSE_IMPL_HEURISTIC_FAIL,
+            "small MB with cache-conflicting OC stride");
+    // Guard B: When MB > 4, each additional 4-column group re-loads the
+    // entire A matrix from L2+. With OC >= 2048 the stride (>= 8KB) spans
+    // multiple pages, causing severe TLB thrashing that compounds with the
+    // repeated loads.
+    VDISPATCH_INNER_PRODUCT(!strided_wei || MB() <= 4 || OC() < 2048,
+            VERBOSE_IMPL_HEURISTIC_FAIL,
+            "large MB with large OC causes TLB thrashing");
 
     brgemm_kernel_t *kernel = nullptr;
     CHECK(brgemm_kernel_create(&kernel, brg_desc));
@@ -209,7 +229,9 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
                     const float beta_kb = (kb == 0) ? 0.0f : 1.0f;
 
                     brgemm_kernel_params_t p;
-                    p.ptr_A = wei + (kb * OC + m_offset) * in_ts;
+                    p.ptr_A = wei
+                            + (mt * brg.stride_a_m_block + kb * brg.LDA)
+                                    * in_ts;
                     p.ptr_B = src + kb * in_ts;
                     p.ptr_C = dst + m_offset * out_ts;
                     p.N = MB;

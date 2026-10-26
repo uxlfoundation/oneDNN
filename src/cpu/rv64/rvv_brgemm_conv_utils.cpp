@@ -128,25 +128,14 @@ status_t init_conf(brgemm_conv_conf_t &jcp, const convolution_desc_t &cd,
     else if (!dst_d.matches_one_of_tag(dat_tag))
         return status::unimplemented;
 
-    // Weights: plain spatial × IC × OC layout (same as gemm conv NSPC).
-    const auto wei_tag = with_groups ? pick(ndims - 3, wigo, hwigo, dhwigo)
-                                     : pick(ndims - 3, wio, hwio, dhwio);
-
-    memory_desc_t want_wei_md = weights_md;
-    CHECK(memory_desc_init_by_tag(want_wei_md, wei_tag));
-
-    if (weights_md.format_kind == format_kind::any) {
-        weights_md = want_wei_md;
-    } else {
-        if (want_wei_md != weights_md) return status::unimplemented;
-    }
+    // The primitive lays out the weights once the kernel's M tile is known
 
     if (bias_d.ndims() && bias_md.format_kind == format_kind::any)
         CHECK(memory_desc_init_by_tag(bias_md, format_tag::x));
 
     jcp.src_tag = dat_tag;
     jcp.dst_tag = dat_tag;
-    jcp.wei_tag = wei_tag;
+    jcp.wei_tag = format_tag::undef;
 
     return status::success;
 }

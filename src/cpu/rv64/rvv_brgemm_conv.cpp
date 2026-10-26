@@ -24,6 +24,7 @@
 
 #include "cpu/rv64/brgemm/brgemm.hpp"
 #include "cpu/rv64/rvv_brgemm_conv.hpp"
+#include "cpu/rv64/rvv_weights_layout.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -79,7 +80,6 @@ status_t rvv_brgemm_convolution_fwd_t::pd_t::init(const engine_t *engine) {
     const dim_t K = jcp_.ic;
     const dim_t OC_all = static_cast<dim_t>(jcp_.ngroups) * jcp_.oc;
     const dim_t IC_all = static_cast<dim_t>(jcp_.ngroups) * jcp_.ic;
-    const dim_t LDA = OC_all;
     const dim_t LDB = static_cast<dim_t>(jcp_.stride_w) * IC_all;
     const dim_t LDC = OC_all;
 
@@ -89,8 +89,50 @@ status_t rvv_brgemm_convolution_fwd_t::pd_t::init(const engine_t *engine) {
 
     brgemm_desc_t brg_desc;
     CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, jcp_.src_dt,
-            jcp_.src_dt, brgemm_col_major, 1.0f, 1.0f, LDA, LDB, LDC, M,
+            jcp_.src_dt, brgemm_col_major, 1.0f, 1.0f, OC_all, LDB, LDC, M,
             jcp_.ow, K));
+
+    // Weights: OC innermost, blocked by the kernel's M tile under the groups
+    // (plain when OC is shorter than one tile), each kernel position an
+    // IC x OC panel; or a user hwio/hwigo
+    const int ndims = jcp_.ndims;
+    const int goff = with_groups() ? 1 : 0;
+    const int wei_ndims = ndims + goff;
+    const int o_dim = goff, i_dim = goff + 1;
+    if (weights_md_.format_kind == format_kind::any) {
+        int order[DNNL_MAX_NDIMS];
+        int n = 0;
+        if (with_groups()) order[n++] = 0;
+        order[n++] = o_dim;
+        for (int d = i_dim + 1; d < wei_ndims; ++d)
+            order[n++] = d;
+        order[n++] = i_dim;
+        CHECK(init_m_blocked_md(weights_md_, o_dim, brg_desc.bd_block, order));
+    }
+    const memory_desc_wrapper wei_d(weights_md(0));
+
+    // The kernel is fitted to the tile the weights are blocked by, which may
+    // not be the one chosen for `any`, and to the output row
+    dim_t wei_tile = 0;
+    VDISPATCH_CONV(
+            m_layout_tile(wei_d, o_dim, wei_tile), VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_CONV_SC(
+            brgemm_desc_set_weights_tile(&brg_desc,
+                    wei_tile ? static_cast<int>(wei_tile) : brg_desc.bd_block,
+                    jcp_.ow),
+            VERBOSE_UNSUPPORTED_TAG);
+    dim_t lda = 0, block_stride = 0;
+    VDISPATCH_CONV(m_blocked_strides(wei_d, o_dim, i_dim, brg_desc.bd_block,
+                           lda, block_stride),
+            VERBOSE_UNSUPPORTED_TAG);
+    brg_desc.LDA = lda;
+    brg_desc.stride_a_m_block = block_stride;
+
+    const auto &wei_str = wei_d.blocking_desc().strides;
+    wei_g_str_ = with_groups() ? wei_str[0] : 0;
+    wei_kd_str_ = ndims == 5 ? wei_str[i_dim + 1] : 0;
+    wei_kh_str_ = ndims >= 4 ? wei_str[wei_ndims - 2] : 0;
+    wei_kw_str_ = wei_str[wei_ndims - 1];
 
     brgemm_kernel_t *kernel = nullptr;
     CHECK(brgemm_kernel_create(&kernel, brg_desc));
@@ -151,8 +193,10 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     const dim_t dst_d_str = static_cast<dim_t>(OH) * dst_h_str;
     const dim_t dst_mb_str = static_cast<dim_t>(OD) * dst_d_str;
 
-    // Weight strides (hwio / dhwio / hwigo / dhwigo).
-    const dim_t wei_kpos_str = static_cast<dim_t>(IC) * OC_all;
+    const dim_t wei_g_str = pd()->wei_g_str_;
+    const dim_t wei_kd_str = pd()->wei_kd_str_;
+    const dim_t wei_kh_str = pd()->wei_kh_str_;
+    const dim_t wei_kw_str = pd()->wei_kw_str_;
 
     const auto *brg_kernel = pd()->brg_kernel_.get();
 
@@ -204,8 +248,9 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                             const int iw_start = iw_base + ow_s * SW;
 
                             const char *A = wei
-                                    + (((kd * KH + kh) * KW + kw) * wei_kpos_str
-                                              + g * OC)
+                                    + (g * wei_g_str + kd * wei_kd_str
+                                              + kh * wei_kh_str
+                                              + kw * wei_kw_str)
                                             * in_ts;
                             const char *B = src
                                     + (n * src_mb_str + id * src_d_str

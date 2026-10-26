@@ -128,12 +128,11 @@ struct reusable_fwd_t : public primitive_t {
         if (pd()->has_zero_dim_memory()) return status::success;
         std::vector<const char *> kernel_names = pd()->conf.get_kernel_names();
 
-        std::vector<compute::kernel_t> kernels;
-        CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
-
-        kernel_ = kernels[0];
-        calculate_mean_kernel_ = kernels[1];
-        calculate_variance_kernel_ = kernels[2];
+        compute::kernel_bundle_t bundle;
+        CHECK(create_kernels(engine, bundle, kernel_names, pd()->conf));
+        CHECK(bundle.get_kernels(
+                {kernel_names[0], kernel_names[1], kernel_names[2]}, kernel_,
+                calculate_mean_kernel_, calculate_variance_kernel_));
 
         return status::success;
     }
@@ -200,11 +199,10 @@ struct reusable_bwd_t : public primitive_t {
         if (pd()->has_zero_dim_memory()) return status::success;
         std::vector<const char *> kernel_names = pd()->conf.get_kernel_names();
 
-        std::vector<compute::kernel_t> kernels;
-        CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
-
-        kernel_ = kernels[3];
-        scaleshift_kernel_ = kernels[4];
+        compute::kernel_bundle_t bundle;
+        CHECK(create_kernels(engine, bundle, kernel_names, pd()->conf));
+        CHECK(bundle.get_kernels({kernel_names[3], kernel_names[4]}, kernel_,
+                scaleshift_kernel_));
 
         return status::success;
     }

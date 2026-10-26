@@ -106,11 +106,11 @@ struct simple_t : public primitive_t {
     };
 
     status_t init(impl::engine_t *engine) override {
-        std::vector<compute::kernel_t> kernels;
-        CHECK(create_kernels(
-                engine, kernels, pd()->conf.get_kernel_names(), pd()->conf));
-        kernel_ = kernels[0];
-        internal_padding_kernel_ = kernels[1];
+        const auto &kernel_names = pd()->conf.get_kernel_names();
+        compute::kernel_bundle_t bundle;
+        CHECK(create_kernels(engine, bundle, kernel_names, pd()->conf));
+        CHECK(bundle.get_kernels(
+                kernel_names, kernel_, internal_padding_kernel_));
 
         return status::success;
     }

@@ -380,6 +380,11 @@ struct brgemm_matmul_conf_utils_t {
 
     bool is_int4_blocked_B_supported() const;
 
+    // Blocked int4 weights are stored in int8 VNNI row groups in every path.
+    static dim_t int4_blocked_B_vnni_granularity() {
+        return static_cast<dim_t>(data_type_vnni_granularity(data_type::s8));
+    }
+
     inline bool use_buffer_b(bool use_heuristic = true) const {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_xf16_fp8) return true;
@@ -564,6 +569,10 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         const brgemm_matmul_conf_t &bgmmc);
 
 int get_n_block_from_tag(format_tag_t matrix_b_tag);
+
+// Returns the K VNNI granularity of a blocked B layout and 0 for non-blocked
+// ones.
+int get_vnni_granularity_from_tag(format_tag_t matrix_b_tag);
 
 void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
 

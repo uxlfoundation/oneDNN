@@ -6555,6 +6555,8 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , tr_typesize_(static_cast<int>(conf->tr_b_dt_sz))
         , wei_scales_typesize_(static_cast<int>(conf_->wei_scales_dt_sz))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
+        , is_src_int4_vnni4_(is_src_int4_ && conf->blocked_B
+                  && get_vnni_granularity_from_tag(conf->wei_tag) == 4)
         , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
         , src_stride_(
                   (conf->LDB * k_blk_step * typesize_) / src_elems_per_byte_)
@@ -6565,10 +6567,11 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
         , req_apply_wei_scales_(conf_->apply_scales_in_buffer_b)
-        , reserved_regs_(req_apply_wei_scales_ ? 6
-                          : req_zp_b_shift_    ? 4
-                          : is_src_int4_       ? 1
-                                               : 0)
+        , reserved_regs_base_(req_apply_wei_scales_ ? 6
+                          : req_zp_b_shift_         ? 4
+                          : is_src_int4_            ? 1
+                                                    : 0)
+        , reserved_regs_(reserved_regs_base_ + (is_src_int4_vnni4_ ? 2 : 0))
         , is_wei_grouped_over_k_(
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k) {}
 
@@ -6587,14 +6590,19 @@ private:
     using zmm = const Xbyak::Zmm;
     using ymm = const Xbyak::Ymm;
 
-    enum { k_blk_step = 2, n_blk_step = 16 };
+    // An int4 source in a VNNI-4 blocked layout is read in groups of
+    // `k_src_vnni4_step` K rows, each split into 2 VNNI-2 row pairs of the
+    // buffer.
+    enum { k_blk_step = 2, n_blk_step = 16, k_src_vnni4_step = 4 };
     const int typesize_, tr_typesize_, wei_scales_typesize_;
     const bool is_src_int4_;
+    const bool is_src_int4_vnni4_;
     const int src_elems_per_byte_;
     const dim_t src_stride_, tr_src_stride_;
     const bool req_cvtf82f16_;
     const bool req_zp_b_shift_;
     const bool req_apply_wei_scales_;
+    const int reserved_regs_base_;
     const int reserved_regs_;
     const bool is_wei_grouped_over_k_;
 
@@ -6619,6 +6627,10 @@ private:
     Vmm vmm_tmp = Vmm(3);
     Vmm vmm_wei_scales0 = Vmm(4);
     Vmm vmm_wei_scales1 = Vmm(5);
+    // Per dword lane left shifts that move the requested nibble of a VNNI-4
+    // int4 column to the top: K rows (0, 1) and (2, 3) of a row group.
+    Vmm vmm_shl_k01() const { return Vmm(reserved_regs_base_); }
+    Vmm vmm_shl_k23() const { return Vmm(reserved_regs_base_ + 1); }
 
     Vmm get_vmm(const int blk, const int idx) {
         // fp8->f16 path needs only 1 VMM per block
@@ -6638,6 +6650,9 @@ private:
             const int n, const bool is_n_tail, const bool is_k_tail);
     void get_zero_points(const int n, const bool is_tail, const bool is_k_tail);
     void copy_block(const int nrows, const int ncolumns, bool zeropad);
+    void copy_block_int4_vnni4(const int nrows, const int ncolumns);
+    void load_int4_vnni4(
+            const Vmm &k01, const Vmm &k23, const Xbyak::Address &addr);
 
     /** Adjust strides for grouped over k weights
     * k_blk_step is const 2. This case handles
@@ -6695,6 +6710,41 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::init_masks() {
         kmovq(kAAAA, reg_tmp);
         mov(reg_tmp, 0x5555555555555555);
         kmovq(k5555, reg_tmp);
+    }
+
+    if (is_src_int4_vnni4_) {
+        // A dword lane holds the 4 nibbles (K rows 0..3) of one column. After
+        // `vmm_permd` duplicates each lane, even lanes extract rows 0 / 2 and
+        // odd lanes rows 1 / 3, which is the VNNI-2 order of buffer B.
+        alignas(64) static constexpr const uint32_t shl_k01[16] = {
+                28, 24, 28, 24, 28, 24, 28, 24, 28, 24, 28, 24, 28, 24, 28, 24};
+        alignas(64) static constexpr const uint32_t shl_k23[16] = {
+                20, 16, 20, 16, 20, 16, 20, 16, 20, 16, 20, 16, 20, 16, 20, 16};
+        mov(reg_tmp, reinterpret_cast<size_t>(shl_k01));
+        vmovdqa32(vmm_shl_k01(), ptr[reg_tmp]);
+        mov(reg_tmp, reinterpret_cast<size_t>(shl_k23));
+        vmovdqa32(vmm_shl_k23(), ptr[reg_tmp]);
+    }
+}
+
+/** Loads 8 columns x 4 K rows of int4 weights stored in a VNNI-4 blocked
+*   layout and converts them to s32 in the VNNI-2 order: `k01` gets K rows
+*   (0, 1) and `k23` gets K rows (2, 3), 16 values each.
+*/
+template <typename Vmm>
+void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::load_int4_vnni4(
+        const Vmm &k01, const Vmm &k23, const Xbyak::Address &addr) {
+    vpmovzxwd(Ymm(k23.getIdx()), addr);
+    vinserti64x4(k23, k23, Ymm(k23.getIdx()), 1);
+    vpermd(k23, vmm_permd, k23);
+    vpsllvd(k01, k23, vmm_shl_k01());
+    vpsllvd(k23, k23, vmm_shl_k23());
+    if (conf_->orig_wei_dt == data_type::s4) {
+        vpsrad(k01, k01, 28);
+        vpsrad(k23, k23, 28);
+    } else {
+        vpsrld(k01, k01, 28);
+        vpsrld(k23, k23, 28);
     }
 }
 
@@ -6761,6 +6811,11 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_zero_points(
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         const int nrows, int ncolumns, bool zeropad) {
+    if (is_src_int4_vnni4_ && !zeropad) {
+        copy_block_int4_vnni4(nrows, ncolumns);
+        return;
+    }
+
     const int columns_tail = ncolumns % n_blk_step;
     if (columns_tail > 0 && columns_tail < n_blk_step) {
         const auto regw_tmp = reg_tmp.cvt32();
@@ -6845,6 +6900,73 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
 }
 
 template <typename Vmm>
+void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block_int4_vnni4(
+        const int nrows, const int ncolumns) {
+    const int columns_tail = ncolumns % n_blk_step;
+    if (columns_tail > 0) {
+        mov(regw_tmp, (1 << columns_tail) - 1);
+        kmovw(kTail, regw_tmp);
+        if (conf_->is_wei_zp_per_n
+                && one_of(conf_->wei_zp_dt, data_type::s4, data_type::u4)) {
+            mov(regw_tmp, (1 << (columns_tail / 2)) - 1);
+            kmovw(kTail_int4, regw_tmp);
+        }
+    }
+
+    // A 16 columns x 4 K rows unit uses 4 registers: K rows (0, 1) and (2, 3)
+    // of the column halves [0, 8) and [8, 16).
+    constexpr int unit_regs = 4;
+    const int max_unroll
+            = (isa_num_vregs(conf_->isa) - reserved_regs_) / unit_regs;
+    auto get_unit_vmm = [&](int unit, int idx) {
+        return Vmm(reserved_regs_ + (unit % max_unroll) * unit_regs + idx);
+    };
+
+    // Source bytes of a row group and of a column within it.
+    const dim_t src_row_group_stride = src_stride_ * 2;
+    const dim_t src_col_bytes = k_src_vnni4_step / src_elems_per_byte_;
+
+    int unit = 0;
+    for_(int k = 0; k < nrows; k += k_src_vnni4_step)
+    for (int n = 0; n < ncolumns; n += n_blk_step, unit++) {
+        const bool is_n_tail = ncolumns - n < n_blk_step;
+        const bool is_k_tail = nrows - k < k_src_vnni4_step;
+        const auto k01_lo = get_unit_vmm(unit, 0);
+        const auto k01_hi = get_unit_vmm(unit, 1);
+        const auto k23_lo = get_unit_vmm(unit, 2);
+        const auto k23_hi = get_unit_vmm(unit, 3);
+
+        // Padded columns of the last weights block and padded K rows are
+        // within the blocked layout.
+        const dim_t src_off = (k / k_src_vnni4_step) * src_row_group_stride
+                + n * src_col_bytes;
+        load_int4_vnni4(
+                k01_lo, k23_lo, maybe_EVEX_compress_addr(reg_src, src_off));
+        load_int4_vnni4(k01_hi, k23_hi,
+                maybe_EVEX_compress_addr(
+                        reg_src, src_off + n_blk_step / 2 * src_col_bytes));
+
+        get_wei_scales(n, is_n_tail, is_k_tail);
+        get_zero_points(n, is_n_tail, is_k_tail);
+
+        const dim_t tr_src_off = (k / k_blk_step) * tr_src_stride_
+                + n * k_blk_step * tr_typesize_;
+        decompress_and_downcvt_2reg(k01_lo, k01_hi, vmm_zp_b_val0,
+                vmm_zp_b_val1, vmm_wei_scales0, vmm_wei_scales1,
+                conf_->orig_wei_dt, conf_->wei_dt);
+        uni_vmovups(maybe_EVEX_compress_addr(reg_tr_src, tr_src_off), k01_lo);
+
+        if (k + k_blk_step >= nrows) continue;
+        decompress_and_downcvt_2reg(k23_lo, k23_hi, vmm_zp_b_val0,
+                vmm_zp_b_val1, vmm_wei_scales0, vmm_wei_scales1,
+                conf_->orig_wei_dt, conf_->wei_dt);
+        uni_vmovups(maybe_EVEX_compress_addr(
+                            reg_tr_src, tr_src_off + tr_src_stride_),
+                k23_lo);
+    }
+}
+
+template <typename Vmm>
 void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
     assert(tr_typesize_ == sizeof(bfloat16_t));
     preamble();
@@ -6879,6 +7001,11 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
             }
         }
         const int k_unroll = 8;
+        // Rows of a VNNI-4 int4 source are read in whole row groups, the
+        // zero padding of buffer B is written in VNNI-2 row pairs.
+        const int k_step = is_src_int4_vnni4_ && !zeropad ? k_src_vnni4_step
+                                                          : k_blk_step;
+        const int k_step_pairs = k_step / k_blk_step;
 
         Label K_loop_unrolled, K_loop_single, K_loop_tail_or_done;
         cmp(reg_K, k_unroll * k_blk_step);
@@ -6894,19 +7021,19 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
         jge(K_loop_unrolled, T_NEAR);
 
         L(K_loop_single);
-        cmp(reg_K, k_blk_step);
+        cmp(reg_K, k_step);
         jl(K_loop_tail_or_done, T_NEAR);
 
-        copy_block(k_blk_step, ncolumns, zeropad);
-        add(reg_src, src_stride_);
-        add(reg_tr_src, tr_src_stride_);
+        copy_block(k_step, ncolumns, zeropad);
+        add(reg_src, k_step_pairs * src_stride_);
+        add(reg_tr_src, k_step_pairs * tr_src_stride_);
 
-        sub(reg_K, k_blk_step);
+        sub(reg_K, k_step);
         jmp(K_loop_single, T_NEAR);
 
         L(K_loop_tail_or_done);
 
-        const int k_blk_tail = conf_->K % k_blk_step;
+        const int k_blk_tail = conf_->K % k_step;
         if (k_blk_tail > 0) {
             Label K_loop_done;
             cmp(reg_K, 0);
@@ -6946,8 +7073,15 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
 
         L(main_N_loop);
         compute_K_loop(static_cast<int>(conf_->LDB));
-        add(reg_src, conf_->LDB2 * typesize_);
+        // Next weights block in N, buffer B is blocked by LDB2.
+        add(reg_src, conf_->B_strides[0] / src_elems_per_byte_);
         add(reg_tr_src, conf_->LDB2 * tr_typesize_);
+        if (conf_->is_wei_zp_per_n)
+            add(reg_wei_zp,
+                    static_cast<int>(types::elements_to_bytes(
+                            conf_->wei_zp_dt, conf_->LDB)));
+        if (req_apply_wei_scales_ && conf_->is_wei_scale_per_n)
+            add(reg_wei_scales, conf_->LDB * wei_scales_typesize_);
 
         sub(reg_N_blk, conf_->LDB);
         cmp(reg_N_blk, conf_->LDB);
@@ -7284,11 +7418,9 @@ status_t create_brgemm_matmul_copy_b(
                     new jit_brgemm_matmul_copy_b_transposed_t<Ymm>(conf)));
         }
     } else {
-        if (conf->blocked_B && conf->is_int4_weights) {
-            // Only the int8 grouped quantization path supports blocked int4
-            // weights, see `is_int4_blocked_B_supported()`.
-            assert(conf->with_int8_grouped_quantization
-                    && is_superset(conf->isa, avx512_core));
+        if (conf->blocked_B && conf->is_int4_weights
+                && conf->with_int8_grouped_quantization) {
+            assert(is_superset(conf->isa, avx512_core));
             CHECK(safe_ptr_assign(
                     copy_ker, new jit_brgemm_matmul_copy_b_int4_vnni_t(conf)));
         } else if ((conf->is_bf16_with_int_wei

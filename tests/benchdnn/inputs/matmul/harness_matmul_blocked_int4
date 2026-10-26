@@ -60,3 +60,47 @@
 --attr-scales=src:6:f32:1x64+wei:6:f32:64x1
 --attr-zero-points=src:common:2:u8+wei:6:s4:64x1
 3x9x256:1x256x48
+
+# bf16 weights decompression: the same int4 layouts are converted into bf16
+# VNNI-2 buffer B.
+--reset
+--dt=bf16:u4:bf16
+--attr-fpmath=bf16:true
+--attr-scales=wei:3:f32:128x1
+--attr-zero-points=wei:3:u4:128x1
+--wtag=any,BA16a64b4a,BA16a48b4a,BA16a32b4a,BA16a16b4a
+1x512:512x256
+37x512:512x96
+
+# Data types, scales and zero points per N or per K, K and N tails.
+--reset
+--attr-fpmath=bf16:true
+--wtag=BA16a32b4a,BA16a16b4a
+--dt=bf16:u4:bf16,bf16:u4:f32
+--attr-scales=wei:3:bf16:32x1
+--attr-zero-points=wei:3:u4:32x1,wei:2:u4
+7x224:224x50
+--dt=bf16:s4:bf16
+--attr-scales=wei:2:f32
+--attr-zero-points=wei:2:s4,
+1x190:190x96 1x257:257x96
+
+# N block wider than the weights layout block, with a per-K scales and zero
+# points group spanning several brgemm K blocks.
+--reset
+--dt=bf16:u4:bf16
+--attr-fpmath=bf16:true
+--wtag=BA16a32b4a,BA16a16b4a
+--attr-scales=wei:3:f32:130x1
+--attr-zero-points=wei:3:u4:130x1,wei:3:u8:130x1
+9x130:130x64 9x130:130x96
+
+# 3D: batched and broadcast weights.
+--reset
+--dt=bf16:u4:bf16
+--attr-fpmath=bf16:true
+--attr-scales=wei:7:f32:64x1
+--attr-zero-points=wei:7:u4:64x1
+--wtag=aCB16b32c4b,any
+3x5x256:3x256x80
+3x9x256:1x256x48

@@ -16,12 +16,13 @@
 
 
 #include "cooperative_split.hpp"
+#include "internal/utils.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
 
 // Split A/B matrix between threads.
-void coopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, CoopSplit stype, const MatrixAddressing &atype, const GEMMStrategy &strategy)
+bool tryCoopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, CoopSplit stype, const MatrixAddressing &atype, const GEMMStrategy &strategy, AccessType pfAccess, Type T)
 {
     auto &mn      = isA ? r : c;
     auto &k       = isA ? c : r;
@@ -33,18 +34,33 @@ void coopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, Coo
 
     bool ok = false;
 
+    // HW clamps block 2D accesses at surface edges.
+    bool allowUnevenSplit = isBlock2D(pfAccess);
+    int alignX = 1, alignY = 1;
+    if (allowUnevenSplit) {
+        alignX = 32 / gcd(32, T.bits());
+        if (pfAccess == AccessType::Block2DVNNI) alignY = alignX;
+        if (pfAccess == AccessType::Block2DTranspose && T.paddedSize() > 4) alignY = 8;
+    }
+
+    auto split = [&](int n, bool rows) {
+        ok = (n % threads == 0);
+        if (ok || !allowUnevenSplit) return n / threads;
+        int s = align_up(div_up(n, threads), (rows == isColMajor(atype.layout)) ? alignX : alignY);
+        ok = (div_up(n, s) == threads);     // no idle threads
+        return s;
+    };
+
     switch (stype) {
         case CoopSplit::FullK:
             threads = strategy.wg[LoopM] * strategy.wg[LoopN];
             /* fall through */
         case CoopSplit::K:
-            ok = (k % threads == 0);
             splitMN = (stype == CoopSplit::K) ? mn : mnFull;
-            splitK = k / threads;
+            splitK = split(k, !isA);
             break;
         case CoopSplit::MN:
-            ok = (mn % threads == 0);
-            splitMN = mn / threads;
+            splitMN = split(mn, isA);
             splitK = k;
             break;
         case CoopSplit::Linear: {
@@ -100,7 +116,12 @@ void coopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, Coo
         }
     }
 
-    if (!ok)
+    return ok;
+}
+
+void coopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, CoopSplit stype, const MatrixAddressing &atype, const GEMMStrategy &strategy, AccessType pfAccess, Type T)
+{
+    if (!tryCoopSplit(isA, splitR, splitC, r, c, mnFull, stype, atype, strategy, pfAccess, T))
         stub("Cooperative operation cannot be split evenly between threads.");
 }
 

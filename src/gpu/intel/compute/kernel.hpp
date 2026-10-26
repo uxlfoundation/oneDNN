@@ -288,15 +288,18 @@ public:
     kernel_bundle_t(std::vector<kernel_t> &&kernels,
             const std::vector<const char *> &kernel_names) {
         for (size_t i = 0; i < kernels.size(); i++) {
+            if (!kernel_names[i]) continue;
             bundle[kernel_names[i]] = std::move(kernels[i]);
         }
     }
-    // Copies may be expensive, require explicit clone
-    kernel_bundle_t(const kernel_bundle_t &other) = delete;
-    kernel_bundle_t &operator=(const kernel_bundle_t &other) = delete;
-    kernel_bundle_t(kernel_bundle_t &&other) = default;
-    kernel_bundle_t &operator=(kernel_bundle_t &&other) = default;
-    ~kernel_bundle_t() = default;
+    // info is information the kernels were created with, e.g. by a kernel
+    // cache generator
+    template <typename T>
+    kernel_bundle_t(std::vector<kernel_t> &&kernels,
+            const std::vector<const char *> &kernel_names, T info)
+        : kernel_bundle_t(std::move(kernels), kernel_names) {
+        info_ = std::make_shared<const info_container_t<T>>(std::move(info));
+    }
 
     status_t get_kernels(std::vector<kernel_t> &kernels,
             const std::vector<const char *> &kernel_names) const {
@@ -310,7 +313,33 @@ public:
         return status::success;
     }
 
+    template <typename T>
+    const T &info() const {
+        gpu_assert(info_) << "kernel bundle has no info";
+        // NOLINTNEXTLINE(readability-redundant-smartptr-get)
+        return utils::downcast<const info_container_t<T> *>(info_.get())->value;
+    }
+
     std::unordered_map<std::string, kernel_t> bundle;
+
+private:
+    // TODO: microkernel generators required returning implementation host-side
+    // driver information from kernel creation. As such, we need a mechanism to
+    // return this data. The below structure enables this via kernel_bundle_t
+    // even thought it isn't technically a kernel. Proper integration requires
+    // refactoring kernel_bundle_t to be a more generic data store
+    struct info_base_t {
+        virtual ~info_base_t() = default;
+    };
+
+    template <typename T>
+    struct info_container_t : public info_base_t {
+        info_container_t(T &&value) : value(std::move(value)) {}
+        T value;
+    };
+
+    // Shared by copies of the bundle
+    std::shared_ptr<const info_base_t> info_;
 };
 
 } // namespace compute

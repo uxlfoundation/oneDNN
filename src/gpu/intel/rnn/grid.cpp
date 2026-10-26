@@ -987,7 +987,9 @@ status_t simple_common_t<aprop>::init(impl::engine_t *engine) {
             ws_c_states_offset_, ws_grid_comp_offset_, ws_bias_offset_);
 
     const auto &kernel_names = pd()->ocl_conf.get_kernel_names();
-    CHECK(create_kernels(engine, kernels_, kernel_names, pd()->ocl_conf));
+    compute::kernel_bundle_t bundle;
+    CHECK(create_kernels(engine, bundle, kernel_names, pd()->ocl_conf));
+    CHECK(bundle.get_kernels(kernels_, kernel_names));
 
     bool matmul_ok = utils::everyone_is(status::success,
             pd()->matmul_layer_fwd_pd_

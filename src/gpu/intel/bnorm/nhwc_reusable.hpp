@@ -176,7 +176,9 @@ struct nhwc_reusable_fwd_t : public primitive_t {
     status_t init(impl::engine_t *engine) override {
         if (pd()->has_zero_dim_memory()) return status::success;
         const auto &kernel_names = pd()->cmpl_conf.get_kernel_names();
-        CHECK(create_kernels(engine, kernels_, kernel_names, pd()->cmpl_conf));
+        compute::kernel_bundle_t bundle;
+        CHECK(create_kernels(engine, bundle, kernel_names, pd()->cmpl_conf));
+        CHECK(bundle.get_kernels(kernels_, kernel_names));
         return status::success;
     }
 
@@ -256,7 +258,9 @@ struct nhwc_reusable_bwd_t : public primitive_t {
     status_t init(impl::engine_t *engine) override {
         if (pd()->has_zero_dim_memory()) return status::success;
         const auto &kernel_names = pd()->cmpl_conf.get_kernel_names();
-        CHECK(create_kernels(engine, kernels_, kernel_names, pd()->cmpl_conf));
+        compute::kernel_bundle_t bundle;
+        CHECK(create_kernels(engine, bundle, kernel_names, pd()->cmpl_conf));
+        CHECK(bundle.get_kernels(kernels_, kernel_names));
         return status::success;
     }
 

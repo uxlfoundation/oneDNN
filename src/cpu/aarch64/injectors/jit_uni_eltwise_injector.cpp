@@ -827,14 +827,14 @@ void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_fwd(
     const auto &v_c2 = vmm_aux6;
 
     // a = x*(alpha*log2(e)); the combined constant is generated as FP32.
-    h->movprfx(v_neg_r, p_all, vmm_src);
+    h->movprfx(ZReg(IDX(v_neg_r)), ZReg(IDX(vmm_src)));
     h->fmul(v_neg_r, p_all / T_m, v_alpha_log2e);
     // Clamp a to log2(e)*[-32,32]. This bounds the exponential argument
     // while keeping the encoded exponent in a safe range.
     h->fmaxnm(v_neg_r, p_all / T_m, table_val(swish_polynomial_exp_min, v_tmp));
     h->fminnm(v_neg_r, p_all / T_m, table_val(swish_polynomial_exp_max, v_tmp));
 
-    h->movprfx(v_scale, p_all, v_shift);
+    h->movprfx(ZReg(IDX(v_scale)), ZReg(IDX(v_shift)));
     h->fadd(v_scale, p_all / T_m, v_neg_r);
     // k = (SHIFT+a)-SHIFT and -r = k-a.
     h->fsub(v_poly, v_scale, v_shift);
@@ -846,7 +846,7 @@ void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_fwd(
     h->fmul(vmm_src, vmm_src, v_scale);
 
     // Approximate 2^(-r) with 1 + (-r)*(c1 + c2*(-r))
-    h->movprfx(v_poly, p_all, v_c1);
+    h->movprfx(ZReg(IDX(v_poly)), ZReg(IDX(v_c1)));
     h->fmla(v_poly, p_all / T_m, v_neg_r, v_c2);
     h->fmov(v_tmp, 1.);
     h->fmla(v_tmp, p_all / T_m, v_neg_r, v_poly);

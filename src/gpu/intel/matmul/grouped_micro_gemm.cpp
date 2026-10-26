@@ -126,6 +126,8 @@ std::vector<gemmstone::StrategyRequirement> fallback_reqs(
 
     const int sg_size = dev_info.min_subgroup_size();
     auto product = dev_info.product();
+    // u3 weights are computed as u4, so their unrolls follow u4
+    const Type ta_ext = problem.Ta_ext.is3() ? Type(Type::u4) : problem.Ta_ext;
 
     // TODO: These values should be based on the eu_count
     dim_t m_unroll = sg_size;
@@ -141,8 +143,7 @@ std::vector<gemmstone::StrategyRequirement> fallback_reqs(
         case compute::gpu_arch_t::xe_hp:
             max_n_unroll = (problem.aqGroupK > 64
                                    && problem.A.layout == MatrixLayout::T)
-                            || (problem.Ta_ext.isF8() && opts.scaleA
-                                    && opts.scaleB)
+                            || (ta_ext.isF8() && opts.scaleA && opts.scaleB)
                             || (problem.Ta_scale == Type::f8_e8m0
                                     || problem.Tb_scale == Type::f8_e8m0)
                     ? 8
@@ -151,21 +152,20 @@ std::vector<gemmstone::StrategyRequirement> fallback_reqs(
         case compute::gpu_arch_t::xe_hpg: {
             bool is_xelpg = (product.family == ngen::ProductFamily::ARL
                     || product.family == ngen::ProductFamily::MTL);
-            max_n_unroll
-                    = (problem.Ta_ext.bits() <= 8 && problem.Ta_ext.isInteger())
-                    ? sg_size * problem.Ta_ext
+            max_n_unroll = (ta_ext.bits() <= 8 && ta_ext.isInteger())
+                    ? sg_size * ta_ext
                     : 16;
             if (is_xelpg && !dev_info.mayiuse_systolic()
-                    && problem.Ta_ext.bits() <= 8) {
+                    && ta_ext.bits() <= 8) {
                 min_n_unroll = (opts.scaleA || opts.scaleB) ? sg_size : 4;
             }
             if (!dev_info.mayiuse_systolic()) max_wg_n = 2;
-            if (problem.Ta_ext.bits() <= 8) min_wg_n = 2;
+            if (ta_ext.bits() <= 8) min_wg_n = 2;
         } break;
         case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
         default:
             if (problem.Tb != Type::f32) {
-                m_unroll = std::max<dim_t>(sg_size, sg_size / problem.Ta_ext);
+                m_unroll = std::max<dim_t>(sg_size, sg_size / ta_ext);
             }
             max_n_unroll = 32;
     }

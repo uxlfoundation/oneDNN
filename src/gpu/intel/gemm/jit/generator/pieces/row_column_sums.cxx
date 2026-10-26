@@ -106,7 +106,7 @@ void Generator<hw>::accumulateSum(bool column,
     int reduce = (canDP4A && hReduce) ? 4 : 1;
     if (x0 % reduce || x1 % reduce) stub();
 
-    RegisterRange temp;
+    RegisterRange temp, tempF;
     Subregister imm;
 
     for (int y = y0; y < y1; y += yinc) {
@@ -166,6 +166,15 @@ void Generator<hw>::accumulateSum(bool column,
                 src = tmpF;
             }
 
+            // Xe3p rejects packed bf16 in mixed add; convert to f32 first.
+            if (Tsrc == Type::bf16 && Tdst == Type::f32) {
+                if (tempF.isInvalid()) tempF = state.ra.alloc_range(2);
+                if ((dst.getOffset() + ne * dst.getHS()) * Tdst > 2 * GRF::bytes(hw)) stub();
+                auto tmpF = tempF[0].sub(dst.getOffset(), DataType::f)(dst.getHS());
+                mov(ne, tmpF, src);
+                src = tmpF;
+            }
+
             if (canDP4A) {
                 auto srcDP4A = Tsrc.isSigned() ? srcBase.d()(1) : srcBase.ud()(1);
                 if (!hReduce && blockSrc->crosspack == 4) {
@@ -191,8 +200,8 @@ void Generator<hw>::accumulateSum(bool column,
                         dp4a(ne, dst, dst, srcDP4A, state.all1s.ud());
                     }
                 }
-            } else if (one_of(src.getType(), {DataType::b, DataType::ub})) {
-                if (Tdst.isFP() != Tsrc.isFP()) {
+            } else {
+                if (one_of(src.getType(), {DataType::b, DataType::ub}) && Tdst.isFP() != Tsrc.isFP()) {
                     // all ISAs reject eadd(fp, fp, int8); int8 -> int32 -> fp:
                     if (Tdst != Type::f32) stub();
                     if (temp.isInvalid()) temp = state.ra.alloc_range(2);
@@ -201,19 +210,18 @@ void Generator<hw>::accumulateSum(bool column,
                     auto src_fp = temp[1].sub(0, Tdst.ngen())(1);
                     mov(ne, src_d, src);
                     mov(ne, src_fp, src_d);
-                    eadd(ne, dst, dst, src_fp, strategy, state);
-                } else
-                    eadd(ne, dst, src, dst, strategy, state);
-            } else if (hw >= HW::Xe3p && src.getHS() * Tsrc != dst.getHS() * Tdst)
+                    src = src_fp;
+                }
+                // src0: src1 rejects bytes and (Xe3p) non-flat regions.
                 eadd(ne, dst, src, dst, strategy, state);
-            else
-                eadd(ne, dst, dst, src, strategy, state);
+            }
 
             x += ne * reduce;
         }
     }
 
     state.ra.safeRelease(temp);
+    state.ra.safeRelease(tempF);
     state.ra.safeRelease(imm);
 }
 

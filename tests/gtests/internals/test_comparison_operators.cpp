@@ -119,10 +119,10 @@ HANDLE_EXCEPTIONS_FOR_TEST(comparison_operators_t, TestDepthwisePostOp) {
 HANDLE_EXCEPTIONS_FOR_TEST(comparison_operators_t, TestBinarySelectPostOp) {
     const memory::dims dims = {2, 3};
     memory::desc src1_md(dims, memory::data_type::f32, memory::format_tag::ab);
-    memory::desc src2_s8_md(
+    memory::desc src2_full_md(
             dims, memory::data_type::s8, memory::format_tag::ab);
-    memory::desc src2_u8_md(
-            dims, memory::data_type::u8, memory::format_tag::ab);
+    memory::desc src2_bcast_md(
+            {2, 1}, memory::data_type::s8, memory::format_tag::ab);
 
     auto make_attr = [&](const memory::desc &src2_md) {
         post_ops ops;
@@ -133,8 +133,9 @@ HANDLE_EXCEPTIONS_FOR_TEST(comparison_operators_t, TestBinarySelectPostOp) {
     };
 
     // post-ops with binary_select must not compare equal when their
-    // third operand descriptor differs (s8 vs u8).
-    ASSERT_EQ(compare(make_attr(src2_s8_md), make_attr(src2_u8_md)), false);
+    // third operand descriptor differs (full vs broadcast dims).
+    ASSERT_EQ(
+            compare(make_attr(src2_full_md), make_attr(src2_bcast_md)), false);
 }
 
 TEST(comparison_operators_t, TestBatchNormDesc) {

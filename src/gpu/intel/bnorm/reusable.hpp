@@ -170,14 +170,11 @@ struct reusable_fwd_t : public primitive_t {
             kernel_names[4] = "reusable_reduce_variance";
         }
 
-        std::vector<compute::kernel_t> kernels;
-        CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
-
-        kernel_ = kernels[0];
-        calculate_mean_kernel_ = kernels[1];
-        calculate_variance_kernel_ = kernels[2];
-        reduce_mean_kernel_ = kernels[3];
-        reduce_variance_kernel_ = kernels[4];
+        compute::kernel_bundle_t bundle;
+        CHECK(create_kernels(engine, bundle, kernel_names, pd()->conf));
+        CHECK(bundle.get_kernels(kernel_names, kernel_, calculate_mean_kernel_,
+                calculate_variance_kernel_, reduce_mean_kernel_,
+                reduce_variance_kernel_));
 
         return status::success;
     }
@@ -255,12 +252,10 @@ struct reusable_bwd_t : public primitive_t {
         std::vector<const char *> kernel_names = {"reusable_bnorm_bwd",
                 "reusable_calculate_stats", "reusable_reduce_stats"};
 
-        std::vector<compute::kernel_t> kernels;
-        CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
-
-        kernel_ = kernels[0];
-        calculate_stats_kernel_ = kernels[1];
-        reduce_stats_kernel_ = kernels[2];
+        compute::kernel_bundle_t bundle;
+        CHECK(create_kernels(engine, bundle, kernel_names, pd()->conf));
+        CHECK(bundle.get_kernels(kernel_names, kernel_, calculate_stats_kernel_,
+                reduce_stats_kernel_));
 
         return status::success;
     }

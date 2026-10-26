@@ -816,12 +816,9 @@ status_t micro_fwd_t::init(impl::engine_t *engine) {
 status_t micro_bwd_t::init(impl::engine_t *engine) {
     std::vector<const char *> kernel_names = pd()->conf.get_kernel_names();
 
-    std::vector<compute::kernel_t> kernels;
-    CHECK(create_kernels(engine, kernels, kernel_names, pd()->conf));
-
-    preprocess_ = kernels[0];
-    kernel_ = kernels[1];
-    postprocess_ = kernels[2];
+    compute::kernel_bundle_t bundle;
+    CHECK(create_kernels(engine, bundle, kernel_names, pd()->conf));
+    CHECK(bundle.get_kernels(kernel_names, preprocess_, kernel_, postprocess_));
 
     if (!preprocess_) return status::runtime_error;
     if (!kernel_) return status::runtime_error;

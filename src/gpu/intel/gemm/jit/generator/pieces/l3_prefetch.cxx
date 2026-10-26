@@ -108,8 +108,8 @@ void Generator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProblem &problem
     int ma_prefetchL3, ka_prefetchL3;
     int kb_prefetchL3, nb_prefetchL3;
 
-    if (doA) coopSplit(true,  ma_prefetchL3, ka_prefetchL3, strategy.unroll[LoopM], strategy.ka_prefetchL3, strategy.wgTile(LoopM), coopSplitA, globalA, strategy);
-    if (doB) coopSplit(false, kb_prefetchL3, nb_prefetchL3, strategy.kb_prefetchL3, strategy.unroll[LoopN], strategy.wgTile(LoopN), coopSplitB, globalB, strategy);
+    if (doA) coopSplit(true,  ma_prefetchL3, ka_prefetchL3, strategy.unroll[LoopM], strategy.ka_prefetchL3, strategy.wgTile(LoopM), coopSplitA, globalA, strategy, strategy.AB_prefetchL3.accessType, Ta_ext);
+    if (doB) coopSplit(false, kb_prefetchL3, nb_prefetchL3, strategy.kb_prefetchL3, strategy.unroll[LoopN], strategy.wgTile(LoopN), coopSplitB, globalB, strategy, strategy.AB_prefetchL3.accessType, Tb_ext);
 
     std::swap(state.effCoopA, coopSplitA);  /* Temporarily override A/B splitting */
     std::swap(state.effCoopB, coopSplitB);

@@ -25,7 +25,9 @@
 GEMMSTONE_NAMESPACE_START
 
 // Split A/B matrix between threads.
-void coopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, CoopSplit stype, const MatrixAddressing &atype, const GEMMStrategy &strategy);
+// Block 2D prefetch (pfAccess) of type T may split unevenly.
+void coopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, CoopSplit stype, const MatrixAddressing &atype, const GEMMStrategy &strategy, AccessType pfAccess = AccessType::Block, Type T = Type::invalid);
+bool tryCoopSplit(bool isA, int &splitR, int &splitC, int r, int c, int mnFull, CoopSplit stype, const MatrixAddressing &atype, const GEMMStrategy &strategy, AccessType pfAccess = AccessType::Block, Type T = Type::invalid);
 
 CoopSplit naturalSplitA(MatrixLayout layout);
 CoopSplit naturalSplitB(MatrixLayout layout);

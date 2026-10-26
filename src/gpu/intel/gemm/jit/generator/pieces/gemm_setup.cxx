@@ -1192,6 +1192,17 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     if (state.effCoopA == CoopSplit::FullK) Ap_params.offR = Ai_params.offR = state.wgI0;
     if (state.effCoopB == CoopSplit::FullK) Bp_params.offC = Bi_params.offC = state.wgJ0;
 
+    // Split A/B prefetches. 1D prefetches (e.g. downgraded from block 2D) that cannot be split evenly are dropped.
+    state.ma_prefetch = state.ka_prefetch = state.kb_prefetch = state.nb_prefetch = 0;
+    if (strategy.prefetchA && !tryCoopSplit(true,  state.ma_prefetch, state.ka_prefetch, unrollM, strategy.ka_prefetch, strategy.wgTile(LoopM), state.effCoopA, problem.A, strategy, strategy.A_prefetch.accessType, Ta_ext)) {
+        if (isBlock2D(strategy.A_prefetch.accessType)) stub("Cooperative operation cannot be split evenly between threads.");
+        strategy.prefetchA = 0;
+    }
+    if (strategy.prefetchB && !tryCoopSplit(false, state.kb_prefetch, state.nb_prefetch, strategy.kb_prefetch, unrollN, strategy.wgTile(LoopN), state.effCoopB, problem.B, strategy, strategy.B_prefetch.accessType, Tb_ext)) {
+        if (isBlock2D(strategy.B_prefetch.accessType)) stub("Cooperative operation cannot be split evenly between threads.");
+        strategy.prefetchB = 0;
+    }
+
     // Prepare remainders for cooperative operations.
     for (LoopType loop: {LoopM, LoopN, LoopK})
         state.remaindersCoop[loop] = state.remainders[loop];
@@ -1206,7 +1217,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
                 return state.remaindersWG[loopX];
             case CoopSplit::MN: {
                 auto rem = state.ra.alloc_sub<uint16_t>();
-                int32_t chunk = strategy.unroll[loopX] / strategy.wg[loopY];
+                // Uneven block 2D prefetch splits round up the chunk.
+                int32_t chunk = isM ? state.ma_prefetch : state.nb_prefetch;
+                if (!chunk) chunk = strategy.unroll[loopX] / strategy.wg[loopY];
                 auto lid = isM ? state.lidN : state.lidM;
                 emad(1 | sat, rem, state.remainders[loopX], -lid.w(), chunk, strategy, state);
                 return rem;
@@ -1231,10 +1244,6 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     // Prepare layouts for prefetch.
     bool remM_Cp = remM_C && strategy.C.base.isStateless();
     bool remN_Cp = remN_C && strategy.C.base.isStateless();
-
-    state.ma_prefetch = state.ka_prefetch = state.kb_prefetch = state.nb_prefetch = 0;
-    if (strategy.prefetchA) coopSplit(true,  state.ma_prefetch, state.ka_prefetch, unrollM, strategy.ka_prefetch, strategy.wgTile(LoopM), state.effCoopA, problem.A, strategy);
-    if (strategy.prefetchB) coopSplit(false, state.kb_prefetch, state.nb_prefetch, strategy.kb_prefetch, unrollN, strategy.wgTile(LoopN), state.effCoopB, problem.B, strategy);
 
     if (strategy.prefetchA) CREATE_LAYOUT(state.Ap_layout, Ta_ext, state.ma_prefetch, state.ka_prefetch, problem.A, strategy.A_prefetch, remM_A,  remK_A,  false);
     if (strategy.prefetchB) CREATE_LAYOUT(state.Bp_layout, Tb_ext, state.kb_prefetch, state.nb_prefetch, problem.B, strategy.B_prefetch, remK_B,  remN_B,  false);

@@ -147,10 +147,7 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     // f16 dst: narrow the f32 accumulators to f16 on store. The kernel reads
     // typesize_C (2) to advance C between columns; the f32/bf16 paths keep
     // typesize_C = 4 (the accumulator width).
-    if (dst_type == f16) {
-        brg_desc.dt_c = dst_type;
-        brg_desc.typesize_C = static_cast<int>(types::data_type_size(dst_type));
-    }
+    if (dst_type == f16) CHECK(brgemm_desc_set_dt_c(&brg_desc, dst_type));
 
     brgemm_kernel_t *kernel = nullptr;
     CHECK(brgemm_kernel_create(&kernel, brg_desc));

@@ -364,12 +364,10 @@ status_t rvv_brgemm_matmul_t::pd_t::init(const engine_t *engine) {
                 "shape not beneficial for f32 brgemm matmul");
     }
 
-    // Compute blocking parameters
-    const int vlen_f32 = get_platform_vlen() / 32;
-    const int bd_block = vlen_f32 * 4; // LMUL=m4
+    // The brgemm kernel chooses its own M tile, which A is packed to: its
+    // stride is only known once the descriptor is initialized
     const dim_t M_brg = N_;
     const dim_t K_brg = K_;
-    const dim_t LDA = bd_block; // packed stride (not N)
     const dim_t LDB = K_;
     const dim_t LDC = N_;
     const dim_t N_brg = batch_ * M_;
@@ -378,7 +376,8 @@ status_t rvv_brgemm_matmul_t::pd_t::init(const engine_t *engine) {
 
     brgemm_desc_t brg_desc;
     CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_dt, wei_dt,
-            brgemm_col_major, 1.0f, 0.0f, LDA, LDB, LDC, M_brg, N_brg, K_brg));
+            brgemm_col_major, 1.0f, 0.0f, 0, LDB, LDC, M_brg, N_brg, K_brg));
+    brg_desc.LDA = brg_desc.bd_block; // packed stride (not N)
 
     brgemm_kernel_t *kernel = nullptr;
     CHECK(brgemm_kernel_create(&kernel, brg_desc));

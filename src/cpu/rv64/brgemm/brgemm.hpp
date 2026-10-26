@@ -28,7 +28,16 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, data_type_t dt_a, data_type_t dt_b,
         brgemm_layout_t layout, float alpha, float beta, dim_t LDA, dim_t LDB,
         dim_t LDC, dim_t M, dim_t N, dim_t K,
-        const brgemm_strides_t *strides = nullptr);
+        const brgemm_strides_t *strides = nullptr, bool wide_tile = false);
+
+// Fits the kernel of `brg` to weights laid out by `tile`, the M tile they are
+// blocked by, and bounds by `n_bound` the N of a call when it is known (0:
+// not known). Unimplemented when the kernel's tile does not divide `tile`
+status_t brgemm_desc_set_weights_tile(
+        brgemm_desc_t *brg, int tile, dim_t n_bound);
+
+// Sets the output type of `brg` (an f16 store) and re-tunes its blocks for it
+status_t brgemm_desc_set_dt_c(brgemm_desc_t *brg, data_type_t dt_c);
 
 status_t brgemm_kernel_create(
         brgemm_kernel_t **brg_kernel, const brgemm_desc_t &brg);

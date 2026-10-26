@@ -192,23 +192,20 @@ template <typename K>
 using trivial_key_container_t = gpu_kernel_key_container_t<trivial_key_t<K>>;
 
 // Interface to the kernel cache to consolidate cache related logic in one
-// location
+// location. Returns the cached value created by the key's generator.
 template <typename value_type>
 status_t get_cached_kernels(std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        const impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
-        const std::vector<const char *> &kernel_names,
+        const impl::engine_t *engine, value_type &value,
         cache_state_t &kernel_cache_hit);
 
 extern template status_t get_cached_kernels<compute::kernel_t>(
         std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        const impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
-        const std::vector<const char *> &kernel_names,
+        const impl::engine_t *engine, compute::kernel_t &value,
         cache_state_t &kernel_cache_hit);
 
 extern template status_t get_cached_kernels<compute::kernel_bundle_t>(
         std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        const impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
-        const std::vector<const char *> &kernel_names,
+        const impl::engine_t *engine, compute::kernel_bundle_t &value,
         cache_state_t &kernel_cache_hit);
 
 } // namespace intel

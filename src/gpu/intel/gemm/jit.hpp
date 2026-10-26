@@ -364,7 +364,7 @@ struct gen_t : public primitive_t {
 
                 if (valid) {
                     auto try_create = [&]() {
-                        std::vector<compute::kernel_t> kernel_(1);
+                        compute::kernel_t kernel;
                         const auto *intel_engine
                                 = utils::downcast<const intel::engine_t *>(
                                         engine);
@@ -373,7 +373,6 @@ struct gen_t : public primitive_t {
                                                 gemm::jit::gen_nocopy_desc_t>>(
                                 kernel_desc_, intel_engine->engine_id());
                         cache_state_t kernel_cache_status;
-                        auto kernel_name = "gemm_kernel";
                         auto verbose
                                 = get_verbose(verbose_t::create_profile) >= 1;
                         double start_ms = 0;
@@ -381,8 +380,8 @@ struct gen_t : public primitive_t {
                         status = get_cached_kernels<typename trivial_key_t<
                                 dnnl::impl::gpu::intel::gemm::jit::
                                         gen_nocopy_desc_t>::value_type>(
-                                std::move(key), intel_engine, kernel_,
-                                {kernel_name}, kernel_cache_status);
+                                std::move(key), intel_engine, kernel,
+                                kernel_cache_status);
                         if (verbose && status == status::success) {
                             double duration_ms = get_msec() - start_ms;
                             const char *str

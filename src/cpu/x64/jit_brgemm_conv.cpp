@@ -999,6 +999,28 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                 new jit_brgemm_relo_copy_to_wbuffer_t(wjcp)));
         CHECK(copy_to_relo_wbuffer_->create_kernel());
     }
+    
+    if (jcp.req_fp8_convert) {
+        jit_brgemm_conv_fp8_cvt_kernel_t::cfg_t fp8_wjcp;
+        fp8_wjcp.isa = jcp.isa;
+        fp8_wjcp.inp_dt = jcp.wei_dt;
+        fp8_wjcp.out_dt = get_mac_emu_data_type(jcp.wei_dt, jcp.isa, true);
+        fp8_wjcp.rd = static_cast<dim_t>(jcp.icp);
+        fp8_wjcp.oc_block = static_cast<dim_t>(jcp.oc_block);
+        fp8_wjcp.kernel_size = static_cast<dim_t>(jcp.kd) * jcp.kh * jcp.kw;
+        fp8_wjcp.kernel_size_offs = static_cast<dim_t>(jcp.icp) * jcp.oc_block;
+        fp8_wjcp.last_oc_block = rnd_up(jcp.oc % jcp.oc_block, 16);
+//printf("fp8_wjcp.last_oc_block: %d\n", fp8_wjcp.last_oc_block);
+        CHECK(safe_ptr_assign(copy_to_fp8_wbuffer_,
+                new jit_brgemm_conv_fp8_cvt_kernel_t(fp8_wjcp)));
+        CHECK(copy_to_fp8_wbuffer_->create_kernel());
+    }
+
+    if (jcp.fp8_src_buffer_size > 0) {
+        CHECK(safe_ptr_assign(copy_to_fp8_sbuffer_,
+                new jit_brgemm_conv_src_copy_kernel_t(jcp.isa)));
+        CHECK(copy_to_fp8_sbuffer_->create_kernel());
+    }
 
     if (jcp.req_cal_comp_pad) {
         if (is_relo_with_relo_weights) {
@@ -1341,6 +1363,7 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
     const char *const __restrict weights {nullptr};
     void *__restrict inp_buffer_zero {nullptr};
     void *__restrict fp8_convert_wsp {nullptr};
+    char *__restrict fp8_src_buffer {nullptr};
 };
 
 template <cpu_isa_t isa>
@@ -1367,7 +1390,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const char *const __restrict src = brgemm_ctx.src;
     const char *__restrict wei = brgemm_ctx.weights;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
-
+//    printf("weights_d.size: %d\n", weights_d.size());
     const auto extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(brgemm_ctx.weights);
@@ -1411,6 +1434,9 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     auto *fp8_convert_wsp_base = jcp.req_fp8_convert_wsp
             ? scratchpad.template get<char>(
                       key_brgemm_primitive_fp8_convert_wsp)
+            : nullptr;
+    auto *fp8_src_buffer_base = jcp.fp8_src_buffer_size > 0
+            ? scratchpad.template get<char>(key_conv_brgemm_fp8_convert_src)
             : nullptr;
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
@@ -1467,6 +1493,10 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
         btc.fp8_convert_wsp = jcp.req_fp8_convert_wsp
                 ? fp8_convert_wsp_base + ithr * jcp.fp8_convert_wsp_size
                 : nullptr;
+        btc.fp8_src_buffer = jcp.fp8_src_buffer_size > 0
+                ? fp8_src_buffer_base
+                        + static_cast<size_t>(ithr) * jcp.fp8_src_buffer_size
+                : nullptr;
 
         btc.input = jcp.copy_input ? btc.inp_buffer : src;
 
@@ -1498,6 +1528,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                     std::memset(btc.inp_buffer_mask, false,
                             jcp.inp_buffer_mask_size);
             }
+            maybe_copy_src(btc, last_btc, src);
             auto od_begin = odb * jcp.od_block;
             auto od_end = nstl::min<dim_t>(OD, od_begin + jcp.od_block);
             auto oh_begin = ohb * jcp.oh_block;
@@ -1814,8 +1845,28 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
     const auto &jcp = _pd->jcp_;
 
     wei = input_weights;
-    if (!jcp.is_relo() || !jcp.relo_conv_weights) return;
+    //    if (!jcp.is_relo() || !jcp.relo_conv_weights) return;
+//    printf("jcp.req_fp8_convert: %d\n", jcp.req_fp8_convert);
+    if (jcp.req_fp8_convert) {
+        auto wei_buffer = ctx.get_scratchpad_grantor().template get<char>(
+                key_conv_brgemm_fp8_convert_wei);
 
+            parallel_nd(jcp.ngroups, jcp.nb_oc,
+                [= COMPAT_THIS_CAPTURE](dim_t g, dim_t ocb) {
+            auto p = jit_brgemm_conv_fp8_cvt_kernel_t::ctx_t();
+            const auto ocb_off
+                    = g * _pd->wei_g_stride + ocb * _pd->wei_ocb_stride;
+//printf("ocb: %d\n", ocb_off);
+            p.src = input_weights + ocb_off * wei_dsz;
+            p.dst = wei_buffer + ocb_off;// * sizeof(float16_t);
+            p.last_ocb = (ocb == jcp.nb_oc - 1);
+            (*copy_to_fp8_wbuffer_)(&p);
+        });
+        wei = wei_buffer;
+        return;
+    }
+    
+    if (!jcp.is_relo() || !jcp.relo_conv_weights) return;
     auto wei_buffer = ctx.get_scratchpad_grantor().template get<char>(
             key_conv_amx_wei_buffer);
 
@@ -2087,8 +2138,70 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
 #undef bmask
 }
 
+template <cpu_isa_t isa>
+void brgemm_convolution_fwd_t<isa>::maybe_copy_src(brgemm_thread_ctx_t &btc,
+        const brgemm_thread_ctx_t &last_btc, const char *__restrict src) const {
+    if (!copy_to_fp8_sbuffer_) return;
+    // the window depends only on (n, g, odb, ohb, owb): reuse it across
+    // ocb, od, oh and icc iterations
+    if (last_btc.n == btc.n && last_btc.g == btc.g && last_btc.odb == btc.odb
+            && last_btc.ohb == btc.ohb && last_btc.owb == btc.owb)
+        return;
+
+    const auto &jcp = pd()->jcp_;
+
+    const dim_t od_b = btc.odb * jcp.od_block;
+    const dim_t od_e = nstl::min<dim_t>(OD, od_b + jcp.od_block);
+    const dim_t oh_b = btc.ohb * jcp.oh_block;
+    const dim_t oh_e = nstl::min<dim_t>(OH, oh_b + jcp.oh_block);
+    const dim_t ow_b = btc.owb * jcp.ow_block;
+    const dim_t ow_e = nstl::min<dim_t>(OW, ow_b + jcp.ow_block);
+
+    const dim_t id_s = nstl::max<dim_t>(0, od_b * SD - FP);
+    const dim_t id_e = nstl::min<dim_t>(ID, (od_e - 1) * SD - FP + EXT_KD);
+    const dim_t ih_s = nstl::max<dim_t>(0, oh_b * SH - TP);
+    const dim_t ih_e = nstl::min<dim_t>(IH, (oh_e - 1) * SH - TP + EXT_KH);
+    const dim_t iw_s = nstl::max<dim_t>(0, ow_b * SW - LP);
+    const dim_t iw_e = nstl::min<dim_t>(IW, (ow_e - 1) * SW - LP + EXT_KW);
+
+    const dim_t pixel_sz
+            = static_cast<dim_t>(jcp.ngroups) * jcp.ic_without_padding;
+    // The buffer mirrors src strides starting at (id_s, ih_s, iw = 0, g, 0),
+    // so ker_* address it like src through the rebased btc.input.
+    const dim_t anchor = get_src_base_offset(btc, 0)
+            + src_dsz * (id_s * IH + ih_s) * src_w_sz;
+    btc.input = btc.fp8_src_buffer - anchor;
+    if (id_e <= id_s || ih_e <= ih_s || iw_e <= iw_s) return;
+
+    const auto copy = [&](dim_t offs, dim_t rows, dim_t row_bytes,
+                              dim_t stride) {
+        jit_brgemm_conv_src_copy_kernel_t::ctx_t p;
+        p.src = src + anchor + offs;
+        p.dst = btc.fp8_src_buffer + offs;
+        p.rows = static_cast<size_t>(rows);
+        p.row_bytes = static_cast<size_t>(row_bytes);
+        p.stride = static_cast<size_t>(stride);
+        (*copy_to_fp8_sbuffer_)(&p);
+    };
+
+    const dim_t n_ih = ih_e - ih_s;
+    const dim_t n_iw = iw_e - iw_s;
+    for (dim_t id = id_s; id < id_e; id++) {
+        const dim_t d_offs = (id - id_s) * IH * src_w_sz;
+        if (jcp.ic == pixel_sz) {
+            // a row of pixels is contiguous: one call per depth slice
+            copy(src_dsz * (d_offs + iw_s * pixel_sz), n_ih,
+                    src_dsz * n_iw * pixel_sz, src_dsz * src_w_sz);
+        } else {
+            for (dim_t ih = 0; ih < n_ih; ih++)
+                copy(src_dsz * (d_offs + ih * src_w_sz + iw_s * pixel_sz),
+                        n_iw, src_dsz * jcp.ic, src_dsz * pixel_sz);
+        }
+    }
+}
+
 #define BRGEMM_CONV_KER_HEADER \
-    const char *const __restrict src = btc.brgemm_ctx.src; \
+    const char *const __restrict src = btc.input; \
     const char *const __restrict weights = btc.weights; \
     const char *const __restrict bias = btc.brgemm_ctx.bias; \
     const dim_t oc = btc.ocb * jcp.oc_block; \

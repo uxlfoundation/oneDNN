@@ -199,6 +199,8 @@ enum {
     key_conv_brgemm_inp_buffer,
     key_conv_brgemm_inp_buffer_mask,
     key_conv_brgemm_out_buffer,
+    key_conv_brgemm_fp8_convert_wei,
+    key_conv_brgemm_fp8_convert_src,
     key_conv_bwd_w_1st_bia_reorder,
     key_conv_bwd_w_1st_wei_reorder,
     key_conv_dst_scales,

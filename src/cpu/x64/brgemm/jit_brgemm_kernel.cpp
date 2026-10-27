@@ -305,7 +305,7 @@ private:
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
     // Used for both AMX GEMM and GEMV code paths.
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
-    Xbyak::Opmask fp8_tail_mask = Xbyak::Opmask(7);
+    Xbyak::Opmask fp8_tail_mask = Xbyak::Opmask(4);
 
     // Aliases gemv_full_mask. That is only safe because ACE implements GEMM
     // only, so the gemv path is never generated together with it.

@@ -1825,6 +1825,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.wei_plain = everyone_is(true, jcp.wei_dt == data_type::f32,
             is_superset(isa, avx512_core), weights_d.is_plain());
     jcp.req_fp8_convert_wsp = jcp.is_fp8_convert && !is_amx(isa);
+    jcp.req_fp8_convert = jcp.is_fp8_convert && !is_amx(isa);
     if (jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
 
@@ -2538,6 +2539,24 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
 
+    // exec_trans already reads src from a per-thread copy (inp_buffer)
+    if (jcp.req_fp8_convert && jcp.exec_type != exec_trans) {
+        // input window of one (odb, ohb, owb) work item, all rows of iw
+        const dim_t id_cnt = nstl::min<dim_t>(jcp.id,
+                (jcp.od_block - 1) * jcp.stride_d + jcp.ext_kd);
+        const dim_t ih_cnt = nstl::min<dim_t>(jcp.ih,
+                (jcp.oh_block - 1) * jcp.stride_h + jcp.ext_kh);
+        const dim_t row_sz = static_cast<dim_t>(jcp.iw) * jcp.ngroups
+                * jcp.ic_without_padding;
+        // 64 bytes of slack for brgemm K-tail over-reads
+        jcp.fp8_src_buffer_size = rnd_up(jcp.src_dsz
+                                * (nstl::max<dim_t>(0, id_cnt - 1) * jcp.ih
+                                        + nstl::max<dim_t>(1, ih_cnt))
+                                * row_sz
+                        + 64,
+                64);
+    }
+    printf("jcp.req_fp8_convert: %d, exec type: %d\n", jcp.req_fp8_convert, jcp.exec_type);
     return status::success;
 }
 
@@ -2828,6 +2847,18 @@ status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
                 1024);
         scratchpad.book(
                 key_conv_amx_wei_buffer, wei_buffer_size, jcp.wei_dsz, 0, P4K);
+    }
+
+    if (jcp.req_fp8_convert) {
+        const auto wei_buffer_size = static_cast<size_t>(jcp.ngroups)
+                * jcp.nb_oc * jcp.kd * jcp.kh * jcp.kw * jcp.icp * jcp.oc_block;
+//        printf("icp: %d, nb oc: %d, oc block: %d, wei_buffer_size: %d\n",
+//                jcp.icp, jcp.nb_oc, jcp.oc_block, wei_buffer_size);
+        scratchpad.book(key_conv_brgemm_fp8_convert_wei, wei_buffer_size,
+                sizeof(float16_t), 0, P4K);
+        scratchpad.book(key_conv_brgemm_fp8_convert_src,
+                static_cast<size_t>(jcp.nthr) * jcp.fp8_src_buffer_size, 1, 0,
+                P4K);
     }
 
     if (jcp.use_buffer) {

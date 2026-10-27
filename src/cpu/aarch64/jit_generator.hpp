@@ -28,7 +28,7 @@
 #include "common/utils.hpp"
 
 #include "cpu/aarch64/cpu_isa_traits.hpp"
-
+#include "cpu/aarch64/jit_op_imm_check.hpp"
 #include "cpu/jit_utils/jit_utils.hpp"
 
 #if defined(_WIN32) && !defined(__GNUC__)
@@ -158,8 +158,27 @@ public:
         return addr;
     }
 
-    void ldr_imm(Xbyak_aarch64::XReg reg, Xbyak_aarch64::XReg &addr,
-            uint32_t offset);
+    template <typename TReg>
+    void ldr_imm(
+            const TReg &reg, const Xbyak_aarch64::XReg &addr, uint32_t offset) {
+        if (is_imm12(offset)) {
+            ldr(reg, ptr(addr, offset));
+        } else {
+            add_imm(X_DEFAULT_ADDR, addr, offset, X_DEFAULT_ADDR);
+            ldr(reg, ptr(X_DEFAULT_ADDR));
+        }
+    }
+
+    template <typename TReg>
+    void str_imm(
+            const TReg &reg, const Xbyak_aarch64::XReg &addr, uint32_t offset) {
+        if (is_imm12(offset)) {
+            str(reg, ptr(addr, offset));
+        } else {
+            add_imm(X_DEFAULT_ADDR, addr, offset, X_DEFAULT_ADDR);
+            str(reg, ptr(X_DEFAULT_ADDR));
+        }
+    }
 
     int compute_off_mul_vl(int off, int size, int cpu_sveLen) {
         const int mul_vl_len = (cpu_sveLen / 4) * size;

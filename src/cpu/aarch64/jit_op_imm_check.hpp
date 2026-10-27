@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,6 +18,8 @@
 #ifndef CPU_AARCH64_JIT_OP_IMM_CHECK_HPP
 #define CPU_AARCH64_JIT_OP_IMM_CHECK_HPP
 
+#include <type_traits>
+
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 
 #define LDRMAX 255
@@ -33,6 +36,30 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
+
+template <typename T,
+        typename std::enable_if<std::is_unsigned<T>::value,
+                std::nullptr_t>::type
+        = nullptr>
+bool is_imm12(T imm) {
+    uint64_t bit_ptn = static_cast<uint64_t>(imm);
+
+    const uint64_t IMM12_MASK = ~uint64_t(0xfff);
+    // <= 4095
+    return ((bit_ptn & IMM12_MASK) == 0);
+}
+
+template <typename T,
+        typename std::enable_if<std::is_signed<T>::value, std::nullptr_t>::type
+        = nullptr>
+bool is_imm12(T imm) {
+    /* Sign bit must be extended. */
+    int64_t bit_ptn = static_cast<int64_t>(imm);
+    const uint64_t IMM12_MASK = ~uint64_t(0xfff);
+
+    // <= 4095
+    return (imm >= 0) && ((bit_ptn & IMM12_MASK) == 0);
+}
 
 // Check the immediate value for LDR(vector) instruction
 //

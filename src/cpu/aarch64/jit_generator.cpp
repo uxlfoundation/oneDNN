@@ -18,9 +18,9 @@
 
 #include <cassert>
 #include <cstddef>
-#include <type_traits>
 
-#include "jit_generator.hpp"
+#include "cpu/aarch64/jit_generator.hpp"
+#include "cpu/aarch64/jit_op_imm_check.hpp"
 
 using namespace Xbyak_aarch64;
 
@@ -28,33 +28,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
-
-namespace {
-template <typename T,
-        typename std::enable_if<std::is_unsigned<T>::value,
-                std::nullptr_t>::type
-        = nullptr>
-bool is_imm12(T imm) {
-    uint64_t bit_ptn = static_cast<uint64_t>(imm);
-
-    const uint64_t IMM12_MASK = ~uint64_t(0xfff);
-    // <= 4095
-    return ((bit_ptn & IMM12_MASK) == 0);
-}
-
-template <typename T,
-        typename std::enable_if<std::is_signed<T>::value, std::nullptr_t>::type
-        = nullptr>
-bool is_imm12(T imm) {
-    /* Sign bit must be extended. */
-    int64_t bit_ptn = static_cast<int64_t>(imm);
-    const uint64_t IMM12_MASK = ~uint64_t(0xfff);
-
-    // <= 4095
-    return (imm >= 0) && ((bit_ptn & IMM12_MASK) == 0);
-}
-
-} // namespace
 
 void jit_generator_t::preamble() {
     uint64_t sveLen = get_sve_length();
@@ -115,15 +88,6 @@ void jit_generator_t::L(Label &label) {
 void jit_generator_t::L_aligned(Label &label, int alignment) {
     align(alignment);
     L(label);
-}
-
-void jit_generator_t::ldr_imm(XReg reg, XReg &addr, uint32_t offset) {
-    if (is_imm12(offset)) {
-        ldr(reg, ptr(addr, offset));
-    } else {
-        add_imm(X_DEFAULT_ADDR, addr, offset, X_DEFAULT_ADDR);
-        ldr(reg, ptr(X_DEFAULT_ADDR));
-    }
 }
 
 // Return XReg which points to base + stride_bytes * n in as few instructions as possible

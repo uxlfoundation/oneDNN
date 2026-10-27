@@ -45,8 +45,9 @@ where *matmul-knobs* are:
             `size0+size1+...+sizeN` are `+`-separated sizes or resolved variable
             dimensions, and optional `max_size` is the max variable dim hint for
             optimal dispatch.
-            When grouped encoding is specified, weights must be provided as 3D
-            `[G,K,N]` where `G` matches `NUM_GROUPS`.
+            When `M` is variable, weights must be provided as 3D `[G,K,N]`
+            where `G` matches `NUM_GROUPS`. When `K` is variable, weights are
+            2D `[total_K,N]` and the destination is 3D `[G,M,N]`.
             Multiple configs can be comma-separated to iterate over them.
             Example: `--grouped=0:4:32+0+32+96 160x512:4x512x256`
             means `M` dimension is variable, `4` experts are used, `32, 0, ...`

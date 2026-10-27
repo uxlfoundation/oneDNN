@@ -20,6 +20,7 @@
 # test for K parallel_reduction with batched case
 --reset
 --stag=acb --wtag=abc --dtag=abc 2x16x2048:2x2048x16_n"large_K_with_batch"
+--reset 2x64x20480:2x20480x64_n"huge_K_with_batch"
 
 # test special tag that can be matched with adbc
 --reset

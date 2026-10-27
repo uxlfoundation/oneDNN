@@ -37,28 +37,6 @@ using namespace Xbyak_aarch64;
 
 #define GET_OFF(x) (uint32_t) offsetof(ctx_t, x)
 
-#define LDR_IMM(reg, addr, off) \
-    { \
-        const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if (((off) & IMM12_MASK) == 0) { \
-            ldr(reg, ptr(addr, off)); \
-        } else { \
-            add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
-            ldr(reg, ptr(X_DEFAULT_ADDR)); \
-        } \
-    }
-
-#define STR_IMM(reg, addr, off) \
-    { \
-        const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if (((off) & IMM12_MASK) == 0) { \
-            str(reg, ptr(addr, off)); \
-        } else { \
-            add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
-            str(reg, ptr(X_DEFAULT_ADDR)); \
-        } \
-    }
-
 struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_f32_t)
@@ -182,10 +160,10 @@ void jit_brgemm_matmul_copy_b_f32_t::generate() {
 
     preamble();
     eor(zmm_zero.d, zmm_zero.d, zmm_zero.d);
-    LDR_IMM(reg_src, param1, GET_OFF(src));
-    LDR_IMM(reg_tr_src, param1, GET_OFF(tr_src));
-    LDR_IMM(reg_K_iters, param1, GET_OFF(current_K_iters));
-    LDR_IMM(reg_N_blk, param1, GET_OFF(current_N_blk));
+    ldr_imm(reg_src, param1, GET_OFF(src));
+    ldr_imm(reg_tr_src, param1, GET_OFF(tr_src));
+    ldr_imm(reg_K_iters, param1, GET_OFF(current_K_iters));
+    ldr_imm(reg_N_blk, param1, GET_OFF(current_N_blk));
     ptrue(kFFFF.s);
 
     Label done;
@@ -322,7 +300,7 @@ template <cpu_isa_t isa>
 void jit_brgemm_matmul_copy_b_transposed_t<isa>::compute_K_loop(
         bool is_N_tail, int curr_K_tail) {
     Label K_loop, K_loop_tail_or_done;
-    LDR_IMM(reg_K_iters, param1, GET_OFF(current_K_iters));
+    ldr_imm(reg_K_iters, param1, GET_OFF(current_K_iters));
 
     mov(reg_src, reg_src_base);
     mov(reg_tr_src, reg_tr_src_base);
@@ -385,10 +363,10 @@ void jit_brgemm_matmul_copy_b_transposed_t<isa>::generate() {
         default: assert(!"unsupported SVE vector length");
     }
 
-    LDR_IMM(reg_src_base, param1, GET_OFF(src));
-    LDR_IMM(reg_tr_src_base, param1, GET_OFF(tr_src));
-    LDR_IMM(reg_K_iters, param1, GET_OFF(current_K_iters));
-    LDR_IMM(reg_N_iters, param1, GET_OFF(current_N_blk));
+    ldr_imm(reg_src_base, param1, GET_OFF(src));
+    ldr_imm(reg_tr_src_base, param1, GET_OFF(tr_src));
+    ldr_imm(reg_K_iters, param1, GET_OFF(current_K_iters));
+    ldr_imm(reg_N_iters, param1, GET_OFF(current_N_blk));
 
     const auto K_blk_tail = nstl::min(conf_->K, conf_->K_blk) % block_step_;
     const auto K_tail_tail = (conf_->K % conf_->K_blk) % block_step_;

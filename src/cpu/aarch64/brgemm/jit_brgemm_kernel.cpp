@@ -24,7 +24,6 @@
 
 #include "cpu/aarch64/brgemm/brgemm_types.hpp"
 #include "cpu/aarch64/brgemm/brgemm_utils.hpp"
-#include "cpu/aarch64/cpu_barrier.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/platform.hpp"
@@ -32,27 +31,6 @@
 #define GET_OFF(field) (uint32_t) offsetof(brgemm_kernel_params_t, field)
 #define GET_OFF_BATCH_ELEMENT(field) \
     (uint32_t) offsetof(brgemm_batch_element_t, field)
-
-#define LDR_IMM(reg, addr, off) \
-    do { \
-        const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if (((off) & IMM12_MASK) == 0) { \
-            ldr(reg, ptr(addr, off)); \
-        } else { \
-            add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
-            ldr(reg, ptr(X_DEFAULT_ADDR)); \
-        } \
-    } while (0)
-#define STR_IMM(reg, addr, off) \
-    do { \
-        const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if (((off) & IMM12_MASK) == 0) { \
-            str(reg, ptr(addr, off)); \
-        } else { \
-            add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
-            str(reg, ptr(X_DEFAULT_ADDR)); \
-        } \
-    } while (0)
 
 using namespace Xbyak_aarch64;
 
@@ -649,43 +627,43 @@ void jit_brgemm_kernel_t::ldb_regs_shift(int ld_block2, bool is_tail) {
             X_TMP_0);
 
     if (brg.with_bias) {
-        LDR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
+        ldr_imm(reg_aux_bias, sp, reg_aux_bias_offs_);
         add_imm(reg_aux_bias, reg_aux_bias, bias_offset(ld_block2, is_tail),
                 X_TMP_0);
-        STR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
+        str_imm(reg_aux_bias, sp, reg_aux_bias_offs_);
     }
     if (brg.req_s8s8_compensation) {
-        LDR_IMM(reg_aux_compensation, sp, reg_aux_comp_offs_);
+        ldr_imm(reg_aux_compensation, sp, reg_aux_comp_offs_);
         add_imm(reg_aux_compensation, reg_aux_compensation,
                 compensations_offset(ld_block2, is_tail), X_TMP_0);
-        STR_IMM(reg_aux_compensation, sp, reg_aux_comp_offs_);
+        str_imm(reg_aux_compensation, sp, reg_aux_comp_offs_);
     }
     if (brg.with_scales) {
-        LDR_IMM(reg_aux_scales, sp, reg_aux_scales_offs_);
+        ldr_imm(reg_aux_scales, sp, reg_aux_scales_offs_);
         add_imm(reg_aux_scales, reg_aux_scales,
                 scales_offset(ld_block2, is_tail), X_TMP_0);
-        STR_IMM(reg_aux_scales, sp, reg_aux_scales_offs_);
+        str_imm(reg_aux_scales, sp, reg_aux_scales_offs_);
     }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_aux_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
+        ldr_imm(reg_aux_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
         add_imm(reg_aux_zp_comp_a, reg_aux_zp_comp_a,
                 zp_comp_a_offset(ld_block2, is_tail), X_TMP_0);
-        STR_IMM(reg_aux_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
+        str_imm(reg_aux_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
     }
     if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
-        LDR_IMM(reg_aux_zp_c_values, sp, reg_aux_zp_c_values_offs_);
+        ldr_imm(reg_aux_zp_c_values, sp, reg_aux_zp_c_values_offs_);
         add_imm(reg_aux_zp_c_values, reg_aux_zp_c_values,
                 zp_c_values_offset(ld_block2, is_tail), X_TMP_0);
-        STR_IMM(reg_aux_zp_c_values, sp, reg_aux_zp_c_values_offs_);
+        str_imm(reg_aux_zp_c_values, sp, reg_aux_zp_c_values_offs_);
     }
 }
 
 void jit_brgemm_kernel_t::advance_bd_block2_post_op_regs(int bd_block2) {
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
+        ldr_imm(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
         add_imm(reg_zp_comp_b, reg_zp_comp_b, bdb_zp_comp_b_offset(bd_block2),
                 X_TMP_0);
-        STR_IMM(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
+        str_imm(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
     }
 }
 
@@ -695,56 +673,56 @@ void jit_brgemm_kernel_t::copy_post_ops_stack_values_to_aux(bool is_reg_tail) {
         mov(reg_aux_D, reg_D);
         eor(reg_b_offset, reg_b_offset, reg_b_offset);
         if (brg.with_bias) {
-            LDR_IMM(reg_bias, sp, reg_bias_offs_);
-            STR_IMM(reg_bias, sp, reg_aux_bias_offs_);
+            ldr_imm(reg_bias, sp, reg_bias_offs_);
+            str_imm(reg_bias, sp, reg_aux_bias_offs_);
         }
         if (brg.req_s8s8_compensation) {
-            LDR_IMM(reg_compensation, sp, reg_comp_offs_);
-            STR_IMM(reg_compensation, sp, reg_aux_comp_offs_);
+            ldr_imm(reg_compensation, sp, reg_comp_offs_);
+            str_imm(reg_compensation, sp, reg_aux_comp_offs_);
         }
         if (brg.with_scales) {
-            LDR_IMM(reg_scales, sp, reg_scales_offs_);
-            STR_IMM(reg_scales, sp, reg_aux_scales_offs_);
+            ldr_imm(reg_scales, sp, reg_scales_offs_);
+            str_imm(reg_scales, sp, reg_aux_scales_offs_);
         }
 
         if (brg.zp_type_a != brgemm_broadcast_t::none) {
-            LDR_IMM(reg_zp_comp_a, sp, reg_zp_comp_a_offs_);
-            STR_IMM(reg_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
+            ldr_imm(reg_zp_comp_a, sp, reg_zp_comp_a_offs_);
+            str_imm(reg_zp_comp_a, sp, reg_aux_zp_comp_a_offs_);
         }
 
         if (brg.zp_type_c != brgemm_broadcast_t::none) {
-            LDR_IMM(reg_zp_c_values, sp, reg_zp_c_values_offs_);
-            STR_IMM(reg_zp_c_values, sp, reg_aux_zp_c_values_offs_);
+            ldr_imm(reg_zp_c_values, sp, reg_zp_c_values_offs_);
+            str_imm(reg_zp_c_values, sp, reg_aux_zp_c_values_offs_);
         }
     }
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
-        STR_IMM(reg_zp_comp_b, sp, reg_aux_zp_comp_b_offs_);
+        ldr_imm(reg_zp_comp_b, sp, reg_zp_comp_b_offs_);
+        str_imm(reg_zp_comp_b, sp, reg_aux_zp_comp_b_offs_);
     }
 }
 
 void jit_brgemm_kernel_t::read_params() {
     Label label_done;
 
-    if (brg.with_binary) { STR_IMM(param1, sp, abi_param1_offs_); }
+    if (brg.with_binary) { str_imm(param1, sp, abi_param1_offs_); }
 
     if (brg.type == brgemm_addr) {
-        LDR_IMM(reg_addr_batch, param1, GET_OFF(batch));
+        ldr_imm(reg_addr_batch, param1, GET_OFF(batch));
     } else {
         if (brg.layout == brgemm_row_major) {
-            LDR_IMM(reg_A, param1, GET_OFF(ptr_A));
-            LDR_IMM(reg_B, param1, GET_OFF(ptr_B));
+            ldr_imm(reg_A, param1, GET_OFF(ptr_A));
+            ldr_imm(reg_B, param1, GET_OFF(ptr_B));
         } else {
-            LDR_IMM(reg_A, param1, GET_OFF(ptr_B));
-            LDR_IMM(reg_B, param1, GET_OFF(ptr_A));
+            ldr_imm(reg_A, param1, GET_OFF(ptr_B));
+            ldr_imm(reg_B, param1, GET_OFF(ptr_A));
         }
 
         if (brg.type == brgemm_offs) {
-            LDR_IMM(reg_offs_batch, param1, GET_OFF(batch));
-            STR_IMM(reg_offs_batch, sp, origin_offs_batch_offs_);
+            ldr_imm(reg_offs_batch, param1, GET_OFF(batch));
+            str_imm(reg_offs_batch, sp, origin_offs_batch_offs_);
         } else {
-            LDR_IMM(reg_strd_batch, param1, GET_OFF(batch));
-            STR_IMM(reg_strd_batch, sp, origin_strd_batch_offs_);
+            ldr_imm(reg_strd_batch, param1, GET_OFF(batch));
+            str_imm(reg_strd_batch, sp, origin_strd_batch_offs_);
         }
     }
 
@@ -1033,10 +1011,10 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
             }
 
             // update the scale pointer
-            LDR_IMM(reg_aux_scales, sp, reg_aux_scales_offs_);
+            ldr_imm(reg_aux_scales, sp, reg_aux_scales_offs_);
             add_imm(reg_aux_scales, reg_aux_scales, offset + sizeof(float),
                     X_TMP_0);
-            STR_IMM(reg_aux_scales, sp, reg_scales_offs_);
+            str_imm(reg_aux_scales, sp, reg_scales_offs_);
         } else {
             add_imm(X_DEFAULT_ADDR, sp, reg_aux_scales_offs_, X_TMP_0);
             ldr(reg_aux_scales, ptr(X_DEFAULT_ADDR));
@@ -1074,7 +1052,7 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
     }
 
     if (brg.with_bias) {
-        LDR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
+        ldr_imm(reg_aux_bias, sp, reg_aux_bias_offs_);
 
         auto x_addr = reg_aux_bias;
         auto zmm_bias = z_tmp_1();
@@ -1107,9 +1085,9 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
             }
 
             // update the bias pointer
-            LDR_IMM(reg_aux_bias, sp, reg_aux_bias_offs_);
+            ldr_imm(reg_aux_bias, sp, reg_aux_bias_offs_);
             add_imm(reg_aux_bias, reg_aux_bias, offset + 4, X_TMP_0);
-            STR_IMM(reg_aux_bias, sp, reg_bias_offs_);
+            str_imm(reg_aux_bias, sp, reg_bias_offs_);
 
         } else {
             for_(int ld = 0; ld < ld_block2; ld++)
@@ -1391,11 +1369,11 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(int bd_block,
             }
             if (use_gemv_path && brg.beta == 0.f) {
                 faddv(scalar_reg, P_ALL_ONE, zmm.s);
-                STR_IMM(scalar_reg, x_addr, (offset - base_offset));
+                str_imm(scalar_reg, x_addr, (offset - base_offset));
             } else if (use_gemv_path && brg.beta != 0.f) {
-                LDR_IMM(scalar_reg, x_addr, (offset - base_offset));
+                ldr_imm(scalar_reg, x_addr, (offset - base_offset));
                 fadda(scalar_reg, P_ALL_ONE, zmm.s);
-                STR_IMM(scalar_reg, x_addr, (offset - base_offset));
+                str_imm(scalar_reg, x_addr, (offset - base_offset));
             } else {
                 ST_MUL_VL(st1w, zmm.s, mask, x_addr, offset - base_offset, 4);
             }
@@ -1437,7 +1415,7 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
     if (are_post_ops_applicable) {
         Label label_store_without_post_ops;
 
-        LDR_IMM(reg_do_post_ops, sp, reg_do_post_ops_offs_);
+        ldr_imm(reg_do_post_ops, sp, reg_do_post_ops_offs_);
         cmp_imm(reg_do_post_ops, 0, X_TMP_0);
         b(EQ, label_store_without_post_ops);
         if (use_gemv_path) {
@@ -1473,7 +1451,7 @@ void jit_brgemm_kernel_t::sum_into_one_lane(
             if (brg.beta == 0.f) {
                 faddv(scalar_reg, P_ALL_ONE, zmm.s);
             } else {
-                LDR_IMM(scalar_reg, x_addr, (offset - base_offset));
+                ldr_imm(scalar_reg, x_addr, (offset - base_offset));
                 fadda(scalar_reg, P_ALL_ONE, zmm.s);
             }
             uni_clear(zmm);
@@ -2277,11 +2255,11 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                 skip_accumulation);
 
         if (is_ldb_loop_) {
-            STR_IMM(reg_D, sp, reg_D_offs_);
+            str_imm(reg_D, sp, reg_D_offs_);
         } else {
             mov(reg_ldb_loop, reg_D);
         }
-        if (brg.brgattr.max_bs > 1) { STR_IMM(reg_aux_D, sp, reg_aux_D_offs_); }
+        if (brg.brgattr.max_bs > 1) { str_imm(reg_aux_D, sp, reg_aux_D_offs_); }
 
         if (brg.alpha != 0.f && !skip_accumulation) {
             restore_A_B_matrices();
@@ -2314,7 +2292,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                                 : ((brg.type == brgemm_offs) ? reg_offs_batch
                                                              : reg_strd_batch);
                         if (brg.type == brgemm_strd) {
-                            LDR_IMM(reg_strd_batch, sp,
+                            ldr_imm(reg_strd_batch, sp,
                                     origin_strd_batch_offs_);
                         }
                         ldr(reg_aux_A_vpad,
@@ -2373,11 +2351,11 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
         }
 
         if (is_ldb_loop_) {
-            LDR_IMM(reg_D, sp, reg_D_offs_);
+            ldr_imm(reg_D, sp, reg_D_offs_);
         } else {
             mov(reg_D, reg_ldb_loop);
         }
-        if (brg.brgattr.max_bs > 1) { LDR_IMM(reg_aux_D, sp, reg_aux_D_offs_); }
+        if (brg.brgattr.max_bs > 1) { ldr_imm(reg_aux_D, sp, reg_aux_D_offs_); }
 
         store_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
                 skip_accumulation);
@@ -2590,7 +2568,7 @@ void jit_brgemm_kernel_t::bdb_loop() {
 
     if (brg.brgattr.generate_skip_accumulation) {
         Label bdb_loop_skip_acc_label, bdb_loop_done_label;
-        LDR_IMM(reg_skip_accm, sp, reg_skip_accm_offs_);
+        ldr_imm(reg_skip_accm, sp, reg_skip_accm_offs_);
         cmp_imm(reg_skip_accm, 0, X_TMP_0);
         b(NE, bdb_loop_skip_acc_label);
 

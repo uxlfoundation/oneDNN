@@ -17,45 +17,21 @@
 *******************************************************************************/
 
 #include <cassert>
-
-#include <math.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
-#include "common/math_utils.hpp"
 #include "common/memory_tracking.hpp"
-#include "common/nstl.hpp"
-#include "common/tag_traits.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+
 #include "cpu/aarch64/jit_generator.hpp"
-#include "cpu/cpu_primitive.hpp"
-#include "cpu/matmul/matmul_utils.hpp"
-#include "cpu/scale_utils.hpp"
-
-#include "cpu/platform.hpp"
-#include "cpu/primitive_attr_postops.hpp"
-
 #include "cpu/aarch64/matmul/jit_bf16_matmul.hpp"
+#include "cpu/matmul/matmul_utils.hpp"
 
 #define GET_OFF(field) (uint32_t) offsetof(call_params_t, field)
-
-#define LDR_IMM(reg, addr, off) \
-    { \
-        const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if (((off) & IMM12_MASK) == 0) { \
-            ldr(reg, ptr(addr, off)); \
-        } else { \
-            add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
-            ldr(reg, ptr(X_DEFAULT_ADDR)); \
-        } \
-    }
-
-#define VCHECK_BG(f, msg, ...) \
-    VCHECK(primitive, create, dispatch, brgemm_matmul, f, msg, ##__VA_ARGS__);
 
 namespace dnnl {
 namespace impl {
@@ -249,9 +225,9 @@ struct jit_bf16_matmul_kernel_t : public jit_generator_t {
         preamble();
         config();
 
-        LDR_IMM(reg_a, reg_param, GET_OFF(src));
-        LDR_IMM(reg_b, reg_param, GET_OFF(wei));
-        LDR_IMM(reg_c, reg_param, GET_OFF(dst));
+        ldr_imm(reg_a, reg_param, GET_OFF(src));
+        ldr_imm(reg_b, reg_param, GET_OFF(wei));
+        ldr_imm(reg_c, reg_param, GET_OFF(dst));
 
         mov(reg_aux_a, reg_a);
         mov(reg_aux_b, reg_b);
@@ -309,11 +285,13 @@ status_t jit_bf16_matmul_t::pd_t::init(const engine_t *engine) {
 
     switch (dims) {
         case 2: {
-            VCHECK_BG(memory_desc_init_by_tag(src_md_, format_tag::AB2a4b),
+            VDISPATCH_MATMUL(
+                    memory_desc_init_by_tag(src_md_, format_tag::AB2a4b),
                     VERBOSE_UNSUPPORTED_TAG);
-            VCHECK_BG(memory_desc_init_by_tag(weights_md_, format_tag::BA8b4a),
+            VDISPATCH_MATMUL(
+                    memory_desc_init_by_tag(weights_md_, format_tag::BA8b4a),
                     VERBOSE_UNSUPPORTED_TAG);
-            VCHECK_BG(memory_desc_init_by_tag(dst_md_, format_tag::ab),
+            VDISPATCH_MATMUL(memory_desc_init_by_tag(dst_md_, format_tag::ab),
                     VERBOSE_UNSUPPORTED_TAG);
             break;
         }

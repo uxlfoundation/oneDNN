@@ -1320,7 +1320,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::generate() {
 
     init_saturate_f32(vreg_zeros, vreg_ubound, reg_tmp, f32, jpp.dst_dt);
 
-    if (jpp.src_dt != u8) uni_vpxor(vreg_zeros, vreg_zeros, vreg_zeros);
+    uni_vpxor(vreg_zeros, vreg_zeros, vreg_zeros);
 
     init_mask();
 

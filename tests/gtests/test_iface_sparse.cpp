@@ -143,6 +143,7 @@ TEST(iface_sparse_test_t, TestSparseMDQueries) {
     ASSERT_EQ(md.get_sparse_encoding(), memory::sparse_encoding::coo);
     ASSERT_EQ(md.get_data_type(1), indices_dt);
     ASSERT_EQ(md.get_data_type(2), indices_dt);
+    ASSERT_EQ(query_dt(md, -1), dnnl_invalid_arguments);
 
     // Packed.
     ASSERT_NO_THROW(md = memory::desc::packed(dims, data_type, nnz));
@@ -156,6 +157,8 @@ TEST(iface_sparse_test_t, TestSparseMDQueries) {
     ASSERT_EQ(query_dt(md, 3), dnnl_invalid_arguments);
     ASSERT_EQ(query_dt(md, 1 << 20), dnnl_invalid_arguments);
     ASSERT_EQ(query_dt(md, -1), dnnl_invalid_arguments);
+    ASSERT_EQ(query_dt(md, std::numeric_limits<int>::min()),
+            dnnl_invalid_arguments);
 }
 
 TEST(iface_sparse_test_t, TestSparseMDSize) {

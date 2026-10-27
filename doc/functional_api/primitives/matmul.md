@@ -432,6 +432,18 @@ attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 1) | (1 << 2),
 // Layout: standard abc layout
 ~~~
 
+K-grouped source and weight scales for the variable-K variant (e.g., MXFP8
+with block size 32):
+~~~cpp
+// Source [M, total_K] and weights [total_K, N] are grouped along K
+attr.set_scales(DNNL_ARG_SRC, (1 << 0) | (1 << 1), {1, 32},
+    memory::data_type::e8m0);
+attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 1), {32, 1},
+    memory::data_type::e8m0);
+// Scale tensors: [M, total_K/32] and [total_K/32, N] - dense 2D tensors
+// Layout: standard ab layout, blocks run over the concatenated K dimension
+~~~
+
 Bias per expert:
 ~~~cpp
 // Bias: [num_groups, N] - dense 2D tensor
@@ -521,10 +533,20 @@ The following are supported:
     (`mask = (1 << 0) | (1 << 1)`) with group specification are supported.
     The scale tensor follows the same concatenated layout as src, with total
     size `[total_M, K/gK]`.
+    For the variable-K variant, only K-grouped scales with groups `{1, gK}`
+    are supported. The scale tensor is `[M, total_K/gK]`, covering all groups
+    along K.
   - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
     K-grouped or K- and N-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`)
     with group specification are supported. The scale tensor has size
     `[num_groups, K/gK, N/gN]`.
+    For the variable-K variant, only K-grouped or K- and N-grouped scales
+    (`mask = (1 << 0) | (1 << 1)` with groups `{gK, gN}`) are supported.
+    The scale tensor is `[total_K/gK, N/gN]`, covering all groups along K.
+
+    @warning For the variable-K variant, every group size must be a multiple of
+    the scales K group size `gK`.
+
   - Supported scales and tensor data type combinations:
 
     | Tensor data type           | Scale data type           |
@@ -555,7 +577,6 @@ The following are supported:
   than one of either kind is not supported on GPU.
 
 - Bias (variable-M variant only) supports per-group shape `[num_groups, N]`.
-- Only default attributes are supported for the variable-K variant.
 - Supported on CPU and GPU engines.
 
 #### Supported Data Types

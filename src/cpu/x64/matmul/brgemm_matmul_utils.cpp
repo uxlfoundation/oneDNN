@@ -1277,10 +1277,12 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         }
 
         // Enable k-partitioning for huge k and small m/n dimensions.
-        // Disabled for GEMV (same reason: keep nthr_k == 1).
+        // Disabled for GEMV (same reason: keep nthr_k == 1) and for batched
+        // problems (parallel reduction supports batch == 1 only).
         bool is_huge_k = matmul.K >= 20000;
         bool is_small_mn = matmul.M <= 512 && matmul.N <= 512;
-        bool use_k_partitioning = !bgmmc.is_gemv && is_huge_k && is_small_mn;
+        bool use_k_partitioning = !bgmmc.is_gemv && bgmmc.batch == 1
+                && is_huge_k && is_small_mn;
 
         // TODO: expand to other data types.
         use_k_partitioning = use_k_partitioning && bm_conf_utils.is_f32();
@@ -2574,6 +2576,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // - nthr_K
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils, dst_d, attr),
             VERBOSE_BLOCKING_FAIL, "");
+
+    // Parallel reduction (nthr_k > 1) keeps one C buffer per K-thread without
+    // a batch dimension, so it supports non-batched problems only.
+    VCONDCHECK_BG(IMPLICATION(bgmmc.nthr_k > 1, bgmmc.batch == 1),
+            VERBOSE_BLOCKING_FAIL, "parallel reduction requires batch == 1");
 
     if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk) {
         assert(!bgmmc.is_runtime_N

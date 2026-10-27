@@ -37,8 +37,9 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
     if (setup) {
         bool subByte = T.isSubByte();
         bool thirdByte = T.is3();
+        bool packedSubByte = subByte && !thirdByte;
         Type Tsrc = T;
-        if (subByte && !thirdByte) {
+        if (packedSubByte) {
             nq = div_up(nq, Tsrc.perByte());
             T = Type::u8;
         } else if (thirdByte) {
@@ -58,7 +59,7 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
         bool haveVariableOff = variableOffQ.isValid();
         bool haveFixedOff = (fixedOffQ != 0);
 
-        if (haveVariableOff || haveFixedOff || subByte) {
+        if (haveVariableOff || haveFixedOff || packedSubByte) {
             auto nremQ = state.ra.alloc_sub<uint32_t>();
             freeRemQ = true;
 
@@ -68,7 +69,7 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                 add(1, nremQ, remQ, -variableOffQ);
             else if (haveFixedOff)
                 add(1, nremQ, remQ, -fixedOffQ);
-            if (subByte && !thirdByte)
+            if (packedSubByte)
                 divUp(nremQ, (haveVariableOff || haveFixedOff) ? nremQ : remQ, Tsrc.perByte(), strategy, state);
             remQ = nremQ;
         }

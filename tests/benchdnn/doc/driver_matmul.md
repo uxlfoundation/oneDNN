@@ -69,6 +69,9 @@ where *matmul-knobs* are:
             Optional `PARAM` is attached to `PROFILE` with a `.`.
             Optional `HINT` is the max_variable_dim dispatch hint, if not
             provided, it defaults to the largest generated group.
+            @warning When `K` is variable and scales are grouped along `K`, every group
+            size must be a multiple of the coarsest scales `K` group. For instance,
+            `decode`, that gives one unit per group, would likely produce invalid problem.
             Example: `--grouped=0:64:balanced 512x512:64x512x256`
             Example: `--grouped=0:64:balanced:512 512x512:64x512x256`
             Example: `--grouped=0:32:hot.80 256x512:32x512x256`

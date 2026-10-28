@@ -143,6 +143,98 @@ struct rvv_softmax_fwd_t : public primitive_t {
             return true;
         }
 
+        // Select inner, strided-axis, or packed-axis execution once at PD
+        // initialization. Keep the measured occupancy/cache thresholds here,
+        // separate from scratchpad sizing and kernel creation.
+        void init_inner_dispatch() {
+            if (!use_inner_jit_) return;
+            // Give low-outer-count problems more independent jobs without
+            // fragmenting every vector into tiny, cache-line-sharing tiles.
+            const dim_t chunks = utils::div_up<dim_t>(nthr_, rsp_.outer_size);
+            const dim_t target = utils::div_up(rsp_.inner_size, chunks);
+            inner_tile_ = nstl::min(inner_tile_size,
+                    utils::rnd_up(nstl::max<dim_t>(target, 16), dim_t(16)));
+            const dim_t lanes = nstl::max<dim_t>(
+                    get_platform_vlen() / (8 * sizeof(float)), 1);
+            const dim_t count = nstl::min(inner_tile_, rsp_.inner_size);
+            inner_lmul_ = count <= lanes ? 1 : count <= 2 * lanes ? 2 : 4;
+            // On short vectors, a long axis amortizes packing better than
+            // iterating the axis with only a few independent inner lanes.
+            const bool short_vector_columns = lanes <= 4
+                    && rsp_.inner_size > lanes && rsp_.inner_size < 2 * lanes
+                    && rsp_.axis_size >= 512;
+            // Long reductions can fill axis vectors when a single-thread
+            // inner-vector kernel leaves much of its register group idle.
+            const bool sparse_serial_inner = nthr_ == 1 && lanes > 4
+                    && count * 4 < 3 * lanes * inner_lmul_
+                    // Large column strides lose cache-line reuse even
+                    // when the inner-vector register group is sparse.
+                    && static_cast<size_t>(rsp_.inner_size)
+                            <= platform::get_cache_line_size() / sizeof(float)
+                    && rsp_.axis_size >= 4 * lanes;
+            // Narrow inner dimensions leave most lanes idle. Process
+            // independent columns with an axis-vectorized kernel instead.
+            // A wide vector with fewer than half its lanes occupied,
+            // or too few independent rows to fill the thread team,
+            // can instead process packed columns in parallel.
+            pack_axis_ = (lanes > 8
+                                 && (sparse_serial_inner
+                                         || rsp_.inner_size <= lanes / 2
+                                         || (rsp_.outer_size < nthr_
+                                                 && rsp_.inner_size <= lanes)))
+                    || (short_vector_columns && nthr_ == 1);
+            // Axis-strided passes revisit the same cache lines for each
+            // column. Beyond the per-core L1 estimate, retain inner-vector
+            // reuse when enough outer rows exist, or buffer column jobs
+            // when extra parallelism is needed.
+            const size_t l1_elements
+                    = platform::get_per_core_cache_size(1) / sizeof(float);
+            const bool long_strided_axis = !pack_axis_
+                    // Very narrow columns cannot amortize whole-tensor
+                    // packing; reserve it for near-full inner vectors.
+                    && nthr_ > 1 && rsp_.inner_size * 4 >= 3 * lanes
+                    && rsp_.inner_size <= nstl::min<dim_t>(lanes, 8)
+                    && static_cast<size_t>(rsp_.axis_size) > l1_elements
+                                    / static_cast<size_t>(rsp_.inner_size);
+            // Expose column jobs when both outer parallelism and m2 lane
+            // utilization are low. Keep every column's result until all
+            // input reads finish; then write contiguous destination rows.
+            buffered_axis_ = (lanes == 8 && rsp_.outer_size <= nthr_ / 4
+                                     && rsp_.inner_size > lanes
+                                     && rsp_.inner_size <= 3 * lanes / 2
+                                     && rsp_.axis_size >= 128)
+                    || (short_vector_columns && nthr_ > 1
+                            && rsp_.outer_size <= nthr_ / 4)
+                    || (long_strided_axis
+                            && (rsp_.inner_size < lanes
+                                    || rsp_.outer_size
+                                            < utils::div_up(nthr_, 2)));
+            if (buffered_axis_) {
+                const size_t line
+                        = platform::get_cache_line_size() / sizeof(float);
+                const size_t columns = static_cast<size_t>(
+                        rsp_.outer_size * rsp_.inner_size);
+                const size_t max_stride = std::numeric_limits<size_t>::max()
+                        / sizeof(float) / columns;
+                const size_t axis = static_cast<size_t>(axis_size(true));
+                // Odd cache-line strides distribute columns across cache
+                // sets when the final pass reads contiguous output rows.
+                buffered_axis_ = max_stride >= 3 * line
+                        && axis <= max_stride - 3 * line;
+                if (buffered_axis_)
+                    buffered_axis_stride_
+                            = utils::rnd_up(axis, 2 * line) + line;
+            }
+            pack_axis_ = pack_axis_ || buffered_axis_;
+            use_axis_jit_ = pack_axis_ || sparse_serial_inner
+                    || (!long_strided_axis
+                            && rsp_.inner_size <= nstl::min<dim_t>(lanes, 8));
+            if (use_axis_jit_) {
+                inner_tile_ = 1;
+                inner_lmul_ = 4;
+            }
+        }
+
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
             const bool is_xf16 = utils::one_of(
@@ -154,96 +246,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
                     ? static_cast<int>(nstl::min<dim_t>(dnnl_get_max_threads(),
                               nstl::max<dim_t>(work_amount, 1)))
                     : 1;
-            if (use_inner_jit_) {
-                // Give low-outer-count problems more independent jobs without
-                // fragmenting every vector into tiny, cache-line-sharing tiles.
-                const dim_t chunks
-                        = utils::div_up<dim_t>(nthr_, rsp_.outer_size);
-                const dim_t target = utils::div_up(rsp_.inner_size, chunks);
-                inner_tile_ = nstl::min(inner_tile_size,
-                        utils::rnd_up(nstl::max<dim_t>(target, 16), dim_t(16)));
-                const dim_t lanes = nstl::max<dim_t>(
-                        get_platform_vlen() / (8 * sizeof(float)), 1);
-                const dim_t count = nstl::min(inner_tile_, rsp_.inner_size);
-                inner_lmul_ = count <= lanes ? 1 : count <= 2 * lanes ? 2 : 4;
-                // On short vectors, a long axis amortizes packing better than
-                // iterating the axis with only a few independent inner lanes.
-                const bool short_vector_columns = lanes <= 4
-                        && rsp_.inner_size > lanes
-                        && rsp_.inner_size < 2 * lanes && rsp_.axis_size >= 512;
-                // Long reductions can fill axis vectors when a single-thread
-                // inner-vector kernel leaves much of its register group idle.
-                const bool sparse_serial_inner = nthr_ == 1 && lanes > 4
-                        && count * 4 < 3 * lanes * inner_lmul_
-                        // Large column strides lose cache-line reuse even
-                        // when the inner-vector register group is sparse.
-                        && static_cast<size_t>(rsp_.inner_size)
-                                <= platform::get_cache_line_size()
-                                        / sizeof(float)
-                        && rsp_.axis_size >= 4 * lanes;
-                // Narrow inner dimensions leave most lanes idle. Process
-                // independent columns with an axis-vectorized kernel instead.
-                // A wide vector with fewer than half its lanes occupied,
-                // or too few independent rows to fill the thread team,
-                // can instead process packed columns in parallel.
-                pack_axis_
-                        = (lanes > 8
-                                  && (sparse_serial_inner
-                                          || rsp_.inner_size <= lanes / 2
-                                          || (rsp_.outer_size < nthr_
-                                                  && rsp_.inner_size <= lanes)))
-                        || (short_vector_columns && nthr_ == 1);
-                // Axis-strided passes revisit the same cache lines for each
-                // column. Beyond the per-core L1 estimate, retain inner-vector
-                // reuse when enough outer rows exist, or buffer column jobs
-                // when extra parallelism is needed.
-                const size_t l1_elements
-                        = platform::get_per_core_cache_size(1) / sizeof(float);
-                const bool long_strided_axis = !pack_axis_
-                        // Very narrow columns cannot amortize whole-tensor
-                        // packing; reserve it for near-full inner vectors.
-                        && nthr_ > 1 && rsp_.inner_size * 4 >= 3 * lanes
-                        && rsp_.inner_size <= nstl::min<dim_t>(lanes, 8)
-                        && static_cast<size_t>(rsp_.axis_size) > l1_elements
-                                        / static_cast<size_t>(rsp_.inner_size);
-                // Expose column jobs when both outer parallelism and m2 lane
-                // utilization are low. Keep every column's result until all
-                // input reads finish; then write contiguous destination rows.
-                buffered_axis_ = (lanes == 8 && rsp_.outer_size <= nthr_ / 4
-                                         && rsp_.inner_size > lanes
-                                         && rsp_.inner_size <= 3 * lanes / 2
-                                         && rsp_.axis_size >= 128)
-                        || (short_vector_columns && nthr_ > 1
-                                && rsp_.outer_size <= nthr_ / 4)
-                        || (long_strided_axis
-                                && (rsp_.inner_size < lanes
-                                        || rsp_.outer_size
-                                                < utils::div_up(nthr_, 2)));
-                if (buffered_axis_) {
-                    const size_t line
-                            = platform::get_cache_line_size() / sizeof(float);
-                    const size_t columns = static_cast<size_t>(work_amount);
-                    const size_t max_stride = std::numeric_limits<size_t>::max()
-                            / sizeof(float) / columns;
-                    const size_t axis = static_cast<size_t>(axis_size(true));
-                    // Odd cache-line strides distribute columns across cache
-                    // sets when the final pass reads contiguous output rows.
-                    buffered_axis_ = max_stride >= 3 * line
-                            && axis <= max_stride - 3 * line;
-                    if (buffered_axis_)
-                        buffered_axis_stride_
-                                = utils::rnd_up(axis, 2 * line) + line;
-                }
-                pack_axis_ = pack_axis_ || buffered_axis_;
-                use_axis_jit_ = pack_axis_ || sparse_serial_inner
-                        || (!long_strided_axis
-                                && rsp_.inner_size
-                                        <= nstl::min<dim_t>(lanes, 8));
-                if (use_axis_jit_) {
-                    inner_tile_ = 1;
-                    inner_lmul_ = 4;
-                }
-            }
+            init_inner_dispatch();
             const size_t dt_size = types::data_type_size(rsp_.data_type);
             if (rsp_.inner_size > 1
                     && (!use_inner_jit_ || pack_axis_

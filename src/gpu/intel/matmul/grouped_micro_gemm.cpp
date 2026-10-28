@@ -665,15 +665,8 @@ void init_ukernel_problem(const grouped_micro_gemm_t::pd_t &pd,
     // Set Alignments
     problem.A.setAlignment(alignmentForLD(
             static_cast<int>(types::elements_to_bytes(adt, lda))));
-
-    auto hw = getCore(dev_info.product().family);
-    auto ldb_bytes = types::elements_to_bytes(bdt, ldb);
-    if (dev_info.gpu_arch() >= compute::gpu_arch_t::xe_hpc
-            && ldb_bytes % jit::block_2d_base_alignment(hw) == 0) {
-        problem.B.setAlignment(static_cast<int>(ldb_bytes));
-    } else {
-        problem.B.setAlignment(alignmentForLD(static_cast<int>(ldb)));
-    }
+    problem.B.setAlignment(alignmentForLD(
+            static_cast<int>(types::elements_to_bytes(bdt, ldb))));
     problem.C.setAlignment(problem.Tc.size());
 
     opts.scaleA = conf.with_wei_scale && conf.wei_group_k < sizes.k;

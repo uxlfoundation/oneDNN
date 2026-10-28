@@ -1215,6 +1215,10 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
     kernel_ctx.define_int("DROPOUT_HOST_SCALARS", dropout_host_scalars);
     kernel_ctx.define_int("DROPOUT_OUTPUT_MASK", dropout_output_mask);
+    // Xe-HPG needs scale_tile declared volatile to avoid an IGC miscompile
+    // (NaN/zero outputs) for fused SDPA dropout; xe_hpc/xe2+ do not exhibit
+    // the bug and pay real lsc_load/lsc_store traffic for no benefit.
+    kernel_ctx.define_int("DROPOUT_VOLATILE_SCALE_WORKAROUND", !arch_gte_hpc);
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;

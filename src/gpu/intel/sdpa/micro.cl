@@ -88,7 +88,15 @@ inline void apply_dropout_s_tile(
     })
 
     /* Build float scale tile: inv_q if keep, 0.f if drop -- same type as s_tile */
+#if DROPOUT_VOLATILE_SCALE_WORKAROUND
+    // Xe-HPG only: 'volatile' suppresses an IGC optimization that otherwise
+    // miscompiles this tile (NaN/zero outputs), see xe-sdpa-dropout-mask-cse.
+    // Not needed on xe_hpc/xe2+ and costs real lsc_load/lsc_store traffic
+    // (~36% of fwd dropout overhead measured on BMG), so it is arch-gated.
     volatile s_tile_type scale_tile;
+#else
+    s_tile_type scale_tile;
+#endif
 
     const int dsg = SUBGROUP_SIZE;
     const int dbr = ugemm_kq_c_type_block0;

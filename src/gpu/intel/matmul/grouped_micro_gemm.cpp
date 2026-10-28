@@ -692,7 +692,11 @@ void init_ukernel_problem(const grouped_micro_gemm_t::pd_t &pd,
             static_cast<int>(types::elements_to_bytes(bdt, ldb))));
     problem.C.setAlignment(problem.Tc.size());
 
-    opts.scaleA = conf.with_wei_scale && conf.wei_group_k < sizes.k;
+    // Scales grouped along N need the microkernel even when a single group
+    // covers K: the per-column scales applied after the GEMM can't express
+    // them.
+    opts.scaleA = conf.with_wei_scale
+            && (conf.wei_group_k < sizes.k || conf.wei_group_n > 1);
     opts.offsetA = conf.with_wei_zp;
     opts.offsetAHostScalar = opts.offsetA && conf.wei_zp_host_scalar;
     opts.scaleB = conf.with_src_scale && conf.src_group_k < sizes.k;

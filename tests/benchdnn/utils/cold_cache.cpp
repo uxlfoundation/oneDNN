@@ -135,6 +135,9 @@ cold_cache_t::cold_cache_t(
     if (cold_mem_pool_size > cold_args_size)
         n_mem_pool_buffers = div_up(cold_mem_pool_size, cold_args_size);
 
+    if (fix_times_per_prb > 0)
+        n_buffers_top_limit_ = MIN2(
+                n_buffers_top_limit_, static_cast<size_t>(fix_times_per_prb));
     n_buffers_ = MIN2(MAX2(n_mem_pool_buffers, n_buffers_bottom_limit_),
             n_buffers_top_limit_);
     override_n_buffers_ = n_mem_pool_buffers > n_buffers_top_limit_;

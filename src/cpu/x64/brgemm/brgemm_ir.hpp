@@ -26,10 +26,6 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-// Returns `status::success` when the IR GEMM kernel can generate code for
-// `brg`, otherwise `status::unimplemented`.
-status_t brgemm_ir_supported(const brgemm_desc_t &brg);
-
 // Creates an IR-based GEMM kernel. Caller owns the pointer.
 // Returns `nullptr` on failure.
 brgemm_kernel_t *create_brgemm_ir_kernel(const brgemm_desc_t &brg);

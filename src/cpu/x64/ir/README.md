@@ -226,6 +226,24 @@ Additional rules to follow.
   addressing.
 * The public entry points in these headers are exported for unit testing.
 
+## Builder Configuration and Lowering Support
+
+The IR does not provide a way to query which operations a kernel can lower.
+This information is only available in the emitter, which knows the instructions
+supported by each ISA and does not emulate unsupported operations. If an
+operation cannot be lowered, the emitter fails through `JIT_ASSERT`, and
+`create_kernel()` reports the error. In a debug build it aborts at the
+assertion.
+
+To avoid this, each kernel enables its builder only for configurations it
+supports. The support checks are defined alongside the builder and reflect its
+lowering requirements. For example, the BRGEMM kernel reads its descriptor only
+in `init_conf()` (src/cpu/x64/brgemm/brgemm_ir.cpp), where unsupported
+configurations are rejected. These configurations fall back to a classic kernel.
+
+This means the same requirements are expressed in two places: the support checks
+and the lowering logic. Changes to either must keep them in sync.
+
 ## Tests
 
 The IR, allocator, and emitter have dedicated unit tests

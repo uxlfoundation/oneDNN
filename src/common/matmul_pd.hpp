@@ -208,12 +208,17 @@ struct matmul_pd_t : public primitive_desc_t {
 
     static constexpr int any_mask = -1;
 
+    // An omitted argument in supported_dtypes imposes no additional data type
+    // restriction; an empty list rejects all non-default scales for that arg.
+    // Default scales are not checked against supported_dtypes.
     virtual status_t attr_scales_ok(const engine_t *engine,
             const std::vector<int> &supported_args
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
             const std::vector<int> &supported_qmodes
             = {quantization_mode::static_sazp},
-            const std::map<int, std::vector<int>> &extra_masks = {}) const {
+            const std::map<int, std::vector<int>> &extra_masks = {},
+            const std::map<int, std::vector<data_type_t>> &supported_dtypes
+            = {}) const {
         const auto &scales = attr()->scales_;
         if (scales.has_default_values()) return status::success;
 
@@ -231,6 +236,16 @@ struct matmul_pd_t : public primitive_desc_t {
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
         for (int arg : supported_args) {
             if (scales.has_default_values(arg)) { continue; }
+
+            const auto dt_it = supported_dtypes.find(arg);
+            if (dt_it != supported_dtypes.end()) {
+                bool is_dtype_supported = false;
+                for (const auto dt : dt_it->second)
+                    is_dtype_supported = is_dtype_supported
+                            || scales.get_data_type(arg) == dt;
+                VDISPATCH_MATMUL(
+                        is_dtype_supported, VERBOSE_UNSUPPORTED_SCALES_CFG);
+            }
 
             // Fold-left to check if quantization mode is supported
             bool is_qmode_supported = false;

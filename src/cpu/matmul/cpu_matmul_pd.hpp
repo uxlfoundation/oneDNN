@@ -35,10 +35,11 @@ struct cpu_matmul_pd_t : public matmul_pd_t {
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
             const std::vector<int> &supported_qmodes
             = {quantization_mode::static_sazp},
-            const std::map<int, std::vector<int>> &extra_masks
+            const std::map<int, std::vector<int>> &extra_masks = {},
+            const std::map<int, std::vector<data_type_t>> &supported_dtypes
             = {}) const override {
-        CHECK(matmul_pd_t::attr_scales_ok(
-                engine, supported_args, supported_qmodes, extra_masks));
+        CHECK(matmul_pd_t::attr_scales_ok(engine, supported_args,
+                supported_qmodes, extra_masks, supported_dtypes));
         return status::success;
     }
     // NOLINTEND(google-default-arguments)

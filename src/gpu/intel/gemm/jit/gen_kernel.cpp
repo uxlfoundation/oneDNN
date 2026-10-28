@@ -67,8 +67,7 @@ SelectionObserver make_entry_observer(int eu_count, int freq_mhz,
             auto r = resolve(entry);
             return r.empty() ? std::string("(unresolved)") : r;
         };
-        gpu_debug() << "[" << lpad(entry - catalog().entries, 4)
-                    << "] consider score:" << score
+        gpu_debug() << "[" << catalog_ref(entry) << "] consider score:" << score
                     << ms_hint(score, eu_count, freq_mhz) << " " << row();
     };
 }

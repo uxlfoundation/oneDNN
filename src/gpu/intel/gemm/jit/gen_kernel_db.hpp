@@ -17,6 +17,8 @@
 #ifndef GPU_INTEL_GEMM_JIT_GEN_KERNEL_DB_HPP
 #define GPU_INTEL_GEMM_JIT_GEN_KERNEL_DB_HPP
 
+#include <string>
+
 #include "gemmstone/kernel_catalog.hpp"
 
 namespace dnnl {
@@ -28,6 +30,8 @@ namespace jit {
 
 gemmstone::kcatalog::Catalog catalog();
 gemmstone::kcatalog::Catalog lut_catalog();
+// A row's log id: "TIER:ROW" (ROW = its index in the tier).
+std::string catalog_ref(const gemmstone::kcatalog::Entry *entry);
 
 } // namespace jit
 } // namespace gemm

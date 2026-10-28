@@ -3,7 +3,11 @@
 # `rvjit`: A Component Library for RV64 JIT Kernels
 
 
-Related: [PR #5500](https://github.com/uxlfoundation/oneDNN/pull/5500) (previously, deprecated)
+Related list of PRs
+
+- [PR #5500](https://github.com/uxlfoundation/oneDNN/pull/5500): previous proposal, deprecated.
+- [PR #6383](https://github.com/uxlfoundation/oneDNN/pull/6383): current integration proposal.
+- [PR #6320](https://github.com/uxlfoundation/oneDNN/pull/6320): possible first step to a technical solution to Roadmap Step 2.
 
 
 ## Introduction

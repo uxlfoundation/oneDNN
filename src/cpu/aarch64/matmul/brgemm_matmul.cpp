@@ -26,6 +26,7 @@
 #include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "common/verbose_msg.hpp"
 
 #include "cpu/matmul/matmul_utils.hpp"
 
@@ -257,8 +258,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             abced, abcdfe, abcdegf, abcdefhg, abcdefgih, abcdefghji,
             abcdefghikj, abcdefghijlk);
 
-    if ((mayiuse(sve_512) && is_B_transposed) || is_A_transposed)
-        return status::unimplemented;
+    VDISPATCH_MATMUL(!is_A_transposed, VERBOSE_UNSUPPORTED_TAG_S, "src");
+
+    if ((mayiuse(sve_512) && is_B_transposed)) return status::unimplemented;
 
     return status::success;
 }

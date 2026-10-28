@@ -406,15 +406,19 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     bool aQuantPFEnabled = strategy.pfaux && (ao2D || ao2DLate || as2D || as2DLate || ag2DLate);
 
+    // Auxiliary (quantization) prefetches are scattered gathers (no bounds check): only whole chunks.
+    auto reqPFAq = every(ka_pfStride)
+                 | duration(strategy.cooperativePF ? ka_pfStride : strategy.ka_prefetch)
+                 | lookahead(strategy.prefetchA + lookaheadAGlobalLoad);
+
     if (strategy.prefetchA && readA) {
         ls.schedule(reqPFA, [&](Iteration h) {
             gemmALoad(state.Ap_regs, state.Ap_layout, state.Ap_addrs, problem, strategy, state);
-            // Auxiliary (quantization) prefetches always immediately follow the A prefetch.
-            if (aQuantPFEnabled) {
-                if (ao2D || ao2DLate) prefetchMatrix(state.Ap_offsetLayout, state.Ap_offsetAddrs, strategy, state);
-                if (as2D || as2DLate) prefetchMatrix(state.Ap_scaleLayout,  state.Ap_scaleAddrs,  strategy, state);
-                if (ag2DLate)         prefetchMatrix(state.Agp_layout,      state.Agp_addrs,      strategy, state);
-            }
+        });
+        if (aQuantPFEnabled) ls.schedule(reqPFAq, [&](Iteration h) {
+            if (ao2D || ao2DLate) prefetchMatrix(state.Ap_offsetLayout, state.Ap_offsetAddrs, strategy, state);
+            if (as2D || as2DLate) prefetchMatrix(state.Ap_scaleLayout,  state.Ap_scaleAddrs,  strategy, state);
+            if (ag2DLate)         prefetchMatrix(state.Agp_layout,      state.Agp_addrs,      strategy, state);
         });
     }
 
@@ -429,15 +433,18 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     bool bQuantPFEnabled = strategy.pfaux && (bo2D || bo2DLate || bs2D || bs2DLate || bg2DLate);
 
+    auto reqPFBq = every(kb_pfStride)
+                 | duration(strategy.cooperativePF ? kb_pfStride : strategy.kb_prefetch)
+                 | lookahead(strategy.prefetchB + lookaheadBGlobalLoad);
+
     if (strategy.prefetchB && readB) {
         ls.schedule(reqPFB, [&](Iteration h) {
             gemmBLoad(state.Bp_regs, state.Bp_layout, state.Bp_addrs, problem, strategy, state);
-            // Auxiliary (quantization) prefetches always immediately follow the B prefetch.
-            if (bQuantPFEnabled) {
-                if (bo2D || bo2DLate) prefetchMatrix(state.Bp_offsetLayout, state.Bp_offsetAddrs, strategy, state);
-                if (bs2D || bs2DLate) prefetchMatrix(state.Bp_scaleLayout,  state.Bp_scaleAddrs,  strategy, state);
-                if (bg2DLate)         prefetchMatrix(state.Bgp_layout,      state.Bgp_addrs,      strategy, state);
-            }
+        });
+        if (bQuantPFEnabled) ls.schedule(reqPFBq, [&](Iteration h) {
+            if (bo2D || bo2DLate) prefetchMatrix(state.Bp_offsetLayout, state.Bp_offsetAddrs, strategy, state);
+            if (bs2D || bs2DLate) prefetchMatrix(state.Bp_scaleLayout,  state.Bp_scaleAddrs,  strategy, state);
+            if (bg2DLate)         prefetchMatrix(state.Bgp_layout,      state.Bgp_addrs,      strategy, state);
         });
     }
 

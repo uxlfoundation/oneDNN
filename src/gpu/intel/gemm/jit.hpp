@@ -356,8 +356,7 @@ struct gen_t : public primitive_t {
             auto try_entry = [&](const gemmstone::kcatalog::Entry *entry,
                                      size_t entry_idx) -> bool {
                 bool ovr = kernel_desc_.has_override();
-                std::string g = ovr ? "override"
-                                    : lpad(entry - jit::catalog().entries, 4);
+                std::string g = ovr ? "override" : jit::catalog_ref(entry);
                 auto pos = std::to_string(entry_idx) + "/"
                         + std::to_string(entries.size());
                 auto skip = [&](const std::string &why) {

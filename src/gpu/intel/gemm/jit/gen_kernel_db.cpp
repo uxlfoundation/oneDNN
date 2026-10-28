@@ -40,6 +40,18 @@ gemmstone::kcatalog::Catalog lut_catalog() {
     return gemmstone::gemm_lut_catalog;
 }
 
+std::string catalog_ref(const gemmstone::kcatalog::Entry *entry) {
+    static const char *const names[] = {"kernel.db", "lut.db"};
+    int t = 0;
+    for (const auto &c : {catalog(), lut_catalog()}) {
+        if (entry >= c.entries && entry < c.entries + c.entryCount)
+            return std::string(names[t]) + ":"
+                    + std::to_string(entry - c.entries);
+        t++;
+    }
+    return "?";
+}
+
 } // namespace jit
 } // namespace gemm
 } // namespace intel

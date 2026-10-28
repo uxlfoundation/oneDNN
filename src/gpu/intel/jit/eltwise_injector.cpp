@@ -350,10 +350,6 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
     // Get Max value from group.
     h->sel(16 | ge, max.f(0)(1), abs(r.f(0)(1)), abs(r_alt.f(0)(1)));
 
-    // Revert Inf/NaN offset.
-    h->add(16, r.d(0)(1), r.d(0)(1), Immediate::d(0x7F800000));
-    h->add(16, r_alt.d(0)(1), r_alt.d(0)(1), Immediate::d(0x7F800000));
-
     h->sel(8 | ge, max.ud(0)(1), max.ud(8)(1), max.ud(0)(1));
     h->sel(4 | ge, max.ud(0)(1), max.ud(4)(1), max.ud(0)(1));
     h->sel(2 | ge, max.ud(0)(1), max.ud(2)(1), max.ud(0)(1));
@@ -371,6 +367,10 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
 
     // Invert scale for application.
     h->inv(1, max.f(1), max.f(0));
+
+    // Restore accumulators independently of the pending reciprocal.
+    h->add(16, r.d(0)(1), r.d(0)(1), Immediate::d(0x7F800000));
+    h->add(16, r_alt.d(0)(1), r_alt.d(0)(1), Immediate::d(0x7F800000));
 
     // Apply scale to dst.
     h->mul(16, r, r, max.f(1)(0));

@@ -365,10 +365,15 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
     h->and_(1, max.ud(0), max.ud(0), Immediate::ud(0x7F800000));
     h->sel(1 | ge, max.f(0)(1), max.f(0), Immediate::f(zero_e8m0));
 
-    // Invert scale for application.
-    h->inv(1, max.f(1), max.f(0));
+    // Encode the scale exponent; zero represents the minimum scale 2^-127.
+    h->shr(1, max.ud(0), max.ud(0), 23);
 
-    // Restore accumulators independently of the pending reciprocal.
+    // Finite scales are <= 2^125; exponent 255 is the +Inf intermediate.
+    h->sel(1 | le, max.ud(1), max.ud(0), Immediate::ud(254));
+    h->add(1, max.d(1), -max.d(1), Immediate::d(254));
+    h->shl(1, max.ud(1), max.ud(1), 23);
+
+    // Revert Inf/NaN offset before applying the scale.
     h->add(16, r.d(0)(1), r.d(0)(1), Immediate::d(0x7F800000));
     h->add(16, r_alt.d(0)(1), r_alt.d(0)(1), Immediate::d(0x7F800000));
 
@@ -390,8 +395,7 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
     h->sel(16 | ge, r_alt.f(0)(1), r_alt.f(0)(1), flow);
     h->sel(16 | le, r_alt.f(0)(1), r_alt.f(0)(1), fmax);
 
-    // Store scale value.
-    h->shr(1, max.ud(0), max.ud(0), 23);
+    // Store the already encoded scale.
     h->mov(1, scale_dst.ub(0), max.ub(0));
 }
 

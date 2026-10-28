@@ -42,3 +42,17 @@
 
 # u3 weights decompression
 --batch=harness_matmul_decompression_u3
+
+# GEMV with padded leading dimension of weights
+--reset
+--dt=f32,bf16,f16
+--strides=:112x1:,:1x40:
+1x36:36x108
+--strides=:4100x1:,:1x1030:
+1x1024:1024x4000
+--attr-post-ops=sum+relu
+--strides=:4032x112x1:,:4320x1x40:
+3x1x36:3x36x108
+--attr-post-ops=
+--strides=:12096x4032x112x1:,:4032x8064x112x1:
+2x3x1x36:2x3x36x108

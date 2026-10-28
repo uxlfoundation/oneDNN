@@ -501,6 +501,39 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
                          : transposed_tensor_layout_tag;
 }
 
+namespace {
+// Checks that B is a plain or transposed matrix whose only difference from
+// the dense layout is a padded leading dimension: the inner stride is 1, the
+// leading dimension is not smaller than the inner dimension, and batch
+// dimensions are dense over the padded matrix.
+bool is_B_padded_ld(const memory_desc_t &B_md) {
+    const memory_desc_wrapper B_d(B_md);
+    if (!B_d.is_plain() || B_d.has_runtime_dims_or_strides()) return false;
+
+    const int ndims = B_d.ndims();
+    const auto &dims = B_d.dims();
+    const auto &strides = B_d.blocking_desc().strides;
+    const dim_t K = dims[ndims - 2];
+    const dim_t N = dims[ndims - 1];
+
+    dim_t ld = 0;
+    if (strides[ndims - 1] == 1 && strides[ndims - 2] >= N)
+        ld = strides[ndims - 2] * K;
+    else if (strides[ndims - 2] == 1 && strides[ndims - 1] >= K)
+        ld = strides[ndims - 1] * N;
+    else
+        return false;
+
+    dim_t expected = ld;
+    for (int d = ndims - 3; d >= 0; d--) {
+        if (dims[d] == 1) continue;
+        if (strides[d] != expected) return false;
+        expected *= dims[d];
+    }
+    return true;
+}
+} // namespace
+
 /**
  * Select a compatible format for B in GEMV cases.
  *
@@ -528,9 +561,13 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
         // changing the default strategy could affect performance.
         return is_m1 ? transposed_tensor_layout_tag : plain_tensor_layout_tag;
     } else {
-        // Explicit B format can be either plain or transposed.
-        if (!memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
-                    transposed_tensor_layout_tag))
+        // Explicit B format can be either plain or transposed. When B is the
+        // matrix operand (M == 1, N > 1, K > 1), a padded leading dimension
+        // is supported too, as GEMV takes LDA from the strides.
+        const bool B_is_matrix = is_m1 && bgmmc.N > 1 && bgmmc.K > 1;
+        if (!memory_desc_matches_one_of_tag(
+                    B_md, plain_tensor_layout_tag, transposed_tensor_layout_tag)
+                && !(B_is_matrix && is_B_padded_ld(B_md)))
             return format_tag::undef;
 
         // For N == 1, B is the vector operand and its tag does not drive
@@ -1185,8 +1222,14 @@ bool is_gemv_k_split_needed(const brgemm_matmul_conf_t &bgmmc,
     const size_t l2_size = platform::get_per_core_cache_size(2);
     const dim_t max_m_blocks = div_up(matmul.M, min_m_blk);
 
-    // (a) A's column stride is a power of two.
-    const bool aliasing_stride = math::is_pow2(matmul.M * src_dt_sz);
+    // (a) A's column stride is a power of two. The leading dimension may be
+    // padded, so it is taken from the strides.
+    const dim_t lda_bytes = matmul.K == 1
+            ? matmul.M * src_dt_sz
+            : (bgmmc.gemv_strategy == gemv_strategy_t::m1_B_plain
+                              ? bgmmc.B_strides[1]
+                              : bgmmc.A_strides[0]);
+    const bool aliasing_stride = math::is_pow2(lda_bytes);
     // (b) The A footprint exceeds L2.
     const bool src_exceeds_l2 = src_sz > l2_size;
     // (c) There are too few M-blocks to keep cores busy.

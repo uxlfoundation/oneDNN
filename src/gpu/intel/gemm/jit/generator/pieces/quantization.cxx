@@ -428,6 +428,8 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
         if (qPairs.empty()) throw out_of_registers_exception();
     }
 
+    bool halves = (op == BinaryOp::Sub) && T.isInt8();
+    for (int half = 0; half < (halves ? 2 : 1); half++)
     for (auto &block: layout) {
         auto crosspack = block.crosspack;
         int nx = colMajor ? block.nr : block.nc;
@@ -505,12 +507,11 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 
             switch (op) {
                 case BinaryOp::Sub:
-                    if (T.isInt8() && strided == 1) {
+                    if (halves && strided == 1) {
+                        data.setOffset(data.getOffset() + half);
+                        qdata.setOffset(qdata.getOffset() + half * strideq / Tq);
                         add(simd / 2, data(2), data(2), -qdata(strideq * 2 / Tq));
-                        data.setOffset(data.getOffset() + 1);
-                        qdata.setOffset(qdata.getOffset() + strideq / Tq);
-                        add(simd / 2, data(2), data(2), -qdata(strideq * 2 / Tq));
-                    } else
+                    } else if (half == 0)
                         add(simd, data(strided), data(strided), -qdata(strideq));
                     break;
                 case BinaryOp::Mul:

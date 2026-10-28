@@ -74,6 +74,10 @@ struct eltwise_injector_f32_t {
             ngen::DataType = ngen::DataType::invalid);
     void compute(const int *grfs, int ngrf, int seed = -1, int seed_off = 0,
             ngen::DataType = ngen::DataType::invalid);
+    void compute_mx_scale(const int *grfs, int ngrf,
+            const ngen::Subregister &scale_dst, ngen::DataType dt, int unroll_n,
+            const ngen::Subregister &rem_m, const ngen::Subregister &rem_n,
+            const ngen::FlagRegister &flag);
 
 private:
     const alg_kind_t alg_;

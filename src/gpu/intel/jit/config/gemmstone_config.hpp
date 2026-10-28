@@ -177,8 +177,9 @@ struct PostOpsProblem {
     template <ngen::HW hw>
     void injectMXScale(GENERATOR_BASE(hw) * g, ngen::RegisterAllocator ra,
             int C_grfs[ngen::GRF::maxRegs()], int C_ngrf,
-            const ngen::Subregister &scaleDst, ngen::DataType t,
-            int unroll) const {
+            const ngen::Subregister &scaleDst, ngen::DataType t, int unroll,
+            const ngen::Subregister &remM, const ngen::Subregister &remN,
+            const ngen::FlagRegister &flag) const {
         namespace jit = dnnl::impl::gpu::intel::jit;
         using Injector = jit::eltwise_injector_f32_t<
                 typename jit::generator_t<hw>::RootCodeGenerator>;
@@ -191,7 +192,8 @@ struct PostOpsProblem {
 
         injector.set_scratch(scratch);
         injector.prepare();
-        injector.compute(C_grfs, C_ngrf, scaleDst.getBase(), unroll, t);
+        injector.compute_mx_scale(
+                C_grfs, C_ngrf, scaleDst, t, unroll, remM, remN, flag);
     }
 };
 // NOLINTEND(readability-identifier-naming)

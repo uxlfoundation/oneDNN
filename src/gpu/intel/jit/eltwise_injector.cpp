@@ -954,6 +954,74 @@ void eltwise_injector_f32_t<ngen_generator_t>::pow_compute_fwd(
 }
 
 template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::compute_mx_scale(const int *grfs,
+        int ngrf, const ngen::Subregister &scale_dst, ngen::DataType dt,
+        int unroll_n, const ngen::Subregister &rem_m,
+        const ngen::Subregister &rem_n, const ngen::FlagRegister &flag) {
+    gpu_assert(is_fwd_ && alg_ == alg_kind::eltwise_mx_scale);
+    gpu_assert(GRF::bytes(hw()) == 64);
+    gpu_assert(unroll_n > 0 && ngrf % (2 * unroll_n) == 0);
+
+    const int groups_m = ngrf / (2 * unroll_n);
+    const int unroll_m = groups_m * 32;
+
+    auto emit_groups = [&](bool guarded) {
+        Label done;
+
+        for (int gm = 0; gm < groups_m; gm++) {
+            Label next_m;
+
+            if (guarded && rem_m.isValid()) {
+                h->cmp(1 | le | flag, rem_m, gm * 32);
+                h->jmpi(1 | flag, done);
+            }
+
+            for (int gn = 0; gn < unroll_n; gn++) {
+                if (guarded && rem_n.isValid()) {
+                    h->cmp(1 | le | flag, rem_n, gn);
+                    h->jmpi(1 | flag, next_m);
+                }
+
+                const int group = gm * unroll_n + gn;
+                const int lo = 2 * gm * unroll_n + gn;
+
+                // Preserve the absolute scale slot, including skipped groups.
+                mx_scale_compute_fwd(32, GRF(grfs[lo]).f(), grfs[lo + unroll_n],
+                        scale_dst, 2, dt, 2 * group);
+            }
+
+            h->mark(next_m);
+        }
+
+        h->mark(done);
+    };
+
+    if (!rem_m.isValid() && !rem_n.isValid()) {
+        emit_groups(false);
+        return;
+    }
+
+    Label remainder, done;
+
+    if (rem_m.isValid()) {
+        h->cmp(1 | lt | flag, rem_m, unroll_m);
+        h->jmpi(1 | flag, remainder);
+    }
+    if (rem_n.isValid()) {
+        h->cmp(1 | lt | flag, rem_n, unroll_n);
+        h->jmpi(1 | flag, remainder);
+    }
+
+    emit_groups(false);
+    h->jmpi(1, done);
+
+    h->mark(remainder);
+    emit_groups(true);
+
+    h->mark(done);
+}
+
+template <typename ngen_generator_t>
 void eltwise_injector_f32_t<ngen_generator_t>::compute(const int *grfs,
         int ngrf, const int seed, const int off, const ngen::DataType dt) {
     using namespace alg_kind;

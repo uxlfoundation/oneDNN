@@ -662,6 +662,13 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
 
     jmpi(1 | state.flagAP, lSkip);
 
+    for (auto loop : {LoopM, LoopN}) {
+        if (state.remainders[loop].isValid()) {
+            cmp(1 | le | state.flagAP, state.remainders[loop], 0);
+            jmpi(1 | state.flagAP, lSkip);
+        }
+    }
+
     int C_grfs[GRF::maxRegs()];
     int C_ngrf = state.C_regs[0].getLen();
     for (int r = 0; r < C_ngrf; r++)
@@ -673,6 +680,13 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
     int m_stride = state.C_scaleLayout[0].ld / 4;
     int n_regs = std::max(1, (n_elems * m_stride) / GRF::bytes(hw));
     auto tmpCScales = state.ra.alloc_range(n_regs);
+
+    problem.postOps.injectMXScale(this, state.ra, C_grfs, C_ngrf,
+            tmpCScales.sub(hw, 0, ngen::DataType::ub),
+            problem.Tc_ext.ngen(), unrollN,
+            state.remainders[LoopM], state.remainders[LoopN],
+            state.flagAP);
+
     vector<MaskAssignment> masks;
     // Without a row mask, an M-remainder tile may store its out-of-range group
     // rows past the end of the scale row, corrupting the next column's
@@ -694,7 +708,6 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
     } else
         loadMasks(masks, state.remainders, strategy, state);
 
-    problem.postOps.injectMXScale(this, state.ra, C_grfs, C_ngrf, tmpCScales.sub(hw, 0, ngen::DataType::ub), problem.Tc_ext.ngen(), unrollN);
     storeMatrix(tmpCScales, state.C_scaleLayout, state.C_scaleAddrs, strategy, state);
     state.ra.safeRelease(tmpCScales);
     safeReleaseMaskAssignments(masks, state);

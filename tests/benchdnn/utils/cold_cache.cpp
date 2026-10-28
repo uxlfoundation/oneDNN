@@ -135,6 +135,11 @@ cold_cache_t::cold_cache_t(
     if (cold_mem_pool_size > cold_args_size)
         n_mem_pool_buffers = div_up(cold_mem_pool_size, cold_args_size);
 
+    // Never allocate more buffer sets than timed runs: `should_stop` ends the
+    // run at `n_buffers_` anyway, and each set costs an allocation + fill.
+    if (fix_times_per_prb > 0)
+        n_buffers_top_limit_ = MIN2(
+                n_buffers_top_limit_, static_cast<size_t>(fix_times_per_prb));
     n_buffers_ = MIN2(MAX2(n_mem_pool_buffers, n_buffers_bottom_limit_),
             n_buffers_top_limit_);
     override_n_buffers_ = n_mem_pool_buffers > n_buffers_top_limit_;
@@ -183,7 +188,7 @@ cold_cache_t::cold_cache_t(
             //
             // Note: despite `gpu_n_buffers_top_limit_` is taken as a limit, it
             // applies for CPU as well to avoid numerous reorders.
-            const bool prefill = n_mem_pool_buffers > gpu_n_buffers_top_limit_;
+            const bool prefill = n_mem_pool_buffers > n_buffers_top_limit_;
             // Only buffers smaller than the large page get inflated by
             // it, so only those benefit from shrinking it; shrinking
             // larger buffers too adds run-to-run timing noise for no gain.

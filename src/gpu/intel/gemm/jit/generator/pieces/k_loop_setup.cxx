@@ -293,7 +293,11 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
 
             if (!success) {
                 // Can't make a subblock. Will need a new layout or an incremental copy.
-                if (strategy.slmUseIncrCopy) {
+                // The incremental copy doesn't dequantize, and the dequantizing
+                //  SLM repack reads all of Ai, so dequantized A needs the new layout.
+                //  The new layout steps k a byte at a time, so sub-byte A keeps the
+                //  incremental copy, which becomes a full remainder load below.
+                if (strategy.slmUseIncrCopy && (!problem.earlyDequantizeA() || Ta_ext.bits() % 8 != 0)) {
                     Ai_remIncrCopy = true;
                     Ai_layoutK.resize(1);
                 } else
@@ -327,7 +331,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
             }
 
             if (!success) {
-                if (strategy.slmUseIncrCopy) {
+                if (strategy.slmUseIncrCopy && (!problem.earlyDequantizeB() || Tb_ext.bits() % 8 != 0)) {
                     Bi_remIncrCopy = true;
                     Bi_layoutK.resize(1);
                 } else

@@ -186,7 +186,7 @@ cold_cache_t::cold_cache_t(
             //
             // Note: despite `gpu_n_buffers_top_limit_` is taken as a limit, it
             // applies for CPU as well to avoid numerous reorders.
-            const bool prefill = n_mem_pool_buffers > gpu_n_buffers_top_limit_;
+            const bool prefill = n_mem_pool_buffers > n_buffers_top_limit_;
             // Only buffers smaller than the large page get inflated by
             // it, so only those benefit from shrinking it; shrinking
             // larger buffers too adds run-to-run timing noise for no gain.

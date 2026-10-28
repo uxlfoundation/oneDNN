@@ -309,7 +309,7 @@ TEST(test_compiled_partition, GetAndInfoMethod) {
             graph::dnnl_impl::dnnl_compiled_partition_impl_t>(
             &engine, inputs, outputs, kernel);
     graph::partition_t par;
-    const graph::graph_attr_t attr {graph::fpmath_mode::strict, false};
+    const graph::graph_attr_t attr {{graph::fpmath_mode::strict, false}};
     auto par_impl = std::make_shared<graph::dnnl_impl::dnnl_partition_impl_t>(
             engine.kind(), attr, graph::partition_kind_t::undef);
     par.init(par_impl);

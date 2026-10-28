@@ -44,7 +44,7 @@ TEST(test_layout_propagator, LayoutPropagatorForPermute) {
     dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
-    const graph::graph_attr_t graph_attr {graph::fpmath_mode::any, false};
+    const graph::graph_attr_t graph_attr {{graph::fpmath_mode::any, false}};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
             std::vector<std::shared_ptr<graph::op_t>> {op}, p_engine,
             graph_attr, false, false);
@@ -69,7 +69,7 @@ TEST(test_layout_propagator, LayoutPropagatorForReorder) {
     dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
-    const graph::graph_attr_t graph_attr {graph::fpmath_mode::any, false};
+    const graph::graph_attr_t graph_attr {{graph::fpmath_mode::any, false}};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
             std::vector<std::shared_ptr<graph::op_t>> {op}, p_engine,
             graph_attr, false, false);
@@ -94,7 +94,7 @@ TEST(test_layout_propagator, LayoutPropagatorForSumDeathTest) {
 
     op->add_input(lt_in);
     op->add_output(lt_out);
-    const graph::graph_attr_t graph_attr {graph::fpmath_mode::any, false};
+    const graph::graph_attr_t graph_attr {{graph::fpmath_mode::any, false}};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
             std::vector<std::shared_ptr<graph::op_t>> {op}, p_engine,
             graph_attr, false, false);
@@ -131,7 +131,7 @@ TEST(test_layout_propagator, LayoutPropagatorForSubZpsDeathTest) {
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
-    const graph::graph_attr_t graph_attr {graph::fpmath_mode::any, false};
+    const graph::graph_attr_t graph_attr {{graph::fpmath_mode::any, false}};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
             std::vector<std::shared_ptr<graph::op_t>> {op}, p_engine,
             graph_attr, false, false);
@@ -153,7 +153,7 @@ TEST(test_layout_propagator, LayoutPropagatorForAddZpsDeathTest) {
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
-    const graph::graph_attr_t graph_attr {graph::fpmath_mode::any, false};
+    const graph::graph_attr_t graph_attr {{graph::fpmath_mode::any, false}};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
             std::vector<std::shared_ptr<graph::op_t>> {op}, p_engine,
             graph_attr, false, false);

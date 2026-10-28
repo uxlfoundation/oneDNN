@@ -91,10 +91,6 @@ public:
 
     const graph::graph_attr_t &get_attr() const { return pimpl_->get_attr(); }
 
-    const graph::fpmath_t &get_fpmath_mode() const {
-        return pimpl_->get_fpmath_mode();
-    }
-
     graph::partition_kind_t get_kind() const { return pimpl_->get_kind(); }
 
     const std::vector<std::shared_ptr<graph::op_t>> &get_ops() const {

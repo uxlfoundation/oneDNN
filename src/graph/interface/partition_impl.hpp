@@ -72,16 +72,18 @@ public:
     explicit partition_impl_t(engine_kind_t engine_kind, graph_attr_t attr,
             partition_kind_t pkind)
         : engine_kind_(engine_kind)
-        , attr_(std::move(attr))
+        , attr_(attr)
         , pkind_(pkind)
         , can_use_blocked_layout_(false) {}
 
     explicit partition_impl_t(engine_kind_t engine_kind, graph_attr_t attr = {})
         : engine_kind_(engine_kind)
-        , attr_(std::move(attr))
+        , attr_(attr)
         , pkind_(partition_kind_t::undef)
         , can_use_blocked_layout_(false) {
-        attr_.fpmath_.mode_ = graph::fpmath_mode::strict;
+        auto fpmath = attr_.get_fpmath();
+        fpmath.mode_ = graph::fpmath_mode::strict;
+        attr_.set_fpmath(fpmath);
     }
 
     virtual ~partition_impl_t() = default;
@@ -91,9 +93,6 @@ public:
 
     /// The getter for graph attributes
     const graph_attr_t &get_attr() const { return attr_; }
-
-    /// The getter for floating-point math mode
-    const fpmath_t &get_fpmath_mode() const { return attr_.fpmath_; }
 
     /// The getter for partition kind
     partition_kind_t get_kind() const { return pkind_; }

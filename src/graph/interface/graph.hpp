@@ -86,13 +86,13 @@ private:
 public:
     dnnl_graph_graph(graph::engine_kind_t kind = graph::engine_kind::cpu)
         : engine_kind_(kind) {
-        attr_.fpmath_.mode_ = dnnl::impl::get_fpmath_mode();
+        attr_.set_fpmath({dnnl::impl::get_fpmath_mode(), false});
     }
 
     dnnl_graph_graph(
             graph::engine_kind_t kind, graph::fpmath_mode_t fpmath_mode)
         : engine_kind_(kind) {
-        attr_.fpmath_.mode_ = fpmath_mode;
+        attr_.set_fpmath({fpmath_mode, false});
     }
 
     // deep copy (except that the partition_impls_ is shallow copy)
@@ -106,7 +106,7 @@ public:
     dnnl_graph_graph(const std::vector<op_ptr> &ops,
             graph::engine_kind_t kind = graph::engine_kind::cpu,
             graph::graph_attr_t attr = {})
-        : ops_(ops), engine_kind_(kind), attr_(std::move(attr)) {}
+        : ops_(ops), engine_kind_(kind), attr_(attr) {}
 
     dnnl_graph_graph &operator=(const dnnl_graph_graph &other) = delete;
 
@@ -115,8 +115,6 @@ public:
     graph::engine_kind_t get_engine_kind() const { return engine_kind_; }
 
     const graph::graph_attr_t &get_attr() const { return attr_; }
-
-    const graph::fpmath_t &get_fpmath_mode() const { return attr_.fpmath_; }
 
     /*!
      * \brief Check whether an operator can be added
@@ -150,8 +148,7 @@ public:
 
     graph::status_t set_fpmath_mode(
             graph::fpmath_mode_t mode, bool apply_to_int) {
-        attr_.fpmath_.mode_ = mode;
-        attr_.fpmath_.apply_to_int_ = apply_to_int;
+        attr_.set_fpmath({mode, apply_to_int});
         return graph::status::success;
     }
 

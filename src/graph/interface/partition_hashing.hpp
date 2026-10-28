@@ -163,10 +163,7 @@ struct hash<dnnl::impl::graph::partition_hashing::key_t> {
         seed = get_array_hash(seed, key.outs_.data(), key.outs_.size());
 
         // Combine hash for graph attributes
-        seed = dnnl::impl::hash_combine(
-                seed, static_cast<size_t>(key.attr_.fpmath_.mode_));
-        seed = dnnl::impl::hash_combine(
-                seed, static_cast<size_t>(key.attr_.fpmath_.apply_to_int_));
+        seed = dnnl::impl::hash_combine(seed, key.attr_.hash());
 
         return seed;
     }

@@ -53,9 +53,9 @@ using pd_cache_t = std::unordered_map<op_t *, graph::utils::any_t>;
 
 inline void set_graph_attributes(
         dnnl::primitive_attr &attr, const graph_attr_t &graph_attr) {
+    const auto &fpmath = graph_attr.get_fpmath();
     attr.set_fpmath_mode(
-            static_cast<dnnl::fpmath_mode>(graph_attr.fpmath_.mode_),
-            graph_attr.fpmath_.apply_to_int_);
+            static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
 }
 
 format_tag get_ncx_format(size_t ndim);

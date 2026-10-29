@@ -356,6 +356,7 @@ struct GEMMState : public CommonState {
     bool lateKLoopCheck = false;
     bool splitBarrierAlways = false;
     int ka_loadRem, kb_loadRem;
+    int aqRemK = 1, bqRemK = 1;     // K span of early 2D quantization remainder (multiple of group size)
     bool A_lateKRem, B_lateKRem;
     bool A_descRem, B_descRem;
     bool Ai_hasKRem, Bi_hasKRem;

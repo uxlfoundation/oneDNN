@@ -203,8 +203,36 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
     // Early-dequantized remainder loads cover at most one quantization group.
     bool aqGroupRem = problem.earlyDequantizeA() && !strategy.slmA && state.kaq > 1;
     bool bqGroupRem = problem.earlyDequantizeB() && !strategy.slmB && state.kbq > 1;
-    if (aqGroupRem) ka_loadRem = std::min(ka_loadRem, problem.aqGroupK);
-    if (bqGroupRem) kb_loadRem = std::min(kb_loadRem, problem.bqGroupK);
+    //  Block 2D VNNI/transpose blocks cannot be sliced finer than their crosspack, so round the cap up.
+    auto groupCap = [](int groupK, const RegisterLayout &layout, const MatrixAddressing &atype,
+                       const MatrixAddressingStrategy &astrategy) {
+        int cap = groupK;
+        for (auto &block: layout) {
+            if (!block.isLoadBlock()) continue;
+            auto at = block.effectiveAccessType(atype, astrategy);
+            if (at == AccessType::Block2DVNNI || at == AccessType::Block2DTranspose)
+                cap = std::max(cap, std::max(1, 4 / int(block.ebytes)));
+        }
+        return cap;
+    };
+    bool aqCapRounded = false, bqCapRounded = false;
+    state.aqRemK = problem.aqGroupK;
+    state.bqRemK = problem.bqGroupK;
+    if (aqGroupRem) {
+        int cap = groupCap(problem.aqGroupK, state.A_layout, problem.A, strategy.A);
+        // Round cap to a whole number of groups; the quantization remainder then spans cap/aqGroupK groups.
+        cap = ((cap + problem.aqGroupK - 1) / problem.aqGroupK) * problem.aqGroupK;
+        aqCapRounded = (cap != problem.aqGroupK);
+        ka_loadRem = std::min<int>(ka_loadRem, cap);
+        if (aqCapRounded) state.aqRemK = std::min<int>(cap, ka_loadRem);
+    }
+    if (bqGroupRem) {
+        int cap = groupCap(problem.bqGroupK, state.B_layout, problem.B, strategy.B);
+        cap = ((cap + problem.bqGroupK - 1) / problem.bqGroupK) * problem.bqGroupK;
+        bqCapRounded = (cap != problem.bqGroupK);
+        kb_loadRem = std::min<int>(kb_loadRem, cap);
+        if (bqCapRounded) state.bqRemK = std::min<int>(cap, kb_loadRem);
+    }
 
     // Fragment the A, B layouts into smaller blocks (usually 1 row/column) for remainder loads.
     state.A_layoutRem = state.A_layout.trySlice(state.A_addrsRem, state.A_addrs, true,  0, ka_loadRem, strategy.A.padded);
@@ -370,10 +398,17 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
 
     // Each early-dequantized remainder repack (dequantization) step must lie within one quantization group.
     //  This holds by construction for power-of-two sizes, as remainder loads are capped to one group.
-    if (aqGroupRem && problem.aqGroupK % std::min(ka_loadRem, ka_repackRem))
-        stub("Unexpected remainder repack size for quantization group size");
-    if (bqGroupRem && problem.bqGroupK % std::min(kb_loadRem, kb_repackRem))
-        stub("Unexpected remainder repack size for quantization group size");
+    //  With a rounded cap, the step may instead be a whole multiple of the group size (scales are widened to match).
+    if (aqGroupRem) {
+        int step = std::min(ka_loadRem, ka_repackRem);
+        if (problem.aqGroupK % step && !(aqCapRounded && step % problem.aqGroupK == 0))
+            stub("Unexpected remainder repack size for quantization group size");
+    }
+    if (bqGroupRem) {
+        int step = std::min(kb_loadRem, kb_repackRem);
+        if (problem.bqGroupK % step && !(bqCapRounded && step % problem.bqGroupK == 0))
+            stub("Unexpected remainder repack size for quantization group size");
+    }
 
     // 2D quantization parameter remainder layouts cover a single group (K is assumed to be a multiple of the
     //  group size), sharing address registers with the main layouts. Early parameters for A/B in SLM are
@@ -382,7 +417,10 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
                          const vector<RegisterRange> &addrs, vector<RegisterRange> &addrsRem) {
         bool slm = isA ? strategy.slmA : strategy.slmB;
         if (layout.empty() || (slm && !late)) return;
-        layoutRem = layout.trySlice(addrsRem, addrs, isA, 0, 1, layout.addressingStrategy().padded);
+        int gK = isA ? problem.aqGroupK : problem.bqGroupK;
+        int rK = isA ? state.aqRemK : state.bqRemK;
+        int width = (!late && gK > 0) ? std::max(1, rK / gK) : 1;
+        layoutRem = layout.trySlice(addrsRem, addrs, isA, 0, width, layout.addressingStrategy().padded);
         if (!layoutRem) stub("Could not slice quantization parameters to a single group");
     };
 

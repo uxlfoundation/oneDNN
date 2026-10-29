@@ -132,9 +132,13 @@ inline void apply_dropout_s_tile(
 #define DROPOUT_GROUPED_SHAPE_OK \
     (((ugemm_kq_c_type_block1 * ugemm_kq_c_type_nblock1) & 3) == 0)
 #if DROPOUT_GROUPED_SHAPE_OK
-    if (use_dropout_offset && (k_stride & 3) == 0
-            && (((batch_head_base + (ulong)tile_offset_r) & 3UL) == 0)) {
-        /* The key schedule depends only on seed, which is loop-invariant
+    {
+        /* The grouped path is unconditional here: it assumes
+           use_dropout_offset != 0, k_stride % 4 == 0 and
+           (batch_head_base + tile_offset_r) % 4 == 0. The only remaining
+           selector is the compile-time dnj % 4 check above.
+
+           The key schedule depends only on seed, which is loop-invariant
            across every group below (i0 and j) -- compute it once here
            instead of inside philox_4x32_vec4[x2]_w_offset() on every call. */
         const philox_key_schedule_t ks = philox_4x32_key_schedule(seed);
@@ -182,11 +186,6 @@ inline void apply_dropout_s_tile(
                 }
             }
         }
-    } else {
-        tile_predicated_select_t(scale_tile, tile_offset_r, tile_offset_c,
-                dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
-                ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
-                ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1);
     }
 #else
     /* dnj % 4 != 0 for this shape: the grouped path's 8-/4-wide Philox

@@ -137,19 +137,34 @@ inline void apply_dropout_s_tile(
             for (; j + 8 <= dnj; j += 8) {
                 const uint8 v8 = philox_4x32_vec4x2_w_keys(
                         cbase + (ulong)j, offset, ks.key0, ks.key1);
+                /* STEP1: vectorized threshold+bounds compare and select
+                   across all 8 words at once, instead of 8 scalar
+                   ternaries -- fewer, wider compare/select ops. */
+                int8 orow8 = (int8)(tile_offset_r + j, tile_offset_r + j + 1,
+                        tile_offset_r + j + 2, tile_offset_r + j + 3,
+                        tile_offset_r + j + 4, tile_offset_r + j + 5,
+                        tile_offset_r + j + 6, tile_offset_r + j + 7);
+                int8 keep_mask = (v8 > threshold) & (orow8 < max_r)
+                        & (int8)(offset_c < max_c ? -1 : 0);
+                float8 scale8
+                        = select((float8)(0.f), (float8)(inv_q), keep_mask);
                 for (int w = 0; w < 8; w++) {
                     tile_access(scale_tile, i0, j + w, dsg, dbr, dbc, dnbr)
-                            = dropout_keep(
-                                    v8[w], tile_offset_r + j + w, offset_c);
+                            = scale8[w];
                 }
             }
             for (; j < dnj; j += 4) {
                 const uint4 v4 = philox_4x32_vec4_w_keys(
                         cbase + (ulong)j, offset, ks.key0, ks.key1);
+                int4 orow4 = (int4)(tile_offset_r + j, tile_offset_r + j + 1,
+                        tile_offset_r + j + 2, tile_offset_r + j + 3);
+                int4 keep_mask = (v4 > threshold) & (orow4 < max_r)
+                        & (int4)(offset_c < max_c ? -1 : 0);
+                float4 scale4
+                        = select((float4)(0.f), (float4)(inv_q), keep_mask);
                 for (int w = 0; w < 4; w++) {
                     tile_access(scale_tile, i0, j + w, dsg, dbr, dbc, dnbr)
-                            = dropout_keep(
-                                    v4[w], tile_offset_r + j + w, offset_c);
+                            = scale4[w];
                 }
             }
         }

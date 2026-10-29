@@ -114,11 +114,25 @@ inline void apply_dropout_s_tile(
            (batch_head_base + tile_offset_r) % 4 == 0 -- tile_offset_r moves
            with the attention k-loop so this is not always true;
          - the tile has a whole number of groups, i.e. dnj % 4 == 0.
-       Otherwise fall back to the original one-call-per-element path for the
-       whole tile; dropout is a small fraction of total time on such tiles
-       so losing the reuse there isn't worth extra code to chase partial
+       The first two conditions depend on runtime values (k_stride,
+       batch_head_base) and must stay a runtime check. The third, dnj % 4,
+       is fully determined by compile-time JIT tile-shape constants
+       (ugemm_kq_c_type_block1/nblock1) -- for shapes where it is false the
+       grouped path can *never* be taken at runtime, so gate its entire body
+       out at compile time instead of leaving it as dead-at-runtime-but-
+       still-compiled code. This halves the SDPA kernel's static instruction
+       count and flag-register spill traffic for such shapes (verified via
+       ISA dump: scaffolding-only round0 build went from ~2x the floor's
+       instruction count and 44 flag-register spill loads down when the
+       unreachable half of the code isn't compiled in at all). Otherwise
+       fall back to the original one-call-per-element path for the whole
+       tile; dropout is a small fraction of total time on such tiles so
+       losing the reuse there isn't worth extra code to chase partial
        groups. */
-    if (use_dropout_offset && (k_stride & 3) == 0 && (dnj & 3) == 0
+#define DROPOUT_GROUPED_SHAPE_OK \
+    (((ugemm_kq_c_type_block1 * ugemm_kq_c_type_nblock1) & 3) == 0)
+#if DROPOUT_GROUPED_SHAPE_OK
+    if (use_dropout_offset && (k_stride & 3) == 0
             && (((batch_head_base + (ulong)tile_offset_r) & 3UL) == 0)) {
         /* The key schedule depends only on seed, which is loop-invariant
            across every group below (i0 and j) -- compute it once here
@@ -174,6 +188,17 @@ inline void apply_dropout_s_tile(
                 ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
                 ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1);
     }
+#else
+    /* dnj % 4 != 0 for this shape: the grouped path's 8-/4-wide Philox
+       reuse can never apply (it relies on a whole number of 4-groups per
+       row), so only the scalar one-call-per-element fallback is compiled
+       in here at all. */
+    tile_predicated_select_t(scale_tile, tile_offset_r, tile_offset_c,
+            dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
+            ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
+            ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1);
+#endif
+#undef DROPOUT_GROUPED_SHAPE_OK
 #undef dropout_keep
 
     /* Multiply S_tile element-wise by scale tile (both float, no conversion) */

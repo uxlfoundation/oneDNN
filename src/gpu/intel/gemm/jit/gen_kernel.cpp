@@ -266,6 +266,10 @@ status_t gen_desc_t::finalize(const char *tags) {
                                 int(utils::div_up(k_, aux_params_.k0))));
             }
         }
+        if (!strategy_.alignUnrollToCQGroups(problem_)) {
+            gpu_debug() << "MX dst unroll rounding incompatible with entry";
+            return status::unimplemented;
+        }
     } catch (const std::exception &e) { return reject(e.what()); }
     modifyStrategy(strategy_, aux_params_);
     if (l1_flush_wa_)
@@ -633,6 +637,8 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     }
 
     eval_params_.sizes = base.sizes;
+    for (int i = 0; i < 3; i++)
+        eval_params_.unrollRound[i] = base.unrollRound[i];
     eval_params_.alpha = alpha;
     eval_params_.beta = beta;
     eval_params_.product = product_;

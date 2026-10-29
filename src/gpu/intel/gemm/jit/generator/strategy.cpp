@@ -626,6 +626,19 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     CommonStrategy::preflight(hw, problem);
 }
 
+bool GEMMStrategy::alignUnrollToCQGroups(const GEMMProblem &problem)
+{
+    if (!problem.hasCMXScale()) return true;
+    const int g = problem.cqGroupM;
+    int um = align_up(unroll[LoopM], g);
+    if (um == unroll[LoopM]) return true;
+    unroll[LoopM] = um;
+    if (remHandling[LoopM] == RemainderHandling::Ignore)
+        remHandling[LoopM] = RemainderHandling::General;
+    if (!dpasw && A.tileR && um % A.tileR) return false;
+    return true;
+}
+
 // Reduce register pressure. Returns true if successful.
 bool GEMMStrategy::minimize(HW hw, const GEMMProblem &problem)
 {

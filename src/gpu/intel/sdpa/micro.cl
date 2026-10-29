@@ -86,7 +86,12 @@ inline void apply_dropout_s_tile(
 
     /* Build float scale tile: inv_q if keep, 0.f if drop -- same type as s_tile */
 
+#if DROPOUT_VOLATILE_SCALE_WORKAROUND
+    // Xe-HPG only: volatile avoids an IGC miscompile but adds memory traffic.
     volatile s_tile_type scale_tile;
+#else
+    s_tile_type scale_tile;
+#endif
 
     /* Grouped path needs use_dropout_offset, k_stride % 4 == 0, a 4-aligned
        tile start (runtime) and tile_len % 4 == 0 (JIT constant). */

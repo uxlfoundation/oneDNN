@@ -29,6 +29,12 @@
    that CPU reference is kept in sync. */
 #define PHILOX_ROUNDS 7
 
+/* Every round (1-10) above is now individually gated on PHILOX_ROUNDS,
+   not just rounds 7-10, so this define can be swept from 0 (key schedule
+   + counter/offset setup + threshold compare + tile apply only, no
+   crypto mixing at all) up to 10 to profile the per-round cost of the
+   fused SDPA dropout kernel. See scripts/profile_sdpa_philox_rounds.sh. */
+
 /* The Philox key schedule (key0/key1, 10 round-keys derived from seed) does
    not depend on idx/offset at all. Callers that invoke philox many times
    with the same seed in a loop (e.g. one call per group of 4 dropout mask
@@ -75,12 +81,24 @@ uint4 philox_4x32_vec4_w_keys(ulong idx, ulong offset, uint16 key0, uint4 key1) 
             (uint)(x >> 32));
 
     const uint2 PHILOX_M4x32 = (uint2)(0xD2511F53u, 0xCD9E8D57u);
+#if PHILOX_ROUNDS >= 1
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s01);
+#endif
+#if PHILOX_ROUNDS >= 2
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s23);
+#endif
+#if PHILOX_ROUNDS >= 3
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s45);
+#endif
+#if PHILOX_ROUNDS >= 4
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s67);
+#endif
+#if PHILOX_ROUNDS >= 5
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s89);
+#endif
+#if PHILOX_ROUNDS >= 6
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.sAB);
+#endif
 #if PHILOX_ROUNDS >= 7
     ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.sCD);
 #endif
@@ -126,12 +144,24 @@ uint8 philox_4x32_vec4x2_w_keys(
         ctrB = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctrB, (key)); \
     } while (0)
 
+#if PHILOX_ROUNDS >= 1
     PHILOX_4UINT_ROUND_X2(key0.s01);
+#endif
+#if PHILOX_ROUNDS >= 2
     PHILOX_4UINT_ROUND_X2(key0.s23);
+#endif
+#if PHILOX_ROUNDS >= 3
     PHILOX_4UINT_ROUND_X2(key0.s45);
+#endif
+#if PHILOX_ROUNDS >= 4
     PHILOX_4UINT_ROUND_X2(key0.s67);
+#endif
+#if PHILOX_ROUNDS >= 5
     PHILOX_4UINT_ROUND_X2(key0.s89);
+#endif
+#if PHILOX_ROUNDS >= 6
     PHILOX_4UINT_ROUND_X2(key0.sAB);
+#endif
 #if PHILOX_ROUNDS >= 7
     PHILOX_4UINT_ROUND_X2(key0.sCD);
 #endif

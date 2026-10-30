@@ -599,10 +599,14 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range_impl(
     const auto needs_ternary_input = post_op.is_binary_with_ternary_op();
     const auto &vmm_tail_idx = rhs_arg_params.vmm_tail_idx_;
     const bool tail_exists_in_range = !vmm_tail_idx.empty();
+    // Strategies that read the right-hand side through a broadcast address,
+    // which `inject_binary` loads into the helper vmm on non-avx512.
     const bool bcast_f32_non_avx512 = !has_avx512_core_
             && utils::one_of(rhs_broadcasting_strategy,
                     broadcasting_strategy_t::scalar,
-                    broadcasting_strategy_t::per_oc_spatial)
+                    broadcasting_strategy_t::per_oc_spatial,
+                    broadcasting_strategy_t::per_oc_d,
+                    broadcasting_strategy_t::per_mb)
             && rhs_arg_data_type == data_type::f32;
     const bool should_preserve_vmm_tail = tail_exists_in_range
             && (!has_avx512_core_

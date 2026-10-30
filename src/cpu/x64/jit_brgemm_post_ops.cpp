@@ -52,9 +52,11 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
             const auto &entry = post_ops.entry_[i];
             if (!entry.is_binary()) continue;
             has_f8_e5m2_binary_postops
-                    = entry.binary.src1_desc.data_type == data_type::f8_e5m2;
+                    = entry.binary.src1_desc.data_type == data_type::f8_e5m2
+                    || has_f8_e5m2_binary_postops;
             has_f8_e4m3_binary_postops
-                    = entry.binary.src1_desc.data_type == data_type::f8_e4m3;
+                    = entry.binary.src1_desc.data_type == data_type::f8_e4m3
+                    || has_f8_e4m3_binary_postops;
         }
     }
 
@@ -655,9 +657,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
     const int nb2_tail = nb % n_block2_;
     int n_block = (nb2 == 0) ? nstl::max(1, nb2_tail) : n_block2_;
 
-    int m_max_regs = (brg_.is_bf16_emu
-                    ? 24
-                    : (brg_.is_fp8_via_convert() ? 23 : max_vregs_ - 4));
+    int m_max_regs = (brg_.is_bf16_emu ? 24
+                    : (brg_.is_fp8_via_convert() || brg_.is_fp8_post_ops_emu())
+                    ? 23
+                    : max_vregs_ - 4);
     m_max_regs /= n_block;
     int m_block
             = static_cast<int>(nstl::min<dim_t>(brg_.bcast_dim, m_max_regs));
@@ -737,10 +740,8 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
 
     if (postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
-    if (brg_.is_fp8_via_convert()) {
-        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
-        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
-    }
+    if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+    if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
 }
 
 #undef GET_OFF

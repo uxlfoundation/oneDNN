@@ -116,8 +116,10 @@ struct jit_brgemm_kernel_t : public brgemm_kernel_t {
                     : (brg.gemv_acc_is_vector() ? brg.gemv_tail : 1);
             const auto k_mask = !brg.is_gemv ? ld_tail_mask : gemv_partial_mask;
 
+            // The address cache register must not be `reg64_fp8_aux` (see the
+            // note on fp8 emulator registers).
             const binary_injector::rhs_arg_static_params_t rhs_sp {
-                    vmm_tmp(0).getIdx(), this->r14, this->r15, this->r13,
+                    vmm_tmp(0).getIdx(), this->r14, this->r15, this->rbx,
                     preserve_gpr, preserve_vmm,
                     GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(data_C_ptr_),
                     dst_md_wrapper, tail_size, k_mask,
@@ -332,7 +334,7 @@ private:
         auto used_vregs = 0;
         if (brg.is_int8 && !brg.has_int8_vnni)
             used_vregs = 2;
-        else if (brg.is_fp8_via_convert())
+        else if (brg.is_fp8_via_convert() || brg.is_fp8_post_ops_emu())
             used_vregs = 5;
         else if (brg.is_f16_b_non_amx_vnni())
             used_vregs = 2;
@@ -2044,7 +2046,11 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(int bd_block,
         dq2ps_cvt_done = true;
     }
 
-    if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
+    // The fp8 conversions of bias, binary post-op, and dst data use
+    // `reg64_fp8_aux`.
+    const bool save_fp8_aux
+            = brg.is_fp8_via_convert() || brg.is_fp8_post_ops_emu();
+    if (save_fp8_aux) reg64_fp8_aux.save();
 
     if (!brg.is_gemv) {
         reg_aux_bias.restore();
@@ -2066,11 +2072,11 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(int bd_block,
     } else if (brg.with_bias)
         gemv_apply_bias(bd_block, is_bdb_tail);
 
-    if (brg.is_fp8_via_convert()) reg64_fp8_aux.restore();
-
     if (postops_injector_)
         apply_post_ops(bd_block, ld_block2, ldb_and_bdb_offset, is_ld_tail,
                 is_bdb_tail);
+
+    if (save_fp8_aux) reg64_fp8_aux.restore();
 
     if (brg.with_dst_scales) {
         reg_dst_scales.restore();
@@ -2146,7 +2152,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(int bd_block,
     reg64_savable_guard_t reg_aux_D_backup_guard(
             {&reg_aux_D_backup}, brg.is_runtime_ldd && bd_block > 1);
 
-    if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
+    if (save_fp8_aux) reg64_fp8_aux.save();
 
     if (is_superset(brg.isa_impl, avx10_2))
         prefetchrst2(ptr[reg_aux_D]);
@@ -2245,7 +2251,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(int bd_block,
         if (brg.is_runtime_ldd && bd_block > 1 && ld == ld_block2 - 1)
             reg_D_shift_bytes.addTo(reg_aux_D);
     }
-    if (brg.is_fp8_via_convert()) reg64_fp8_aux.restore();
+    if (save_fp8_aux) reg64_fp8_aux.restore();
 }
 
 template <typename Wmm>
@@ -4353,10 +4359,8 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
             dd(0);
     }
 
-    if (brg.is_fp8_via_convert()) {
-        if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
-        if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
-    }
+    if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+    if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
 
     if (brg.with_eltwise || brg.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);

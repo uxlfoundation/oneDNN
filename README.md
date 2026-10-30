@@ -27,7 +27,8 @@ normalization, and other operations, and is the acceleration layer behind
 PyTorch, TensorFlow, OpenVINO, and many other AI frameworks.
 
 The library is optimized for Intel 64/AMD64 architecture-based processors,
-Arm(R) 64-bit Architecture (AArch64)-based processors, and Intel Graphics.
+Arm(R) 64-bit Architecture (AArch64)-based processors,
+RISC-V 64-bit (RV64)-based processors, and Intel Graphics.
 oneDNN has experimental support for the following architectures: NVIDIA\* GPU,
 AMD\* GPU, OpenPOWER\* Power ISA (PPC64), and IBMz\* (s390x).
 
@@ -136,9 +137,9 @@ You can download and install the oneDNN library using one of the following optio
 oneDNN supports platforms based on the following architectures:
 - [Intel 64/AMD64](https://en.wikipedia.org/wiki/X86-64)
 - [Arm 64-bit Architecture (AArch64)](https://developer.arm.com/architectures/cpu-architecture/a-profile)
-- [OpenPOWER](https://openpowerfoundation.org/) / [IBM Power ISA](https://en.wikipedia.org/wiki/Power_ISA)
-- [IBMz z/Architecture (s390x)](https://en.wikipedia.org/wiki/Z/Architecture)
 - [RISC-V 64-bit (RV64)](https://en.wikipedia.org/wiki/RISC-V)
+- **[experimental]** [OpenPOWER](https://openpowerfoundation.org/) / [IBM Power ISA](https://en.wikipedia.org/wiki/Power_ISA)
+- **[experimental]** [IBMz z/Architecture (s390x)](https://en.wikipedia.org/wiki/Z/Architecture)
 
 > **WARNING**
 >
@@ -198,7 +199,7 @@ The library is optimized for the following GPUs:
 ### Requirements for Building from Source
 
 oneDNN supports systems meeting the following requirements:
-* Operating system with Intel 64/AMD64, AArch64, PPC64, s390x, or RV64
+* Operating system with Intel 64/AMD64, AArch64, RV64, PPC64, or s390x
   architecture support
 * C++ compiler with C++11 standard support
 * [CMake] 3.13 or later
@@ -225,9 +226,9 @@ dependencies.
 #### CPU Engine
 
 The oneDNN CPU engine is used to execute primitives on Intel 64/AMD64-based
-processors, 64-bit Arm Architecture (AArch64) processors, 64-bit Power ISA
-(PPC64) processors, IBMz (s390x), RISC-V 64-bit (RV64) processors, and
-compatible devices.
+processors, 64-bit Arm Architecture (AArch64) processors, RISC-V 64-bit (RV64)
+processors, 64-bit Power ISA (PPC64) processors, IBMz (s390x), and compatible
+devices.
 
 The CPU engine is built by default but can be disabled at build time by setting
 `ONEDNN_CPU_RUNTIME` to `NONE`. In this case, the GPU engine must be enabled.

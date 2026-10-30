@@ -185,7 +185,12 @@ struct PostOpsProblem {
                 typename jit::generator_t<hw>::RootCodeGenerator>;
         Injector injector {g, dnnl::impl::alg_kind::eltwise_mx_scale, 0.0, 0.0,
                 1.0, ngen::GRFRange(), fwd};
-        auto scratch = ra.try_alloc_range(injector.preferred_scratch_regs());
+        int width = unroll >= 4 ? 4 : unroll >= 2 ? 2 : 1;
+        auto scratch = ra.try_alloc_range(width);
+        while (scratch.isInvalid() && width > 1) {
+            width /= 2;
+            scratch = ra.try_alloc_range(width);
+        }
         if (scratch.isInvalid())
             scratch = ra.alloc_range(injector.min_scratch_regs());
         if (scratch.isInvalid()) gpu_error_not_expected();

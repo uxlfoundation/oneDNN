@@ -321,10 +321,13 @@ void eltwise_injector_f32_t<ngen_generator_t>::round_compute_fwd(
 template <typename ngen_generator_t>
 void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
         const ngen::GRF &r, int off, const ngen::Subregister &seed, int nreg,
-        const ngen::DataType dst_dt, int phase) {
+        const ngen::DataType dst_dt, int phase, int pipeline_phase,
+        int scratch_idx) {
     assert(simd == 32);
     assert(utils::one_of(dst_dt, ngen::DataType::bf8, ngen::DataType::hf8,
             ngen::DataType::e2m1));
+    gpu_assert(pipeline_phase >= -1 && pipeline_phase < mx_scale_phase_count);
+    gpu_assert(scratch_idx >= 0 && scratch_idx < scratch_.getLen());
 
     int scale_off = (phase / nreg * 4);
     int grf_bytes = GRF::bytes(hw());
@@ -334,7 +337,8 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
                                     : seed.ub(scale_off);
 
     ngen::GRF r_alt(off);
-    auto max = scratch_[0].f();
+    auto max = scratch_[scratch_idx].f();
+    const bool all = pipeline_phase == -1;
 
     // Inverse max float within e8m0 range for f8_e2m5, f8_e4m3, f4_e2m1.
     float zero_e8m0 = 5.877472e-39f, inv_fmax_bf8 = 0.000030517578125f,
@@ -343,60 +347,63 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
             : (dst_dt == ngen::DataType::hf8)       ? Immediate::f(inv_fmax_hf8)
                                               : Immediate::f(inv_fmax_f4_e2m1);
 
-    // Handle Inf/NaNs during max selection.
-    h->add(16, r.ud(0)(1), r.ud(0)(1), Immediate::ud(0x80800000));
-    h->add(16, r_alt.ud(0)(1), r_alt.ud(0)(1), Immediate::ud(0x80800000));
+    if (all || pipeline_phase == 0) {
+        h->add(16, r.ud(0)(1), r.ud(0)(1), Immediate::ud(0x80800000));
+        h->add(16, r_alt.ud(0)(1), r_alt.ud(0)(1), Immediate::ud(0x80800000));
+        h->sel(16 | ge, max.f(0)(1), abs(r.f(0)(1)), abs(r_alt.f(0)(1)));
+    }
 
-    // Get Max value from group.
-    h->sel(16 | ge, max.f(0)(1), abs(r.f(0)(1)), abs(r_alt.f(0)(1)));
+    if (all || pipeline_phase == 1)
+        h->sel(8 | ge, max.ud(0)(1), max.ud(8)(1), max.ud(0)(1));
+    if (all || pipeline_phase == 2)
+        h->sel(4 | ge, max.ud(0)(1), max.ud(4)(1), max.ud(0)(1));
+    if (all || pipeline_phase == 3)
+        h->sel(2 | ge, max.ud(0)(1), max.ud(2)(1), max.ud(0)(1));
+    if (all || pipeline_phase == 4)
+        h->sel(1 | ge, max.ud(0)(1), max.ud(1)(1), max.ud(0)(1));
 
-    h->sel(8 | ge, max.ud(0)(1), max.ud(8)(1), max.ud(0)(1));
-    h->sel(4 | ge, max.ud(0)(1), max.ud(4)(1), max.ud(0)(1));
-    h->sel(2 | ge, max.ud(0)(1), max.ud(2)(1), max.ud(0)(1));
-    h->sel(1 | ge, max.ud(0)(1), max.ud(1)(1), max.ud(0)(1));
+    if (all || pipeline_phase == 5) {
+        h->add(1, max.d(0)(1), max.d(0)(1), Immediate::d(0x7F800000));
+        h->and_(1, max.ud(0), max.ud(0), Immediate::ud(0x7F800000));
+        h->mul(1, max.f(0), max.f(0), inv_fmax);
+    }
 
-    h->add(1, max.d(0)(1), max.d(0)(1), Immediate::d(0x7F800000));
+    if (all || pipeline_phase == 6) {
+        h->and_(1, max.ud(0), max.ud(0), Immediate::ud(0x7F800000));
+        h->sel(1 | ge, max.f(0)(1), max.f(0), Immediate::f(zero_e8m0));
+        // Exponent zero represents the minimum scale 2^-127.
+        h->shr(1, max.ud(0), max.ud(0), 23);
+    }
 
-    // Clamp max to e8m0 range.
-    h->and_(1, max.ud(0), max.ud(0), Immediate::ud(0x7F800000));
+    if (all || pipeline_phase == 7) {
+        // Finite scales are <= 2^125; exponent 255 is the +Inf intermediate.
+        h->sel(1 | le, max.ud(1), max.ud(0), Immediate::ud(254));
+        h->add(1, max.d(1), -max.d(1), Immediate::d(254));
+        h->shl(1, max.ud(1), max.ud(1), 23);
+    }
 
-    // Compute scale within e8m0 range.
-    h->mul(1, max.f(0), max.f(0), inv_fmax);
-    h->and_(1, max.ud(0), max.ud(0), Immediate::ud(0x7F800000));
-    h->sel(1 | ge, max.f(0)(1), max.f(0), Immediate::f(zero_e8m0));
+    if (all || pipeline_phase == 8) {
+        h->add(16, r.d(0)(1), r.d(0)(1), Immediate::d(0x7F800000));
+        h->add(16, r_alt.d(0)(1), r_alt.d(0)(1), Immediate::d(0x7F800000));
 
-    // Encode the scale exponent; zero represents the minimum scale 2^-127.
-    h->shr(1, max.ud(0), max.ud(0), 23);
+        h->mul(16, r, r, max.f(1)(0));
+        h->mul(16, r_alt.f(0)(1), r_alt.f(0)(1), max.f(1)(0));
 
-    // Finite scales are <= 2^125; exponent 255 is the +Inf intermediate.
-    h->sel(1 | le, max.ud(1), max.ud(0), Immediate::ud(254));
-    h->add(1, max.d(1), -max.d(1), Immediate::d(254));
-    h->shl(1, max.ud(1), max.ud(1), 23);
+        float fmax_bf8 = 57344.f, fmax_hf8 = 448.f, fmax_f4_e2m1 = 6.f;
+        float flow_bf8 = -57344.f, flow_hf8 = -448.f, flow_f4_e2m1 = -6.f;
+        auto fmax = (dst_dt == ngen::DataType::bf8) ? Immediate::f(fmax_bf8)
+                : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(fmax_hf8)
+                                                  : Immediate::f(fmax_f4_e2m1);
+        auto flow = (dst_dt == ngen::DataType::bf8) ? Immediate::f(flow_bf8)
+                : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(flow_hf8)
+                                                  : Immediate::f(flow_f4_e2m1);
+        h->sel(16 | ge, r, r, flow);
+        h->sel(16 | le, r, r, fmax);
+        h->sel(16 | ge, r_alt.f(0)(1), r_alt.f(0)(1), flow);
+        h->sel(16 | le, r_alt.f(0)(1), r_alt.f(0)(1), fmax);
 
-    // Revert Inf/NaN offset before applying the scale.
-    h->add(16, r.d(0)(1), r.d(0)(1), Immediate::d(0x7F800000));
-    h->add(16, r_alt.d(0)(1), r_alt.d(0)(1), Immediate::d(0x7F800000));
-
-    // Apply scale to dst.
-    h->mul(16, r, r, max.f(1)(0));
-    h->mul(16, r_alt.f(0)(1), r_alt.f(0)(1), max.f(1)(0));
-
-    // Saturate dst value to fmax and flow instead of overflowing..
-    float fmax_bf8 = 57344.f, fmax_hf8 = 448.f, fmax_f4_e2m1 = 6.f;
-    float flow_bf8 = -57344.f, flow_hf8 = -448.f, flow_f4_e2m1 = -6.f;
-    auto fmax = (dst_dt == ngen::DataType::bf8) ? Immediate::f(fmax_bf8)
-            : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(fmax_hf8)
-                                                : Immediate::f(fmax_f4_e2m1);
-    auto flow = (dst_dt == ngen::DataType::bf8) ? Immediate::f(flow_bf8)
-            : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(flow_hf8)
-                                                : Immediate::f(flow_f4_e2m1);
-    h->sel(16 | ge, r, r, flow);
-    h->sel(16 | le, r, r, fmax);
-    h->sel(16 | ge, r_alt.f(0)(1), r_alt.f(0)(1), flow);
-    h->sel(16 | le, r_alt.f(0)(1), r_alt.f(0)(1), fmax);
-
-    // Store the already encoded scale.
-    h->mov(1, scale_dst.ub(0), max.ub(0));
+        h->mov(1, scale_dst.ub(0), max.ub(0));
+    }
 }
 
 template <typename ngen_generator_t>
@@ -968,6 +975,9 @@ void eltwise_injector_f32_t<ngen_generator_t>::compute_mx_scale(const int *grfs,
 
     const int groups_m = ngrf / (2 * unroll_n);
     const int unroll_m = groups_m * 32;
+    const int interleave = scratch_.getLen() >= 4 ? 4
+            : scratch_.getLen() >= 2              ? 2
+                                                  : 1;
 
     auto emit_groups = [&](bool guarded) {
         Label done;
@@ -980,18 +990,35 @@ void eltwise_injector_f32_t<ngen_generator_t>::compute_mx_scale(const int *grfs,
                 h->jmpi(1 | flag, done);
             }
 
-            for (int gn = 0; gn < unroll_n; gn++) {
+            auto emit_group = [&](int gn, int pipeline_phase, int scratch_idx) {
+                const int group = gm * unroll_n + gn;
+                const int lo = 2 * gm * unroll_n + gn;
+
+                mx_scale_compute_fwd(32, GRF(grfs[lo]).f(), grfs[lo + unroll_n],
+                        scale_dst, 2, dt, 2 * group, pipeline_phase,
+                        scratch_idx);
+            };
+
+            for (int gn = 0; gn < unroll_n;) {
                 if (guarded && rem_n.isValid()) {
                     h->cmp(1 | le | flag, rem_n, gn);
                     h->jmpi(1 | flag, next_m);
                 }
 
-                const int group = gm * unroll_n + gn;
-                const int lo = 2 * gm * unroll_n + gn;
+                int width = guarded ? 1 : interleave;
+                while (width > unroll_n - gn)
+                    width /= 2;
 
-                // Preserve the absolute scale slot, including skipped groups.
-                mx_scale_compute_fwd(32, GRF(grfs[lo]).f(), grfs[lo + unroll_n],
-                        scale_dst, 2, dt, 2 * group);
+                if (width == 1) {
+                    emit_group(gn, -1, 0);
+                } else {
+                    for (int p = 0; p < mx_scale_phase_count; p++) {
+                        for (int lane = 0; lane < width; lane++)
+                            emit_group(gn + lane, p, lane);
+                    }
+                }
+
+                gn += width;
             }
 
             h->mark(next_m);

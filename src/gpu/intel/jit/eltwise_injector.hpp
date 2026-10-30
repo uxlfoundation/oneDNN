@@ -128,9 +128,10 @@ private:
     void sround_compute_fwd(int simd, const ngen::GRF &r, int phase,
             const ngen::Subregister &seed, const ngen::DataType dst_dt,
             int off);
-    void mx_scale_compute_fwd(int simd, const ngen::GRF &r, int phase,
-            const ngen::Subregister &dst_base, int dst_off,
-            const ngen::DataType dst_dt, int off);
+    static constexpr int mx_scale_phase_count = 9;
+    void mx_scale_compute_fwd(int simd, const ngen::GRF &r, int off,
+            const ngen::Subregister &seed, int nreg, ngen::DataType dst_dt,
+            int phase, int pipeline_phase = -1, int scratch_idx = 0);
     void philox_4x32(
             int simd, const ngen::Subregister &seed, const ngen::GRF &bias);
     void swish_compute_fwd(int simd, const ngen::GRF &r, int phase, int off);

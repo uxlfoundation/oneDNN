@@ -56,23 +56,29 @@ namespace x64 {
 
 namespace {
 
-// The block of the output one N-block emission computes.
+// The shape of an output block: everything the code of the block depends on
+// apart from its position.
 //
 //   bd_block     - rows of the broadcast dimension the block covers
 //   ld_block2    - vector registers of the load dimension it covers
-//   ld_start     - load-dimension element the block starts at, counted from
-//                  where the B and C pointers stand. B and C convert it with
-//                  their own element size, so one count serves both.
 //   ld_tail_mask - live elements of the last register, `none` when every
 //                  register of the block is full
-//
-// `ld_start` is what lets the N tail blocks reach their columns without a
-// pointer of their own. It is 0 for a block the N loop walks to.
 struct out_block_t {
     int bd_block;
     int ld_block2;
-    dim_t ld_start;
     ir::vreg_t ld_tail_mask;
+};
+
+// Position of a block, in elements along M, N, and K, counted from where the
+// pointers stand.
+//
+// Every access adds it to its displacement. This lets a block reach its
+// elements without moving the pointers to it, for example an N tail block
+// after the N loop.
+struct block_pos_t {
+    dim_t m;
+    dim_t n;
+    dim_t k;
 };
 
 // Builder configuration
@@ -229,45 +235,46 @@ struct conf_t {
     dim_t bdb_c_off() const { return dt_sz_c() * loop.bd_block * loop.ldc; }
 
     // Displacements of one element of A, one vector of B, and one accumulator
-    // of C from the start of the current block.
+    // of C of the block at `pos`, from where the pointers stand.
     //
     // These are the constants the builder encodes into the operation, the
     // `disp` of `ir::mem_t`. They are functions rather than expressions written
     // at each use because `init_conf()` range-checks the largest of them
     // against int32, and the check is only meaningful if there is consistency
-    // between the check and the builder.
+    // between the check and the builder. A pointer move by `pos` adds the same
+    // values, with every index 0.
 
     // A is read one element at a time and broadcast, so `rd` is an element
     // index.
-    dim_t a_off(int bd, int rd) const {
-        return dt_sz_a() * ((dim_t)bd * loop.lda + rd);
+    dim_t a_off(const block_pos_t &pos, int bd, int rd) const {
+        return dt_sz_a() * ((pos.m + bd) * loop.lda + pos.k + rd);
     }
 
     // B is read one full vector per `ld`, so `rd` is a row index and `ld`
     // picks the vector within the N block.
-    dim_t b_off(const out_block_t &blk, int ld, int rd) const {
-        return dt_sz_b() * ((dim_t)rd * loop.ldb + ld_pos(blk, ld));
+    dim_t b_off(const block_pos_t &pos, int ld, int rd) const {
+        return dt_sz_b() * ((pos.k + rd) * loop.ldb + ld_pos(pos, ld));
     }
 
-    dim_t c_off(const out_block_t &blk, int bd, int ld) const {
-        return dt_sz_c() * ((dim_t)bd * loop.ldc + ld_pos(blk, ld));
+    dim_t c_off(const block_pos_t &pos, int bd, int ld) const {
+        return dt_sz_c() * ((pos.m + bd) * loop.ldc + ld_pos(pos, ld));
     }
 
     // One bias value per output column, so the offset has no row term.
-    dim_t bias_off(const out_block_t &blk, int ld) const {
-        return dt_sz_bias() * ld_pos(blk, ld);
+    dim_t bias_off(const block_pos_t &pos, int ld) const {
+        return dt_sz_bias() * ld_pos(pos, ld);
     }
 
     // A per-N weights scale is indexed like the bias.
-    dim_t wei_scale_off(const out_block_t &blk, int ld) const {
-        return dt_sz_wei_scales() * ld_pos(blk, ld);
+    dim_t wei_scale_off(const block_pos_t &pos, int ld) const {
+        return dt_sz_wei_scales() * ld_pos(pos, ld);
     }
 
     // Load-dimension element the vector `ld` of the block starts at, counted
     // from where the B and C pointers stand. B and C differ only in the
     // element size they scale it by.
-    dim_t ld_pos(const out_block_t &blk, int ld) const {
-        return blk.ld_start + (dim_t)ld * loop.ld_block;
+    dim_t ld_pos(const block_pos_t &pos, int ld) const {
+        return pos.n + (dim_t)ld * loop.ld_block;
     }
 
     // Load-dimension elements the N loop leaves on the B offset and the C
@@ -280,21 +287,6 @@ struct conf_t {
     dim_t ldb_loop_bias_adv() const { return dt_sz_bias() * ldb_loop_ld_adv(); }
     dim_t ldb_loop_wei_scale_adv() const {
         return dt_sz_wei_scales() * ldb_loop_ld_adv();
-    }
-
-    // First load-dimension element of each N tail block, counted from where
-    // the N loop left the pointers.
-    //
-    // Both blocks are emitted once, never in a loop, so they reach their
-    // columns through the displacement of each access rather than through a
-    // pointer of their own. `ldb2 * ldb_ld_elems()` is where the tails start
-    // and `ldb_loop_ld_adv()` is where the pointers stand.
-    dim_t ldb2_tail_ld_start() const {
-        return loop.ldb2 * ldb_ld_elems() - ldb_loop_ld_adv();
-    }
-
-    dim_t ldb_tail_ld_start() const {
-        return ldb2_tail_ld_start() + (dim_t)loop.ldb2_tail * loop.ld_block;
     }
 };
 
@@ -318,9 +310,8 @@ struct conf_t {
 struct advancing_regs_t {
     // Current C pointer. The N loop advances it by `ldb_c_off()` per block,
     // then the M loop rewinds it and steps to the next M block with one
-    // constant, `bdb_c_off() - ldb_loop_c_adv()`. The classic kernel keeps a
-    // second base pointer for this instead. One running pointer saves the
-    // general-purpose register.
+    // constant. The classic kernel keeps a second base pointer for this
+    // instead. One running pointer saves the general-purpose register.
     ir::vreg_t c_ptr = ir::vreg_t::none;
     // Pointer the finished block is stored through. It holds the `ptr_D`
     // kernel argument on a post-ops call and `ptr_C` otherwise, and can be the
@@ -452,24 +443,140 @@ m_loop_input_regs_t init_m_loop_input_regs(ir::ir_t &ir, const conf_t &cfg) {
     return regs;
 }
 
+// Iteration lists
+//
+// Each level of the loop nest (M, N, and K) has a list of its iterations,
+// stored as runs of consecutive iterations with the same shape. The shape is
+// everything the code of an iteration depends on apart from its position:
+//   M - rows of the block (`bd_block` or `bdb_tail`)
+//   N - `n_shape_t`
+//   K - elements of the reduction step (`rd_block` or `rdb_tail`)
+//
+// The schedule builds the lists and emits each level from its list, so where
+// the tails are is decided by the list and not by the code that emits them.
+// The batch is a runtime loop with one shape, so it needs no list.
+
+// Shape of an N block.
+//
+//   ld_block2  - vector registers the block covers
+//   is_ld_tail - whether its one register is partial, holding `ldb_tail`
+//                elements
+struct n_shape_t {
+    int ld_block2;
+    bool is_ld_tail;
+};
+
+// A run of consecutive iterations of one level with the same shape.
+//
+//   shape - the shape of each iteration
+//   start - position of the first iteration, in elements of the level's
+//           dimension
+//   size  - elements each iteration covers, which is also the distance
+//           between consecutive iterations
+//   count - number of iterations
+template <typename shape_t>
+struct run_t {
+    shape_t shape;
+    dim_t start;
+    dim_t size;
+    dim_t count;
+};
+
+// Iteration lists of the loop nest, one per level.
+struct iteration_lists_t {
+    std::vector<run_t<int>> m;
+    std::vector<run_t<n_shape_t>> n;
+    std::vector<run_t<int>> k;
+};
+
+// Appends a run of `count` iterations of `size` elements right after the last
+// run of `runs`. Nothing is appended when `count` is 0.
+template <typename shape_t>
+void add_run(std::vector<run_t<shape_t>> &runs, const shape_t &shape,
+        dim_t size, dim_t count) {
+    if (count == 0) return;
+    const dim_t start = runs.empty()
+            ? 0
+            : runs.back().start + runs.back().count * runs.back().size;
+    runs.push_back({shape, start, size, count});
+}
+
+// Builds the iteration lists of the looped schedule.
+//
+// As in `jit_brgemm_kernel_t`, the full blocks of each level come first, and
+// each tail is a run of its own. N has two tails: the full registers left over
+// after the full blocks, then the one masked register.
+iteration_lists_t make_looped_lists(const loop_conf_t &loop) {
+    iteration_lists_t lists;
+
+    add_run(lists.m, loop.bd_block, loop.bd_block, loop.bdb);
+    add_run(lists.m, loop.bdb_tail, loop.bdb_tail, loop.bdb_tail > 0 ? 1 : 0);
+
+    add_run(lists.n, n_shape_t {loop.ld_block2, false},
+            (dim_t)loop.ld_block2 * loop.ld_block, loop.ldb2);
+    add_run(lists.n, n_shape_t {loop.ldb2_tail, false},
+            (dim_t)loop.ldb2_tail * loop.ld_block, loop.ldb2_tail > 0 ? 1 : 0);
+    add_run(lists.n, n_shape_t {1, true}, loop.ldb_tail,
+            loop.ldb_tail > 0 ? 1 : 0);
+
+    add_run(lists.k, loop.rd_block, loop.rd_block, loop.rdb);
+    add_run(lists.k, loop.rdb_tail, loop.rdb_tail, loop.rdb_tail > 0 ? 1 : 0);
+    return lists;
+}
+
+// Emits one level of the loop nest from its list, as the looped schedule does.
+//
+// Each run becomes a runtime loop whose step moves the pointers by one
+// iteration, so one copy of the body serves the whole run. A run of one
+// iteration is emitted once and has no step (see `emit_loop_imm()`).
+//
+//   runs        - the iteration list of the level
+//   move_to_run - whether the pointers move to a run of one iteration before
+//                 it. Otherwise the run is reached through its position.
+//   ptr_pos     - where the pointers of the level stand, in elements of its
+//                 dimension. It is updated to where the level leaves them.
+//   body        - `body(shape, pos)` emits one iteration `pos` elements away
+//                 from the pointers
+//   step        - `step(n)` emits the move of the pointers by `n` elements
+template <typename shape_t, typename body_t, typename step_t>
+void emit_looped_level(ir::ir_t &ir, const std::vector<run_t<shape_t>> &runs,
+        bool move_to_run, dim_t &ptr_pos, const body_t &body,
+        const step_t &step) {
+    for (const run_t<shape_t> &run : runs) {
+        if (run.count == 1 && move_to_run && ptr_pos != run.start) {
+            step(run.start - ptr_pos);
+            ptr_pos = run.start;
+        }
+
+        const dim_t pos = run.start - ptr_pos;
+        ir::emit_loop_imm(ir, run.count, [&]() { body(run.shape, pos); },
+                [&]() { step(run.size); });
+
+        // A runtime loop runs its step after every iteration, the last one
+        // included.
+        if (run.count > 1) ptr_pos += run.count * run.size;
+    }
+}
+
 // Innermost reduction step, over `rd_loop` elements of K.
 //
 // Loads one B vector per N register, then for each M row broadcasts one A
 // element and multiply-adds it into that row's accumulators. This is the
 // `!n_bcast_1_load` variant of `gemm_microkernel()` in `jit_brgemm_kernel.cpp`.
 void emit_microkernel(ir::ir_t &ir, const conf_t &cfg, const out_block_t &blk,
-        const std::vector<ir::vreg_t> &acc, const std::vector<ir::vreg_t> &b,
-        ir::vreg_t a, ir::vreg_t a_ptr, ir::vreg_t b_ptr, int rd_loop) {
+        const block_pos_t &pos, const std::vector<ir::vreg_t> &acc,
+        const std::vector<ir::vreg_t> &b, ir::vreg_t a, ir::vreg_t a_ptr,
+        ir::vreg_t b_ptr, int rd_loop) {
 
     for (int rd = 0; rd < rd_loop; rd++) {
         // Only the last register of a block can be partial, and a block that
         // has one holds nothing else, so the mask covers every B load here.
         for (int ld = 0; ld < blk.ld_block2; ld++) {
             if (blk.ld_tail_mask == ir::vreg_t::none)
-                ir.vload(b[ld], b_ptr, cfg.b_off(blk, ld, rd),
+                ir.vload(b[ld], b_ptr, cfg.b_off(pos, ld, rd),
                         cfg.microkernel.dt_b);
             else
-                ir.vload_masked(b[ld], b_ptr, cfg.b_off(blk, ld, rd),
+                ir.vload_masked(b[ld], b_ptr, cfg.b_off(pos, ld, rd),
                         blk.ld_tail_mask, cfg.microkernel.dt_b);
         }
 
@@ -477,10 +584,11 @@ void emit_microkernel(ir::ir_t &ir, const conf_t &cfg, const out_block_t &blk,
         // each reduction step fetches the next K block of B exactly once.
         int n_pf_b = 0;
         for (int bd = 0; bd < blk.bd_block; bd++) {
-            ir.vload_bcast(a, a_ptr, cfg.a_off(bd, rd), cfg.microkernel.dt_a);
+            ir.vload_bcast(
+                    a, a_ptr, cfg.a_off(pos, bd, rd), cfg.microkernel.dt_a);
             if (n_pf_b < blk.ld_block2) {
                 ir.prefetch(
-                        b_ptr, cfg.b_off(blk, n_pf_b, rd) + cfg.rdb_b_off());
+                        b_ptr, cfg.b_off(pos, n_pf_b, rd) + cfg.rdb_b_off());
                 n_pf_b++;
             }
 
@@ -495,7 +603,8 @@ void emit_microkernel(ir::ir_t &ir, const conf_t &cfg, const out_block_t &blk,
 // Derives the A and B pointers of the element, shifts them to the current M and
 // N block, then runs the reduction loop over K.
 void emit_bs_body(ir::ir_t &ir, const conf_t &cfg,
-        const m_loop_input_regs_t &regs, const out_block_t &blk,
+        const m_loop_input_regs_t &regs, const iteration_lists_t &lists,
+        const out_block_t &blk, const block_pos_t &pos,
         const std::vector<ir::vreg_t> &acc, const std::vector<ir::vreg_t> &b,
         ir::vreg_t a, ir::vreg_t batch_ptr) {
 
@@ -531,32 +640,21 @@ void emit_bs_body(ir::ir_t &ir, const conf_t &cfg,
         if (cfg.loop.batch_kind == brgemm_addr) ir.prefetch(batch_ptr, 0);
     }
 
-    // Advance the A and B pointers by one K block.
-    auto advance_ptrs = [&]() {
-        ir.add_imm(a_ptr, cfg.rdb_a_off());
-        ir.add_imm(b_ptr, cfg.rdb_b_off());
+    // Advance the A and B pointers by `rd` elements of K.
+    auto step = [&](dim_t rd) {
+        const block_pos_t d {0, 0, rd};
+        ir.add_imm(a_ptr, cfg.a_off(d, 0, 0));
+        ir.add_imm(b_ptr, cfg.b_off(d, 0, 0));
     };
 
-    // Reduce the full K blocks, then the tail if any. Cases by `rdb`:
-    //   *  == 0  the whole reduction is the tail
-    //   *  == 1  one block, advance by hand only if a tail follows
-    //   *  >= 2  loop, advancing per iteration
-    if (cfg.loop.rdb >= 2) {
-        ir::emit_loop_imm(ir, cfg.loop.rdb, [&]() {
-            emit_microkernel(
-                    ir, cfg, blk, acc, b, a, a_ptr, b_ptr, cfg.loop.rd_block);
-        }, advance_ptrs);
-    } else if (cfg.loop.rdb == 1) {
-        emit_microkernel(
-                ir, cfg, blk, acc, b, a, a_ptr, b_ptr, cfg.loop.rd_block);
-        if (cfg.loop.rdb_tail > 0) advance_ptrs();
-    }
-
-    // K tail needs no mask. A reduction step reads a full B vector along N
+    // The K tail needs no mask. A reduction step reads a full B vector along N
     // and one element of A, so a short tail is just fewer steps.
-    if (cfg.loop.rdb_tail > 0)
-        emit_microkernel(
-                ir, cfg, blk, acc, b, a, a_ptr, b_ptr, cfg.loop.rdb_tail);
+    dim_t k_ptr_pos = 0;
+    emit_looped_level(ir, lists.k, /*move_to_run=*/true, k_ptr_pos,
+            [&](int rd_loop, dim_t k) {
+        emit_microkernel(ir, cfg, blk, {pos.m, pos.n, k}, acc, b, a, a_ptr,
+                b_ptr, rd_loop);
+    }, step);
 }
 
 // One N block.
@@ -564,7 +662,8 @@ void emit_bs_body(ir::ir_t &ir, const conf_t &cfg,
 // Holds one accumulator per (M row, N register), reduces them over the batch,
 // and stores them to C, or to D on a post-ops call.
 void emit_n_block(ir::ir_t &ir, const conf_t &cfg,
-        const m_loop_input_regs_t &regs, const out_block_t &blk) {
+        const m_loop_input_regs_t &regs, const iteration_lists_t &lists,
+        const out_block_t &blk, const block_pos_t &pos) {
 
     std::vector<ir::vreg_t> acc(blk.bd_block * blk.ld_block2, ir::vreg_t::none);
 
@@ -586,8 +685,9 @@ void emit_n_block(ir::ir_t &ir, const conf_t &cfg,
 
     const ir::vreg_t a = ir.new_vec(cfg.microkernel.dt_a);
 
-    auto bs_body
-            = [&]() { emit_bs_body(ir, cfg, regs, blk, acc, b, a, batch_ptr); };
+    auto bs_body = [&]() {
+        emit_bs_body(ir, cfg, regs, lists, blk, pos, acc, b, a, batch_ptr);
+    };
 
     if (cfg.loop.max_bs > 1)
         ir::emit_loop_reg(ir, regs.invariant.bs, bs_body);
@@ -602,11 +702,11 @@ void emit_n_block(ir::ir_t &ir, const conf_t &cfg,
             for (int ld = 0; ld < blk.ld_block2; ld++) {
                 const ir::vreg_t c = ir.new_vec(cfg.output.dt_c);
                 if (blk.ld_tail_mask == ir::vreg_t::none)
-                    ir.vload(c, regs.advancing.c_ptr, cfg.c_off(blk, bd, ld),
+                    ir.vload(c, regs.advancing.c_ptr, cfg.c_off(pos, bd, ld),
                             cfg.output.dt_c);
                 else
                     ir.vload_masked(c, regs.advancing.c_ptr,
-                            cfg.c_off(blk, bd, ld), blk.ld_tail_mask,
+                            cfg.c_off(pos, bd, ld), blk.ld_tail_mask,
                             cfg.output.dt_c);
                 ir.vadd(acc[bd * blk.ld_block2 + ld], c);
             }
@@ -644,11 +744,11 @@ void emit_n_block(ir::ir_t &ir, const conf_t &cfg,
                 const ir::vreg_t sc = ir.new_vec(cfg.output.dt_wei_scales);
                 if (blk.ld_tail_mask == ir::vreg_t::none)
                     ir.vload(sc, regs.advancing.wei_scale_ptr,
-                            cfg.wei_scale_off(blk, ld),
+                            cfg.wei_scale_off(pos, ld),
                             cfg.output.dt_wei_scales);
                 else
                     ir.vload_masked(sc, regs.advancing.wei_scale_ptr,
-                            cfg.wei_scale_off(blk, ld), blk.ld_tail_mask,
+                            cfg.wei_scale_off(pos, ld), blk.ld_tail_mask,
                             cfg.output.dt_wei_scales);
 
                 for (int bd = 0; bd < blk.bd_block; bd++)
@@ -663,10 +763,10 @@ void emit_n_block(ir::ir_t &ir, const conf_t &cfg,
                 const ir::vreg_t bias = ir.new_vec(cfg.output.dt_bias);
                 if (blk.ld_tail_mask == ir::vreg_t::none)
                     ir.vload(bias, regs.advancing.bias_ptr,
-                            cfg.bias_off(blk, ld), cfg.output.dt_bias);
+                            cfg.bias_off(pos, ld), cfg.output.dt_bias);
                 else
                     ir.vload_masked(bias, regs.advancing.bias_ptr,
-                            cfg.bias_off(blk, ld), blk.ld_tail_mask,
+                            cfg.bias_off(pos, ld), blk.ld_tail_mask,
                             cfg.output.dt_bias);
 
                 for (int bd = 0; bd < blk.bd_block; bd++)
@@ -685,7 +785,7 @@ void emit_n_block(ir::ir_t &ir, const conf_t &cfg,
             for (int bd = 0; bd < blk.bd_block; bd++)
                 for (int ld = 0; ld < blk.ld_block2; ld++)
                     out_byte_off[bd * blk.ld_block2 + ld]
-                            = cfg.c_off(blk, bd, ld);
+                            = cfg.c_off(pos, bd, ld);
 
             const int n_elems = blk.ld_tail_mask != ir::vreg_t::none
                     ? cfg.loop.ldb_tail
@@ -714,52 +814,14 @@ void emit_n_block(ir::ir_t &ir, const conf_t &cfg,
             const ir::vreg_t src = acc[bd * blk.ld_block2 + ld];
 
             if (blk.ld_tail_mask == ir::vreg_t::none) {
-                ir.vstore(regs.advancing.store_ptr, cfg.c_off(blk, bd, ld), src,
+                ir.vstore(regs.advancing.store_ptr, cfg.c_off(pos, bd, ld), src,
                         cfg.output.dt_c);
             } else {
                 ir.vstore_masked(regs.advancing.store_ptr,
-                        cfg.c_off(blk, bd, ld), src, blk.ld_tail_mask,
+                        cfg.c_off(pos, bd, ld), src, blk.ld_tail_mask,
                         cfg.output.dt_c);
             }
         }
-    }
-}
-
-// One M block, which is the N loop over `ldb2` full blocks followed by the two
-// N tails.
-//
-// The tails are emitted once each, so they address their columns through
-// `ld_start`.
-void emit_m_block(ir::ir_t &ir, const conf_t &cfg,
-        const m_loop_input_regs_t &regs, int bd_block,
-        ir::vreg_t ld_tail_mask) {
-
-    auto advance_ptrs = [&]() {
-        ir.add_imm(regs.advancing.b_off, cfg.ldb_b_off());
-        ir.add_imm(regs.advancing.c_ptr, cfg.ldb_c_off());
-        if (regs.advancing.store_ptr != regs.advancing.c_ptr)
-            ir.add_imm(regs.advancing.store_ptr, cfg.ldb_c_off());
-        if (cfg.output.with_bias)
-            ir.add_imm(regs.advancing.bias_ptr, cfg.ldb_bias_off());
-        if (cfg.output.per_n_wei_scales)
-            ir.add_imm(regs.advancing.wei_scale_ptr, cfg.ldb_wei_scale_off());
-    };
-    const out_block_t full {bd_block, cfg.loop.ld_block2, 0, ir::vreg_t::none};
-    ir::emit_loop_imm(ir, cfg.loop.ldb2,
-            [&]() { emit_n_block(ir, cfg, regs, full); }, advance_ptrs);
-
-    // Full registers left over after the N loop.
-    if (cfg.loop.ldb2_tail > 0) {
-        const out_block_t blk {bd_block, cfg.loop.ldb2_tail,
-                cfg.ldb2_tail_ld_start(), ir::vreg_t::none};
-        emit_n_block(ir, cfg, regs, blk);
-    }
-
-    // Columns left over after every full register, in one masked register.
-    if (cfg.loop.ldb_tail > 0) {
-        const out_block_t blk {
-                bd_block, 1, cfg.ldb_tail_ld_start(), ld_tail_mask};
-        emit_n_block(ir, cfg, regs, blk);
     }
 }
 
@@ -776,9 +838,11 @@ void emit_m_block(ir::ir_t &ir, const conf_t &cfg,
 //
 // The output is partitioned into M blocks of `bd_block` rows, each split into
 // N blocks of `ld_block2 * ld_block` columns. Each block keeps its result in
-// registers across the whole batch and K reduction, then stores it once.
+// registers across the whole batch and K reduction, then stores it once. The
+// looped schedule walks N inside M, as `jit_brgemm_kernel_t` does.
 void build_brgemm(const conf_t &cfg, ir::ir_t &ir) {
     const m_loop_input_regs_t regs = init_m_loop_input_regs(ir, cfg);
+    const iteration_lists_t lists = make_looped_lists(cfg.loop);
 
     // Every partial N block is the same width, so one mask serves the whole
     // kernel.
@@ -789,35 +853,56 @@ void build_brgemm(const conf_t &cfg, ir::ir_t &ir) {
         ir.set_mask_imm(ld_tail_mask, cfg.loop.ldb_tail);
     }
 
-    // `store_ptr` is a separate register only when `beta == 1` and the kernel
-    // has a post-op, so it needs its own advance only then. The bias and a
-    // per-N weights scale do not depend on M, so they only rewind what the N
-    // loop added.
-    auto advance_ptrs = [&]() {
-        ir.add_imm(regs.advancing.a_off, cfg.bdb_a_off());
-        ir.add_imm(
-                regs.advancing.c_ptr, cfg.bdb_c_off() - cfg.ldb_loop_c_adv());
-        if (regs.advancing.store_ptr != regs.advancing.c_ptr)
-            ir.add_imm(regs.advancing.store_ptr,
-                    cfg.bdb_c_off() - cfg.ldb_loop_c_adv());
-        if (cfg.output.with_bias && cfg.ldb_loop_bias_adv() != 0)
-            ir.add_imm(regs.advancing.bias_ptr, -cfg.ldb_loop_bias_adv());
-        if (cfg.output.per_n_wei_scales && cfg.ldb_loop_wei_scale_adv() != 0)
-            ir.add_imm(regs.advancing.wei_scale_ptr,
-                    -cfg.ldb_loop_wei_scale_adv());
-        if (cfg.ldb_loop_ld_adv() != 0) ir.mov_imm(regs.advancing.b_off, 0);
-    };
-    ir::emit_loop_imm(ir, cfg.loop.bdb, [&]() {
-        emit_m_block(ir, cfg, regs, cfg.loop.bd_block, ld_tail_mask);
-    }, advance_ptrs);
+    // Where the M and N pointers stand, and where the N pointers stood when
+    // the current M block started.
+    dim_t m_ptr_pos = 0, n_ptr_pos = 0, n_start = 0;
 
-    // Rows left over after the M loop. They form a block with fewer
-    // accumulators and are otherwise a block like any other, so the pointers
-    // have to arrive the way a loop iteration would leave them.
-    if (cfg.loop.bdb_tail > 0) {
-        if (cfg.loop.bdb == 1) advance_ptrs();
-        emit_m_block(ir, cfg, regs, cfg.loop.bdb_tail, ld_tail_mask);
-    }
+    // Advance the N pointers by `ld` columns. `store_ptr` is a separate
+    // register only when `beta == 1` and the kernel has a post-op, so it needs
+    // its own advance only then.
+    auto n_step = [&](dim_t ld) {
+        const block_pos_t d {0, ld, 0};
+        ir.add_imm(regs.advancing.b_off, cfg.b_off(d, 0, 0));
+        ir.add_imm(regs.advancing.c_ptr, cfg.c_off(d, 0, 0));
+        if (regs.advancing.store_ptr != regs.advancing.c_ptr)
+            ir.add_imm(regs.advancing.store_ptr, cfg.c_off(d, 0, 0));
+        if (cfg.output.with_bias)
+            ir.add_imm(regs.advancing.bias_ptr, cfg.bias_off(d, 0));
+        if (cfg.output.per_n_wei_scales)
+            ir.add_imm(regs.advancing.wei_scale_ptr, cfg.wei_scale_off(d, 0));
+    };
+
+    // Advance the M pointers by `bd` rows and return the N pointers to where
+    // the M block found them.
+    //
+    // C moves along both dimensions with one `add`. The bias and a per-N
+    // weights scale do not depend on M, so they only return. The B offset
+    // depends on N only, so it is set rather than moved.
+    auto m_step = [&](dim_t bd) {
+        const block_pos_t d {bd, n_start - n_ptr_pos, 0};
+        ir.add_imm(regs.advancing.a_off, cfg.a_off(d, 0, 0));
+        ir.add_imm(regs.advancing.c_ptr, cfg.c_off(d, 0, 0));
+        if (regs.advancing.store_ptr != regs.advancing.c_ptr)
+            ir.add_imm(regs.advancing.store_ptr, cfg.c_off(d, 0, 0));
+        if (cfg.output.with_bias && d.n != 0)
+            ir.add_imm(regs.advancing.bias_ptr, cfg.bias_off(d, 0));
+        if (cfg.output.per_n_wei_scales && d.n != 0)
+            ir.add_imm(regs.advancing.wei_scale_ptr, cfg.wei_scale_off(d, 0));
+        if (d.n != 0)
+            ir.mov_imm(regs.advancing.b_off, cfg.b_off({0, n_start, 0}, 0, 0));
+        n_ptr_pos = n_start;
+    };
+
+    emit_looped_level(ir, lists.m, /*move_to_run=*/true, m_ptr_pos,
+            [&](int bd_block, dim_t m) {
+        n_start = n_ptr_pos;
+        emit_looped_level(ir, lists.n, /*move_to_run=*/false, n_ptr_pos,
+                [&](const n_shape_t &shape, dim_t n) {
+            const out_block_t blk {bd_block, shape.ld_block2,
+                    shape.is_ld_tail ? ld_tail_mask : ir::vreg_t::none};
+            emit_n_block(ir, cfg, regs, lists, blk, {m, n, 0});
+        }, n_step);
+    }, m_step);
 }
 
 // Picks the compute path the caller chose when it created the descriptor.
@@ -1000,10 +1085,9 @@ status_t check_displacements(const conf_t &conf) {
     const int max_bd_block = loop.bdb > 0 ? loop.bd_block : loop.bdb_tail;
 
     // Upper bound for the B and C displacements.
-    const out_block_t last_col {
-            max_bd_block, 1, loop.load_dim - 1, ir::vreg_t::none};
+    const block_pos_t last_col {0, loop.load_dim - 1, 0};
 
-    VCONDCHECK_BRGEMM_IR(fits(conf.a_off(max_bd_block - 1, rd_last)),
+    VCONDCHECK_BRGEMM_IR(fits(conf.a_off({}, max_bd_block - 1, rd_last)),
             VERBOSE_UNSUPPORTED_FEATURE, "A displacement overflows int32");
     VCONDCHECK_BRGEMM_IR(
             fits(conf.b_off(last_col, 0, rd_last) + conf.rdb_b_off()),

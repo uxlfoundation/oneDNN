@@ -368,12 +368,18 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
             VERBOSE_PROPKIND_DT_MISMATCH);
 
     // Support for GRU / AUGRU cell in BRGEMM-based implementation is
-    // limited by forward_inference pass for now, all_f32 is disabled
-    // due to performance degradation.
+    // limited by forward_inference pass for now. all_f32 is enabled only
+    // for small shapes on avx2, where it avoids the per-call overhead of
+    // the nested matmul in the reference implementation. For larger shapes
+    // it is slower, as the cell is parallelized over M blocks only.
     // TODO: Improve GRU / AUGRU coverage in BRGEMM-based implementation
+    const dim_t max_c = nstl::max(rnn_.slc, nstl::max(rnn_.sic, rnn_.dhc));
+    const bool is_small_f32_avx2 = !mayiuse(avx512_core)
+            && ((rnn_.mb <= 4 && max_c <= 128) || max_c <= 64);
     VDISPATCH_RNN(IMPLICATION(rnn_.is_orig_gru,
                           this->desc()->prop_kind == forward_inference
-                                  && !rnn_.is_cell_dt_f32()),
+                                  && IMPLICATION(rnn_.is_cell_dt_f32(),
+                                          is_small_f32_avx2)),
             VERBOSE_UNSUPPORTED_FEATURE,
             "gru/augru cell in brgemm-based forward inference");
 
@@ -2134,18 +2140,18 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
     const memory_desc_t *weights_layer_md = pd()->weights_md(0);
     const memory_desc_t *weights_iter_md = pd()->weights_md(1);
 
-    const auto tag = rnn.n_block == 64 ? format_tag::ldgOI64o2i
-                                       : format_tag::ldgOI32o2i;
     memory_desc_t wei_layer_desc;
-    CHECK(memory_desc_init_by_tag(wei_layer_desc, weights_layer_md->ndims,
-            weights_layer_md->dims, data_type::bf16, tag));
-
     memory_desc_t wei_iter_desc;
-    CHECK(memory_desc_init_by_tag(wei_iter_desc, weights_iter_md->ndims,
-            weights_iter_md->dims, data_type::bf16, tag));
 
 #if DNNL_X64
     if (rnn.is_bf32()) {
+        const auto tag = rnn.n_block == 64 ? format_tag::ldgOI64o2i
+                                           : format_tag::ldgOI32o2i;
+        CHECK(memory_desc_init_by_tag(wei_layer_desc, weights_layer_md->ndims,
+                weights_layer_md->dims, data_type::bf16, tag));
+        CHECK(memory_desc_init_by_tag(wei_iter_desc, weights_iter_md->ndims,
+                weights_iter_md->dims, data_type::bf16, tag));
+
         if (rnn.is_augru) {
             const auto bf32_augru_attention
                     = scratchpad.template get<src_layer_t>(

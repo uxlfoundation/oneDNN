@@ -212,7 +212,22 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     auto check_attr_scales = [&]() -> status_t {
         const std::vector<int> supported_args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-        CHECK(attr_scales_ok(engine, supported_args));
+        // Decompression and grouped quantization also support xf16 scales.
+        // Additional ISA restrictions for weights scales are checked in
+        // init_brgemm_matmul_conf.
+        const bool supports_xf16_scales = is_bf16_with_int_wei
+                || is_f16_with_int_wei || is_f32_with_int_wei
+                || with_int8_grouped_quantization;
+        const std::vector<data_type_t> src_wei_scales_dtypes
+                = supports_xf16_scales
+                ? std::vector<data_type_t> {f32, bf16, f16}
+                : std::vector<data_type_t> {f32};
+        // The driver reads destination scales as float to compute the reciprocal.
+        CHECK(attr_scales_ok(engine, supported_args,
+                {quantization_mode::static_sazp}, {},
+                {{DNNL_ARG_SRC, src_wei_scales_dtypes},
+                        {DNNL_ARG_WEIGHTS, src_wei_scales_dtypes},
+                        {DNNL_ARG_DST, {f32}}}));
         const auto &asc = attr()->scales_;
         if (!asc.has_default_values(DNNL_ARG_SRC)
                 && !asc.has_default_values(DNNL_ARG_WEIGHTS)
@@ -220,19 +235,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             // This case requires scratchpad
             VDISPATCH_MATMUL(
                     !is_runtime_value(N()), VERBOSE_UNSUPPORTED_SCALES_CFG);
-        }
-        // Impl suppports f32 scales only for non-weight decompression
-        if (!(is_bf16_with_int_wei || is_f16_with_int_wei || is_f32_with_int_wei
-                    || with_int8_grouped_quantization)) {
-            VDISPATCH_MATMUL(
-                    one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_MATMUL(
-                    one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_MATMUL(
-                    one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
         // Implementation has limited support w.r.t. scales groups.
         if (!asc.has_default_values(DNNL_ARG_WEIGHTS)) {

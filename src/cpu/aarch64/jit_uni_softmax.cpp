@@ -94,6 +94,8 @@ struct jit_softmax_base_t : public jit_generator_t {
 
     bool is_softmax_ = pd_->is_softmax();
     bool is_logsoftmax_ = pd_->is_logsoftmax();
+    bool is_inf_as_zero_
+            = pd_->alg_kind() == alg_kind::softmax_accurate_inf_as_zero;
     bool need_src_scale_
             = !pd_->attr()->scales_.has_default_values(DNNL_ARG_SRC);
     bool need_dst_scale_
@@ -553,6 +555,15 @@ void jit_softmax_sve_t::accumulate_vsum() {
         mov(v_tmp0.d, vsum.d);
         mov(vsum.d, P_ALL_ONE, vone.d);
         fdiv(vsum.s, P_ALL_ONE / T_m, v_tmp0.s);
+        if (is_inf_as_zero_) {
+            // Zero the output of rows where every element is -inf. The exp
+            // injector clamps its input, so exp(-inf) is a tiny positive value
+            // and the sum of such a row is not 0. Any other row has a sum of
+            // at least 1, as its max element adds exp(0) = 1.
+            fdup(vtmp.s, 0.5);
+            fcmlt(P_TMP.s, P_ALL_ONE / T_z, v_tmp0.s, vtmp.s);
+            mov(vsum.s, P_TMP / T_m, 0);
+        }
     }
     if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
 }
@@ -705,6 +716,7 @@ struct jit_softmax_asimd_t : public jit_softmax_base_t {
     std::unique_ptr<jit_uni_eltwise_injector_t<asimd>> exp_injector_;
     std::unique_ptr<jit_uni_eltwise_injector_t<asimd>> log_injector_;
 
+    const VReg vtmp = VReg(vtmp_idx);
     const VReg vneg_flt_max = VReg(vneg_flt_max_idx);
     const VReg vone = VReg(vone_idx);
     const VReg vsum = VReg(vsum_idx);
@@ -882,7 +894,16 @@ void jit_softmax_asimd_t::accumulate_vsum() {
     });
 
     get_horizontal_op(vsum, op_t::sum);
-    if (is_softmax_) { fdiv(vsum.s, vone.s, vsum.s); }
+    if (is_softmax_) {
+        // Zero the output of rows where every element is -inf, see
+        // jit_softmax_sve_t::accumulate_vsum().
+        if (is_inf_as_zero_) {
+            fmov(vtmp.s, 0.5);
+            fcmge(vtmp.s, vsum.s, vtmp.s);
+        }
+        fdiv(vsum.s, vone.s, vsum.s);
+        if (is_inf_as_zero_) and_(vsum.b, vsum.b, vtmp.b);
+    }
     if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
 }
 

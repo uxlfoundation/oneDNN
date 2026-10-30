@@ -1,0 +1,46 @@
+# General forward BRGEMM: FP8 emulation converts source and weights to FP16.
+# Run with ONEDNN_MAX_CPU_ISA=AVX10_2 or AVX512_CORE_AMX_FP16 on supported CPUs.
+--reset
+--dir=FWD_B,FWD_D,FWD_I
+--stag=axb --dtag=axb
+--impl=brg_conv_fwd
+--dt=f8_e5m2:f8_e5m2:f32,f8_e5m2:f8_e4m3:f16,f8_e4m3:f8_e5m2:bf16,f8_e4m3:f8_e4m3:f8_e4m3,f8_e5m2:f8_e5m2:f8_e5m2
+mb2ic32oc64iw64ow62kw3
+mb2ic17oc19ih7oh7kh3ph1
+g2mb2ic34oc38ih7oh7kh3ph1
+mb2ic33oc65id4od4kd3pd1ih5oh5kh3ph1iw5ow5kw3pw1
+mb2ic17oc19ih7oh7kh3dh1ph2
+mb2ic17oc19ih7oh4kh3sh2ph1
+mb2ic17oc19ih7oh5kh3iw1ow1kw1
+--attr-post-ops=sum+relu
+mb2ic17oc19ih7oh7kh3ph1
+--attr-post-ops= --attr-scales=src:common:0.5+wei:per_oc
+mb2ic17oc19ih7oh7kh3ph1
+--dir=FWD_D --dt=f8_e5m2 --bia-dt=f8_e5m2
+--attr-scales= --attr-post-ops=sum+relu
+mb2ic17oc19ih7oh7kh3ph1
+--dt=f8_e4m3 --bia-dt=f8_e4m3
+mb2ic17oc19ih7oh7kh3ph1
+
+# Specialized 1x1: spatial/channel tails, groups, strides, and RTUS on AMX.
+--reset
+--dir=FWD_B,FWD_D,FWD_I
+--stag=axb --dtag=axb
+--impl=brgconv_1x1
+--dt=f8_e5m2:f8_e5m2:f32,f8_e5m2:f8_e4m3:f16,f8_e4m3:f8_e5m2:bf16,f8_e4m3:f8_e4m3:f8_e4m3,f8_e5m2:f8_e5m2:f8_e5m2
+mb2ic32oc64iw64ow64kw1
+mb2ic17oc19ih7oh7kh1
+g2mb2ic34oc38ih7oh7kh1
+mb2ic33oc65id4od4kd1ih5oh5kh1iw5ow5kw1
+mb2ic17oc19ih7oh4kh1sh2iw7ow4kw1sw2
+mb2ic17oc19ih8oh8kh1iw8ow4kw1sw2
+mb2ic256oc65ih7oh7kh1
+--attr-post-ops=sum+relu
+mb2ic17oc19ih7oh7kh1
+--attr-post-ops= --attr-scales=src:common:0.5+wei:per_oc
+mb2ic17oc19ih7oh7kh1
+--dir=FWD_D --dt=f8_e5m2 --bia-dt=f8_e5m2
+--attr-scales= --attr-post-ops=sum+relu
+mb2ic17oc19ih7oh7kh1
+--dt=f8_e4m3 --bia-dt=f8_e4m3
+mb2ic17oc19ih7oh7kh1

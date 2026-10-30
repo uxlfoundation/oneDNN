@@ -24,10 +24,13 @@ if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
     return()
 endif()
 
-if(NOT DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG)$")
+if(NOT DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG|MSVC)$")
     message(FATAL_ERROR "The DNNL_DPCPP_HOST_COMPILER value ${DNNL_DPCPP_HOST_COMPILER} is not supported")
 endif()
 
+if(NOT DNNL_TARGET_ARCH STREQUAL "X64")
+    message(FATAL_ERROR "The DNNL_DPCPP_HOST_COMPILER option is only supported for DNNL_TARGET_ARCH=X64")
+endif()
 
 if(DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG)$")
     # Common flags for GNU and CLANG IDs.
@@ -71,22 +74,6 @@ if(DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG)$")
     # We don't have control over it so just suppress it for the time being.
     append(DPCPP_HOST_COMPILER_OPTS "-Wno-attributes")
 
-    # DPCPP_HOST_COMPILER_KIND specific flags.
-    if(DNNL_TARGET_ARCH STREQUAL "X64")
-        if(DNNL_ARCH_OPT_FLAGS STREQUAL "HostOpts")
-            if(DPCPP_HOST_COMPILER_KIND STREQUAL "GNU")
-                platform_gnu_x64_arch_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
-            elseif(DPCPP_HOST_COMPILER_KIND STREQUAL "CLANG")
-                platform_clang_x64_arch_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
-            endif()
-        else()
-            # Assumption is that the passed flags are compatible with GNU compiler
-            append(DPCPP_HOST_COMPILER_OPTS "${DNNL_ARCH_OPT_FLAGS}")
-        endif()
-    else()
-        message(FATAL_ERROR "The DNNL_DPCPP_HOST_COMPILER option is only supported for DNNL_TARGET_ARCH=X64")
-    endif()
-
     if(DPCPP_HOST_COMPILER_KIND STREQUAL "GNU")
         platform_gnu_nowarn_ccxx_flags(DPCPP_CXX_NOWARN_FLAGS ${DPCPP_HOST_COMPILER_MAJOR_VER}.${DPCPP_HOST_COMPILER_MINOR_VER})
         sdl_gnu_common_ccxx_flags(DPCPP_HOST_COMPILER_OPTS DPCPP_HOST_COMPILER_VER)
@@ -101,19 +88,74 @@ if(DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG)$")
     elseif(DPCPP_HOST_COMPILER_KIND STREQUAL "CLANG")
         platform_clang_nowarn_ccxx_flags(DPCPP_CXX_NOWARN_FLAGS)
     endif()
+elseif(DPCPP_HOST_COMPILER_KIND STREQUAL "MSVC")
+    append_if(DNNL_WERROR DPCPP_HOST_COMPILER_OPTS "/WX")
+    platform_msvc_common_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
+    platform_msvc_nowarn_ccxx_flags(DPCPP_CXX_NOWARN_FLAGS)
+    sdl_msvc_common_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
 
-    # When using a non-default host compiler the main compiler doesn't
-    # handle some arguments properly and issues the warning.
-    # Suppress the warning until the bug is fixed.
-    #
-    # Affects both, GNU and CLANG kinds.
-    append(CMAKE_CXX_FLAGS "-Wno-unused-command-line-argument")
+    # SYCL uses C++17 features in headers hence C++17 support should be enabled
+    # for host compiler.
+    append(DPCPP_HOST_COMPILER_OPTS "/std:c++17")
 
-    # Option `-fsycl-unnamed-lambda` is enabled by default, but not compatible
-    # with `-fsycl-host-compiler`. While icpx driver adds
-    # `-fno-sycl-unnamed-lambda` to avoid build issues clang++ does not do that.
-    append(CMAKE_CXX_FLAGS "-fno-sycl-unnamed-lambda")
+    # Unconditionally enable OpenMP during compilation to use `#pragma omp simd`.
+    # Objects compiled with `/openmp` link against the MSVC OpenMP runtime
+    # (vcomp).
+    append(DPCPP_HOST_COMPILER_OPTS "/openmp")
 
-    append(CMAKE_CXX_FLAGS "-fsycl-host-compiler=${DPCPP_HOST_COMPILER}")
-    append_host_compiler_options(CMAKE_CXX_FLAGS "${DPCPP_HOST_COMPILER_OPTS}")
+    if(UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "RELEASE")
+        set(_host_build_type_flags "${CMAKE_CXX_FLAGS_RELEASE}")
+    else()
+        set(_host_build_type_flags "${CMAKE_CXX_FLAGS_DEBUG}")
+    endif()
+    # Embed debug information into objects as concurrent host compiler
+    # instances cannot share the same program database file.
+    string(REGEX REPLACE "[/-]Zi( |$)" "/Z7\\1" _host_build_type_flags "${_host_build_type_flags}")
+    append(DPCPP_HOST_COMPILER_OPTS "${_host_build_type_flags}")
+
+    # Using single_task, cgh.copy, cgh.fill may cause the following warning:
+    # "warning: `clang::sycl_kernel` scoped attribute directive ignored [-Wattributes]"
+    # We don't have control over it so just suppress it for the time being.
+    if((CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM"
+        AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "2025.3")
+        OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        append(DPCPP_HOST_COMPILER_OPTS "/wd4996")
+    endif()
+
+    # MSVC equivalent of `-Wno-attributes`.
+    append(DPCPP_HOST_COMPILER_OPTS "/wd5030")
+
+    # Host objects produced by MSVC lack the SYCL runtime `/DEFAULTLIB`
+    # directives that the compiler embeds. The driver adds the SYCL runtime
+    # libraries to the link line only if `-fsycl-host-compiler` is passed at
+    # link time as well.
+    string(APPEND CMAKE_CXX_LINK_FLAGS
+        " -fsycl-host-compiler=\"${DPCPP_HOST_COMPILER}\" ")
 endif()
+
+# DPCPP_HOST_COMPILER_KIND specific flags.
+if(DNNL_ARCH_OPT_FLAGS STREQUAL "HostOpts")
+    if(DPCPP_HOST_COMPILER_KIND STREQUAL "GNU")
+        platform_gnu_x64_arch_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
+    elseif(DPCPP_HOST_COMPILER_KIND STREQUAL "CLANG")
+        platform_clang_x64_arch_ccxx_flags(DPCPP_HOST_COMPILER_OPTS)
+    endif()
+    # MSVC defaults already target the x64 baseline.
+else()
+    # Assumption is that the passed flags are compatible with the host compiler
+    append(DPCPP_HOST_COMPILER_OPTS "${DNNL_ARCH_OPT_FLAGS}")
+endif()
+
+# When using a non-default host compiler the main compiler doesn't
+# handle some arguments properly and issues the warning.
+# Suppress the warning until the bug is fixed.
+append(CMAKE_CXX_FLAGS "-Wno-unused-command-line-argument")
+
+# Option `-fsycl-unnamed-lambda` is enabled by default, but not compatible
+# with `-fsycl-host-compiler`. While icpx driver adds
+# `-fno-sycl-unnamed-lambda` to avoid build issues clang++ does not do that.
+append(CMAKE_CXX_FLAGS "-fno-sycl-unnamed-lambda")
+
+# Quote the path as it may contain spaces on Windows.
+append(CMAKE_CXX_FLAGS "-fsycl-host-compiler=\"${DPCPP_HOST_COMPILER}\"")
+append_host_compiler_options(CMAKE_CXX_FLAGS "${DPCPP_HOST_COMPILER_OPTS}")

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_SYCL_STREAM_HPP
-#define GPU_INTEL_SYCL_STREAM_HPP
+#ifndef GPU_INTEL_SYCL_SYCL_STREAM_HPP
+#define GPU_INTEL_SYCL_SYCL_STREAM_HPP
 
 #include <cstring>
 #include <memory>

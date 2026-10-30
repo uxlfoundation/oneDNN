@@ -24,7 +24,7 @@ These options apply to the whole library regardless of the target engine.
 | ONEDNN_LIBRARY_TYPE             | **SHARED**  | STATIC             | Defines the resulting library type                                                         |
 | ONEDNN_LIBRARY_NAME             | **dnnl**    | \<string\>         | Specifies name of the library                                                              |
 | [ONEDNN_ARCH_OPT_FLAGS]         | *varies*    | \<compiler flags\> | Specifies compiler optimization flags. Default value depends on the platform and compiler. |
-| [ONEDNN_DPCPP_HOST_COMPILER]    | **DEFAULT** | g++, clang++       | Specifies host compiler executable for SYCL runtime                                        |
+| [ONEDNN_DPCPP_HOST_COMPILER]    | **DEFAULT** | g++, clang++, cl   | Specifies host compiler executable for SYCL runtime                                        |
 
 [ONEDNN_ARCH_OPT_FLAGS]: @ref opt_arch_opt_flags
 [ONEDNN_DPCPP_HOST_COMPILER]: @ref opt_dpcpp_host_compiler
@@ -67,8 +67,10 @@ compiler executable.
 The default value of `ONEDNN_DPCPP_HOST_COMPILER` is `DEFAULT`, which is the
 default host compiler used by the compiler specified with `CMAKE_CXX_COMPILER`.
 
-The `DEFAULT` host compiler is the only supported option on Windows.
-On Linux, user can specify a GNU C++ compiler as the host compiler.
+On Linux, user can specify a GNU C++ compiler or Clang as the host compiler.
+On Windows, user can specify Microsoft Visual C++ Compiler (`cl`) as the host
+compiler. With `ONEDNN_CPU_RUNTIME=OMP` the library then uses the Microsoft
+OpenMP runtime (`vcomp`) instead of the Intel OpenMP runtime.
 
 @warning
 oneAPI DPC++/C++ Compiler requires host compiler to be compatible. The minimum
@@ -77,6 +79,10 @@ section in oneAPI DPC++/C++ Compiler Developer Guide.
 
 @warning
 The minimum allowed Clang C++ compiler version is 11.0.0.
+
+@warning
+The minimum allowed Microsoft Visual C++ Compiler version is 19.29 (Visual
+Studio 2019 version 16.10).
 
 ### Functionality
 

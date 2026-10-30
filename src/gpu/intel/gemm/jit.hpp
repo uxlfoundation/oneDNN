@@ -322,10 +322,22 @@ struct gen_t : public primitive_t {
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 
             bool kernel_success = false;
-            if (is_dev_mode() && attr()->gpu_attr_) {
+            // Kernel override: bare int = Nth candidate after sort (rank);
+            // else strategy string.
+            int index = -1;
+            if (is_dev_mode()) {
                 auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
                         attr()->gpu_attr_.get());
-                kernel_desc_.set_kernel_override(gpu_attr->kernel_override());
+                // GEMM_KERNEL would replace the attribute override.
+                bool has_env
+                        = !gpu_utils::dev_getenv("GEMM_KERNEL", std::string())
+                                   .empty();
+                VDISPATCH_GEMM(!has_env || !gpu_attr
+                                || gpu_attr->kernel_override().empty(),
+                        "kernel override conflicts with GEMM_KERNEL");
+                auto kernel = kernel_override(attr());
+                index = kernel_rank(kernel);
+                if (index < 0) kernel_desc_.set_kernel_override(kernel);
             }
             auto lda = ld(DNNL_ARG_A);
             auto ldb = ld(DNNL_ARG_B);
@@ -333,22 +345,35 @@ struct gen_t : public primitive_t {
             auto entries = kernel_desc_.select_kernel(*dev_info_, mode, problem,
                     alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),
                     d->batch());
+            kernel_count_ = (int)entries.size();
 
-            for (size_t entry_idx = 0; entry_idx < entries.size();
-                    entry_idx++) {
+            VDISPATCH_GEMM(index < (int)entries.size(),
+                    "kernel override rejected: rank out of range");
+
+            // Why an override or a pinned rank does not run.
+            std::string reject_reason;
+            size_t begin = index >= 0 ? index : 0;
+            size_t end = index >= 0 ? index + 1 : entries.size();
+            for (size_t entry_idx = begin; entry_idx < end; entry_idx++) {
                 auto *entry = entries[entry_idx];
                 int g = (int)(entry - jit::catalog().entries);
-                auto skip = [&](const char *why) {
+                auto skip = [&](const std::string &why) {
                     gpu_debug() << "[" << lpad(g, 4) << "] skip " << entry_idx
                                 << "/" << entries.size() << " " << entry->str()
                                 << "," << why;
+                    if ((!kernel_desc_.has_entry() || index >= 0)
+                            && reject_reason.empty())
+                        reject_reason = why;
                 };
                 kernel_desc_.set_entry(entry);
                 kernel_desc_.set_problem(problem);
                 auto status = kernel_desc_.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
                 bool valid = status == status::success;
-                if (!valid) skip("Strategy finalization failed.");
+                if (!valid)
+                    skip(kernel_desc_.reject_reason().empty()
+                                    ? "Strategy finalization failed."
+                                    : kernel_desc_.reject_reason());
                 // Global k-parallel kernels don't support post-ops or non-f32/s32
                 //   accumulation unless fusion is enabled.
                 if (kernel_desc_.driver_info()->kParallel()
@@ -420,19 +445,24 @@ struct gen_t : public primitive_t {
                         if (kernel_desc_.has_entry())
                             gpu_info() << "[" << lpad(g, 4) << "] use "
                                        << entry_idx << "/" << entries.size()
-                                       << " " << kernel_desc_.str();
+                                       << (index >= 0 ? " pin" : "") << " "
+                                       << kernel_desc_.str();
                         else
                             gpu_info()
                                     << "[override] use " << kernel_desc_.str();
                         break;
                     }
+                    skip("Kernel generation failed.");
                 }
                 // Overrides do not depend on the entry.
                 if (!kernel_desc_.has_entry()) break;
             }
 
-            VDISPATCH_GEMM(
-                    kernel_success, "matching kernel not found in catalog");
+            VDISPATCH_GEMM(kernel_success, "%s",
+                    reject_reason.empty()
+                            ? "matching kernel not found in catalog"
+                            : ("kernel override rejected: " + reject_reason)
+                                      .c_str());
 
             init_scratchpad();
 
@@ -443,6 +473,10 @@ struct gen_t : public primitive_t {
             switch ((int)what) {
                 case (int)query::preferred_gpu_grf_per_thread: {
                     *(int *)result = kernel_desc_.driver_info()->grfCount;
+                    break;
+                }
+                case (int)query::gpu_kernel_count: {
+                    *(int *)result = kernel_count_;
                     break;
                 }
                 default: return gemm::pd_t::query(what, idx, result);
@@ -631,6 +665,7 @@ struct gen_t : public primitive_t {
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
         kernel_desc_t kernel_desc_;
+        int kernel_count_ = 0;
     };
 
     gen_t(const pd_t *apd) : primitive_t(apd) {}

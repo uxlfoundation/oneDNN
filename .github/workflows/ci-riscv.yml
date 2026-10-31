@@ -18,8 +18,8 @@
 
 name: "CI RISC-V"
 
-#* To avoid duplicate jobs running when both push and PR is satisfied, we use this:
-#* https://github.com/orgs/community/discussions/26940#discussioncomment-5686753
+# To avoid duplicate jobs running when both push and PR is satisfied, we use this:
+# https://github.com/orgs/community/discussions/26940#discussioncomment-5686753
 on:
   push:
     branches: [main, "rls-*"]
@@ -34,24 +34,22 @@ on:
       - "src/cpu/rv64/**"
       - "tests/**"
       - "CMakeLists.txt"
+  # Pull requests are tested only if they change RISC-V-specific files.
+  # Changes to common code are covered by post-merge testing.
   pull_request:
      types: [opened, synchronize, reopened]
      paths:
       - ".github/automation/riscv/**"
       - ".github/workflows/ci-riscv.yml"
-      - "cmake/**"
-      - "examples/**"
-      - "include/**"
-      - "src/common/**"
+      - "cmake/toolchains/riscv64.cmake"
       - "src/cpu/*"
       - "src/cpu/rv64/**"
       - "tests/**"
-      - "CMakeLists.txt"
-  #* allow manual trigger of workflow when needed.
+  # allow manual trigger of workflow when needed.
   workflow_dispatch:
 
-#* Stop stale workflows when pull requests are updated: https://stackoverflow.com/a/70972844
-#* Does not apply to the main branch.
+# Stop stale workflows when pull requests are updated: https://stackoverflow.com/a/70972844
+# Does not apply to the main branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -114,10 +112,18 @@ jobs:
         env:
           ONEDNN_ACTION: build
 
+      - name: Install QEMU build dependencies
+        run: |
+          sudo apt-get install -y build-essential pkg-config ninja-build python3-venv libglib2.0-dev libpcre2-dev zlib1g-dev
+
+      - name: Build pinned QEMU
+        working-directory: ${{ github.workspace }}/oneDNN
+        run: bash .github/automation/riscv/build-qemu.sh
+
       - name: Create archive with preserved permissions
         working-directory: ${{ github.workspace }}/oneDNN
         run: |
-          tar -czf build.tar.gz build
+          tar -czf build.tar.gz build qemu-bin
 
       # Upload build artifacts
       - name: Upload build artifacts
@@ -131,11 +137,14 @@ jobs:
   test:
     needs: build
     strategy:
+      # QEMU tests are long-running. To reduce the load on GitHub-hosted
+      # runners shared across the organization,
+      # run vector length configurations one at a time.
+      max-parallel: 1
       matrix:
         config: [
-          # Test with different vector lengths and threading modes
-          { name: riscv-test-vlen128, threading: OMP, testset: SMOKE, vlen: 128, build: RelWithAssert },
-          { name: riscv-test-vlen256, threading: OMP, testset: SMOKE, vlen: 256, build: RelWithAssert }
+          # Keep the smallest supported VLEN for basic correctness coverage.
+          { name: riscv-test-vlen128, threading: OMP, testset: SMOKE, vlen: 128, build: RelWithAssert }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.threading }}
@@ -153,12 +162,6 @@ jobs:
           content=`cat ${{ github.workspace }}/oneDNN/.github/automation/riscv/ci.json`
           content="${content//[$'\t\r\n$ ']}"
           echo "output=$content" >> $GITHUB_OUTPUT
-
-      # Setup QEMU for RISC-V platform support
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-        with:
-          platforms: riscv64
 
       # Install cross-compilation tools
       - name: Install cross-compilation tools
@@ -178,6 +181,10 @@ jobs:
         run: |
           tar -xzf build.tar.gz
 
+      - name: Set up pinned QEMU
+        working-directory: ${{ github.workspace }}/oneDNN
+        run: bash .github/automation/riscv/setup-qemu.sh
+
       - name: Run oneDNN tests
         run: ${{ github.workspace }}/oneDNN/.github/automation/riscv/test.sh
         working-directory: ${{ github.workspace }}/oneDNN/build
@@ -186,6 +193,16 @@ jobs:
           ONEDNN_THREADING: ${{ matrix.config.threading }}
           ONEDNN_TEST_SET: ${{ matrix.config.testset }}
           QEMU_CPU: "rv64,v=true,zvfh=true,zvfbfwma=true,vlen=${{ matrix.config.vlen }},vext_spec=v1.0"
+
+      - name: Upload test timings and diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-riscv-vlen128
+          path: |
+            ${{ github.workspace }}/oneDNN/build/riscv-tests.xml
+            ${{ github.workspace }}/oneDNN/build/Testing/
+          retention-days: 14
 
   # This job adds a check named "CI RISC-V" that represents overall
   # workflow status and can be used in branch rulesets

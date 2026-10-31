@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <fstream> // for std::ifstream
+#include <map>
 #include <string>
 #include <utility> // for std::move
 #include <vector>
@@ -374,6 +375,12 @@ static std::string format_cpus(const std::vector<int> &cpus) {
     return result;
 }
 
+struct cpu_freq_hint_t {
+    std::vector<int> cpus;
+    std::string first_policy;
+    size_t policy_count = 0;
+};
+
 static bool report_cpu_perf_hints_impl() {
     bool any_hint = false;
 
@@ -391,6 +398,7 @@ static bool report_cpu_perf_hints_impl() {
     const std::string root = "/sys/devices/system/cpu/cpufreq";
     auto policies = list_dir(root);
     std::sort(policies.begin(), policies.end());
+    std::map<std::pair<int64_t, int64_t>, cpu_freq_hint_t> freq_hints;
     for (const auto &policy : policies) {
         if (policy.compare(0, 6, "policy") != 0) continue;
         const std::string path = sysfs_path(root, policy);
@@ -402,17 +410,33 @@ static bool report_cpu_perf_hints_impl() {
                            sysfs_path(path, "scaling_max_freq"), max_freq)
                         != OK)
             continue;
-        if (min_freq != max_freq) {
-            const auto cpu_list = format_cpus(cpus);
-            BENCHDNN_PRINT(0,
-                    "[PERF_HINTS] Info: %s %s (%s) min (%ld "
-                    "kHz) and max (%ld kHz) "
-                    "frequencies differ. Pin the frequency for stable "
-                    "performance measurements.\n",
-                    cpus.size() == 1 ? "CPU" : "CPUs", cpu_list.c_str(),
-                    policy.c_str(), (long)min_freq, (long)max_freq);
-            any_hint = true;
+        if (min_freq == max_freq) continue;
+        auto &hint = freq_hints[{min_freq, max_freq}];
+        if (hint.policy_count == 0) hint.first_policy = policy;
+        ++hint.policy_count;
+        hint.cpus.insert(hint.cpus.end(), cpus.begin(), cpus.end());
+    }
+
+    for (auto &entry : freq_hints) {
+        auto &hint = entry.second;
+        std::sort(hint.cpus.begin(), hint.cpus.end());
+        hint.cpus.erase(std::unique(hint.cpus.begin(), hint.cpus.end()),
+                hint.cpus.end());
+        const auto cpu_list = format_cpus(hint.cpus);
+        std::string policy_label = hint.first_policy;
+        if (hint.policy_count > 1) {
+            policy_label = std::to_string(hint.policy_count);
+            policy_label += " policies";
         }
+        BENCHDNN_PRINT(0,
+                "[PERF_HINTS] Info: %s %s (%s) min (%ld "
+                "kHz) and max (%ld kHz) "
+                "frequencies differ. Pin the frequency for stable "
+                "performance measurements.\n",
+                hint.cpus.size() == 1 ? "CPU" : "CPUs", cpu_list.c_str(),
+                policy_label.c_str(), (long)entry.first.first,
+                (long)entry.first.second);
+        any_hint = true;
     }
 
     // Turbo mode is supposed to be disabled (`no_turbo` equals to `1`).

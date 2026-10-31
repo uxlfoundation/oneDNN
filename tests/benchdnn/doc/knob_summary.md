@@ -63,7 +63,8 @@ For the CPU engine the following settings are verified:
 * Min and max CPU frequency. The effective (scaling) range is expected to
   coincide; otherwise the frequency may float during the run. Benchdnn checks
   each cpufreq policy covering CPUs allowed at startup once, before the
-  threading runtime can narrow the reporting thread's affinity. If affinity or
+  threading runtime can narrow the reporting thread's affinity. Policies with
+  the same minimum and maximum frequencies share one hint. If affinity or
   policy information is unavailable, the frequency check is skipped.
 * Turbo mode. It is expected to be disabled; otherwise the frequency may
   increase during the run.

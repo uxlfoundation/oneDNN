@@ -8,12 +8,11 @@ into oneDNN. The design follows the discussion in
 
 We propose two routes:
 
-- **Route 1: Native JIT integration.** Add instruction support to Xbyak_riscv,
-  then implement optimized kernels in oneDNN. This is our preferred long-term
-  route because multiple primitives can share the same kernel code.
+- **Route 1: Native JIT integration.** Add Xbyak_riscv support where new
+  instructions are needed, then implement optimized kernels in oneDNN. This is
+  our preferred long-term route because primitives can share kernel code.
 - **Route 2: Vendor-library integration.** Connect an existing vendor library
-  to oneDNN through an adapter. Each new library needs its own RFC and must be
-  introduced as a Git submodule.
+  to oneDNN through an adapter. Each new library needs its own RFC.
 
 SpacemiT K3 is a useful example of why this matters. Its X100 cores have
 256-bit vectors, while its A100 cores have 1024-bit vectors and specialized
@@ -21,32 +20,36 @@ matrix and dot-product instructions. In our tests, longer vectors alone did
 not always make A100 faster. Kernels also need suitable blocking, register
 usage, memory access, and scheduling.
 
-We want applications to benefit from such work through the existing oneDNN
-primitives. Support for standard RISC-V extensions and selected vendor
-extensions can develop in parallel.
+Standardization work on VME, IME, and AME can proceed alongside vendor-specific
+optimizations.
 
 ## Proposal
 
 ### Route 1: Native JIT integration
 
-A contribution taking this route should complete these steps in order:
+Route 1 follows these steps:
 
-1. **Make the hardware detectable through upstream Linux.** Linux must have
+1. **Make RV64 JIT kernels selectable at build time.** Allow existing kernels
+   and their dispatch registrations to be compiled out. Keep all enabled by
+   default.
+2. **Make the hardware detectable through upstream Linux.** Linux must have
    merged the support needed to identify the target CPUs with
    `riscv_hwprobe()`. At minimum, we need to identify the microarchitecture.
    We recommend directly reporting the supported instruction extensions.
-2. **Submit the Xbyak_riscv changes.** These include instruction encodings,
-   operand checks, detection support, and tests. If Linux only reports CPU
-   identifiers, propose an identifier-to-extension lookup table there first.
-3. **Wait for those changes to merge, then update oneDNN's Xbyak_riscv
-   version.** oneDNN can then use the accepted encodings and detection APIs.
-4. **Submit the optimized oneDNN kernels.** Include correctness results,
+3. **Update Xbyak_riscv.** Add CPU-set queries so ISA support and VLEN are
+   detected for the CPUs that will run the kernel, including heterogeneous
+   systems. Add encodings, operand checks, and tests for new instructions. For
+   vendor extensions reported only through CPU identifiers, propose a lookup
+   table in Xbyak_riscv.
+4. **Update oneDNN's Xbyak_riscv version** after any required upstream changes
+   merge.
+5. **Submit the optimized oneDNN kernels.** Include correctness results,
    performance measurements and supported configurations.
 
-Direct ISA reporting can take time to reach upstream Linux and deployed
-systems. We therefore accept CPU identification plus a lookup table as a
-starting point. We will first ask Xbyak_riscv to maintain that table. If they
-decline, we can put it in oneDNN's RV64 capability-detection code.
+Direct ISA reporting can take time to reach upstream Linux, and vendor
+operating systems may take considerably longer to adopt it after the merge.
+CPU identification plus a lookup table is acceptable. If Xbyak_riscv declines
+the table, put it in oneDNN's RV64 detection code.
 
 #### What does “detectable” mean?
 
@@ -119,7 +122,7 @@ We separate three responsibilities: the OS reports usable hardware features,
 Xbyak_riscv detects them, and the application or threading runtime controls
 where workers run. oneDNN uses that information to select and tune kernels.
 
-This follows the division already visible in other oneDNN backends:
+Other oneDNN backends provide useful examples:
 
 - **x64:** ISA selection uses cached Xbyak CPU information. Hybrid-core topology
   is also available, and oneDNN uses it to choose conservative cache sizes
@@ -147,8 +150,8 @@ otherwise select a compatible fallback.
 **Specialized execution uses a fixed, homogeneous CPU group.** The application
 or launcher establishes the group before oneDNN capability initialization and
 before creating OpenMP or thread-pool workers. The application must keep every
-worker and later primitive execution within that group. Platform-specific
-steps, are performed by the launcher or runtime.
+worker and later primitive execution within that group. The launcher or
+runtime also performs any platform-specific setup.
 A process-wide cpuset restriction is one way to enforce the CPU boundary.
 
 The initial implementation supports one fixed execution group per process.
@@ -202,12 +205,14 @@ sets, mixed groups, unknown VLEN, and rejection of incompatible reuse.
 | Blocking and scheduling | oneDNN or a shared kernel-generation library |
 
 If oneDNN owns the table, primitives should use the shared detection result.
-We can move entries to Xbyak_riscv or direct kernel reporting as support
-becomes available.
+We can move the table to Xbyak_riscv or remove it if Linux reports the
+extensions directly.
 
 A reusable GEMM/BRGEMM kernel is a useful first target because it can benefit
 matmul, convolution, and inner product. The same CPU information can help tune
 standard RVV kernels, including LMUL, packing, and blocking choices.
+If [rvjit](https://github.com/uxlfoundation/oneDNN/pull/6368) is merged,
+evaluate its reusable matmul components before adding another GEMM generator.
 
 #### ISA and architecture-specific optimizations
 
@@ -247,9 +252,8 @@ C++ cleanup
     -> release reusable resources and close the device
 ```
 
-This sequence illustrates a synchronous integration. An implementation may
-overlap transfers and computation, provided its dependencies and completion
-handling fit oneDNN's stream semantics. Resource ownership must support
+Transfers may overlap with computation when dependencies and completion follow
+oneDNN's stream semantics. Resource ownership must support
 concurrent executions of a primitive; reusable device resources and per-call
 buffers should have clearly defined lifetimes.
 
@@ -268,17 +272,17 @@ release acquired resources, and execution errors must be returned through
 oneDNN's status handling. Include transfer, setup, and synchronization costs
 in performance measurements.
 
-**A required vendor runtime library needs a separate RFC.** Integration is
-eligible for acceptance only when independent third-party evidence shows that
-more than 20% of RV64 devices in the market support the feature. The RFC must
-cite that evidence and state its date, market scope, and device-counting
-method.
+**A required vendor runtime library needs a separate RFC.** The RFC must name
+the library's license and describe any limits on use or redistribution. Adding
+it to the default build normally requires independent evidence that more than
+20% of RV64 devices support the feature. Cite the source, date, and market
+scope. Maintainers may make an exception based on measured benefits. Opt-in
+libraries have no adoption threshold.
 
 If a vendor library is needed to manage the device, memory, or submissions,
-its RFC should describe that role and the interface oneDNN will call. Review
-weighs binary-size and dependency costs against capabilities, measured
-performance, market adoption, and maintenance and test coverage. The RFC also
-specifies packaging and version management.
+its RFC describes that role, the interface oneDNN calls, and how the library
+is packaged and updated. Reviewers weigh its size and dependency cost against
+measured performance, adoption, and maintenance.
 
 #### Build-time selection of JIT extensions
 
@@ -300,18 +304,21 @@ impact of enabling it.
 ### Route 2: Vendor-library integration
 
 A vendor may already have an optimized operator library. This route connects
-it to oneDNN through an adapter and can make those kernels available sooner.
+it to oneDNN through an adapter. Treat this route as secondary to native JIT
+integration. Closed-source libraries are eligible.
 
 **Each new library needs its own approved RFC before integration.** The RFC
-should cover the supported operators and configurations, performance results,
-binary size, licensing, threading, hardware adoption, and maintenance. It
-should also explain hardware detection and any OS or resource requirements,
-including how the library handles heterogeneous CPUs.
+describes supported operators and configurations, performance, binary size,
+threading, hardware adoption, and maintenance. It must name the library's
+license and describe any limits on use or redistribution. For a closed-source
+library, explain how users obtain and update it. Also describe hardware
+detection, OS requirements, and handling of heterogeneous CPUs.
 
-**Use a Git submodule pinned to a reviewed commit.** Users initialize the
-selected submodule when enabling the library's optional build configuration.
-Library updates change that recorded commit through code review. Document
-both submodule initialization and builds from source packages.
+**Open-source libraries use a Git submodule pinned to a reviewed commit.** Users
+initialize it when enabling the library's optional build configuration. Library
+updates change that recorded commit through code review. Closed-source
+libraries may instead be supplied separately by users; they do not require a
+submodule.
 
 The adapter translates oneDNN descriptors and arguments into library calls.
 It joins the existing primitive-selection process and checks that the library
@@ -329,13 +336,10 @@ The PR author must provide performance measurements on real hardware. At
 least one set of measurements must use a benchdnn input batch with sufficiently
 broad coverage of the workloads supported by the optimization.
 
-
 ### Deprecating and removing vendor ISA support
 
-We review vendor ISA support as hardware and software evolve. Removal can be
-proposed when an extension has little remaining deployment, a standard ISA
-path has replaced its benefits, or its maintenance cost outweighs its measured
-value.
+Consider removing vendor ISA support when few devices use it, a standard ISA
+replaces it, or its maintenance cost outweighs its measured benefit.
 
 The removal process is:
 
@@ -348,28 +352,38 @@ The removal process is:
    for at least one complete release cycle after that announcement, and state
    the earliest release in which removal may occur. During this period,
    contributors can address the reported issues or provide a replacement.
-3. **Review readiness for removal.** Confirm the replacement's correctness,
+3. **Check the replacement.** Confirm its correctness,
    supported data types and layouts, ISA requirements, and performance on the
    affected hardware where available. Record any loss of functionality or
    performance in the tracking issue and release notes.
 4. **Remove the oneDNN implementation.** Delete the obsolete JIT kernels,
    dispatch registrations, exclusive tuning and detection-table entries,
    tests, build selections, and documentation. Preserve shared components
-   still used by other implementations. For a removed build selection,
-   provide an actionable configuration diagnostic and document its replacement.
-5. **Coordinate dependency cleanup.** Stop relying on obsolete vendor support
+   still used by other implementations. If a removed build option is selected,
+   report the replacement option.
+5. **Remove unused dependencies.** Stop relying on obsolete vendor support
    in oneDNN's Xbyak_riscv integration. Removal of encodings or detection APIs
    from Xbyak_riscv itself follows that project's review process. For Route 2,
    remove an unused adapter and submodule through the same deprecation process.
 
-Generic implementations continue to serve affected hardware where supported.
 If removal raises the minimum ISA or removes user-visible functionality,
-document that change explicitly under the project's compatibility policy.
+document that change in the release notes.
 Urgent correctness or security problems may require disabling a path before
 the normal deprecation period; explain that decision and the fallback in the
 tracking issue and release notes.
 
 ### First integration
 
-The first planned implementation is to integrate SpacemiT IME support through
-Route 1 and use it to accelerate the matmul primitive.
+The first target is matmul on SpacemiT A100 using IME:
+
+1. Make existing RV64 JIT kernels selectable at build time, including their
+   dispatch entries. Keep all kernels enabled by default.
+2. Update Xbyak_riscv to detect ISA support and VLEN for a specified CPU group.
+   Check X100 and A100 separately on K3.
+3. Add IME detection, instruction encodings, and tests to Xbyak_riscv. Linux
+   must first expose the required CPU identification. Provide a public QEMU
+   build that runs the IME tests.
+4. Update oneDNN's Xbyak_riscv version and add an IME GEMM/BRGEMM kernel with
+   runtime dispatch to A100.
+5. Run correctness tests in QEMU and performance tests on A100, including
+   benchdnn batches that cover the supported matmul workloads.

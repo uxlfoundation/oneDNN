@@ -14,7 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
 #include <fstream> // for std::ifstream
+#include <map>
 #include <string>
 #include <utility> // for std::move
 #include <vector>
@@ -23,6 +25,8 @@
 
 #ifdef __linux__
 #include <dirent.h> // for opendir, readdir, closedir
+#include <errno.h>
+#include <sched.h> // for sched_getaffinity, CPU_ALLOC
 #include <sys/stat.h> // for stat
 #endif
 
@@ -263,24 +267,33 @@ struct gpu_gt_t {
     std::string max_freq_path;
 };
 
+static std::string sysfs_path(
+        const std::string &base, const std::string &name) {
+    std::string path = base;
+    path += '/';
+    path += name;
+    return path;
+}
+
 // Path components encode the xe driver's sysfs ABI. Media GTs (those without
 // rcs/ccs engines) don't run compute workloads, so their frequency is
 // irrelevant to performance measurements and they are skipped.
 static std::vector<gpu_gt_t> find_gpu_gts_xe(const std::string &card) {
     std::vector<gpu_gt_t> gts;
-    const std::string device = card + "/device";
+    const std::string device = sysfs_path(card, "device");
     for (const auto &tile : list_dir(device)) {
         if (tile.rfind("tile", 0) != 0) continue;
-        const std::string tile_path = device + "/" + tile;
+        const std::string tile_path = sysfs_path(device, tile);
         for (const auto &gt : list_dir(tile_path)) {
-            const std::string freq = tile_path + "/" + gt + "/freq0";
-            if (!path_exists(freq + "/min_freq")) continue;
-            const std::string eng = tile_path + "/" + gt + "/engines";
-            if (path_exists(eng) && !path_exists(eng + "/rcs")
-                    && !path_exists(eng + "/ccs"))
+            const std::string gt_path = sysfs_path(tile_path, gt);
+            const std::string freq = sysfs_path(gt_path, "freq0");
+            if (!path_exists(sysfs_path(freq, "min_freq"))) continue;
+            const std::string eng = sysfs_path(gt_path, "engines");
+            if (path_exists(eng) && !path_exists(sysfs_path(eng, "rcs"))
+                    && !path_exists(sysfs_path(eng, "ccs")))
                 continue;
-            gts.push_back(
-                    {tile + "/" + gt, freq + "/min_freq", freq + "/max_freq"});
+            gts.push_back({sysfs_path(tile, gt), sysfs_path(freq, "min_freq"),
+                    sysfs_path(freq, "max_freq")});
         }
     }
     return gts;
@@ -290,25 +303,87 @@ static std::vector<gpu_gt_t> find_gpu_gts_xe(const std::string &card) {
 // root covers kernels that don't expose a `gt/` hierarchy.
 static std::vector<gpu_gt_t> find_gpu_gts_i915(const std::string &card) {
     std::vector<gpu_gt_t> gts;
-    const std::string gt_root = card + "/gt";
+    const std::string gt_root = sysfs_path(card, "gt");
     for (const auto &gt : list_dir(gt_root)) {
-        const std::string min = gt_root + "/" + gt + "/rps_min_freq_mhz";
+        const std::string gt_path = sysfs_path(gt_root, gt);
+        const std::string min = sysfs_path(gt_path, "rps_min_freq_mhz");
         if (path_exists(min))
-            gts.push_back({gt, min, gt_root + "/" + gt + "/rps_max_freq_mhz"});
+            gts.push_back({gt, min, sysfs_path(gt_path, "rps_max_freq_mhz")});
     }
-    if (gts.empty() && path_exists(card + "/gt_min_freq_mhz"))
-        gts.push_back(
-                {"gt", card + "/gt_min_freq_mhz", card + "/gt_max_freq_mhz"});
+    if (gts.empty() && path_exists(sysfs_path(card, "gt_min_freq_mhz")))
+        gts.push_back({"gt", sysfs_path(card, "gt_min_freq_mhz"),
+                sysfs_path(card, "gt_max_freq_mhz")});
     return gts;
 }
+
+// Saved before the runtime can narrow the reporting thread's affinity. This
+// describes eligible CPUs, not a measurement of worker-thread placement.
+static std::vector<int> startup_cpus;
+
+static std::vector<int> get_startup_cpus() {
+    // The kernel affinity mask can exceed CPU_SETSIZE, even if few CPUs are
+    // online. Retry EINVAL with a larger dynamically allocated mask.
+    for (int count = CPU_SETSIZE; count <= (1 << 20); count *= 2) {
+        cpu_set_t *mask = CPU_ALLOC(count);
+        if (!mask) return {};
+        const size_t size = CPU_ALLOC_SIZE(count);
+        CPU_ZERO_S(size, mask);
+        const int rc = sched_getaffinity(0, size, mask);
+        const int error = errno;
+        std::vector<int> cpus;
+        if (rc == 0) {
+            for (int cpu = 0; cpu < count; ++cpu)
+                if (CPU_ISSET_S(cpu, size, mask)) cpus.push_back(cpu);
+        }
+        CPU_FREE(mask);
+        if (rc == 0) return cpus;
+        if (error != EINVAL) return {};
+    }
+    return {};
+}
+
+static std::vector<int> policy_cpus_allowed_at_startup(
+        const std::string &path) {
+    // cpufreq related_cpus is a space-separated list, including offline CPUs.
+    // Intersecting it with CPUs allowed at startup excludes unrelated policies.
+    std::ifstream ifs(sysfs_path(path, "related_cpus"));
+    std::vector<int> cpus;
+    int cpu;
+    while (ifs >> cpu) {
+        if (std::binary_search(startup_cpus.begin(), startup_cpus.end(), cpu))
+            cpus.push_back(cpu);
+    }
+    std::sort(cpus.begin(), cpus.end());
+    cpus.erase(std::unique(cpus.begin(), cpus.end()), cpus.end());
+    return cpus;
+}
+
+static std::string format_cpus(const std::vector<int> &cpus) {
+    std::string result;
+    for (size_t i = 0; i < cpus.size();) {
+        const int first = cpus[i];
+        while (i + 1 < cpus.size() && cpus[i + 1] == cpus[i] + 1)
+            ++i;
+        if (!result.empty()) result += ",";
+        result += std::to_string(first);
+        if (cpus[i] != first) {
+            result += '-';
+            result += std::to_string(cpus[i]);
+        }
+        ++i;
+    }
+    return result;
+}
+
+struct cpu_freq_hint_t {
+    std::vector<int> cpus;
+    std::string first_policy;
+    size_t policy_count = 0;
+};
 
 static bool report_cpu_perf_hints_impl() {
     bool any_hint = false;
 
-    constexpr const char *min_freq_path
-            = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq";
-    constexpr const char *max_freq_path
-            = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq";
     constexpr const char *no_turbo_path
             = "/sys/devices/system/cpu/intel_pstate/no_turbo";
     constexpr const char *max_cstate_path
@@ -320,17 +395,48 @@ static bool report_cpu_perf_hints_impl() {
     // limits and always differ, so `scaling_*_freq` (the governor's allowed
     // range) is inspected instead as it reflects whether the frequency is
     // pinned.
-    int64_t min_freq = 0, max_freq = 0;
-    if (read_sysfs_int(min_freq_path, min_freq) == OK
-            && read_sysfs_int(max_freq_path, max_freq) == OK) {
-        if (min_freq != max_freq) {
-            BENCHDNN_PRINT(0,
-                    "[PERF_HINTS] Info: CPU min (%ld kHz) and max (%ld kHz) "
-                    "frequencies differ. Pin the frequency for stable "
-                    "performance measurements.\n",
-                    (long)min_freq, (long)max_freq);
-            any_hint = true;
+    const std::string root = "/sys/devices/system/cpu/cpufreq";
+    auto policies = list_dir(root);
+    std::sort(policies.begin(), policies.end());
+    std::map<std::pair<int64_t, int64_t>, cpu_freq_hint_t> freq_hints;
+    for (const auto &policy : policies) {
+        if (policy.compare(0, 6, "policy") != 0) continue;
+        const std::string path = sysfs_path(root, policy);
+        const auto cpus = policy_cpus_allowed_at_startup(path);
+        if (cpus.empty()) continue;
+        int64_t min_freq = 0, max_freq = 0;
+        if (read_sysfs_int(sysfs_path(path, "scaling_min_freq"), min_freq) != OK
+                || read_sysfs_int(
+                           sysfs_path(path, "scaling_max_freq"), max_freq)
+                        != OK)
+            continue;
+        if (min_freq == max_freq) continue;
+        auto &hint = freq_hints[{min_freq, max_freq}];
+        if (hint.policy_count == 0) hint.first_policy = policy;
+        ++hint.policy_count;
+        hint.cpus.insert(hint.cpus.end(), cpus.begin(), cpus.end());
+    }
+
+    for (auto &entry : freq_hints) {
+        auto &hint = entry.second;
+        std::sort(hint.cpus.begin(), hint.cpus.end());
+        hint.cpus.erase(std::unique(hint.cpus.begin(), hint.cpus.end()),
+                hint.cpus.end());
+        const auto cpu_list = format_cpus(hint.cpus);
+        std::string policy_label = hint.first_policy;
+        if (hint.policy_count > 1) {
+            policy_label = std::to_string(hint.policy_count);
+            policy_label += " policies";
         }
+        BENCHDNN_PRINT(0,
+                "[PERF_HINTS] Info: %s %s (%s) min (%ld "
+                "kHz) and max (%ld kHz) "
+                "frequencies differ. Pin the frequency for stable "
+                "performance measurements.\n",
+                hint.cpus.size() == 1 ? "CPU" : "CPUs", cpu_list.c_str(),
+                policy_label.c_str(), (long)entry.first.first,
+                (long)entry.first.second);
+        any_hint = true;
     }
 
     // Turbo mode is supposed to be disabled (`no_turbo` equals to `1`).
@@ -371,9 +477,10 @@ static bool report_gpu_perf_hints_impl() {
         // A `-` marks a connector node (e.g. `card0-HDMI-A-1`), not a device.
         if (card.rfind("card", 0) != 0 || card.find('-') != std::string::npos)
             continue;
-        const std::string card_path = drm_root + "/" + card;
+        const std::string card_path = sysfs_path(drm_root, card);
         // Only Intel GPUs expose the frequency controls inspected below.
-        if (read_sysfs_str(card_path + "/device/vendor") != "0x8086") continue;
+        if (read_sysfs_str(sysfs_path(card_path, "device/vendor")) != "0x8086")
+            continue;
 
         auto gts = find_gpu_gts_xe(card_path);
         if (gts.empty()) gts = find_gpu_gts_i915(card_path);
@@ -406,6 +513,12 @@ static bool report_gpu_perf_hints_impl() {
     return any_hint;
 }
 #endif
+
+void init_perf_hints() {
+#ifdef __linux__
+    startup_cpus = get_startup_cpus();
+#endif
+}
 
 void report_perf_hints() {
     if (!summary.perf_hints) return;

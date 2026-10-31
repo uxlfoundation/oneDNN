@@ -25,6 +25,7 @@
 #include "dnnl_memory.hpp"
 #include "utils/parser.hpp"
 #include "utils/summary.hpp"
+#include "utils/system.hpp"
 
 #include "binary/binary.hpp"
 #include "bnorm/bnorm.hpp"
@@ -78,6 +79,7 @@ int test_start {0};
 bool attr_same_pd_check {false};
 
 int main(int argc, char **argv) {
+    init_perf_hints();
     using namespace parser;
 
     if (argc < 2) {

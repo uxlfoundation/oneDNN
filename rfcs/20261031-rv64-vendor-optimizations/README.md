@@ -113,6 +113,84 @@ Extensions that add OS-managed state also need the corresponding OS support.
 The [Linux hwprobe documentation](https://docs.kernel.org/arch/riscv/hwprobe.html)
 explains CPU identifiers, extension bits, and CPU-set queries.
 
+#### Heterogeneous CPU support
+
+We separate three responsibilities: the OS reports usable hardware features,
+Xbyak_riscv detects them, and the application or threading runtime controls
+where workers run. oneDNN uses that information to select and tune kernels.
+
+This follows the division already visible in other oneDNN backends:
+
+- **x64:** ISA selection uses cached Xbyak CPU information. Hybrid-core topology
+  is also available, and oneDNN uses it to choose conservative cache sizes
+  across P/E core types. See [ISA detection](https://github.com/uxlfoundation/oneDNN/blob/cc575246d0682887b1bc461588836f1466cca826/src/cpu/x64/cpu_isa_traits.hpp)
+  and [hybrid cache handling](https://github.com/uxlfoundation/oneDNN/blob/cc575246d0682887b1bc461588836f1466cca826/src/cpu/x64/platform.cpp).
+- **AArch64:** the native JIT backend uses HWCAP information and caches the SVE
+  length obtained through `PR_SVE_GET_VL`. Linux exposes system-safe feature
+  information and manages SVE vector length as thread state. This differs from
+  reading the physical RVV VLEN on whichever core runs the detection code.
+  See [AArch64 detection](https://github.com/uxlfoundation/oneDNN/blob/cc575246d0682887b1bc461588836f1466cca826/src/cpu/aarch64/cpu_isa_traits.hpp),
+  [Linux feature reporting](https://docs.kernel.org/arch/arm64/cpu-feature-registers.html),
+  and [SVE thread state](https://docs.kernel.org/arch/arm64/sve.html).
+
+For RV64, we use the following execution policy.
+
+**Default execution uses common capabilities.** On platforms where the OS
+allows workers to run across different core types, detection covers every CPU on
+which the workload may run. If the runtime cannot establish a narrower set,
+use all online CPUs. Vendor extensions can be enabled only when supported
+throughout that set. For a mixed-microarchitecture set, use generic tuning.
+RVV execution requires OS support for vector state and thread migration.
+Enable fixed-VLEN kernels when the execution set has a known, compatible VLEN;
+otherwise select a compatible fallback.
+
+**Specialized execution uses a fixed, homogeneous CPU group.** The application
+or launcher establishes the group before oneDNN capability initialization and
+before creating OpenMP or thread-pool workers. The application must keep every
+worker and later primitive execution within that group. Platform-specific
+steps, are performed by the launcher or runtime.
+A process-wide cpuset restriction is one way to enforce the CPU boundary.
+
+The initial implementation supports one fixed execution group per process.
+The backend records its CPU set and capabilities once and uses them for
+primitive creation, JIT generation, and execution. Keep that set fixed for the
+lifetime of the generated kernels.
+To use X100 and A100 concurrently in this initial design, applications use
+separate processes, each configured for its core group.
+
+#### Changes required in Xbyak_riscv
+
+The current [Xbyak_riscv detector](https://github.com/herumi/xbyak_riscv/blob/main/xbyak_riscv/xbyak_riscv_util.hpp)
+queries all online CPUs with `cpusetsize=0` and `cpus=NULL`, then reads `vlenb`
+on the calling CPU. We need an explicit CPU-set query so both results describe
+the same target CPUs.
+
+1. **Accept the target CPU set.** Add an explicit-set detection API alongside
+   the existing API. oneDNN supplies its established execution set.
+2. **Query and group CPUs.** Read vendor, architecture, implementation, and
+   extension information per CPU. Group matching results and return the
+   common extension set as well. `RISCV_HWPROBE_WHICH_CPUS` can accelerate
+   matching; intersect its results with the requested set. Per-CPU queries
+   provide a fallback when that flag is unavailable.
+3. **Resolve vendor capabilities.** Prefer direct hwprobe extension reporting,
+   then use the documented identity table where needed. Keep an unknown
+   identity distinct from a confirmed unsupported capability.
+4. **Obtain VLEN for the selected group.** Prefer an OS interface where one is
+   available. Otherwise use a dedicated probe thread bound to a target CPU
+   before its first vector instruction. Check vector availability first and
+   create fresh probe threads for other CPUs rather than migrating live vector
+   state across unlike cores. The launcher must already have completed any
+   required core enrollment. Failed probes leave VLEN unknown.
+5. **Return an immutable detection result.** Include the queried CPU set,
+   identifiers, extensions, VLEN information, and the source of the capability
+   information. Each explicit query returns a separate object.
+
+oneDNN uses this result during initialization and kernel selection. Target
+properties that affect generated code, including VLEN, must be represented in
+kernel-cache keys or isolated by the fixed execution configuration. Capability
+checks stay outside the kernel's hot loops. Tests must cover restricted CPU
+sets, mixed groups, unknown VLEN, and rejection of incompatible reuse.
+
 #### Where should the work live?
 
 | Work | Preferred location |

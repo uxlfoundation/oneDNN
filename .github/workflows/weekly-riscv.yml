@@ -87,10 +87,18 @@ jobs:
         env:
           ONEDNN_ACTION: build
 
+      - name: Install QEMU build dependencies
+        run: |
+          sudo apt-get install -y build-essential pkg-config ninja-build python3-venv libglib2.0-dev libpcre2-dev zlib1g-dev
+
+      - name: Build pinned QEMU
+        working-directory: ${{ github.workspace }}/oneDNN
+        run: bash .github/automation/riscv/build-qemu.sh
+
       - name: Create archive with preserved permissions
         working-directory: ${{ github.workspace }}/oneDNN
         run: |
-          tar -czf build.tar.gz build
+          tar -czf build.tar.gz build qemu-bin
 
       # Upload build artifacts
       - name: Upload build artifacts
@@ -108,18 +116,13 @@ jobs:
       # runners shared across the organization,
       # run at most 2 test partitions at a time.
       max-parallel: 2
+      fail-fast: false
       matrix:
         config: [
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 1, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 2, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 3, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 4, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 5, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 6, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 7, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 8, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 9, stride: 10 },
-          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 10, stride: 10 }
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 1, stride: 4 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 2, stride: 4 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 3, stride: 4 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 4, stride: 4 }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.threading }}, part-${{ matrix.config.part }}
@@ -136,12 +139,6 @@ jobs:
           content=`cat ${{ github.workspace }}/oneDNN/.github/automation/riscv/ci.json`
           content="${content//[$'\t\r\n$ ']}"
           echo "output=$content" >> $GITHUB_OUTPUT
-
-      # Setup QEMU for RISC-V platform support
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-        with:
-          platforms: riscv64
 
       # Install cross-compilation tools
       - name: Install cross-compilation tools
@@ -161,6 +158,10 @@ jobs:
         run: |
           tar -xzf build.tar.gz
 
+      - name: Set up pinned QEMU
+        working-directory: ${{ github.workspace }}/oneDNN
+        run: bash .github/automation/riscv/setup-qemu.sh
+
       - name: Run oneDNN tests
         run: ${{ github.workspace }}/oneDNN/.github/automation/riscv/test.sh
         working-directory: ${{ github.workspace }}/oneDNN/build
@@ -172,6 +173,16 @@ jobs:
           ONEDNN_TEST_PART: ${{ matrix.config.part }}
           ONEDNN_TEST_STRIDE: ${{ matrix.config.stride }}
           QEMU_CPU: "rv64,v=true,zvfh=true,zvfbfwma=true,vlen=${{ matrix.config.vlen }},vext_spec=v1.0"
+
+      - name: Upload test timings and diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: weekly-riscv-vlen128-part-${{ matrix.config.part }}
+          path: |
+            ${{ github.workspace }}/oneDNN/build/riscv-tests.xml
+            ${{ github.workspace }}/oneDNN/build/Testing/
+          retention-days: 14
 
   # This job adds a check named "Weekly RISC-V" that represents overall
   # workflow status and can be used in branch rulesets

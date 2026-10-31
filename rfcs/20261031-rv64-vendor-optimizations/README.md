@@ -209,6 +209,94 @@ A reusable GEMM/BRGEMM kernel is a useful first target because it can benefit
 matmul, convolution, and inner product. The same CPU information can help tune
 standard RVV kernels, including LMUL, packing, and blocking choices.
 
+#### ISA and architecture-specific optimizations
+
+We also welcome optimizations that use ISA and architectural features, such as
+specialized data-movement instructions, DMA, and on-chip memory. The integration
+depends on how the vendor exposes the feature to userspace.
+
+**User-mode instructions belong in the JIT kernel.** If a feature is available
+through documented user-mode instructions, Xbyak_riscv can encode them and
+oneDNN can use them in a generated kernel. For example, a kernel may issue a
+supported data-movement instruction or access a prepared scratchpad address.
+Runtime detection must establish the required ISA support, and the surrounding
+execution code supplies the addresses and parameters.
+
+**OS and driver operations belong in the C++ layer.** Some features require a
+device to be opened, memory to be allocated or mapped, or work to be submitted
+through a driver. oneDNN's C++ initialization and execution code handles those
+operations through the documented OS interface. The generated kernel receives
+the resulting buffers, addresses, or parameters. The contribution should name
+the actual interface, such as a device mapping or an `ioctl`, and describe
+which operations happen during initialization and which happen per execution.
+
+For example, a driver-backed data-movement path could follow this sequence:
+
+```text
+C++ initialization
+    -> open the device and prepare reusable driver resources
+C++ execution
+    -> acquire buffers for this invocation
+    -> submit the input transfer and wait for input readiness
+JIT kernel
+    -> compute using the prepared buffers
+C++ execution
+    -> submit any output transfer and wait for completion
+    -> release invocation resources
+C++ cleanup
+    -> release reusable resources and close the device
+```
+
+This sequence illustrates a synchronous integration. An implementation may
+overlap transfers and computation, provided its dependencies and completion
+handling fit oneDNN's stream semantics. Resource ownership must support
+concurrent executions of a primitive; reusable device resources and per-call
+buffers should have clearly defined lifetimes.
+
+On-chip memory follows the same division. If the OS exposes it as mapped
+user-addressable memory, C++ code obtains the mapping and passes its address to
+the kernel. If access uses special user-mode instructions, those instructions
+are emitted by the JIT. Instructions requiring kernel privilege must be used
+through the driver interface. An interface requiring a process-wide device
+context or core enrollment must describe how the application or runtime
+establishes it before execution.
+
+For both instruction-based and driver-backed paths, document the required
+kernel and driver support, permissions, memory alignment and accessibility,
+cache-coherency rules, and completion handling. Initialization failures must
+release acquired resources, and execution errors must be returned through
+oneDNN's status handling. Include transfer, setup, and synchronization costs
+in performance measurements.
+
+**A required vendor runtime library needs a separate RFC.** Integration is
+eligible for acceptance only when independent third-party evidence shows that
+more than 20% of RV64 devices in the market support the feature. The RFC must
+cite that evidence and state its date, market scope, and device-counting
+method.
+
+If a vendor library is needed to manage the device, memory, or submissions,
+its RFC should describe that role and the interface oneDNN will call. Review
+weighs binary-size and dependency costs against capabilities, measured
+performance, market adoption, and maintenance and test coverage. The RFC also
+specifies packaging and version management.
+
+#### Build-time selection of JIT extensions
+
+Route 1 allows build-time selection of JIT ISA extensions to control binary
+size. Users can omit extension-specific kernel generators and their dispatch
+registrations when those implementations are unnecessary for their deployment.
+The selection should use a common RV64 mechanism rather than separate build
+logic for each primitive. Compiling out an extension must also remove its
+exclusive code and dependencies.
+
+Build-time selection determines which implementations are included. Runtime
+detection then determines which included implementations the hardware and OS
+can execute. Keep the portable compiler ISA baseline unchanged.
+Existing standard RVV and scalar fallbacks remain available according to the
+normal build configuration. Tests should cover both inclusion and exclusion
+of each selectable extension, and contributions should report the code-size
+impact of enabling it.
+
 ### Route 2: Vendor-library integration
 
 A vendor may already have an optimized operator library. This route connects
@@ -230,3 +318,58 @@ It joins the existing primitive-selection process and checks that the library
 supports the requested operation and execution CPU set. Other configurations
 continue through oneDNN's fallback implementations.
 
+### Compatibility and validation
+
+Vendor ISA extensions must be verifiable for correctness by the public using
+a publicly available QEMU distribution. Both upstream QEMU releases and
+vendor-distributed versions are accepted. Each PR must state the QEMU version
+and the versions of the implementation and test environment used.
+
+The PR author must provide performance measurements on real hardware. At
+least one set of measurements must use a benchdnn input batch with sufficiently
+broad coverage of the workloads supported by the optimization.
+
+
+### Deprecating and removing vendor ISA support
+
+We review vendor ISA support as hardware and software evolve. Removal can be
+proposed when an extension has little remaining deployment, a standard ISA
+path has replaced its benefits, or its maintenance cost outweighs its measured
+value.
+
+The removal process is:
+
+1. **Open a tracking issue.** List the affected extensions, CPU generations,
+   primitives, and build selections. Explain the reason for removal and give
+   performance or maintenance evidence. Notify contributors and users in the
+   relevant issues and identify the fallback or replacement implementation.
+2. **Announce deprecation.** After maintainer agreement, document it in the
+   release notes and support documentation. Keep the implementation available
+   for at least one complete release cycle after that announcement, and state
+   the earliest release in which removal may occur. During this period,
+   contributors can address the reported issues or provide a replacement.
+3. **Review readiness for removal.** Confirm the replacement's correctness,
+   supported data types and layouts, ISA requirements, and performance on the
+   affected hardware where available. Record any loss of functionality or
+   performance in the tracking issue and release notes.
+4. **Remove the oneDNN implementation.** Delete the obsolete JIT kernels,
+   dispatch registrations, exclusive tuning and detection-table entries,
+   tests, build selections, and documentation. Preserve shared components
+   still used by other implementations. For a removed build selection,
+   provide an actionable configuration diagnostic and document its replacement.
+5. **Coordinate dependency cleanup.** Stop relying on obsolete vendor support
+   in oneDNN's Xbyak_riscv integration. Removal of encodings or detection APIs
+   from Xbyak_riscv itself follows that project's review process. For Route 2,
+   remove an unused adapter and submodule through the same deprecation process.
+
+Generic implementations continue to serve affected hardware where supported.
+If removal raises the minimum ISA or removes user-visible functionality,
+document that change explicitly under the project's compatibility policy.
+Urgent correctness or security problems may require disabling a path before
+the normal deprecation period; explain that decision and the fallback in the
+tracking issue and release notes.
+
+### First integration
+
+The first planned implementation is to integrate SpacemiT IME support through
+Route 1 and use it to accelerate the matmul primitive.

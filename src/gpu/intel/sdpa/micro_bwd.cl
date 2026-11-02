@@ -45,6 +45,17 @@ typedef ugemm_vtdA_c_type p_tile_type; // Br*Bc tile (.T)
 typedef ugemm_vs_c_type dv_tile_type; // D*Bc tile
 typedef ugemm_ktq_c_type ktq_tile_type; // D*Br tile
 
+#define SAME_TILE_SHAPE(x, y) \
+    ((x##_block0 == y##_block0) && (x##_block1 == y##_block1) \
+            && (x##_nblock0 == y##_nblock0) && (x##_nblock1 == y##_nblock1))
+
+#if !SAME_TILE_SHAPE(ugemm_ktq_c_type, ugemm_vs_c_type) \
+        && !SAME_TILE_SHAPE(ugemm_ktq_c_type, ugemm_qdSt_c_type)
+DECLARE_2D_TILE_ATOMIC_OPS(ktq_tile_type, float, SUBGROUP_SIZE,
+        ugemm_ktq_c_type_block0, ugemm_ktq_c_type_block1,
+        ugemm_ktq_c_type_nblock0, ugemm_ktq_c_type_nblock1)
+#endif
+
 #if WITH_DROPOUT
 #define dropout_mul(x, y) ((x) * (y))
 #define dropout_predicate(offset_r, offset_c) \
@@ -310,11 +321,14 @@ DECLARE_2D_TILE_VREDUCE(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
 DECLARE_2D_TILE_SLM_ADD(dv_tile_type, float, SUBGROUP_SIZE,
         ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
         ugemm_vs_c_type_nblock1)
-#if (ugemm_qdSt_c_type_block0 != ugemm_vs_c_type_block0) \
-        || (ugemm_qdSt_c_type_block1 != ugemm_vs_c_type_block1) \
-        || (ugemm_qdSt_c_type_nblock0 != ugemm_vs_c_type_nblock0) \
-        || (ugemm_qdSt_c_type_nblock1 != ugemm_vs_c_type_nblock1)
+DECLARE_2D_TILE_ATOMIC_OPS(dv_tile_type, float, SUBGROUP_SIZE,
+        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1)
+#if !SAME_TILE_SHAPE(ugemm_qdSt_c_type, ugemm_vs_c_type)
 DECLARE_2D_TILE_SLM_ADD(a_tile_type, float, SUBGROUP_SIZE,
+        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
+        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
+DECLARE_2D_TILE_ATOMIC_OPS(a_tile_type, float, SUBGROUP_SIZE,
         ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
         ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1)
 #endif

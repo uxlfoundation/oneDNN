@@ -412,12 +412,38 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
     // 2D quantization parameter remainder layouts cover a single group (K is assumed to be a multiple of the
     //  group size), sharing address registers with the main layouts. Early parameters for A/B in SLM are
     //  applied while copying to SLM, and need no remainder layouts.
+    // Early parameters: number of groups spanned by one remainder step (at least 1).
+    {
+        int stepA = repackA || repackARem ? std::min(ka_loadRem, ka_repackRem) : ka_loadRem;
+        int stepB = repackB || repackBRem ? std::min(kb_loadRem, kb_repackRem) : kb_loadRem;
+        state.kaqRemGroups = std::max(1, stepA / std::max(1, problem.aqGroupK));
+        state.kbqRemGroups = std::max(1, stepB / std::max(1, problem.bqGroupK));
+        if (state.kaq > 0) state.kaqRemGroups = std::min(state.kaqRemGroups, state.kaq);
+        if (state.kbq > 0) state.kbqRemGroups = std::min(state.kbqRemGroups, state.kbq);
+        // If the group size is smaller than the alignment (in elements), limit the number of groups
+        //  per remainder step so that ngroups * groupK <= alignment.
+        int alignA = problem.A.alignment / Ta_load;
+        int alignB = problem.B.alignment / Tb_load;
+        if (problem.aqGroupK > 0 && problem.aqGroupK < alignA)
+            state.kaqRemGroups = std::min<int>(state.kaqRemGroups, alignA / problem.aqGroupK);
+        if (problem.bqGroupK > 0 && problem.bqGroupK < alignB)
+            state.kbqRemGroups = std::min<int>(state.kbqRemGroups, alignB / problem.bqGroupK);
+
+
     auto sliceQRem = [&](bool isA, bool late, const RegisterLayout &layout, RegisterLayout &layoutRem,
                          const vector<RegisterRange> &addrs, vector<RegisterRange> &addrsRem) {
         bool slm = isA ? strategy.slmA : strategy.slmB;
         if (layout.empty() || (slm && !late)) return;
-        layoutRem = layout.trySlice(addrsRem, addrs, isA, 0, 1, layout.addressingStrategy().padded);
-        if (!layoutRem) stub("Could not slice quantization parameters to a single group");
+        int &groups = isA ? state.kaqRemGroups : state.kbqRemGroups;
+        if (late) {
+            auto groupK = std::max(1, isA ? problem.aqGroupK : problem.bqGroupK);
+            int align = isA ? alignA : alignB;
+            // Late remainder steps cover a single group; not supported if multiple groups are required.
+            if (groupK < align) stub("Late quantization remainder spanning multiple groups is not supported");
+            groups = 1;
+        }
+        layoutRem = layout.trySlice(addrsRem, addrs, isA, 0, groups, layout.addressingStrategy().padded);
+        if (!layoutRem) stub("Could not slice quantization parameters to RemGroups");
     };
 
     sliceQRem(true,  problem.needsBGroupSums(), state.A_offsetLayout, state.A_offsetLayoutRem, state.A_offsetAddrs, state.A_offsetAddrsRem);
@@ -426,6 +452,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
     sliceQRem(false, problem.needsAGroupSums(), state.B_offsetLayout, state.B_offsetLayoutRem, state.B_offsetAddrs, state.B_offsetAddrsRem);
     sliceQRem(false, state.lateScale2DB,        state.B_scaleLayout,  state.B_scaleLayoutRem,  state.B_scaleAddrs,  state.B_scaleAddrsRem);
     sliceQRem(false, true,                      state.Bg_layout,      state.Bg_layoutRem,      state.Bg_addrs,      state.Bg_addrsRem);
+    }
 
     int crosspackA, crosspackB, tileM_A, tileK_A, tileK_B, tileN_B;
     std::tie(crosspackA, crosspackB) = targetKernelCrosspack(hw, problem, strategy);

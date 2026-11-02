@@ -62,11 +62,6 @@ __attribute__((overloadable)) float local_atomic_max(local float *p, float v) {
     return __builtin_IB_atomic_max_local_f32(p, v);
 }
 
-/* not implemented */
-__attribute__((overloadable)) half local_atomic_max(local half *p, half v);
-__attribute__((overloadable)) ushort local_atomic_max(
-        local ushort *p, ushort v);
-
 __attribute__((overloadable)) uint local_atomic_max(local uint *p, uint v) {
     return atomic_max(p, v);
 }
@@ -78,11 +73,6 @@ __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
 __attribute__((overloadable)) float local_atomic_add(local float *p, float v) {
     return __builtin_IB_atomic_add_local_f32(p, v);
 }
-
-/* not implemented */
-__attribute__((overloadable)) half local_atomic_add(local half *p, half v);
-__attribute__((overloadable)) ushort local_atomic_add(
-        local ushort *p, ushort v);
 
 __attribute__((overloadable)) uint local_atomic_add(local uint *p, uint v) {
     return atomic_add(p, v);
@@ -100,10 +90,6 @@ __attribute__((overloadable)) float global_atomic_add(
 __attribute__((overloadable)) half global_atomic_add(global half *p, half v) {
     return __builtin_IB_atomic_add_global_f16(p, v);
 }
-
-/* not implemented */
-__attribute__((overloadable)) ushort global_atomic_add(
-        global ushort *p, ushort v);
 
 __attribute__((overloadable)) uint global_atomic_add(global uint *p, uint v) {
     return atomic_add(p, v);
@@ -1022,7 +1008,10 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
                 if ((~i & (cp - 1)) == 0) ptr_j += cp * (tile_n - 1); \
             } \
         } \
-    } \
+    }
+
+#define DECLARE_2D_TILE_ATOMIC_OPS( \
+        tile_type, element_type, sg, br, bc, nbr, nbc) \
     __attribute__((overloadable)) void tile_atomic_max_full(tile_type t, \
             local element_type *ptr, int ld, int offset_r, int offset_c) { \
         ptr += ld * offset_c + offset_r; \

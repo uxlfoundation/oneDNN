@@ -67,6 +67,58 @@ SelectionObserver make_entry_observer(int eu_count, int freq_mhz) {
     };
 }
 
+struct decisions_t {
+    bool kv = false, kb = false;
+    int wgK = 1; // kr k-thread count (1: no kr).
+    bool operator==(const decisions_t &o) const {
+        return kv == o.kv && kb == o.kb && wgK == o.wgK;
+    }
+    bool operator!=(const decisions_t &o) const { return !(*this == o); }
+    std::string str() const {
+        std::string s = std::string(kv ? " kv" : "") + (kb ? " kb" : "")
+                + (wgK > 1 ? " kr x" + std::to_string(wgK) : "");
+        return s.empty() ? "none" : s.substr(1);
+    }
+};
+
+decisions_t decisions_of(const GEMMStrategy &s) {
+    decisions_t d;
+    d.kv = s.kParallelVariable;
+    d.kb = s.kParallel;
+    d.wgK = s.kParallelLocal ? s.wg[LoopK] : 1;
+    return d;
+}
+
+decisions_t selector_decisions(
+        const GEMMStrategy &row, const EvaluateAuxOutput &aux) {
+    auto d = decisions_of(row);
+    d.kv = aux.kParallelVariable;
+    d.kb = aux.kParallel;
+    bool by_rule = row.fixedWGK() || row.shrinkWGK || aux.kParallelVariable
+            || (aux.kParallel && row.kParallel);
+    if (!by_rule && aux.wgK < d.wgK) d.wgK = std::max(aux.wgK, 1);
+    return d;
+}
+
+void set_decisions(GEMMStrategy &s, const decisions_t &d) {
+    auto had = decisions_of(s);
+    if (d.kb != had.kb || d.kv != had.kv) {
+        EvaluateAuxOutput aux;
+        aux.kParallel = d.kb;
+        aux.kParallelVariable = d.kv;
+        modifyStrategy(s, aux);
+    }
+    if (d.wgK != had.wgK) s.setKParallelLocal(d.wgK);
+}
+
+// Drops kb when one k slice covers k.
+decisions_t launch_decisions(
+        const GEMMStrategy &st, dim_t k, const EvaluateAuxOutput &aux) {
+    auto d = decisions_of(st);
+    if (d.kb && k <= aux.k0 * aux.wgK) d.kb = false;
+    return d;
+}
+
 std::string kernel_str(const GEMMProblem &problem, int unroll_m, int unroll_n,
         const std::string &strategy) {
     auto astr = problem.scalarsToString();
@@ -74,6 +126,7 @@ std::string kernel_str(const GEMMProblem &problem, int unroll_m, int unroll_n,
     return problem.toString() + ' ' + std::to_string(unroll_m) + ' '
             + std::to_string(unroll_n) + ' ' + astr + strategy;
 }
+
 } // anonymous namespace
 
 bool enable_generator_dsl() {
@@ -194,13 +247,92 @@ void gen_desc_t::apply_strategy(std::string str) {
 
 void gen_desc_t::prepare(
         GEMMStrategy &st, GEMMProblem &problem, const char *tags) const {
+    if (l1_flush_wa_) st.C.cachingW = makeL1Uncacheable(st.C.cachingW);
+    st.panelCheck |= (isPacked(problem.A.layout) || isPacked(problem.B.layout));
+
+    if (hw_ == ngen::HW::Xe2 || hw_ == ngen::HW::Xe3) {
+        // Use XeHPC register banking on Xe2/Xe3, in order
+        // to successfully reuse XeHPC strategies.
+        if (st.raHW == hw_) st.raHW = ngen::HW::XeHPC;
+
+        // Bump up alignments to 16 bytes for block 2D if available.
+        bool block_2d_a = false, block_2d_b = false;
+        for (auto c = tags; *c; c++) {
+            block_2d_a |= (*c == kcatalog::ReqBlock2DA);
+            block_2d_b |= (*c == kcatalog::ReqBlock2DB);
+        }
+        if (block_2d_a && st.legalAAlignment(problem, 16))
+            problem.A.setAlignment(nstl::max<int>(problem.A.alignment, 16));
+        if (block_2d_b && st.legalBAlignment(problem, 16))
+            problem.B.setAlignment(nstl::max<int>(problem.B.alignment, 16));
+    }
+
+    if (hw_ == ngen::HW::Xe3p) {
+        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
+        if (!efficient_64b_ && st.raHW == hw_) st.raHW = ngen::HW::XeHPC;
+
+        // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
+        st.namedBarriers[0] = 0;
+        st.namedBarriers[1] = 0;
+    }
+
+    // Always use variable beta for global k-parallel kernels.
+    if (st.kParallel && !st.fuseBeta) problem.beta = Scalar();
+
     st.relaxedAccumulation |= relaxed_acc_;
     st.systolicAvailable &= !disable_systolic_;
     problem.autoTypeConversions(st.systolicAvailable);
     adjustStrategy(hw_, problem, st, tags);
 }
 
-status_t gen_desc_t::finalize(const char *tags) {
+gen_desc_t::resolved_launch_t gen_desc_t::resolve_launch(const GEMMStrategy &s,
+        const kcatalog::Entry &base, const char *tags,
+        const EvaluateParams &eval_params) const {
+    GEMMStrategy st = s;
+    GEMMProblem problem = problem_;
+    prepare(st, problem, tags);
+    st.preflight(hw_, problem);
+    bool variable_beta
+            = k_chunk_beta_ && k_ > st.blocking[LoopK] && !problem_.beta1();
+
+    // The launch depends on the strategy, not on the entry.
+    kcatalog::Entry e = base;
+    e.driverInfo = driver_info_of(st);
+    // Preflight drops the k padding.
+    if (st.kParallel || st.kParallelVariable)
+        e.driverInfo.blockingAlt[LoopK] = s.kPadding;
+    e.selector.layouts[2] = isColMajor(problem_.C.layout) ? "N" : "T";
+    auto aux = deriveAuxOutput(e, getDerivedParams(e, eval_params));
+
+    // Align k slice size and quantization group size
+    if (st.kParallelLocal || st.kParallel) {
+        if (problem_.quantized2DA())
+            aux.k0 = utils::rnd_up(aux.k0, problem_.aqGroupK);
+        if (problem_.quantized2DB())
+            aux.k0 = utils::rnd_up(aux.k0, problem_.bqGroupK);
+    }
+    return {std::move(st), aux, variable_beta};
+}
+
+GEMMStrategy gen_desc_t::resolve_row_strategy(const kcatalog::Entry &entry,
+        const char *tags, const EvaluateParams &eval_params) {
+    GEMMStrategy st(hw_, stepping_);
+    st.unroll[LoopM] = entry.driverInfo.unroll[LoopM];
+    st.unroll[LoopN] = entry.driverInfo.unroll[LoopN];
+    parseStrategy(entry.strategy, problem_, st);
+    EvaluateAuxOutput sel;
+    evaluate(entry, eval_params, sel);
+    set_decisions(st, selector_decisions(st, sel));
+
+    // Probe k0; decisions only shrink, so one correction is stable.
+    auto probe = resolve_launch(st, entry, tags, eval_params);
+    if (probe.variable_beta) problem_.beta = Scalar();
+    set_decisions(st, launch_decisions(probe.strategy, k_, probe.aux));
+    return st;
+}
+
+status_t gen_desc_t::finalize(
+        const char *tags, const EvaluateParams &eval_params) {
     reject_reason_.clear();
     auto reject = [&](const std::string &why) {
         reject_reason_ = why;
@@ -208,6 +340,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     };
     problem_.CO.setAlignment(problem_.Tco.paddedSize());
 
+    const auto *base = entry_;
     std::string str = kernel_override_;
     try {
         if (str.empty()) {
@@ -238,91 +371,22 @@ status_t gen_desc_t::finalize(const char *tags) {
                         entry_->restrictions.alignment[2]));
             }
 
+            // Serialize after: may clear problem_.beta.
+            auto st = resolve_row_strategy(*entry_, tags, eval_params);
             str = kernel_str(problem_, entry_->driverInfo.unroll[LoopM],
-                    entry_->driverInfo.unroll[LoopN], entry_->strategy);
+                    entry_->driverInfo.unroll[LoopN],
+                    unparseStrategy(hw_, problem_, st));
         } else {
             entry_ = nullptr;
         }
+        resolved_str_ = str;
         apply_strategy(str);
-        if (!entry_) {
-            // Later k-chunks accumulate (catalog parity).
-            auto block_k = strategy_.blocking[LoopK];
-            if (block_k <= 0) block_k = strategy_.defaultBlockK(hw_, problem_);
-            if (k_ > block_k && !problem_.beta1()) problem_.beta = Scalar();
-
-            if (strategy_.kParallel)
-                throw std::runtime_error("unknown k0 for global k-parallel");
-            aux_params_ = EvaluateAuxOutput();
-            aux_params_.kParallelVariable = strategy_.kParallelVariable;
-            if (strategy_.kParallelLocal) {
-                if (strategy_.wg[LoopK] < 1 || strategy_.unroll[LoopK] < 1)
-                    throw std::runtime_error(
-                            "invalid k-parallel-local geometry");
-                aux_params_.k0
-                        = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
-                                strategy_.unroll[LoopK]);
-                aux_params_.wgK = std::max(1,
-                        std::min(strategy_.wg[LoopK],
-                                int(utils::div_up(k_, aux_params_.k0))));
-            }
-        }
+        if (enable_generator_dsl()) fixup_dsl_strategy(strategy_);
+        auto resolved = resolve_launch(strategy_, *base, tags, eval_params);
+        if (resolved.variable_beta) problem_.beta = Scalar();
+        aux_params_ = resolved.aux;
     } catch (const std::exception &e) { return reject(e.what()); }
-    modifyStrategy(strategy_, aux_params_);
-    if (l1_flush_wa_)
-        strategy_.C.cachingW = makeL1Uncacheable(strategy_.C.cachingW);
-    strategy_.panelCheck
-            |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
-
-    if (enable_generator_dsl()) { fixup_dsl_strategy(strategy_); }
-
-    // Align k slice size and quantization group size
-    if (strategy_.kParallelLocal || strategy_.kParallel) {
-        if (problem_.quantized2DA())
-            aux_params_.k0 = utils::rnd_up(aux_params_.k0, problem_.aqGroupK);
-        if (problem_.quantized2DB())
-            aux_params_.k0 = utils::rnd_up(aux_params_.k0, problem_.bqGroupK);
-    }
-
-    if (hw_ == ngen::HW::Xe2 || hw_ == ngen::HW::Xe3) {
-        // Use XeHPC register banking on Xe2/Xe3, in order
-        // to successfully reuse XeHPC strategies.
-        if (strategy_.raHW == hw_) strategy_.raHW = ngen::HW::XeHPC;
-
-        // Bump up alignments to 16 bytes for block 2D if available.
-        bool block_2d_a = false, block_2d_b = false;
-        for (auto c = tags; *c; c++) {
-            block_2d_a |= (*c == kcatalog::ReqBlock2DA);
-            block_2d_b |= (*c == kcatalog::ReqBlock2DB);
-        }
-        if (block_2d_a && strategy_.legalAAlignment(problem_, 16))
-            problem_.A.setAlignment(nstl::max<int>(problem_.A.alignment, 16));
-        if (block_2d_b && strategy_.legalBAlignment(problem_, 16))
-            problem_.B.setAlignment(nstl::max<int>(problem_.B.alignment, 16));
-    }
-
-    if (hw_ == ngen::HW::Xe3p) {
-        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
-        if (!efficient_64b_ && strategy_.raHW == hw_)
-            strategy_.raHW = ngen::HW::XeHPC;
-
-        // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
-        strategy_.namedBarriers[0] = 0;
-        strategy_.namedBarriers[1] = 0;
-    }
-
-    // Disable global k parallelization if it wouldn't be used.
-    if (strategy_.kParallel && k_ >= 0) {
-        auto k_min = aux_params_.k0 * aux_params_.wgK;
-        if (k_ <= k_min) {
-            strategy_.kParallel = false;
-            strategy_.C.atomic = false;
-            strategy_.CO.atomic = false;
-        }
-    }
-
-    // Always use variable beta for global k-parallel kernels.
-    if (strategy_.kParallel && !strategy_.fuseBeta) problem_.beta = Scalar();
-
+    auto want = decisions_of(strategy_);
     // Omit periodic barriers when k is small.
     if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * strategy_.barrierFreq)
         strategy_.barrierFreq = 0;
@@ -385,13 +449,11 @@ status_t gen_desc_t::finalize(const char *tags) {
     } catch (const std::exception &e) { return reject(e.what()); } catch (...) {
         return reject("preflight failed");
     }
-
-    // Override: fixed beta would be reapplied on later k-chunks.
-    if (!entry_ && k_ > strategy_.blocking[LoopK] && problem_.beta.fixed()
-            && !problem_.beta1())
-        return reject("fixed beta over k-chunks");
-    if ((strategy_.kParallel || strategy_.kParallelVariable)
-            && !strategy_.C.atomic)
+    auto have = launch_decisions(strategy_, k_, aux_params_);
+    if (have != want)
+        return reject("decisions changed: " + want.str() + " -> " + have.str()
+                + "," + resolved_str_);
+    if ((have.kb || have.kv) && !strategy_.C.atomic)
         return reject("k-parallel without C atomics");
 
     // Check for legal 2D quantization group size.
@@ -433,11 +495,6 @@ status_t gen_desc_t::finalize(const char *tags) {
                 = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);
     }
 
-    strategy_.kInterleaveChunk
-            = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);
-    if (strategy_.kInterleave) aux_params_.wgK = strategy_.wg[LoopK];
-    if (aux_params_.wgK > strategy_.wg[LoopK])
-        aux_params_.wgK = strategy_.wg[LoopK];
     driver_info_ = driver_info_of(strategy_);
 
     return status::success;
@@ -646,6 +703,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     SelectionObserver observer = make_entry_observer(
             dev_info.eu_count(), dev_info.max_clock_mhz());
     tags_ = match_params[0].tags;
+    k_chunk_beta_ = true;
     Ts_ = problem.Ts;
     beta_ = problem.beta;
 
@@ -709,14 +767,8 @@ status_t gen_nocopy_desc_t::finalize() {
 
     if (problem_.Ts == Type::invalid) problem_.Ts = problem_.Tc;
 
-    auto block_k = entry_->driverInfo.blocking[LoopK];
     problem_.beta = beta_;
-    // An override applies its own k blocking.
-    if (kernel_override_.empty() && block_k > 0 && k_ > block_k
-            && eval_params_.beta != 1.0f)
-        problem_.beta = Scalar();
-    evaluate(*entry_, eval_params_, aux_params_);
-    return gen_desc_t::finalize(tags_.c_str());
+    return gen_desc_t::finalize(tags_.c_str(), eval_params_);
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(
@@ -851,7 +903,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
 
     if (entries.size() < 1) return status::unimplemented;
     entry_ = entries[0];
-    return finalize(match_params.tags);
+    return finalize(match_params.tags, eval_params);
 }
 
 void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,

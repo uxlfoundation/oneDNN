@@ -605,9 +605,12 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.A_copies = 2;
         s.A.padded = true;
     } else if (!block2DA) {
-        s.A.accessType = AccessType::Block;
+        // k-contiguous A rows that are not dword aligned cannot use block loads.
+        // Use scattered loads of 32 bytes per row instead, as catalog strategies do.
+        bool scatteredA = (problem.A.layout == MatrixLayout::T) && (problem.A.alignment < 4);
+        s.A.accessType = scatteredA ? AccessType::Scattered : AccessType::Block;
         if (systolic)
-            s.ka_load = (problem.A.layout == MatrixLayout::T) ? 64 / Ta_load / m_iter : 16;
+            s.ka_load = (problem.A.layout == MatrixLayout::T) ? (scatteredA ? 32 : 64) / Ta_load / m_iter : 16;
         s.slmA = (hw >= HW::XeHP);
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
@@ -627,6 +630,10 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         if (systolic) {
             s.doubleMasking = true;
             s.kb_load = (problem.B.layout == MatrixLayout::N) ? 32 : 16;
+            // Load k-contiguous B columns that are not dword aligned in 32-byte pieces
+            // to keep their register footprint down.
+            if (problem.B.layout == MatrixLayout::N && problem.B.alignment < 4)
+                s.kb_load = std::min(s.kb_load, 32 / problem.Tb_ext);
         }
         s.slmB = (hw >= HW::XeHP);
     } else if (problem.B.layout == MatrixLayout::T)

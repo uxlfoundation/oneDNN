@@ -70,6 +70,7 @@ struct gen_desc_t {
     const gemmstone::GEMMProblem *problem() const { return &problem_; }
     const gemmstone::GEMMStrategy *strategy() const { return &strategy_; }
     std::string str() const;
+    const std::string &resolved_str() const { return resolved_str_; }
 
     const gemmstone::CommonDriverInfo *driver_info() const {
         return &driver_info_;
@@ -125,7 +126,11 @@ protected:
     bool efficient_64b_ = false;
 
     std::string kernel_override_;
+    std::string resolved_str_;
     std::string reject_reason_;
+    // The nocopy driver launches k-blocks with beta = 1 after the first,
+    // so beta must be a runtime argument when k spans several blocks.
+    bool k_chunk_beta_ = false;
 
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;
@@ -133,9 +138,25 @@ protected:
     bool disable_systolic_ = false;
     bool relaxed_acc_ = false;
 
-    status_t finalize(const char *tags);
+    status_t finalize(
+            const char *tags, const gemmstone::EvaluateParams &eval_params);
     // Throws.
     void apply_strategy(std::string str);
+    struct resolved_launch_t {
+        gemmstone::GEMMStrategy strategy; // Preflighted.
+        gemmstone::EvaluateAuxOutput aux;
+        bool variable_beta; // Caller clears problem_.beta.
+    };
+    // Throws.
+    resolved_launch_t resolve_launch(const gemmstone::GEMMStrategy &s,
+            const gemmstone::kcatalog::Entry &base, const char *tags,
+            const gemmstone::EvaluateParams &eval_params) const;
+    // Catalog row with final k-parallel decisions, unpreflighted; may clear
+    // problem_.beta; throws.
+    gemmstone::GEMMStrategy resolve_row_strategy(
+            const gemmstone::kcatalog::Entry &entry, const char *tags,
+            const gemmstone::EvaluateParams &eval_params);
+    // Fixups shared by the trial and the final preflight.
     void prepare(gemmstone::GEMMStrategy &st, gemmstone::GEMMProblem &problem,
             const char *tags) const;
     gemmstone::CommonDriverInfo driver_info_of(

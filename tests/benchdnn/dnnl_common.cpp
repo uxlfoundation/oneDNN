@@ -671,10 +671,25 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
     // Warm-up run, this is not measured due to possibility the associated
     // kernel has not been built and skews the results.
+    // An explicit --max-ms-per-prb caps a fixed burst by the warm-up's time (min 2).
+    const bool time_warm = fix_times_per_prb
+            && bench_mode != bench_mode_t::perf_fast
+            && max_ms_per_prb != default_max_ms_per_prb;
+    double warm_ms = 0;
     if (!has_bench_mode_bit(mode_bit_t::sim)) {
+        if (time_warm && use_profiling)
+            for (auto &s : v_stream)
+                reset_gpu_profiling(s);
         for (size_t j = 0; j < v_stream.size(); j++) {
             DNN_SAFE(perf_func(v_stream[j], dnnl_args[j]), WARN);
             DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
+        }
+        if (time_warm) {
+            timer::timer_t tw;
+            SAFE(update_timer_with_profiling_info(
+                         tw, use_profiling, v_stream, 1),
+                    WARN);
+            warm_ms = tw.total_ms();
         }
     }
 
@@ -687,6 +702,9 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     if (fix_times_per_prb) {
         // If user specified the number of runs, just use it.
         num_submissions = fix_times_per_prb;
+        if (warm_ms > 0)
+            num_submissions = MIN2(
+                    num_submissions, MAX2(2, (int)(max_ms_per_prb / warm_ms)));
     } else {
         // Otherwise, use an estimate run, which is not a part of final time
         // collection. It's used to calculate the number of submissions to run

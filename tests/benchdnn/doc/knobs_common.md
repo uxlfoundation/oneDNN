@@ -281,6 +281,8 @@ run. `N` is a positive integer value in a `[1e1, 6e4]` range. When a provided
 value is out of the range, it is saturated to the board values. The default is
 `3e3`, or 3 seconds. The option is useful, for example, to stabilize the
 performance numbers reported for small problems on CPU.
+When set together with `--fix-times-per-prb` on GPU, it caps the number of
+runs at `N` divided by the warm-up run time, with a minimum of 2 runs.
 
 ### --num-streams
 `--num-streams=N` specifies the number `N` of streams used for performance

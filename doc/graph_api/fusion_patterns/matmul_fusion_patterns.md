@@ -43,6 +43,12 @@ nodes are optional.
 
    ![f2f_conversion_subgraph](images/f2f_conversion.png)
 
+4. **Intermediate Output**: Optional. The output of MatMul, or of BiasAdd if
+   present, can be marked as an additional partition output by connecting it to
+   an [End](@ref dev_guide_op_end) operation, while it is still consumed by the
+   epilogue subgraph. In this case, the epilogue subgraph must contain 1 to 20
+   Binary or Unary operations only, without Select and TypeCast.
+
 
 ## Data Types
 

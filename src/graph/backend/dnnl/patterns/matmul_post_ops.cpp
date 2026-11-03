@@ -33,6 +33,24 @@ using in_edges_t = pm::in_edges_t;
 using pb_graph_t = pm::pb_graph_t;
 using FCreatePattern = graph::pass::FCreatePattern;
 
+namespace {
+// Mark `input` as a partition output with End and append a non-empty
+// unary/binary post-op chain after it.
+void append_end_and_post_ops(
+        const std::shared_ptr<pb_graph_t> &pgraph, pm::pb_node_t *input) {
+    pgraph->append_op(graph::op_kind::End, in_edges_t {in_edge(0, input, 0)});
+
+    auto alt_graph = std::make_shared<pb_graph_t>();
+    auto palt = alt_graph->append_alternation(get_unary_binary_ops());
+    palt->allow_internal_inputs();
+    alt_graph->create_input_port(0, palt, 0);
+    alt_graph->create_output_port(0, palt, 0);
+
+    pgraph->append_repetition(alt_graph, {0, 0}, 1, MAX_REPETITION,
+            in_edges_t {in_edge(0, input, 0)});
+}
+} // namespace
+
 DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(matmul_post_ops)
 
 /*
@@ -102,6 +120,44 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_dropout)
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
             return std::make_shared<float_matmul>();
+        });
+
+/*
+              \   /
+              matmul
+                |
+             [bias]*
+                | \
+                |  End
+                |
+    [unary/binary]*[1,MAX_REPETITION)
+                |
+*/
+// The output of matmul (or bias) is also a partition output, so the post-op
+// chain can't be fused into the matmul primitive. It's executed as separate
+// primitives within the same partition.
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_post_ops_with_end)
+        .set_priority(9.2f)
+        .set_kind(partition_kind_t::matmul_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    pm::pb_op_t *pmatmul
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    append_end_and_post_ops(pgraph, pmatmul);
+                })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    pm::pb_op_t *pmatmul
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    pm::pb_op_t *pbias
+                            = pgraph->append_op(graph::op_kind::BiasAdd,
+                                    in_edges_t {in_edge(0, pmatmul, 0)});
+                    pbias->append_decision_function(
+                            check_producer_input_num<2>);
+                    append_end_and_post_ops(pgraph, pbias);
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<larger_partition_kernel_t>();
         });
 
 /*

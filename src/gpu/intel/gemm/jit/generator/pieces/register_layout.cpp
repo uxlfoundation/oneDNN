@@ -2281,6 +2281,24 @@ RegisterLayout RegisterLayout::trySlice(vector<RegisterRange> *subaddrs, vector<
             sharedOK = false;
     }
 
+    // A 2D block array load writes its blocks back-to-back, each padded to a
+    //  whole GRF. If slicing shrank the blocks, fix up the register offsets
+    //  of the trailing blocks in each array to match.
+    if (isBlock2D(astrategy.accessType)) {
+        auto &sl = sublayout.list;
+        for (size_t i = 0; i < sl.size();) {
+            int cnt = sl[i].count;
+            if (sl[i].simdSize == 0 || cnt <= 1) { i++; continue; }
+            int off = sl[i].offsetBytes;
+            for (int j = 1; j < cnt && (i + j) < sl.size(); j++) {
+                off += int(align_up(int(sl[i + j - 1].bytes), int(GRF::bytes(hw))));
+                if (sl[i + j].simdSize != 0) break;
+                sl[i + j].offsetBytes = off;
+            }
+            i += cnt;
+        }
+    }
+
     return sublayout;
 }
 

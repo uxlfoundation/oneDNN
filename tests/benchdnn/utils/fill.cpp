@@ -489,6 +489,30 @@ std::string execarg2str(int exec_arg) {
 
 std::string buffer_prefix;
 
+fill_input_t fill_input = fill_input_t::random;
+bool fill_input_applied = false;
+
+std::ostream &operator<<(std::ostream &s, fill_input_t fill) {
+    return s << (fill == fill_input_t::zero ? "zero" : "random");
+}
+
+int fill_by_input(const dnn_mem_t &mem, fill_input_t fill, size_t size,
+        int buffer_index) {
+    if (fill == fill_input_t::zero) {
+        fill_input_applied = true;
+        mem.memset(0, size, buffer_index);
+#if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
+    } else if (!is_cpu(mem.engine())) {
+        SAFE(mem.gpu_fill_random(size, buffer_index), WARN);
+#endif
+    } else {
+        // Fill memory directly with 0x3F3F3F3F (0.747059f).
+        mem.memset(dnnl_mem_default_perf_test_value, size, buffer_index);
+    }
+    return OK;
+}
+
 bool fill_from_file(
         int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem, res_t *res) {
     static const char format[] = "[FILL]: File %s %s; buffer not imported.\n";

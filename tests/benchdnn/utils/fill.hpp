@@ -101,6 +101,14 @@ int fill_random_real(dnn_mem_t &mem_ref,
 
 extern std::string buffer_prefix;
 
+enum class fill_input_t { random, zero };
+std::ostream &operator<<(std::ostream &s, fill_input_t fill);
+
+extern fill_input_t fill_input;
+
+int memset_by_input(
+        const dnn_mem_t &mem, fill_input_t fill, size_t size, int buffer_index);
+
 bool fill_from_file(
         int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem, res_t *res);
 

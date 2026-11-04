@@ -639,6 +639,18 @@ summary_t str2summary(const std::string &s) {
     return v;
 }
 
+fill_input_t str2fill_input(const std::string &str) {
+    const auto s = utils::lowercase(str);
+    if (s == "random") return fill_input_t::random;
+    if (s == "zero") return fill_input_t::zero;
+    BENCHDNN_PRINT(0,
+            "Error: unsupported fill '%s'. Supported values are 'random' "
+            "and 'zero'.\n",
+            str.c_str());
+    SAFE_V(FAIL);
+    return fill_input_t::random;
+}
+
 cold_cache_input_t str2cold_cache_input(const std::string &s) {
     // Allowed input: MODE[+EXTENSION[+...]]
     // Allowed extensions: TLB[:SIZE]
@@ -1570,6 +1582,16 @@ static bool parse_cold_cache(
             option_name, help);
 }
 
+static bool parse_fill(
+        const char *str, const std::string &option_name = "fill") {
+    static const std::string help
+            = "random|zero    (Default: `random`)\n    Instructs the driver "
+              "how to fill data without reference memory. `zero` fills every "
+              "element with zero.\n";
+    return parse_single_value_option(fill_input, fill_input_t::random,
+            parsers::str2fill_input, str, option_name, help);
+}
+
 static bool parse_cpu_isa_hints(
         const char *str, const std::string &option_name = "cpu-isa-hints") {
     static const std::string help
@@ -2076,7 +2098,7 @@ bool parse_bench_settings(const char *str) {
     bool parsed = parse_allow_enum_tags_only(str)
             || parse_attr_same_pd_check(str) || parse_canonical(str)
             || parse_check_ref_impl(str) || parse_cold_cache(str)
-            || parse_cpu_isa_hints(str) || parse_engine(str)
+            || parse_cpu_isa_hints(str) || parse_engine(str) || parse_fill(str)
             || parse_fast_ref(str) || parse_fix_times_per_prb(str)
             || parse_global_impl(str) || parse_global_skip_impl(str)
             || parse_max_ms_per_prb(str) || parse_num_streams(str)
@@ -2151,6 +2173,7 @@ void catch_unknown_options(const char *str) {
                 "Given input:", str);
         exit(2);
     }
+
 }
 
 int parse_last_argument() {

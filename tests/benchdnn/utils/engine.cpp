@@ -16,6 +16,8 @@
 
 #include "utils/engine.hpp"
 
+#include "dnnl_common.hpp"
+
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #endif
@@ -94,6 +96,15 @@ engine_t::engine_t(dnnl_engine_kind_t engine_kind) {
     // TODO-TODO: make mode-modifier=M by default (including CPU).
     if (has_bench_mode_bit(mode_bit_t::perf) && engine_kind == dnnl_gpu) {
         bench_mode_modifier |= mode_modifier_t::no_ref_memory;
+    }
+    if (engine_kind == engine_tgt_kind && fill_input != fill_input_t::random
+            && (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+                    || !has_bench_mode_bit(mode_bit_t::exec)
+                    || has_bench_mode_bit(mode_bit_t::sim))) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: --fill requires a performance mode without reference "
+                "memory (--mode=F, --mode=P on GPU, or --mode-modifier=M).");
+        DNN_SAFE_V(dnnl_invalid_arguments);
     }
 }
 

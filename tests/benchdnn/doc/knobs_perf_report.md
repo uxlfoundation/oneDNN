@@ -121,12 +121,19 @@ this time doesn't represent any specific scenario.
 
 For GPU engines, benchdnn samples the actual GPU frequency in a background
 thread while a problem is measured (see `--gpu-freq-source` in
-[common knobs](knobs_common.md)). Samples taken while the GPU is idle are
-dropped (`sysfs` source only). The average of the remaining samples is applied
-to all executions of the problem, so `%-freq%` and `%+freq%` report the
-average value as well. `%maxfreq%` is not affected by user frequency limits
-(e.g. `min_freq`/`max_freq` pinning). Run with `-v2` to print sampling
-statistics for each problem.
+[common knobs](knobs_common.md)). The polling period is 250 microseconds for
+`sysfs` and 1 millisecond for `ze`. Additional samples are taken right before
+the first and right after the last measured execution, so short runs, e.g.,
+`--mode=F` or a single execution, are covered as well. Samples taken while the
+GPU is idle are dropped (`sysfs` source only).
+
+Each execution is placed on the sampled timeline based on its profiled
+duration and submission order, and gets the average frequency of samples
+taken during its execution, or the closest sample if there are none. Thus,
+`%-freq%`, `%0freq%`, and `%+freq%` report the frequency of the executions
+selected by the time modifier. Executions shorter than the polling period get
+a point estimate. Run with `-v2` to print sampling statistics for each
+problem.
 
 ## Examples
 

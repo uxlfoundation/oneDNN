@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -409,6 +410,47 @@ private:
     double max_mhz_ = 0;
 };
 
+// Sleeps for a polling period. On Windows, `std::this_thread::sleep_for` has
+// a granularity of the system timer (up to 15.6 ms), so a high-resolution
+// waitable timer is used instead.
+struct period_timer_t {
+    period_timer_t(int period_us) : period_us_(period_us) {
+#ifdef _WIN32
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x2
+#endif
+        // Not supported before Windows 10 1803; falls back to `sleep_for`.
+        timer_ = CreateWaitableTimerExW(nullptr, nullptr,
+                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+#endif
+    }
+    ~period_timer_t() {
+#ifdef _WIN32
+        if (timer_) CloseHandle(timer_);
+#endif
+    }
+
+    void wait() {
+#ifdef _WIN32
+        if (timer_) {
+            LARGE_INTEGER due;
+            // Relative time in 100-nanosecond intervals.
+            due.QuadPart = -10LL * period_us_;
+            if (SetWaitableTimer(timer_, &due, 0, nullptr, nullptr, FALSE)
+                    && WaitForSingleObject(timer_, INFINITE) == WAIT_OBJECT_0)
+                return;
+        }
+#endif
+        std::this_thread::sleep_for(std::chrono::microseconds(period_us_));
+    }
+
+private:
+    int period_us_;
+#ifdef _WIN32
+    HANDLE timer_ = nullptr;
+#endif
+};
+
 struct sampler_t {
     static sampler_t &get() {
         static sampler_t s;
@@ -423,37 +465,32 @@ struct sampler_t {
         samples_.clear();
         stop_.store(false);
         running_ = true;
+        start_ = clock_t::now();
+        // A synchronous sample at start and another at stop guarantee at
+        // least two samples even if the window is shorter than the thread
+        // start-up or the polling period (e.g., a single short execution).
+        sample();
         thread_ = std::thread([this]() {
-            const auto period = std::chrono::microseconds(reader_->period_us());
-            while (!stop_.load(std::memory_order_relaxed)) {
-                samples_.push_back(reader_->read_mhz());
-                std::this_thread::sleep_for(period);
+            period_timer_t timer(reader_->period_us());
+            while (true) {
+                timer.wait();
+                if (stop_.load(std::memory_order_relaxed)) break;
+                sample();
             }
         });
     }
 
-    stats_t stop() {
-        stats_t st;
-        if (!running_) return st;
+    trace_t stop() {
+        if (!running_) return trace_t();
         stop_.store(true);
         thread_.join();
         running_ = false;
         // The GPU stays awake for a while after completion, so the final
-        // sample still reflects the frequency of the last executions. It
-        // matters for windows shorter than the polling period.
-        samples_.push_back(reader_->read_mhz());
-
-        st.n_samples = samples_.size();
-        double sum = 0;
-        for (double f : samples_) {
-            if (f <= 0) continue;
-            st.min_mhz = st.n_busy ? std::min(st.min_mhz, f) : f;
-            st.max_mhz = st.n_busy ? std::max(st.max_mhz, f) : f;
-            sum += f;
-            st.n_busy++;
-        }
-        if (st.n_busy) st.avg_mhz = sum / st.n_busy;
-        return st;
+        // sample still reflects the frequency of the last executions.
+        sample();
+        trace_t trace;
+        trace.samples.swap(samples_);
+        return trace;
     }
 
 private:
@@ -493,7 +530,18 @@ private:
     std::thread thread_;
     std::atomic<bool> stop_ {false};
     bool running_ = false;
-    std::vector<double> samples_;
+    using clock_t = std::chrono::steady_clock;
+
+    void sample() {
+        const double mhz = reader_->read_mhz();
+        const double ms = std::chrono::duration<double, std::milli>(
+                clock_t::now() - start_)
+                                  .count();
+        samples_.push_back({ms, mhz});
+    }
+
+    clock_t::time_point start_;
+    std::vector<sample_t> samples_;
 };
 
 } // namespace
@@ -506,8 +554,63 @@ void start() {
     sampler_t::get().start();
 }
 
-stats_t stop() {
+trace_t stop() {
     return sampler_t::get().stop();
+}
+
+double trace_t::window_ms() const {
+    return samples.empty() ? 0 : samples.back().ms;
+}
+
+size_t trace_t::n_busy() const {
+    size_t n = 0;
+    for (const auto &s : samples)
+        n += s.mhz > 0;
+    return n;
+}
+
+double trace_t::avg_mhz(double from_ms, double to_ms) const {
+    double sum = 0;
+    size_t n = 0;
+    const sample_t *nearest = nullptr;
+    const double mid_ms = (from_ms + to_ms) / 2;
+    for (const auto &s : samples) {
+        if (s.mhz <= 0) continue;
+        if (s.ms >= from_ms && s.ms <= to_ms) {
+            sum += s.mhz;
+            n++;
+        }
+        if (!nearest
+                || std::abs(s.ms - mid_ms) < std::abs(nearest->ms - mid_ms))
+            nearest = &s;
+    }
+    if (n) return sum / n;
+    return nearest ? nearest->mhz : 0;
+}
+
+std::vector<double> attribute(
+        const trace_t &trace, const std::vector<double> &exec_ms) {
+    const size_t n = exec_ms.size();
+    if (!n || !trace.n_busy()) return {};
+
+    // Executions are assumed to run in submission order. The time not covered
+    // by executions (submission latency, host overheads, gaps) is distributed
+    // evenly in front of each execution. For device-bound runs it's small and
+    // executions are placed back-to-back; for host-bound runs executions get
+    // spread uniformly over the window.
+    double busy_ms = 0;
+    for (double ms : exec_ms)
+        busy_ms += ms;
+    const double gap_ms = std::max(0.0, trace.window_ms() - busy_ms) / n;
+
+    std::vector<double> mhz(n);
+    double t_ms = 0;
+    for (size_t i = 0; i < n; i++) {
+        t_ms += gap_ms;
+        mhz[i] = trace.avg_mhz(t_ms, t_ms + exec_ms[i]);
+        t_ms += exec_ms[i];
+    }
+    return mhz;
 }
 
 double max_mhz() {

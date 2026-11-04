@@ -662,6 +662,48 @@ inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
     return OK;
 }
 
+// Sets per-execution frequency of `t` measurements from the sampled `trace`.
+// Measurements are expected to be grouped by stream, and streams run
+// concurrently over the same window.
+static void set_gpu_frequency(
+        timer::timer_t &t, const gpu_freq::trace_t &trace, size_t n_streams) {
+    const size_t n = t.samples_.size();
+    if (n == 0 || n_streams == 0) return;
+
+    std::vector<double> mhz;
+    if (n % n_streams == 0) {
+        const size_t per_stream = n / n_streams;
+        for (size_t j = 0; j < n_streams; j++) {
+            std::vector<double> exec_ms(per_stream);
+            for (size_t i = 0; i < per_stream; i++)
+                exec_ms[i] = t.samples_[j * per_stream + i].ms;
+            const auto stream_mhz = gpu_freq::attribute(trace, exec_ms);
+            mhz.insert(mhz.end(), stream_mhz.begin(), stream_mhz.end());
+        }
+    }
+
+    double sum_ms = 0, sum_cycles = 0;
+    double min_mhz = 0, max_mhz = 0;
+    for (size_t i = 0; i < mhz.size(); i++) {
+        sum_ms += t.samples_[i].ms;
+        sum_cycles += t.samples_[i].ms * mhz[i];
+        min_mhz = i ? std::min(min_mhz, mhz[i]) : mhz[i];
+        max_mhz = i ? std::max(max_mhz, mhz[i]) : mhz[i];
+    }
+    BENCHDNN_PRINT(2,
+            "[GPU_FREQ]: samples: %zu; busy: %zu; window: %.3f ms; "
+            "executions: avg: %.0f MHz; min: %.0f MHz; max: %.0f MHz;\n",
+            trace.samples.size(), trace.n_busy(), trace.window_ms(),
+            sum_ms > 0 ? sum_cycles / sum_ms : 0, min_mhz, max_mhz);
+
+    std::vector<double> hz(mhz.size());
+    for (size_t i = 0; i < mhz.size(); i++)
+        hz[i] = mhz[i] * 1e6;
+    // The sampled frequency takes precedence over the one reported by the
+    // library (MDAPI) as it doesn't affect kernel execution.
+    t.set_frequency(hz);
+}
+
 inline int measure_perf_aggregate(timer::timer_t &t,
         const std::vector<stream_t> &v_stream, perf_function_t &perf_func,
         std::vector<std::vector<dnnl_exec_arg_t>> &dnnl_args) {
@@ -728,12 +770,16 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
     }
 
-    gpu_freq::stats_t freq_stats;
-    if (sample_freq) freq_stats = gpu_freq::stop();
+    gpu_freq::trace_t freq_trace;
+    if (sample_freq) freq_trace = gpu_freq::stop();
 
     SAFE(update_timer_with_profiling_info(
                  t, use_profiling, v_stream, execute_count),
             WARN);
+
+    // Frequency is attributed per execution before filtering, so filtered
+    // statistics report the frequency of the executions they describe.
+    if (sample_freq) set_gpu_frequency(t, freq_trace, v_stream.size());
 
     if (use_profiling) {
         for (size_t j = 0; j < v_stream.size(); j++) {
@@ -741,17 +787,6 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         }
 
         t.filter_collection();
-    }
-
-    if (sample_freq) {
-        BENCHDNN_PRINT(2,
-                "[GPU_FREQ]: samples: %zu; busy: %zu; avg: %.0f MHz; min: "
-                "%.0f MHz; max: %.0f MHz;\n",
-                freq_stats.n_samples, freq_stats.n_busy, freq_stats.avg_mhz,
-                freq_stats.min_mhz, freq_stats.max_mhz);
-        // The sampled frequency takes precedence over the one reported by
-        // the library (MDAPI) as it doesn't affect kernel execution.
-        if (freq_stats.ok()) t.set_frequency(freq_stats.avg_mhz * 1e6);
     }
 
     return OK;

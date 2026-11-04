@@ -87,9 +87,10 @@ struct timer_t {
     // inside the definition.
     void filter_collection();
 
-    // Re-derives ticks of every collected measurement from an externally
-    // measured average frequency `freq_hz`, e.g., sampled GPU frequency.
-    void set_frequency(double freq_hz);
+    // Re-derives ticks of every collected measurement from externally
+    // measured frequencies, e.g., sampled GPU frequency. `freq_hz` has an
+    // entry per measurement in the collection order.
+    void set_frequency(const std::vector<double> &freq_hz);
 
     timer_t(const timer_t &rhs) = default;
     timer_t &operator=(const timer_t &rhs);

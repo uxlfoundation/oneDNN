@@ -76,6 +76,9 @@
 --batch=shapes_2d
 --batch=shapes_3d
 
+# padded blocked layout with low-precision dst
+--reset --dir=FWD_I --sdt=f32 --ddt=s8,u8,f8_e5m2,f8_e4m3 --stag=aBx8b,aBx16b --dtag=any --axis=1 --alg=SOFTMAX,LOGSOFTMAX 2x19x5x5
+
 --reset --stag=acbd --dtag=acbd --sdt=f32 --ddt=f32 --axis=3 1x16x384x384_n"neighbor_dim_to_axis_has_larger_stride"
 
 --batch=test_softmax_bfloat16

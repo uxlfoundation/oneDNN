@@ -22,6 +22,7 @@
 #include "utils/check.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/fill.hpp"
+#include "utils/gpu_freq.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
 #include "utils/stringstream.hpp"
@@ -1639,6 +1640,22 @@ static bool parse_fast_ref(
     return parsed;
 }
 
+static bool parse_gpu_freq_source(
+        const char *str, const std::string &option_name = "gpu-freq-source") {
+    static const std::string help
+            = "SOURCE    (Default: `auto`)\n    Specifies a `SOURCE` to sample "
+              "the actual GPU frequency during performance measurements.\n    "
+              "When `SOURCE` is set to `sysfs`, the Linux DRM sysfs `act_freq` "
+              "of compute GTs is polled (same data as GEOPM `DRM::ACT_FREQ`)."
+              "\n    When `SOURCE` is set to `ze`, Level Zero Sysman "
+              "`zesFrequencyGetState()` is polled (Linux and Windows).\n    "
+              "When `SOURCE` is set to `auto`, `sysfs` is tried first, then "
+              "`ze`.\n    When `SOURCE` is set to `none`, sampling is "
+              "disabled.\n";
+    return parse_single_value_option(gpu_freq::source, gpu_freq::default_source,
+            gpu_freq::str2source, str, option_name, help);
+}
+
 static bool parse_global_impl(
         const char *str, const std::string &option_name = "global-impl") {
     static const std::string help
@@ -2076,9 +2093,9 @@ bool parse_bench_settings(const char *str) {
             || parse_cpu_isa_hints(str) || parse_engine(str)
             || parse_fast_ref(str) || parse_fix_times_per_prb(str)
             || parse_global_impl(str) || parse_global_skip_impl(str)
-            || parse_max_ms_per_prb(str) || parse_num_streams(str)
-            || parse_repeats_per_prb(str) || parse_mem_check(str)
-            || parse_memory_kind(str) || parse_mode(str)
+            || parse_gpu_freq_source(str) || parse_max_ms_per_prb(str)
+            || parse_num_streams(str) || parse_repeats_per_prb(str)
+            || parse_mem_check(str) || parse_memory_kind(str) || parse_mode(str)
             || parse_mode_modifier(str) || parse_start(str)
             || parse_stream_kind(str) || parse_summary(str)
             || parse_verbose(str) || parse_execution_mode(str)

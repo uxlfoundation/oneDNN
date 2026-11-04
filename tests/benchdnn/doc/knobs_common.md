@@ -282,6 +282,16 @@ value is out of the range, it is saturated to the board values. The default is
 `3e3`, or 3 seconds. The option is useful, for example, to stabilize the
 performance numbers reported for small problems on CPU.
 
+### --gpu-freq-source
+`--gpu-freq-source=SOURCE` specifies how the actual GPU frequency is sampled
+during performance measurements for GPU engines. `SOURCE` values can be `auto`
+(the default), `sysfs`, `ze`, or `none`. `sysfs` polls the kernel driver files
+(`xe` or `i915`, Linux only), `ze` polls Level Zero Sysman
+(`zesFrequencyGetState`, Linux and Windows), `auto` tries `sysfs` and then `ze`,
+and `none` disables sampling. The sampled frequency is used for `%freq%`,
+`%clocks%`, `%ntime%`, and `%nflops%` performance report options. Refer to
+[performance report](knobs_perf_report.md) for details.
+
 ### --num-streams
 `--num-streams=N` specifies the number `N` of streams used for performance
 benchmarking. The option takes place for GPU only and uses a single stream by

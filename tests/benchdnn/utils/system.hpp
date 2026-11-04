@@ -18,6 +18,7 @@
 #define UTILS_SYSTEM_HPP
 
 #include <cstddef>
+#include <string>
 
 struct cpu_cache_args_t {
     size_t L2_size = 0;
@@ -30,6 +31,9 @@ size_t get_cpu_ram_size();
 int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size);
 int get_cpu_cache_size(cpu_cache_args_t &cache_args);
 int get_gpu_cache_size(size_t &cache_size);
+// Returns the PCI address of the test engine GPU in the `DDDD:BB:DD.F` format
+// (lowercase hex, matches Linux sysfs naming) or an empty string if unknown.
+std::string get_gpu_pci_bdf();
 
 // Reports performance-related system settings when they are not set to values
 // providing stable performance measurements. Dispatches to engine-specific

@@ -53,6 +53,7 @@
 #include "utils/dnnl_query.hpp"
 #include "utils/execution_mode.hpp"
 #include "utils/fill.hpp"
+#include "utils/gpu_freq.hpp"
 #include "utils/parallel.hpp"
 #include "utils/stream_kind.hpp"
 #include "utils/system.hpp"
@@ -708,6 +709,11 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     // Measuring loop. A single synchronization point, called once, the number
     // of submissions determined above based on n_times or plain time criterion.
     t.reset();
+    // Sample the GPU frequency over the measured window. The sampler is
+    // started before submissions and stopped after the synchronization, so
+    // samples cover every measured execution.
+    const bool sample_freq = is_gpu() && gpu_freq::is_available();
+    if (sample_freq) gpu_freq::start();
     // Keep a separate variable due to a `break` inside the loop.
     int execute_count = 0;
     // Keep inner loop over streams for better submission overlapping.
@@ -722,6 +728,9 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
     }
 
+    gpu_freq::stats_t freq_stats;
+    if (sample_freq) freq_stats = gpu_freq::stop();
+
     SAFE(update_timer_with_profiling_info(
                  t, use_profiling, v_stream, execute_count),
             WARN);
@@ -732,6 +741,17 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         }
 
         t.filter_collection();
+    }
+
+    if (sample_freq) {
+        BENCHDNN_PRINT(2,
+                "[GPU_FREQ]: samples: %zu; busy: %zu; avg: %.0f MHz; min: "
+                "%.0f MHz; max: %.0f MHz;\n",
+                freq_stats.n_samples, freq_stats.n_busy, freq_stats.avg_mhz,
+                freq_stats.min_mhz, freq_stats.max_mhz);
+        // The sampled frequency takes precedence over the one reported by
+        // the library (MDAPI) as it doesn't affect kernel execution.
+        if (freq_stats.ok()) t.set_frequency(freq_stats.avg_mhz * 1e6);
     }
 
     return OK;

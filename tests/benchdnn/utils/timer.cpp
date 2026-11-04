@@ -207,6 +207,22 @@ void timer_t::filter_collection() {
             min_n_samples, deltas_size, msg.c_str());
 }
 
+void timer_t::set_frequency(double freq_hz) {
+    if (samples_.empty() || freq_hz <= 0) return;
+
+    for (auto &s : samples_)
+        s.ticks = (uint64_t)(s.ms * freq_hz / 1e3);
+
+    ticks_[mode_t::min] = ticks_[mode_t::max] = samples_.front().ticks;
+    ticks_[mode_t::sum] = 0;
+    for (const auto &s : samples_) {
+        ticks_[mode_t::min] = std::min(ticks_[mode_t::min], s.ticks);
+        ticks_[mode_t::max] = std::max(ticks_[mode_t::max], s.ticks);
+        ticks_[mode_t::sum] += s.ticks;
+    }
+    ticks_[mode_t::avg] = ticks_[mode_t::sum];
+}
+
 timer_t &timer_t::operator=(const timer_t &rhs) {
     if (this == &rhs) return *this;
     *this = timer_t(rhs);

@@ -25,7 +25,7 @@
 // A background thread polls the actual GPU frequency of the test engine device
 // while the performance loop runs. The average over samples taken while the
 // GPU was busy is attributed to the measured executions, which makes the
-// `%freq%`, `%clocks%`, `%ntime%`, and `%nflops%` perf report options
+// `%freq%` and `%clocks%` perf report options
 // meaningful on GPU without MDAPI.
 //
 // Sources:
@@ -60,9 +60,9 @@ bool is_available();
 void start();
 // Stops sampling and returns statistics collected since the last `start()`.
 stats_t stop();
-// Reference frequency in MHz (maximum non-overclocked frequency of the device)
-// used to normalize performance. Returns `0` if unknown.
-double ref_mhz();
+// Maximum (RP0) hardware frequency of the device in MHz, independent of user
+// frequency limits. Returns `0` if unknown.
+double max_mhz();
 
 } // namespace gpu_freq
 

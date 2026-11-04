@@ -83,9 +83,7 @@ Performance profiling options supported:
 | %@time%    | All        | Execution time in milliseconds
 | %@clocks%  | All        | Execution time in clocks
 | %@freq%    | All        | Effective CPU frequency computed as `clocks / time`. On GPU, the average actual GPU frequency sampled while the problem is measured (see `GPU Frequency Notes`)
-| %@reffreq% | All        | GPU reference (maximum non-turbo, RP0) frequency
-| %@ntime%   | All        | Execution time in milliseconds normalized to the reference frequency, `clocks / reffreq`. Falls back to `%@time%` if frequency is unknown
-| %@nflops%  | Ops based  | FLOPS normalized to the reference frequency, `ops / ntime`. Falls back to `%@flops%` if frequency is unknown
+| %@maxfreq% | All        | Maximum (RP0) GPU frequency of the device, a static hardware property. `freq / maxfreq` gives the frequency ratio for external efficiency normalization
 | %@ibytes%  | All        | Number of input memories bytes of a problem
 | %@obytes%  | All        | Number of output memories bytes of a problem
 | %@iobytes% | All        | Number of input and output memories bytes of a problem
@@ -126,11 +124,9 @@ thread while a problem is measured (see `--gpu-freq-source` in
 [common knobs](knobs_common.md)). Samples taken while the GPU is idle are
 dropped (`sysfs` source only). The average of the remaining samples is applied
 to all executions of the problem, so `%-freq%` and `%+freq%` report the
-average value as well. `%ntime%` and `%nflops%` assume that execution time
-scales inversely with the GPU frequency. This holds for compute-bound kernels
-only; memory-bound kernels will report inflated normalized numbers. Use them
-together with raw `%time%` and `%flops%` values. Run with `-v2` to print
-sampling statistics for each problem.
+average value as well. `%maxfreq%` is not affected by user frequency limits
+(e.g. `min_freq`/`max_freq` pinning). Run with `-v2` to print sampling
+statistics for each problem.
 
 ## Examples
 

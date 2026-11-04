@@ -416,7 +416,7 @@ struct sampler_t {
     }
 
     bool is_available() const { return (bool)reader_; }
-    double ref_mhz() const { return reader_ ? reader_->max_mhz() : 0; }
+    double max_mhz() const { return reader_ ? reader_->max_mhz() : 0; }
 
     void start() {
         if (!reader_ || running_) return;
@@ -469,7 +469,7 @@ private:
             reader_ = ze_reader_t::create(bdf);
 
         if (reader_) {
-            BENCHDNN_PRINT(2, "[GPU_FREQ] source: %s; ref: %.0f MHz\n",
+            BENCHDNN_PRINT(2, "[GPU_FREQ] source: %s; max: %.0f MHz\n",
                     reader_->info().c_str(), reader_->max_mhz());
             samples_.reserve(
                     (size_t)(4 * max_ms_per_prb * 1e3 / reader_->period_us()));
@@ -510,8 +510,8 @@ stats_t stop() {
     return sampler_t::get().stop();
 }
 
-double ref_mhz() {
-    return sampler_t::get().ref_mhz();
+double max_mhz() {
+    return sampler_t::get().max_mhz();
 }
 
 } // namespace gpu_freq

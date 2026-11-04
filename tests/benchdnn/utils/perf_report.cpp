@@ -94,21 +94,6 @@ void base_perf_report_t::handle_option(std::ostream &s, const char *&option,
         return t.ticks(mode) / t.sec(mode) / unit;
     };
 
-    // Performance normalized to the reference frequency: `time * freq / ref`.
-    // Falls back to raw time when either frequency is unknown.
-    auto get_norm_ms = [&](const timer::timer_t &t) -> double {
-        const double ms = t.ms(mode);
-        const double ref_hz = gpu_freq::ref_mhz() * 1e6;
-        if (!ms || !t.ticks(mode) || ref_hz <= 0) return ms;
-        return t.ticks(mode) / ref_hz * 1e3;
-    };
-
-    auto get_nflops = [&](const timer::timer_t &t) -> double {
-        const double ms = get_norm_ms(t);
-        if (!ms) return 0;
-        return ops() / (ms / 1e3) / unit;
-    };
-
     auto get_create_time = [&](const timer::timer_t &t) -> double {
         // If user didn't ask for mode, choose the maximum one to return time
         // for no-cache-hit creation.
@@ -163,9 +148,7 @@ void base_perf_report_t::handle_option(std::ostream &s, const char *&option,
     HANDLE("clocks", s << res->timer_map.perf_timer().ticks(mode) / unit);
     HANDLE("prb", s << prb_str);
     HANDLE("freq", s << get_freq(res->timer_map.perf_timer()));
-    HANDLE("reffreq", s << gpu_freq::ref_mhz() * 1e6 / unit);
-    HANDLE("nflops", s << get_nflops(res->timer_map.perf_timer()));
-    HANDLE("ntime", s << get_norm_ms(res->timer_map.perf_timer()) / unit);
+    HANDLE("maxfreq", s << gpu_freq::max_mhz() * 1e6 / unit);
     HANDLE("ops", s << ops() / unit);
     HANDLE("impl", s << res->impl_name);
     HANDLE("ibytes", s << res->ibytes / unit);

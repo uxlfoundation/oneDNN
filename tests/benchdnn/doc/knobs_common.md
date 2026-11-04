@@ -288,8 +288,8 @@ during performance measurements for GPU engines. `SOURCE` values can be `auto`
 (the default), `sysfs`, `ze`, or `none`. `sysfs` polls the kernel driver files
 (`xe` or `i915`, Linux only), `ze` polls Level Zero Sysman
 (`zesFrequencyGetState`, Linux and Windows), `auto` tries `sysfs` and then `ze`,
-and `none` disables sampling. The sampled frequency is used for `%freq%`,
-`%clocks%`, `%ntime%`, and `%nflops%` performance report options. Refer to
+and `none` disables sampling. The sampled frequency is used for `%freq%` and
+`%clocks%` performance report options. Refer to
 [performance report](knobs_perf_report.md) for details.
 
 ### --num-streams

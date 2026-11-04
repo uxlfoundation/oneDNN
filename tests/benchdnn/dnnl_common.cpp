@@ -700,7 +700,7 @@ static void set_gpu_frequency(
     for (size_t i = 0; i < mhz.size(); i++)
         hz[i] = mhz[i] * 1e6;
     // The sampled frequency takes precedence over the one reported by the
-    // library (MDAPI) as it doesn't affect kernel execution.
+    // library as sampling doesn't affect kernel execution.
     t.set_frequency(hz);
 }
 

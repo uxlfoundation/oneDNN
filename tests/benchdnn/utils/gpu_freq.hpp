@@ -25,14 +25,12 @@
 //
 // A background thread polls the actual GPU frequency of the test engine device
 // while the performance loop runs. Samples are mapped to individual executions
-// to derive their frequency, which makes the
-// `%freq%` and `%clocks%` perf report options
-// meaningful on GPU without MDAPI.
+// to derive their frequency, which makes the `%freq%` and `%clocks%` perf
+// report options meaningful on GPU.
 //
 // Sources:
-// * `sysfs`: Linux DRM sysfs `act_freq` of compute GTs (xe and i915). This is
-//   the same data GEOPM reports as `DRM::ACT_FREQ`. The value is zero when a GT
-//   is in RC6, which is used to discard idle samples.
+// * `sysfs`: Linux DRM sysfs `act_freq` of compute GTs (xe and i915). The
+//   value is zero when a GT is in RC6, which is used to discard idle samples.
 // * `ze`: Level Zero Sysman `zesFrequencyGetState()`. Works on Linux and
 //   Windows. Idle samples can't be distinguished.
 namespace gpu_freq {

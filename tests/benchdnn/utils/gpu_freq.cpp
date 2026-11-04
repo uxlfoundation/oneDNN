@@ -208,7 +208,7 @@ private:
     }
 
     // xe: card/device/tileX/gtY/freq0/{act_freq,rp0_freq}. GTs without
-    // rcs/ccs engines are media GTs and are skipped (same as GEOPM).
+    // rcs/ccs engines are media GTs and are skipped.
     void add_xe_gts(const std::string &card_path) {
         const std::string device = card_path + "/device";
         for (const auto &tile : list_dir(device)) {

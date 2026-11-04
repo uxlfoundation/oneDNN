@@ -1646,7 +1646,7 @@ static bool parse_gpu_freq_source(
             = "SOURCE    (Default: `auto`)\n    Specifies a `SOURCE` to sample "
               "the actual GPU frequency during performance measurements.\n    "
               "When `SOURCE` is set to `sysfs`, the Linux DRM sysfs `act_freq` "
-              "of compute GTs is polled (same data as GEOPM `DRM::ACT_FREQ`)."
+              "of compute GTs is polled."
               "\n    When `SOURCE` is set to `ze`, Level Zero Sysman "
               "`zesFrequencyGetState()` is polled (Linux and Windows).\n    "
               "When `SOURCE` is set to `auto`, `sysfs` is tried first, then "

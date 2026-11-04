@@ -1299,6 +1299,8 @@ std::ostream &dump_global_params(std::ostream &s) {
 #endif
     if (canonical || cold_cache_input != default_cold_cache_input())
         s << "--cold-cache=" << cold_cache_input << " ";
+    if (canonical || fill_input != fill_input_t::random)
+        s << "--fill=" << fill_input << " ";
     if (canonical || !buffer_prefix.empty())
         s << "--buffer-prefix=" << buffer_prefix << " ";
 

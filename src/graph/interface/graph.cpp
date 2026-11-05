@@ -345,6 +345,26 @@ status_t dnnl_graph_graph_get_fpmath_mode(
     return status::success;
 }
 
+status_t dnnl_graph_graph_set_deterministic(
+        dnnl_graph_graph_t graph, int deterministic) {
+    if (!graph) { return status::invalid_arguments; }
+
+    if (graph->is_finalized()) { return status::invalid_graph; }
+
+    return graph->set_deterministic(static_cast<bool>(deterministic));
+}
+
+status_t dnnl_graph_graph_get_deterministic(
+        dnnl_graph_graph_t graph, int *deterministic) {
+    if (utils::any_null(graph, deterministic)) {
+        return status::invalid_arguments;
+    }
+
+    *deterministic = static_cast<int>(graph->get_attr().get_deterministic());
+
+    return status::success;
+}
+
 status_t dnnl_graph_add_op(graph_t *graph, op_t *op) {
     if (graph == nullptr || op == nullptr) { return status::invalid_arguments; }
 

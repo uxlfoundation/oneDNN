@@ -33,6 +33,7 @@ struct EvaluateParams {
     double alpha, beta;
     int euCount;
     ngen::Product product;
+    uint32_t deviceId = 0;          // PCI device id (G rows' gates)
     int tileCount = 1;
     bool effective = false;
     bool cConvert = false;
@@ -67,6 +68,13 @@ double evaluate(const kcatalog::Entry &e, const EvaluateParams &p, EvaluateAuxOu
 double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &p, EvaluateAuxOutput &aux);
 // Model-free dispatch: k0 and wgK from fixed rules.
 EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateParams &p);
+
+// Scores G rows (selector/gbr.hpp) together, lower = better.
+void evaluateG(const kcatalog::Entry *const *entries, int n, const EvaluateParams &p, double *scores);
+// Whether a G row's scorer admits the device (p.deviceId, the core of p.product).
+bool gbrDeviceOK(const kcatalog::Entry &e, const EvaluateParams &p);
+// Problems the G rows serve (batch 1, no A/B offsets, 2D scales on both sides), on a device some scorer's gate admits; m, k are gemmstone's (matmul N, K).
+bool gbrSupported(uint32_t deviceId, const GEMMProblem &problem, int64_t m, int64_t n, int64_t k, int64_t batch);
 
 void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux);
 

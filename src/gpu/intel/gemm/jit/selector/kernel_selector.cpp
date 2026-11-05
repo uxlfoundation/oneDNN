@@ -20,6 +20,7 @@
 #include <cassert>
 #include <cctype>
 #include <cstring>
+#include <unordered_set>
 #include <vector>
 
 GEMMSTONE_NAMESPACE_START
@@ -165,20 +166,36 @@ struct EntryData {
 
 // Inner kernel selection logic.
 // Choose the best entry, if any, matching one of the given patterns.
-const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux,  SelectionObserver * observer)
+const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux,  SelectionObserver * observer, std::unordered_set<const kcatalog::Entry *> &seen)
 {
     // TODO: omit evaluation if only one match, if aux output not needed.
     std::vector<EntryData> keys;
+    std::vector<const kcatalog::Entry *> rowsG;
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
         for (auto it = match(catalog, patterns[ipattern]); it; it++) {
             // Late tag checking. If late tags do not match, we skip entry.
             if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags)) {
+                if (!seen.insert(&*it).second) continue;
+                if (it->model.id == 'G') {
+                    if (gbrDeviceOK(*it, eparams)) rowsG.push_back(&*it);
+                    continue;
+                }
                 auto score = evaluate(*it, eparams, aux);
                 keys.emplace_back(&*it, score);
                 if (observer) {
                     (*observer)(&*it, score, aux);
                 }
             }
+        }
+    }
+
+    // G rows score together.
+    if (!rowsG.empty()) {
+        std::vector<double> scores(rowsG.size());
+        evaluateG(rowsG.data(), int(rowsG.size()), eparams, scores.data());
+        for (size_t i = 0; i < rowsG.size(); i++) {
+            keys.emplace_back(rowsG[i], scores[i]);
+            if (observer) (*observer)(rowsG[i], scores[i], aux);
         }
     }
 
@@ -239,7 +256,8 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
     if (npatterns == 0 || !patterns)
         return entries;
 
-    auto result = getEntries(catalog, npatterns, patterns, eparams, aux, observer);
+    std::unordered_set<const kcatalog::Entry *> seen;
+    auto result = getEntries(catalog, npatterns, patterns, eparams, aux, observer, seen);
     entries.insert(entries.end(), result.begin(), result.end());
 
     // Architecture fallback loop.
@@ -256,7 +274,7 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
         // Type fallback loop.
         while (true) {
             if (!first) {
-                auto res =  getEntries(catalog, npatterns, modPatterns.data(), eparams, aux, observer);
+                auto res =  getEntries(catalog, npatterns, modPatterns.data(), eparams, aux, observer, seen);
                 entries.insert(entries.end(), res.begin(), res.end());
             }
             first = false;

@@ -20,10 +20,12 @@
 #include "gemmstone/problem.hpp"
 #include "internal/utils.hpp"
 #include "ngen_core.hpp"
+#include "selector/gbr.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 GEMMSTONE_NAMESPACE_START
 
@@ -581,6 +583,59 @@ EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateP
 
     evaluateECore(e, dp, aux);
     return aux;
+}
+
+void evaluateG(const kcatalog::Entry *const *entries, int n, const EvaluateParams &p, double *scores)
+{
+    auto esize = [](const kcatalog::string &precision) {
+        return extPrecision(precision, false).bits() / 8.;
+    };
+    gbr::Shape shape = {p.sizes.m, p.sizes.n, p.sizes.k, p.sizes.batch, p.euCount};
+    // One call per scorer (the model's parameter).
+    for (int s = 0; s < gbr::nScorers; s++) {
+        std::vector<gbr::Row> rows;
+        std::vector<int> idx;
+        for (int i = 0; i < n; i++) {
+            auto &e = *entries[i];
+            if (int(e.model.params[0]) != s) continue;
+            auto &di = e.driverInfo;
+            rows.push_back({e.strategy, di.unroll[LoopM], di.unroll[LoopN], di.wg[LoopM], di.wg[LoopN], di.wg[LoopK],
+                            p.product.threadsPerEU(di.grfCount), esize(e.selector.precisions[0]),
+                            esize(e.selector.precisions[1])});
+            idx.push_back(i);
+        }
+        std::vector<double> out(rows.size());
+        gbr::score(s, rows.data(), int(rows.size()), shape, out.data());
+        for (size_t r = 0; r < rows.size(); r++)
+            scores[idx[r]] = out[r];
+    }
+}
+
+bool gbrDeviceOK(const kcatalog::Entry &e, const EvaluateParams &p)
+{
+    return gbr::deviceOK(gbr::scorers[int(e.model.params[0])], p.deviceId, ngen::getCore(p.product.family));
+}
+
+bool gbrSupported(uint32_t deviceId, const GEMMProblem &problem, int64_t m, int64_t n, int64_t k, int64_t batch) {
+    using namespace gbr;
+    if (m <= 0 || n <= 0 || k <= 0 || batch != 1) return false;
+    if (m % nMult != 0 || k % kMult != 0) return false;
+    if (problem.aOffset != ABOffset::None || problem.bOffset != ABOffset::None) return false;
+    if (problem.aScale2D() || problem.bScale2D()) {
+        // Both sides, one scale type, k-groups in mxGroup steps
+        if (!problem.aScale2D() || !problem.bScale2D()) return false;
+        auto Ts = problem.Ta_scale;
+        if (Ts != problem.Tb_scale || (Ts != Type::f8_e8m0 && Ts != Type::f32)) return false;
+        if (problem.aqGroupK % mxGroup != 0 || problem.bqGroupK % mxGroup != 0) return false;
+        // mx: K bytes of the narrower of A, B (f4 x f4 has no bdpas below K % 64)
+        int bits = std::min(problem.Ta_ext.bits(), problem.Tb_ext.bits());
+        if (Ts == Type::f8_e8m0 && k * bits % (8 * mxKBytes) != 0) return false;
+        // f4 with non-mx scales upconverts to f16 dpas.
+        if (problem.Ta_ext.isF4() && Ts != Type::f8_e8m0 && (problem.aqGroupK % 64 != 0 || problem.bqGroupK % 64 != 0))
+            return false;
+    }
+    auto hw = ngen::getCore(problem.product.family);
+    return std::any_of(scorers, scorers + nScorers, [&](const Scorer &s) { return deviceOK(s, deviceId, hw); });
 }
 
 void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux)

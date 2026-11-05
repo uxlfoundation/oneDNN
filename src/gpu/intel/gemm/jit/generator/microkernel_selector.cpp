@@ -600,6 +600,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     }
 
     auto m_iter = std::max(1, s.unroll[LoopM] / elementsPerGRF<uint32_t>(hw));
+    int ka_slm_copy = 0;
     if (problem.A.layout == MatrixLayout::Pc) {
         s.A.accessType = AccessType::Block;
         s.A_copies = 2;
@@ -609,8 +610,17 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         // Use scattered loads of 32 bytes per row instead, as catalog strategies do.
         bool scatteredA = (problem.A.layout == MatrixLayout::T) && (problem.A.alignment < 4);
         s.A.accessType = scatteredA ? AccessType::Scattered : AccessType::Block;
-        if (systolic)
-            s.ka_load = (problem.A.layout == MatrixLayout::T) ? (scatteredA ? 32 : 64) / Ta_load / m_iter : 16;
+        if (systolic && problem.A.layout == MatrixLayout::T) {
+            // A is converted to Ta on its way into SLM, so size the loads from
+            // SLM by Ta.
+            int rowBytes = scatteredA ? 32 : 64;
+            s.ka_load = rowBytes / problem.Ta / m_iter;
+            // The copy into SLM reads the memory type. Copy half of rowBytes of
+            // each row per stage, so sub-byte types do not pay for more barriers
+            // per byte of k than 8-bit types.
+            ka_slm_copy = std::min(64, (rowBytes / 2) / Ta_load / m_iter);
+        } else if (systolic)
+            s.ka_load = 16;
         s.slmA = (hw >= HW::XeHP);
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
@@ -711,7 +721,8 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 
     if (s.slmA || s.slmB) {
         s.slmBuffersA = s.slmBuffersB = 1;
-        s.unrollKSLM = std::max(int(s.slmA) * s.ka_load, int(s.slmB) * s.kb_load);
+        s.unrollKSLM = std::max(int(s.slmA) * std::max(s.ka_load, ka_slm_copy),
+                int(s.slmB) * s.kb_load);
 
         // Remainder handling can change an MN copy split to a K split. Keep
         // complete integer crosspacks in each thread's SLM copy in either case.

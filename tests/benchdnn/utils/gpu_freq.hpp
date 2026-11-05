@@ -28,24 +28,14 @@
 // to derive their frequency, which makes the `%freq%` and `%clocks%` perf
 // report options meaningful on GPU.
 //
-// Sources:
-// * `sysfs`: Linux DRM sysfs `act_freq` of compute GTs (xe and i915). The
-//   value is zero when a GT is in RC6, which is used to discard idle samples.
-// * `ze`: Level Zero Sysman `zesFrequencyGetState()`. Works on Linux and
-//   Windows. Idle samples can't be distinguished.
+// The frequency is read with Level Zero Sysman `zesFrequencyGetState()`, which
+// works on Linux and Windows. The loader is loaded at run time, so there is no
+// build dependency.
 namespace gpu_freq {
-
-enum class source_t { none, automatic, sysfs, ze };
-
-extern source_t source; // `--gpu-freq-source` knob value.
-extern const source_t default_source;
-
-source_t str2source(const std::string &s);
-const char *source2str(source_t s);
 
 struct sample_t {
     double ms; // Time since `start()`.
-    double mhz; // `0` if the GPU was idle.
+    double mhz; // `0` if unknown.
 };
 
 // Frequency samples collected over a measurement window, ordered by time. The
@@ -54,10 +44,10 @@ struct trace_t {
     std::vector<sample_t> samples;
 
     double window_ms() const;
-    size_t n_busy() const;
-    // Average frequency of non-idle samples within `[from_ms, to_ms]`. If no
-    // samples fall into the interval, the closest non-idle sample to its
-    // middle is used. Returns `0` if all samples are idle.
+    size_t n_valid() const;
+    // Average frequency of valid samples within `[from_ms, to_ms]`. If no
+    // samples fall into the interval, the closest valid sample to its middle
+    // is used. Returns `0` if there are no valid samples.
     double avg_mhz(double from_ms, double to_ms) const;
 };
 

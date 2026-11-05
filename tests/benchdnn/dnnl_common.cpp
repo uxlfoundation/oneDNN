@@ -691,9 +691,9 @@ static void set_gpu_frequency(
         max_mhz = i ? std::max(max_mhz, mhz[i]) : mhz[i];
     }
     BENCHDNN_PRINT(2,
-            "[GPU_FREQ]: samples: %zu; busy: %zu; window: %.3f ms; "
+            "[GPU_FREQ]: samples: %zu; valid: %zu; window: %.3f ms; "
             "executions: avg: %.0f MHz; min: %.0f MHz; max: %.0f MHz;\n",
-            trace.samples.size(), trace.n_busy(), trace.window_ms(),
+            trace.samples.size(), trace.n_valid(), trace.window_ms(),
             sum_ms > 0 ? sum_cycles / sum_ms : 0, min_mhz, max_mhz);
 
     std::vector<double> hz(mhz.size());

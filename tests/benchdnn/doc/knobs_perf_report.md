@@ -119,13 +119,12 @@ this time doesn't represent any specific scenario.
 
 ### GPU Frequency Notes
 
-For GPU engines, benchdnn samples the actual GPU frequency in a background
-thread while a problem is measured (see `--gpu-freq-source` in
-[common knobs](knobs_common.md)). The polling period is 250 microseconds for
-`sysfs` and 1 millisecond for `ze`. Additional samples are taken right before
-the first and right after the last measured execution, so short runs, e.g.,
-`--mode=F` or a single execution, are covered as well. Samples taken while the
-GPU is idle are dropped (`sysfs` source only).
+For GPU engines, benchdnn samples the actual GPU frequency with Level Zero
+Sysman (`zesFrequencyGetState()`, Linux and Windows) in a background thread
+while a problem is measured. The polling period is 1 millisecond. Additional
+samples are taken right before the first and right after the last measured
+execution, so short runs, e.g., `--mode=F` or a single execution, are covered
+as well. When Sysman is not available for the device, sampling is skipped.
 
 Each execution is placed on the sampled timeline based on its profiled
 duration and submission order, and gets the average frequency of samples

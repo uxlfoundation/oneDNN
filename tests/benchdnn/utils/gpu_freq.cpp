@@ -30,13 +30,7 @@
 #ifdef _WIN32
 #include "windows.h"
 #else
-#include <dirent.h>
 #include <dlfcn.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #endif
 
 #include "common.hpp"
@@ -46,205 +40,7 @@
 
 namespace gpu_freq {
 
-const source_t default_source = source_t::automatic;
-source_t source = default_source;
-
-source_t str2source(const std::string &s) {
-    if (s == "auto") return source_t::automatic;
-    if (s == "none") return source_t::none;
-    if (s == "sysfs") return source_t::sysfs;
-    if (s == "ze") return source_t::ze;
-    BENCHDNN_PRINT(
-            0, "Error: unsupported GPU frequency source \"%s\".\n", s.c_str());
-    SAFE_V(FAIL);
-    return source_t::none;
-}
-
-const char *source2str(source_t s) {
-    switch (s) {
-        case source_t::none: return "none";
-        case source_t::automatic: return "auto";
-        case source_t::sysfs: return "sysfs";
-        case source_t::ze: return "ze";
-    }
-    return "unknown";
-}
-
 namespace {
-
-// Reads the instantaneous actual frequency of a device.
-struct reader_t {
-    virtual ~reader_t() = default;
-    // Returns the average actual frequency over the device compute domains in
-    // MHz, `0` if all domains are idle, or a negative value on error.
-    virtual double read_mhz() = 0;
-    virtual double max_mhz() const = 0;
-    virtual std::string info() const = 0;
-    virtual int period_us() const = 0;
-};
-
-#ifdef __linux__
-bool path_exists(const std::string &path) {
-    struct stat st;
-    return ::stat(path.c_str(), &st) == 0;
-}
-
-std::vector<std::string> list_dir(const std::string &path) {
-    std::vector<std::string> names;
-    DIR *dir = ::opendir(path.c_str());
-    if (!dir) return names;
-    for (dirent *e = ::readdir(dir); e != nullptr; e = ::readdir(dir)) {
-        std::string n = e->d_name;
-        if (n == "." || n == "..") continue;
-        names.push_back(n);
-    }
-    ::closedir(dir);
-    std::sort(names.begin(), names.end());
-    return names;
-}
-
-bool read_file_long(int fd, long &value) {
-    char buf[32];
-    ssize_t n = ::pread(fd, buf, sizeof(buf) - 1, 0);
-    if (n <= 0) return false;
-    buf[n] = '\0';
-    value = std::strtol(buf, nullptr, 10);
-    return true;
-}
-
-bool read_path_long(const std::string &path, long &value) {
-    int fd = ::open(path.c_str(), O_RDONLY);
-    if (fd < 0) return false;
-    bool ok = read_file_long(fd, value);
-    ::close(fd);
-    return ok;
-}
-
-bool is_intel_device(const std::string &card_path) {
-    int fd = ::open((card_path + "/device/vendor").c_str(), O_RDONLY);
-    if (fd < 0) return false;
-    char buf[16] = {};
-    ssize_t n = ::pread(fd, buf, sizeof(buf) - 1, 0);
-    ::close(fd);
-    return n >= 6 && std::string(buf, 6) == "0x8086";
-}
-
-// Polls `act_freq` of every compute GT of a DRM card. File descriptors stay
-// open, so a sample costs a single `pread()` (~2 us) per GT.
-struct sysfs_reader_t : public reader_t {
-    struct gt_t {
-        std::string name;
-        int fd;
-    };
-
-    ~sysfs_reader_t() override {
-        for (auto &gt : gts_)
-            ::close(gt.fd);
-    }
-
-    static std::unique_ptr<reader_t> create(const std::string &bdf) {
-        const std::string drm_root = "/sys/class/drm";
-        std::vector<std::unique_ptr<sysfs_reader_t>> candidates;
-        for (const auto &card : list_dir(drm_root)) {
-            if (card.rfind("card", 0) != 0
-                    || card.find('-') != std::string::npos)
-                continue;
-            const std::string card_path = drm_root + "/" + card;
-            if (!is_intel_device(card_path)) continue;
-            char real[PATH_MAX];
-            if (!::realpath((card_path + "/device").c_str(), real)) continue;
-            std::string dev_path = real;
-            std::string card_bdf = dev_path.substr(dev_path.rfind('/') + 1);
-            if (!bdf.empty() && card_bdf != bdf) continue;
-
-            std::unique_ptr<sysfs_reader_t> r(new sysfs_reader_t());
-            r->card_ = card + " (" + card_bdf + ")";
-            r->add_xe_gts(card_path);
-            if (r->gts_.empty()) r->add_i915_gts(card_path);
-            if (r->gts_.empty()) continue;
-            candidates.push_back(std::move(r));
-        }
-        // Without a BDF the device can't be matched reliably on multi-GPU
-        // systems.
-        if (candidates.size() != 1) return nullptr;
-        return std::unique_ptr<reader_t>(candidates[0].release());
-    }
-
-    double read_mhz() override {
-        double sum = 0;
-        int n_busy = 0;
-        for (const auto &gt : gts_) {
-            long v = 0;
-            if (!read_file_long(gt.fd, v)) return -1;
-            if (v > 0) {
-                sum += v;
-                n_busy++;
-            }
-        }
-        return n_busy ? sum / n_busy : 0;
-    }
-
-    double max_mhz() const override { return max_mhz_; }
-    int period_us() const override { return 250; }
-
-    std::string info() const override {
-        std::string s = "sysfs " + card_ + ":";
-        for (const auto &gt : gts_)
-            s += " " + gt.name;
-        return s;
-    }
-
-private:
-    sysfs_reader_t() = default;
-
-    void add_gt(const std::string &name, const std::string &act_path,
-            const std::string &max_path) {
-        int fd = ::open(act_path.c_str(), O_RDONLY);
-        if (fd < 0) return;
-        gts_.push_back({name, fd});
-        long v = 0;
-        if (read_path_long(max_path, v))
-            max_mhz_ = std::max(max_mhz_, (double)v);
-    }
-
-    // xe: card/device/tileX/gtY/freq0/{act_freq,rp0_freq}. GTs without
-    // rcs/ccs engines are media GTs and are skipped.
-    void add_xe_gts(const std::string &card_path) {
-        const std::string device = card_path + "/device";
-        for (const auto &tile : list_dir(device)) {
-            if (tile.rfind("tile", 0) != 0) continue;
-            const std::string tile_path = device + "/" + tile;
-            for (const auto &gt : list_dir(tile_path)) {
-                const std::string gt_path = tile_path + "/" + gt;
-                const std::string freq = gt_path + "/freq0";
-                if (!path_exists(freq + "/act_freq")) continue;
-                const std::string eng = gt_path + "/engines";
-                if (path_exists(eng) && !path_exists(eng + "/rcs")
-                        && !path_exists(eng + "/ccs"))
-                    continue;
-                add_gt(tile + "/" + gt, freq + "/act_freq", freq + "/rp0_freq");
-            }
-        }
-    }
-
-    // i915: card/gt/gtY/rps_act_freq_mhz or card/gt_act_freq_mhz.
-    void add_i915_gts(const std::string &card_path) {
-        const std::string gt_root = card_path + "/gt";
-        for (const auto &gt : list_dir(gt_root)) {
-            const std::string p = gt_root + "/" + gt;
-            if (path_exists(p + "/rps_act_freq_mhz"))
-                add_gt(gt, p + "/rps_act_freq_mhz", p + "/rps_RP0_freq_mhz");
-        }
-        if (gts_.empty() && path_exists(card_path + "/gt_act_freq_mhz"))
-            add_gt("gt", card_path + "/gt_act_freq_mhz",
-                    card_path + "/gt_RP0_freq_mhz");
-    }
-
-    std::string card_;
-    std::vector<gt_t> gts_;
-    double max_mhz_ = 0;
-};
-#endif
 
 // Minimal subset of the Level Zero Sysman ABI (zes_api.h). The loader is
 // loaded dynamically to avoid a build-time dependency for OpenCL builds.
@@ -318,10 +114,10 @@ std::string bdf2str(uint32_t d, uint32_t b, uint32_t dev, uint32_t f) {
     return buf;
 }
 
-// Polls `zesFrequencyGetState()` for every GPU frequency domain of the device.
-// A call costs ~50 us on Linux, so the polling period is larger than sysfs.
-struct ze_reader_t : public reader_t {
-    static std::unique_ptr<reader_t> create(const std::string &bdf) {
+// Reads the actual frequency of a device with `zesFrequencyGetState()` for
+// every GPU frequency domain. A call costs ~50-60 us.
+struct ze_reader_t {
+    static std::unique_ptr<ze_reader_t> create(const std::string &bdf) {
 #define LOAD(var, type, name) \
     auto var = reinterpret_cast<zes::type>(load_ze_symbol(name)); \
     if (!(var)) return nullptr;
@@ -375,10 +171,12 @@ struct ze_reader_t : public reader_t {
             }
         }
         if (candidates.size() != 1) return nullptr;
-        return std::unique_ptr<reader_t>(candidates[0].release());
+        return std::move(candidates[0]);
     }
 
-    double read_mhz() override {
+    // Returns the average actual frequency over GPU domains in MHz, `0` if
+    // unknown, or a negative value on error.
+    double read_mhz() {
         double sum = 0;
         int n = 0;
         for (auto h : domains_) {
@@ -393,10 +191,10 @@ struct ze_reader_t : public reader_t {
         return n ? sum / n : 0;
     }
 
-    double max_mhz() const override { return max_mhz_; }
-    int period_us() const override { return 1000; }
+    double max_mhz() const { return max_mhz_; }
+    static constexpr int period_us = 1000;
 
-    std::string info() const override {
+    std::string info() const {
         return "ze sysman (" + bdf_ + "): " + std::to_string(domains_.size())
                 + " GPU domain(s)";
     }
@@ -471,7 +269,7 @@ struct sampler_t {
         // start-up or the polling period (e.g., a single short execution).
         sample();
         thread_ = std::thread([this]() {
-            period_timer_t timer(reader_->period_us());
+            period_timer_t timer(ze_reader_t::period_us);
             while (true) {
                 timer.wait();
                 if (stop_.load(std::memory_order_relaxed)) break;
@@ -495,27 +293,20 @@ struct sampler_t {
 
 private:
     sampler_t() {
-        if (!is_gpu() || source == source_t::none) return;
+        if (!is_gpu()) return;
         const std::string bdf = get_gpu_pci_bdf();
-#ifdef __linux__
-        if (source == source_t::automatic || source == source_t::sysfs)
-            reader_ = sysfs_reader_t::create(bdf);
-#endif
-        if (!reader_
-                && (source == source_t::automatic || source == source_t::ze))
-            reader_ = ze_reader_t::create(bdf);
+        reader_ = ze_reader_t::create(bdf);
 
         if (reader_) {
             BENCHDNN_PRINT(2, "[GPU_FREQ] source: %s; max: %.0f MHz\n",
                     reader_->info().c_str(), reader_->max_mhz());
-            samples_.reserve(
-                    (size_t)(4 * max_ms_per_prb * 1e3 / reader_->period_us()));
+            samples_.reserve((
+                    size_t)(4 * max_ms_per_prb * 1e3 / ze_reader_t::period_us));
         } else {
-            const int verbosity = source == source_t::automatic ? 2 : 0;
-            BENCHDNN_PRINT(verbosity,
-                    "[GPU_FREQ] Warning: no GPU frequency source \"%s\" "
-                    "available for device \"%s\".\n",
-                    source2str(source), bdf.c_str());
+            BENCHDNN_PRINT(2,
+                    "[GPU_FREQ] Warning: Level Zero Sysman is not available "
+                    "for device \"%s\".\n",
+                    bdf.c_str());
         }
     }
 
@@ -526,7 +317,7 @@ private:
         }
     }
 
-    std::unique_ptr<reader_t> reader_;
+    std::unique_ptr<ze_reader_t> reader_;
     std::thread thread_;
     std::atomic<bool> stop_ {false};
     bool running_ = false;
@@ -562,7 +353,7 @@ double trace_t::window_ms() const {
     return samples.empty() ? 0 : samples.back().ms;
 }
 
-size_t trace_t::n_busy() const {
+size_t trace_t::n_valid() const {
     size_t n = 0;
     for (const auto &s : samples)
         n += s.mhz > 0;
@@ -591,7 +382,7 @@ double trace_t::avg_mhz(double from_ms, double to_ms) const {
 std::vector<double> attribute(
         const trace_t &trace, const std::vector<double> &exec_ms) {
     const size_t n = exec_ms.size();
-    if (!n || !trace.n_busy()) return {};
+    if (!n || !trace.n_valid()) return {};
 
     // Executions are assumed to run in submission order. The time not covered
     // by executions (submission latency, host overheads, gaps) is distributed

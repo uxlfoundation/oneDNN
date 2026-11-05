@@ -115,6 +115,19 @@ gemmstone::microkernel::StrategyAdjuster get_strategy_adjuster(
     };
 }
 
+// Whether a matrix with this pitch alignment can use block 2D loads.
+bool has_block_2d_pitch(ngen::HW hw, int pitch_alignment) {
+    return hw >= ngen::HW::XeHPC
+            && pitch_alignment % jit::block_2d_pitch_alignment(hw) == 0;
+}
+
+// Whether an operand that is not contiguous along k is copied through SLM one
+// k column at a time, which happens when its pitch does not allow block 2D
+// loads.
+bool strided_k_slm_copy(ngen::HW hw, bool k_contiguous, int pitch_alignment) {
+    return !k_contiguous && !has_block_2d_pitch(hw, pitch_alignment);
+}
+
 // Strategy requirements used when selection without requirements fails.
 // TODO: Find a better way to select wg_n; it is currently derived from the
 // tokens per group bucket.
@@ -163,6 +176,26 @@ std::vector<gemmstone::StrategyRequirement> fallback_reqs(
             if (ta_ext.bits() <= 8) min_wg_n = 2;
         } break;
         case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
+        case compute::gpu_arch_t::xe2:
+        case compute::gpu_arch_t::xe3:
+        case compute::gpu_arch_t::xe3p: {
+            if (problem.Tb != Type::f32) {
+                m_unroll = std::max<dim_t>(sg_size, sg_size / ta_ext);
+            }
+            // A that can't use block 2D loads is copied through SLM. For A of
+            // 8 bits or less its staging registers don't leave room for a
+            // 32-wide n unroll.
+            const auto hw = getCore(product.family);
+            const bool a_slm = !has_block_2d_pitch(hw, problem.A.alignment);
+            max_n_unroll = (a_slm && ta_ext.bits() <= 8) ? 16 : 32;
+            // With a 32-row m unroll one thread also can't stage the copy of
+            // A that is strided along k; split it over two threads.
+            if (m_unroll > sg_size
+                    && strided_k_slm_copy(hw,
+                            problem.A.layout == MatrixLayout::T,
+                            problem.A.alignment))
+                min_wg_n = 2;
+        } break;
         default:
             if (problem.Tb != Type::f32) {
                 m_unroll = std::max<dim_t>(sg_size, sg_size / ta_ext);
@@ -763,15 +796,23 @@ void init_ukernel_problem(const grouped_micro_gemm_t::pd_t &pd,
     // Mixed s8/s4 DPAS support:
     // - Xe3p: Not supported, require s4->s8 upconversion
     // - pre-Xe3p: supported, but only when s4 matrix doesn't have zero points
+    //   and its nibbles don't need repacking along k. They do when the matrix
+    //   is not contiguous along k and can't use block 2D loads, as it is then
+    //   copied through SLM; convert it to s8 on the way in instead.
     bool has_s8s4_dpas = dev_info.gpu_arch() != compute::gpu_arch_t::xe3p;
+    const ngen::HW hw = getCore(dev_info.product().family);
     if (problem.Ta_ext.isSubByteInt() && problem.Tb_ext.isInt8()) {
         bool s8s4_dpas_ok = (problem.Ta_ext.bits() == 4) && has_s8s4_dpas
-                && !opts.offsetA;
+                && !opts.offsetA
+                && !strided_k_slm_copy(hw, problem.A.layout == MatrixLayout::T,
+                        problem.A.alignment);
         if (!s8s4_dpas_ok) problem.Ta = Type::s8;
     }
     if (problem.Tb_ext.isSubByteInt() && problem.Ta_ext.isInt8()) {
         bool s8s4_dpas_ok = (problem.Tb_ext.bits() == 4) && has_s8s4_dpas
-                && !opts.offsetB;
+                && !opts.offsetB
+                && !strided_k_slm_copy(hw, problem.B.layout == MatrixLayout::N,
+                        problem.B.alignment);
         if (!s8s4_dpas_ok) problem.Tb = Type::s8;
     }
 

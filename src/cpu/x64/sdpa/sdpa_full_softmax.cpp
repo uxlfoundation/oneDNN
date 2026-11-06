@@ -511,19 +511,17 @@ status_t configure(const sdpa_full_softmax_params_t &params,
 
     const dim_t num_head_kv = p_.num_head_q / p_.group_head;
 
-    // Fold select into mm1 only when it is not inverted and its query/key axes
-    // are dense [m x seq_kv]. The injector indexes the condition through the
-    // destination offsets, so the row/column strides must be [seq_kv, 1].
-    // A broadcast query or key axis has effective stride 0 and uses the pre-pass.
+    // Fold non-inverted select into mm1 when condition rows match dense score
+    // rows. The pd guarantees a full, contiguous key axis. A single query row
+    // does not use its row stride; otherwise require non-broadcast query rows
+    // with stride seq_kv.
     conf.mm1_select_postop = false;
     if (p_.has_select) {
-        const bool broadcast_mask
-                = (p_.seq_q > 1 && p_.cond_dims[sdpa_pd_t::mask_q_index] == 1)
-                || (p_.seq_kv > 1
-                        && p_.cond_dims[sdpa_pd_t::mask_k_index] == 1);
-        conf.mm1_select_postop = !p_.invert_select && !broadcast_mask
-                && (p_.cond_strides[sdpa_pd_t::mask_q_index] == p_.seq_kv
-                        && p_.cond_strides[sdpa_pd_t::mask_k_index] == 1);
+        const bool dense_query_axis = p_.seq_q == 1
+                || (p_.cond_dims[sdpa_pd_t::mask_q_index] != 1
+                        && p_.cond_strides[sdpa_pd_t::mask_q_index]
+                                == p_.seq_kv);
+        conf.mm1_select_postop = !p_.invert_select && dense_query_axis;
     }
 
     // The binary injector requires tensor rhs data to share the score tile's

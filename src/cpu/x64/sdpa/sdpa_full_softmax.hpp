@@ -202,11 +202,24 @@ private:
     size_t prob_dt_size_ = 0;
 };
 
+// A BRGEMM descriptor and the AMX state derived from it stay together.
+// Invalid slots correspond to unused query / N / K / V tails.
+struct sdpa_brgemm_kernel_conf_t {
+    brgemm_desc_t desc;
+    sdpa_amx_cfg_t amx;
+    bool valid = false;
+};
+
+struct sdpa_full_softmax_brgemm_t {
+    // mm1: [is_q_tail][is_n_tail], mm2: [is_q_tail][is_k_tail][is_v_tail].
+    sdpa_brgemm_kernel_conf_t mm1[2][2], mm2[2][2][2];
+    // Beta-zero mm2 for the first full K block when the reduction is tiled.
+    sdpa_brgemm_kernel_conf_t mm2_beta0[2][2];
+};
+
 // Derived compute configuration: the JIT-free arithmetic (query/KV blocking,
-// per-thread + global scratch layout, AMX palette/wsp). Pure scalar config
-// (mirroring brgemm_matmul_conf_t), computed once by configure() and owned by
-// the primitive_desc so the pd sizes its scratchpad from it; the finalized
-// BRGEMM descriptors live separately in sdpa_full_softmax_descs_t (like brg_descs_).
+// per-thread + global scratch layout). Computed once by configure() and owned
+// by the primitive_desc, which also sizes its scratchpad from this config.
 struct sdpa_full_softmax_conf_t {
     sdpa_full_softmax_params_t params;
     // Resolved strategies (never `any`).
@@ -243,6 +256,8 @@ struct sdpa_full_softmax_conf_t {
     size_t copy_buffer_bytes = 0;
     int nthr = 0;
 
+    sdpa_full_softmax_brgemm_t brg_descs;
+
     // The optional copy descriptors describe whole tensors packed ahead into
     // shared scratch.
     utils::optional_t<tensor_copy_desc_t> q_copy_desc, k_copy_desc, v_copy_desc,
@@ -251,25 +266,9 @@ struct sdpa_full_softmax_conf_t {
     // thread's scratch block, padded_k is that of a full (non-tail) tile.
     utils::optional_t<tensor_copy_desc_t> k_tile_desc, v_tile_desc;
 
-    // AMX cfg per kernel: mm1 indexed [is_q_tail][is_n_tail], mm2 indexed
-    // [is_q_tail][is_k_tail][is_v_tail].
-    sdpa_amx_cfg_t mm1_amx[2][2], mm2_amx[2][2][2];
-
     size_t scratch_total(int n) const {
         return scratch_per_thread * static_cast<size_t>(n) + copy_buffer_bytes;
     }
-};
-
-// mm1 BRGEMM descriptors are indexed [is_q_tail][is_n_tail] and mm2
-// [is_q_tail][is_k_tail][is_v_tail]; the valid flags mark which slots
-// were built (tail slots stay unbuilt when the remainder is 0).
-// mm2_desc_beta0 is the beta = 0 full-K-block mm2 descriptor used for
-// the first block when the mm2 reduction is tiled (per q-tile).
-struct sdpa_full_softmax_descs_t {
-    brgemm_desc_t mm1_desc[2][2], mm2_desc[2][2][2], mm2_desc_beta0[2][2];
-    bool mm1_valid[2][2] = {};
-    bool mm2_valid[2][2] = {};
-    bool beta0_valid[2] = {};
 };
 
 // Compiled kernels for the full-softmax SDPA, owned by the primitive. The BRGEMM
@@ -307,23 +306,21 @@ struct sdpa_full_softmax_kernels_t {
 };
 
 // Query-blocked SDPA with softmax over the complete key axis, folded into the
-// CPU primitive: the primitive_desc owns the conf + descs (configure), the
-// primitive owns the kernels (create_kernels) and drives the loop (execute).
+// CPU primitive: the primitive_desc owns the configuration (including its
+// BRGEMM slots), while the primitive owns the kernels and drives execution.
 namespace sdpa_full_softmax {
 
 // Compute the derived configuration (query/KV blocking, per-thread + global
-// scratch layout, AMX palette/wsp) and build the finalized BRGEMM descriptors
-// into `descs`. JIT-free, so a primitive_desc can size its scratchpad from the
-// returned conf without compiling kernels.
+// scratch layout) and build the finalized BRGEMM slots. JIT-free, so a
+// primitive_desc can size its scratchpad without compiling kernels.
 status_t configure(const sdpa_full_softmax_params_t &params,
-        sdpa_full_softmax_conf_t &conf, sdpa_full_softmax_descs_t &descs);
+        sdpa_full_softmax_conf_t &conf);
 
-// JIT-compile the BRGEMM + softmax kernels from a conf + descs produced by
+// JIT-compile the BRGEMM + softmax kernels from the configuration produced by
 // configure(), into `kernels`. The engine instantiates the reused jit softmax
 // kernel; the execute path stays engine-free.
 status_t create_kernels(cpu_isa_t isa_for_ir,
-        const sdpa_full_softmax_conf_t &conf,
-        const sdpa_full_softmax_descs_t &descs, engine_t *engine,
+        const sdpa_full_softmax_conf_t &conf, engine_t *engine,
         sdpa_full_softmax_kernels_t &kernels);
 
 status_t execute(const sdpa_full_softmax_conf_t &conf,

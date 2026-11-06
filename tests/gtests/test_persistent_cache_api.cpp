@@ -24,11 +24,19 @@
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #endif
 
+#include <cstring>
+
 extern "C" void dnnl_impl_gpu_intel_clear_device_info_cache();
 
 namespace dnnl {
 
 class persistent_cache_api_test_t : public ::testing::Test {};
+
+// Both engine and primitive blobs start with the version: three ints and the
+// length-prefixed hash.
+size_t serialized_version_size() {
+    return 3 * sizeof(int) + sizeof(size_t) + std::strlen(dnnl_version()->hash);
+}
 
 void check_engine_usable(const engine &eng) {
     memory::desc md({4, 4}, memory::data_type::f32, memory::format_tag::ab);
@@ -76,6 +84,20 @@ HANDLE_EXCEPTIONS_FOR_TEST(
         ASSERT_EQ(cache_blob.empty(), false);
         ASSERT_NO_THROW(p = convolution_forward(pd, cache_blob));
         ASSERT_EQ(cache_blob, p.get_cache_blob());
+
+        // The blob starts with the oneDNN version.
+        auto corrupted_blob = cache_blob;
+        corrupted_blob[0] ^= 0xFF;
+        EXPECT_ANY_THROW(convolution_forward(pd, corrupted_blob));
+
+        // The version is followed by the device identity.
+        corrupted_blob = cache_blob;
+        corrupted_blob.at(serialized_version_size()) ^= 0xFF;
+        EXPECT_ANY_THROW(convolution_forward(pd, corrupted_blob));
+
+        const std::vector<uint8_t> truncated_blob(cache_blob.begin(),
+                cache_blob.begin() + serialized_version_size());
+        EXPECT_ANY_THROW(convolution_forward(pd, truncated_blob));
     }
 }
 
@@ -107,6 +129,18 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     // internal cache.
     dnnl_impl_gpu_intel_clear_device_info_cache();
 
+    // The blob starts with the oneDNN version.
+    auto corrupted_blob = cache_blob;
+    corrupted_blob[0] ^= 0xFF;
+    EXPECT_ANY_THROW(make_engine(
+            get_device(test_engine), get_context(test_engine), corrupted_blob));
+
+    const std::vector<uint8_t> truncated_blob(cache_blob.begin(),
+            cache_blob.begin() + serialized_version_size() - 1);
+    EXPECT_ANY_THROW(make_engine(
+            get_device(test_engine), get_context(test_engine), truncated_blob));
+
+    dnnl_impl_gpu_intel_clear_device_info_cache();
     auto eng = make_engine(
             get_device(test_engine), get_context(test_engine), cache_blob);
 
@@ -145,6 +179,18 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     // internal cache.
     dnnl_impl_gpu_intel_clear_device_info_cache();
 
+    // The blob starts with the oneDNN version.
+    auto corrupted_blob = cache_blob;
+    corrupted_blob[0] ^= 0xFF;
+    EXPECT_ANY_THROW(make_engine(get_driver(test_engine),
+            get_device(test_engine), get_context(test_engine), corrupted_blob));
+
+    const std::vector<uint8_t> truncated_blob(cache_blob.begin(),
+            cache_blob.begin() + serialized_version_size() - 1);
+    EXPECT_ANY_THROW(make_engine(get_driver(test_engine),
+            get_device(test_engine), get_context(test_engine), truncated_blob));
+
+    dnnl_impl_gpu_intel_clear_device_info_cache();
     auto eng = make_engine(get_driver(test_engine), get_device(test_engine),
             get_context(test_engine), cache_blob);
 

@@ -30,6 +30,12 @@ hashes. This may result in fetching a wrong cache blob from persistent cache.
 * Each primitive class provides a constructor that takes the cache blob along
 with the primitive descriptor.
 
+@note
+Primitive creation from a cache blob fails with #dnnl_invalid_arguments when the
+cache blob was created by a different oneDNN version or git commit hash, or for
+a different device or driver version than the engine of the primitive
+descriptor.
+
 ### Relation to Primitive Cache
 
 When a primitive is created from a cache blob and the identical

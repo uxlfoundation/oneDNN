@@ -511,6 +511,36 @@ status_t configure(const sdpa_full_softmax_params_t &params,
 
     const dim_t num_head_kv = p_.num_head_q / p_.group_head;
 
+    // Fold select into mm1 only when it is not inverted and its query/key axes
+    // are dense [m x seq_kv]. The injector indexes the condition through the
+    // destination offsets, so the row/column strides must be [seq_kv, 1].
+    // A broadcast query or key axis has effective stride 0 and uses the pre-pass.
+    bool try_select_postop = false;
+    if (p_.has_select) {
+        const bool broadcast_mask
+                = (p_.seq_q > 1 && p_.cond_dims[sdpa_pd_t::mask_q_index] == 1)
+                || (p_.seq_kv > 1
+                        && p_.cond_dims[sdpa_pd_t::mask_k_index] == 1);
+        try_select_postop = !p_.invert_select && !broadcast_mask
+                && (p_.cond_strides[sdpa_pd_t::mask_q_index] == p_.seq_kv
+                        && p_.cond_strides[sdpa_pd_t::mask_k_index] == 1);
+    }
+    conf.mm1_select_postop = try_select_postop;
+
+    // The binary injector requires tensor rhs data to share the score tile's
+    // layout. Keep score rows dense when a tensor rhs is used; scalar rhs and
+    // eltwise post-ops are layout-independent.
+    bool dense_scores_required = try_select_postop;
+    for (const auto &pop : p_.mm1_post_ops)
+        if (pop.is_binary && !pop.rhs_is_scalar) dense_scores_required = true;
+    conf.ld_scores
+            = scratch_row_ld(p_.seq_kv, sizeof(float), !dense_scores_required);
+    auto &thread_scratch = conf.thread_scratch;
+    thread_scratch.set_compute_type(p_.mm_dt, mm_dt_sz);
+    conf.ld_prob = thread_scratch.has_prob
+            ? scratch_row_ld(p_.seq_kv, mm_dt_sz, /*allow_padding=*/true)
+            : conf.ld_scores;
+
     // Choose the query block by trading K/V streaming against score-tile
     // traffic. Each work item streams all of K and V once, so their traffic per
     // score element falls as 1/q_block, while the live [q_block x seq_kv] score
@@ -522,14 +552,14 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     const dim_t q_granule = is_amx ? 16 : 8; // AMX computes 16-row tiles
     const dim_t q_block_max = is_amx ? 96 : 192;
     const float score_tile_l2_ratio = is_amx ? 0.75f : 1.5f;
-    const dim_t score_bytes_per_elem = sizeof(float)
-            + (p_.mm_dt == data_type::f32 ? 0 : mm_dt_sz); // scores + P
+    const size_t score_row_bytes
+            = thread_scratch.score_tile_row_bytes(conf.ld_scores, conf.ld_prob);
     // Empirical head-size scaling, normalized to 1 when both head sizes are 64.
     const float head_scale = std::sqrt((p_.hs_qk + p_.hs_v) / 128.f);
     const float score_tile_target_bytes = score_tile_l2_ratio * head_scale
             * platform::get_per_core_cache_size(2);
-    const float q_rows = score_tile_target_bytes
-            / static_cast<float>(p_.seq_kv * score_bytes_per_elem);
+    const float q_rows
+            = score_tile_target_bytes / static_cast<float>(score_row_bytes);
     // A long seq_kv shrinks the tile-based q_block until K/V streaming
     // dominates. Bound it so the K/V bytes per score element,
     // (hs_qk + hs_v) * mm_dt_sz / q_block, stay below the ~16..24 bytes of
@@ -769,38 +799,6 @@ status_t configure(const sdpa_full_softmax_params_t &params,
         return status::success;
     };
 
-    // Fold select into mm1 only when it is not inverted and its query/key axes
-    // are dense [m x seq_kv]. The injector indexes the condition through the
-    // destination offsets, so the row/column strides must be [seq_kv, 1].
-    // A broadcast query or key axis has effective stride 0 and uses the pre-pass.
-    bool try_select_postop = false;
-    if (p_.has_select) {
-        const bool broadcast_mask
-                = (p_.seq_q > 1 && p_.cond_dims[sdpa_pd_t::mask_q_index] == 1)
-                || (p_.seq_kv > 1
-                        && p_.cond_dims[sdpa_pd_t::mask_k_index] == 1);
-        try_select_postop = !p_.invert_select && !broadcast_mask
-                && (p_.cond_strides[sdpa_pd_t::mask_q_index] == p_.seq_kv
-                        && p_.cond_strides[sdpa_pd_t::mask_k_index] == 1);
-    }
-
-    conf.mm1_select_postop = try_select_postop;
-
-    // Score and P row strides. The binary injector requires a tensor rhs (an
-    // attention mask, or the folded select condition) to share the score
-    // tile's layout: the no-broadcast path indexes the rhs at the raw
-    // destination offset and broadcast strategies reject a destination laid
-    // out differently from the rhs. Keep the score rows dense then; scalar
-    // rhs and eltwise post-ops are layout-independent.
-    bool dense_scores_required = try_select_postop;
-    for (const auto &pop : p_.mm1_post_ops)
-        if (pop.is_binary && !pop.rhs_is_scalar) dense_scores_required = true;
-    conf.ld_scores
-            = scratch_row_ld(p_.seq_kv, sizeof(float), !dense_scores_required);
-    conf.ld_prob = p_.mm_dt == data_type::f32
-            ? conf.ld_scores
-            : scratch_row_ld(p_.seq_kv, mm_dt_sz, /*allow_padding=*/true);
-
     CHECK(build_mm2_descs());
     if (build_mm1_descs(try_select_postop) != status::success) {
         // A ukernel config may reject the select post-op at desc build; drop it
@@ -836,14 +834,6 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // are consecutive.
     const size_t item_q_rows
             = static_cast<size_t>(conf.heads_per_item) * q_block;
-    const size_t scores_bytes
-            = align64(item_q_rows * conf.ld_scores * sizeof(float));
-    const size_t pv_bytes = mm2_direct
-            ? 0
-            : align64(item_q_rows * conf.ld_pv * sizeof(float));
-    const size_t prob_bytes = p_.mm_dt == data_type::f32
-            ? 0
-            : align64(item_q_rows * conf.ld_prob * mm_dt_sz);
     // AMX (bf16/f16) kernels need a per-thread tile-store scratch; size it to
     // the largest wsp over all kernels (they run sequentially per work-item).
     size_t max_wsp = 0;
@@ -854,11 +844,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                 max_wsp = nstl::max(max_wsp, conf.mm2_amx[qi][ki][vi].wsp_size);
         }
     conf.amx_wsp_bytes = align64(max_wsp);
-    auto &ts = conf.thread_scratch;
-    ts.pv = scores_bytes;
-    ts.prob = ts.pv + pv_bytes;
-    ts.amx_wsp = ts.prob + prob_bytes;
-    ts.size = ts.amx_wsp + conf.amx_wsp_bytes;
+    thread_scratch.set_tile_buffers(item_q_rows, conf.ld_scores, conf.ld_prob,
+            conf.ld_pv, mm2_direct, conf.amx_wsp_bytes);
+    auto &ts = thread_scratch;
 
     // Packed K and V buffers: per thread for one tile each when packing per
     // tile, else whole tensors placed consecutively after the per-thread
@@ -1185,8 +1173,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
                     + h * q_block * ld_scores;
         };
         auto prob_of = [&](dim_t h) -> char * {
-            if (mm_dt == data_type::f32)
-                return reinterpret_cast<char *>(scores_of(h));
+            if (!ts.has_prob) return reinterpret_cast<char *>(scores_of(h));
             return my_scratch + ts.prob + h * q_block * ld_prob * mm_dt_sz;
         };
         auto pv_of = [&](dim_t h) {

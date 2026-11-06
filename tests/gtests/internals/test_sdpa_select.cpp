@@ -492,20 +492,19 @@ TEST(sdpa_select, key_and_config_strings) {
     EXPECT_FALSE(sdpa::fwd_parse_config("32,16,16", c));
 }
 
-TEST(sdpa_select, device_tagged_table_lines_take_precedence) {
+TEST(sdpa_select, device_tagged_table_entries_take_precedence) {
+    const auto key = sdpa::fwd_make_key(problem(64, 512, 512, 8), dg2_hw());
     std::unordered_map<std::string, sdpa::fwd_config_t> t;
-    sdpa::add_table_line(t, "K 16,16,16,16,8,4,8,4   # arch-wide");
-    sdpa::add_table_line(t, "K:eu448 32,16,16,8,16,2,8,4   # A750 only");
-    sdpa::add_table_line(t, "# comment only");
-    sdpa::add_table_line(t, "broken 1,2,3");
+    sdpa::add_table_entry(t, {key, 0, cfg(16, 16, 16, 16, 8, 4, 8, 4)});
+    sdpa::add_table_entry(t, {key, 448, cfg(32, 16, 16, 8, 16, 2, 8, 4)});
     EXPECT_EQ(t.size(), 2u);
 
     sdpa::fwd_config_t c {};
     bool dev = false;
-    ASSERT_TRUE(sdpa::lookup_in(t, "K", 448, c, &dev));
+    ASSERT_TRUE(sdpa::lookup_in(t, key.str(), 448, c, &dev));
     EXPECT_TRUE(dev);
     EXPECT_EQ(sdpa::fwd_config_str(c), "32,16,16,8,16,2,8,4");
-    ASSERT_TRUE(sdpa::lookup_in(t, "K", 512, c, &dev));
+    ASSERT_TRUE(sdpa::lookup_in(t, key.str(), 512, c, &dev));
     EXPECT_FALSE(dev);
     EXPECT_EQ(sdpa::fwd_config_str(c), "16,16,16,16,8,4,8,4");
     EXPECT_FALSE(sdpa::lookup_in(t, "other", 448, c, &dev));

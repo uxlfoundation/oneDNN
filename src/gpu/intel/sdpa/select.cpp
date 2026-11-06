@@ -328,30 +328,52 @@ std::string trim(const std::string &s) {
     return s.substr(b, e - b + 1);
 }
 
-// Built-in entries, "key config" per line, from tune_fwd_config.py
-// --table-out, verified with benchdnn correctness. A key may end in
-// ":eu<N>" to apply only to devices with N EUs, preferred over the
-// untagged arch-wide line
-// clang-format off
-const char *const fwd_table_data[] = {
-        nullptr,
+// Built-in entries from tune_fwd_config.py --table-out, verified with
+// benchdnn correctness, written by bake_fit.py into select_table.db. An
+// entry may be tagged with an EU count to apply only to devices with that
+// many EUs, preferred over the untagged arch-wide entry. Covers xe_hpg,
+// xe_hpc, xe2, xe3 and xe3p in both K layouts
+struct fwd_table_entry_t {
+    fwd_key_t key;
+    int eu; // any_eu: every device of the architecture
+    fwd_config_t config;
 };
-// clang-format on
 
-void add_table_line(
-        std::unordered_map<std::string, fwd_config_t> &t, std::string line) {
-    const auto hash = line.find('#');
-    if (hash != std::string::npos) line.erase(hash);
-    line = trim(line);
-    if (line.empty()) return;
-    std::istringstream ss(line);
-    std::string key, cfg;
-    if (!(ss >> key >> cfg)) return;
-    fwd_config_t c {};
-    if (fwd_parse_config(cfg, c)) t[key] = c;
+// Short names used by the select_table.db entries
+constexpr auto xe_hpg = compute::gpu_arch_t::xe_hpg;
+constexpr auto xe_hpc = compute::gpu_arch_t::xe_hpc;
+constexpr auto xe2 = compute::gpu_arch_t::xe2;
+constexpr auto xe3 = compute::gpu_arch_t::xe3;
+constexpr auto xe3p = compute::gpu_arch_t::xe3p;
+using mask_t = fwd_mask_t;
+using bits_t = fwd_key_bits_t;
+using quant_t = fwd_quant_t;
+using groups_t = fwd_key_groups_t;
+using kernel_t = fwd_kernel_t;
+using acc_t = fwd_acc_t;
+using align_t = fwd_key_align_t;
+constexpr auto discrete = fwd_device_t::discrete;
+constexpr auto integrated = fwd_device_t::integrated;
+constexpr auto inference = fwd_prop_t::inference;
+constexpr auto training = fwd_prop_t::training;
+// No training entries have been swept yet
+static_assert(training != inference, "distinct propagation tags");
+constexpr auto plain_k = fwd_k_layout_t::plain_k;
+constexpr auto transposed_k = fwd_k_layout_t::transposed_k;
+constexpr int any_eu = 0;
+
+const fwd_table_entry_t fwd_table_data[] = {
+#include "gpu/intel/sdpa/select_table.db"
+};
+
+void add_table_entry(std::unordered_map<std::string, fwd_config_t> &t,
+        const fwd_table_entry_t &e) {
+    std::string key = e.key.str();
+    if (e.eu > 0) key += ":eu" + std::to_string(e.eu);
+    t[key] = e.config;
 }
 
-// Device-tagged line first, arch-wide line second
+// Device-tagged entry first, arch-wide entry second
 bool lookup_in(const std::unordered_map<std::string, fwd_config_t> &t,
         const std::string &key, int eu_count, fwd_config_t &c,
         bool *device_specific) {
@@ -367,8 +389,8 @@ bool lookup_in(const std::unordered_map<std::string, fwd_config_t> &t,
 const std::unordered_map<std::string, fwd_config_t> &fwd_table() {
     static const std::unordered_map<std::string, fwd_config_t> table = []() {
         std::unordered_map<std::string, fwd_config_t> t;
-        for (const char *const e : fwd_table_data)
-            if (e) add_table_line(t, e);
+        for (const fwd_table_entry_t &e : fwd_table_data)
+            add_table_entry(t, e);
         return t;
     }();
     return table;

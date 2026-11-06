@@ -336,7 +336,7 @@ std::vector<int> file_vregs(const ir_t &ir, const reg_pools_t &pools, int f) {
 // indexed [file][op].
 std::vector<std::vector<int>> count_pressure(
         const ir_t &ir, const reg_pools_t &pools) {
-    std::vector<std::vector<int8_t>> live_in;
+    std::vector<bitset_t> live_in;
     compute_liveness(ir, live_in);
 
     std::vector<std::vector<int>> pressure(
@@ -344,16 +344,17 @@ std::vector<std::vector<int>> count_pressure(
     std::vector<int> defs, uses;
 
     for (int i = 0; i < ir.n_ops(); i++) {
-        std::vector<int8_t> needs = live_in[i];
+        bitset_t needs = live_in[i];
         ir.def_use(ir.ops()[i], defs, uses);
 
-        for (int v : defs)
-            needs[v] = 1;
+        for (int v : defs) {
+            needs.set(v);
+        }
 
         // A tile whose shape has no file is not counted.
         for (int v = 0; v < ir.n_vregs(); v++) {
             const int f = pools.file_of(ir.vreg_info()[v]);
-            if (needs[v] && f >= 0) pressure[f][i]++;
+            if (needs.test(v) && f >= 0) pressure[f][i]++;
         }
     }
 

@@ -26,8 +26,6 @@
 
 #include <cstring>
 
-extern "C" void dnnl_impl_gpu_intel_clear_device_info_cache();
-
 namespace dnnl {
 
 class persistent_cache_api_test_t : public ::testing::Test {};
@@ -51,6 +49,13 @@ void check_engine_usable(const engine &eng) {
             {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
                     {DNNL_ARG_DST, dst}});
     strm.wait();
+}
+
+// The engine blob continues with the runtime kind after the version.
+std::vector<uint8_t> change_engine_blob_runtime(
+        std::vector<uint8_t> cache_blob) {
+    cache_blob.at(serialized_version_size())++;
+    return cache_blob;
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(
@@ -125,10 +130,6 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     ASSERT_TRUE(!cache_blob.empty());
     ASSERT_TRUE(!cache_blob_id.empty());
 
-    // Force init_from_cache_blob, otherwise the device info is reused from the
-    // internal cache.
-    dnnl_impl_gpu_intel_clear_device_info_cache();
-
     // The blob starts with the oneDNN version.
     auto corrupted_blob = cache_blob;
     corrupted_blob[0] ^= 0xFF;
@@ -140,7 +141,9 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     EXPECT_ANY_THROW(make_engine(
             get_device(test_engine), get_context(test_engine), truncated_blob));
 
-    dnnl_impl_gpu_intel_clear_device_info_cache();
+    EXPECT_ANY_THROW(make_engine(get_device(test_engine),
+            get_context(test_engine), change_engine_blob_runtime(cache_blob)));
+
     auto eng = make_engine(
             get_device(test_engine), get_context(test_engine), cache_blob);
 
@@ -175,10 +178,6 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     ASSERT_TRUE(!cache_blob.empty());
     ASSERT_TRUE(!cache_blob_id.empty());
 
-    // Force init_from_cache_blob, otherwise the device info is reused from the
-    // internal cache.
-    dnnl_impl_gpu_intel_clear_device_info_cache();
-
     // The blob starts with the oneDNN version.
     auto corrupted_blob = cache_blob;
     corrupted_blob[0] ^= 0xFF;
@@ -190,7 +189,10 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     EXPECT_ANY_THROW(make_engine(get_driver(test_engine),
             get_device(test_engine), get_context(test_engine), truncated_blob));
 
-    dnnl_impl_gpu_intel_clear_device_info_cache();
+    EXPECT_ANY_THROW(make_engine(get_driver(test_engine),
+            get_device(test_engine), get_context(test_engine),
+            change_engine_blob_runtime(cache_blob)));
+
     auto eng = make_engine(get_driver(test_engine), get_device(test_engine),
             get_context(test_engine), cache_blob);
 

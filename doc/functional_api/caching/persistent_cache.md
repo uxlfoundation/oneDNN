@@ -75,8 +75,9 @@ using namespace dnnl;
 
 @note
 Engine creation from a cache blob fails with #dnnl_invalid_arguments when the
-cache blob was created by a different oneDNN version or git commit hash, or
-under a different driver version than the one the device currently reports.
+cache blob was created by a different oneDNN version or git commit hash, by an
+engine of a different runtime, or under a different driver version than the one
+the device currently reports.
 
 ### OpenCL GPU Runtime
 

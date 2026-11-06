@@ -71,6 +71,8 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                     = attr()->post_ops_.find(primitive_kind::sum) != -1;
             const bool has_eltwise
                     = attr()->post_ops_.find(primitive_kind::eltwise) != -1;
+            const bool with_dst_scale
+                    = !attr()->scales_.has_default_values(DNNL_ARG_DST);
 
             // The runtime-parameter path (cudnn_matmul_runtime_args_exec_t)
             // does not reconstruct post_op_sum_ or act_desc_, so post-ops are
@@ -100,6 +102,13 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                     && IMPLICATION((f16_src_f32_dst || f32_src_f16_dst)
                                     && has_runtime_dims,
                             !(has_sum || has_eltwise))
+                    // The GEMM applies the destination scale to the product
+                    // only, while sum adds the old destination unscaled, so a
+                    // non-default dst scale with sum is applied in the wrong
+                    // order. Reject it for the new mixed combinations.
+                    && IMPLICATION((f16_src_f32_dst || f32_src_f16_dst)
+                                    && with_dst_scale,
+                            !has_sum)
                     && IMPLICATION(with_bias(),
                             (IMPLICATION(f32_case, utils::one_of(bia_dt, f32))
                                     && IMPLICATION(f16_case,

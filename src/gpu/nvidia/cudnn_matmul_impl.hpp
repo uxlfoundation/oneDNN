@@ -214,12 +214,15 @@ struct cublas_params : cublas_base_params {
 
         // The scratch holds a f32 tensor with the dst dims and strides, so it
         // must cover the dst span (strided descriptors span more than nelems).
-        reorder_scratch_size_ = dst_d.span() * sizeof(float);
+        // No scratch is needed when the result is written straight to dst.
+        reorder_scratch_size_
+                = reorder_required_ ? dst_d.span() * sizeof(float) : 0;
 
         return status::success;
     }
 
     size_t scratchpad_size(const memory_desc_t *dst_md) const {
+        if (!reorder_required_) return 0;
         return memory_desc_wrapper(dst_md).span() * sizeof(float);
     }
 

@@ -183,16 +183,10 @@ void compute_liveness(const ir_t &ir, std::vector<bitset_t> &live_in) {
     const int n_ops = ir.n_ops();
     const int n_vregs = ir.n_vregs();
 
-    // Phase 1: build per-operation def/use sets and the control-flow graph.
+    // Phase 1: build the control-flow graph.
     //
-    // def_at[i] has bit `v` set if operation `i` defines (writes) vreg `v`.
-    // use_at[i] has bit `v` set if operation `i` uses (reads) vreg `v`.
     // successors[i] lists all operations that may execute immediately after i.
-    std::vector<bitset_t> def_at(n_ops, bitset_t(n_vregs));
-    std::vector<bitset_t> use_at(n_ops, bitset_t(n_vregs));
-
     std::vector<std::vector<int>> successors(n_ops);
-    std::vector<int> def_vregs, use_vregs;
     bool has_back_edge = false;
 
     // The _else and if_end of each if_begin, by op index. -1 for a conditional
@@ -206,14 +200,6 @@ void compute_liveness(const ir_t &ir, std::vector<bitset_t> &live_in) {
 
     for (int i = 0; i < n_ops; i++) {
         const op_t &op = ir.ops()[i];
-        ir.def_use(op, def_vregs, use_vregs);
-
-        for (int v : def_vregs) {
-            def_at[i].set(v);
-        }
-        for (int v : use_vregs) {
-            use_at[i].set(v);
-        }
 
         // Successor edges include fall-through to `i+1` and any explicit
         // control-flow transfers (branches and loop back-edges).
@@ -234,28 +220,32 @@ void compute_liveness(const ir_t &ir, std::vector<bitset_t> &live_in) {
         }
     }
 
-    // Phase 2: compute `live_in` and `live_out` using backward dataflow
-    // analysis. Iterate until reaching a fixed point (no changes in a full
-    // pass).
+    // Phase 2: compute `live_in` using backward dataflow analysis. Iterate
+    // until reaching a fixed point (no change of `live_in` in a full pass).
+    // `live_out[i]` is not stored. It is computed on the fly from the
+    // `live_in` of the successors.
     live_in.assign(n_ops, bitset_t(n_vregs));
-    std::vector<bitset_t> live_out(n_ops, bitset_t(n_vregs));
-    bitset_t out(n_vregs), in(n_vregs);
+    bitset_t in(n_vregs);
+    std::vector<int> def_vregs, use_vregs;
 
     bool changed = true;
     while (changed) {
         changed = false;
         for (int i = n_ops - 1; i >= 0; i--) {
             // live_out[i] = OR over successors `s` of live_in[s]
-            out.reset();
+            in.reset();
             for (int s : successors[i]) {
-                out |= live_in[s];
+                in |= live_in[s];
             }
             // live_in[i] = use[i] OR (live_out[i] AND NOT def[i])
-            in = out;
-            in -= def_at[i];
-            in |= use_at[i];
-            if (out != live_out[i] || in != live_in[i]) {
-                live_out[i] = out;
+            ir.def_use(ir.ops()[i], def_vregs, use_vregs);
+            for (int v : def_vregs) {
+                in.reset(v);
+            }
+            for (int v : use_vregs) {
+                in.set(v);
+            }
+            if (in != live_in[i]) {
                 live_in[i] = in;
                 changed = true;
             }

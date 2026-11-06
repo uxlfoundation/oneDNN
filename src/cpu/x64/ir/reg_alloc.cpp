@@ -179,20 +179,17 @@ namespace cpu {
 namespace x64 {
 namespace ir {
 
-void compute_liveness(
-        const ir_t &ir, std::vector<std::vector<int8_t>> &live_in) {
+void compute_liveness(const ir_t &ir, std::vector<bitset_t> &live_in) {
     const int n_ops = ir.n_ops();
     const int n_vregs = ir.n_vregs();
 
     // Phase 1: build per-operation def/use sets and the control-flow graph.
     //
-    // def_at[i][v] is 1 if operation `i` defines (writes) vreg `v`.
-    // use_at[i][v] is 1 if operation `i` uses (reads) vreg `v`.
+    // def_at[i] has bit `v` set if operation `i` defines (writes) vreg `v`.
+    // use_at[i] has bit `v` set if operation `i` uses (reads) vreg `v`.
     // successors[i] lists all operations that may execute immediately after i.
-    std::vector<std::vector<int8_t>> def_at(
-            n_ops, std::vector<int8_t>(n_vregs, 0));
-    std::vector<std::vector<int8_t>> use_at(
-            n_ops, std::vector<int8_t>(n_vregs, 0));
+    std::vector<bitset_t> def_at(n_ops, bitset_t(n_vregs));
+    std::vector<bitset_t> use_at(n_ops, bitset_t(n_vregs));
 
     std::vector<std::vector<int>> successors(n_ops);
     std::vector<int> def_vregs, use_vregs;
@@ -211,10 +208,12 @@ void compute_liveness(
         const op_t &op = ir.ops()[i];
         ir.def_use(op, def_vregs, use_vregs);
 
-        for (int v : def_vregs)
-            def_at[i][v] = 1;
-        for (int v : use_vregs)
-            use_at[i][v] = 1;
+        for (int v : def_vregs) {
+            def_at[i].set(v);
+        }
+        for (int v : use_vregs) {
+            use_at[i].set(v);
+        }
 
         // Successor edges include fall-through to `i+1` and any explicit
         // control-flow transfers (branches and loop back-edges).
@@ -238,32 +237,27 @@ void compute_liveness(
     // Phase 2: compute `live_in` and `live_out` using backward dataflow
     // analysis. Iterate until reaching a fixed point (no changes in a full
     // pass).
-    live_in.assign(n_ops, std::vector<int8_t>(n_vregs, 0));
-    std::vector<std::vector<int8_t>> live_out(
-            n_ops, std::vector<int8_t>(n_vregs, 0));
+    live_in.assign(n_ops, bitset_t(n_vregs));
+    std::vector<bitset_t> live_out(n_ops, bitset_t(n_vregs));
+    bitset_t out(n_vregs), in(n_vregs);
 
     bool changed = true;
     while (changed) {
         changed = false;
         for (int i = n_ops - 1; i >= 0; i--) {
             // live_out[i] = OR over successors `s` of live_in[s]
-            for (int v = 0; v < n_vregs; v++) {
-                int8_t live_out_v = 0;
-                for (int s : successors[i])
-                    live_out_v |= live_in[s][v];
-                if (live_out_v != live_out[i][v]) {
-                    live_out[i][v] = live_out_v;
-                    changed = true;
-                }
+            out.reset();
+            for (int s : successors[i]) {
+                out |= live_in[s];
             }
             // live_in[i] = use[i] OR (live_out[i] AND NOT def[i])
-            for (int v = 0; v < n_vregs; v++) {
-                const char live_in_v
-                        = use_at[i][v] || (live_out[i][v] && !def_at[i][v]);
-                if (live_in_v != live_in[i][v]) {
-                    live_in[i][v] = live_in_v;
-                    changed = true;
-                }
+            in = out;
+            in -= def_at[i];
+            in |= use_at[i];
+            if (out != live_out[i] || in != live_in[i]) {
+                live_out[i] = out;
+                live_in[i] = in;
+                changed = true;
             }
         }
         // The pass goes from the last operation to the first. Without a
@@ -598,9 +592,9 @@ reg_alloc_result_t allocate_registers(
     const int n_vregs = ir.n_vregs();
 
     // Step 1: compute operation-level liveness.
-    // live_in[i][v] is 1 when virtual register `v` is needed on entry to
-    // operation `i`.
-    std::vector<std::vector<int8_t>> live_in;
+    // live_in[i] has bit `v` set when virtual register `v` is needed on entry
+    // to operation `i`.
+    std::vector<bitset_t> live_in;
     compute_liveness(ir, live_in);
 
     // Step 2: build a single live interval per virtual register.
@@ -638,8 +632,9 @@ reg_alloc_result_t allocate_registers(
             add_operand(v);
         for (int v : use_vregs)
             add_operand(v);
-        for (int v = 0; v < n_vregs; v++)
-            if (live_in[i][v]) extend_interval(v);
+        for (int v = 0; v < n_vregs; v++) {
+            if (live_in[i].test(v)) extend_interval(v);
+        }
     }
 
     // Step 3: weight each virtual register by how often it is referenced and

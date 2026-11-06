@@ -22,6 +22,7 @@
 
 #include "common/utils.hpp"
 
+#include "cpu/x64/ir/bitset.hpp"
 #include "cpu/x64/ir/ir.hpp"
 
 namespace dnnl {
@@ -199,8 +200,7 @@ struct reg_pools_t {
 // read at 1 on the next turn. One backward pass finds most of it. The entry to
 // loop_end needs the back-edge, so it appears only on the second pass. A third
 // pass changes nothing, which is the fixed point.
-void compute_liveness(
-        const ir_t &ir, std::vector<std::vector<int8_t>> &live_in);
+void compute_liveness(const ir_t &ir, std::vector<bitset_t> &live_in);
 
 // Export for testing.
 reg_alloc_result_t DNNL_API allocate_registers(

@@ -163,11 +163,43 @@ struct tensor_copy_desc_t {
     dim_t vnni_factor = 1;
 };
 
-// Byte offsets of the areas in one thread's scratch block. The score tiles
+// Layout of the tile buffers in one thread's scratch block. The score tiles
 // start at offset 0; unused areas have zero size.
 struct sdpa_full_softmax_thread_scratch_t {
+    bool has_prob = false;
     size_t pv = 0, prob = 0, amx_wsp = 0;
     size_t size = 0;
+
+    void set_compute_type(data_type_t dt, size_t dt_sz) {
+        has_prob = dt != data_type::f32;
+        prob_dt_size_ = dt_sz;
+    }
+
+    size_t score_tile_row_bytes(dim_t ld_scores, dim_t ld_prob) const {
+        return static_cast<size_t>(ld_scores) * sizeof(float)
+                + (has_prob ? static_cast<size_t>(ld_prob) * prob_dt_size_ : 0);
+    }
+
+    void set_tile_buffers(size_t item_q_rows, dim_t ld_scores, dim_t ld_prob,
+            dim_t ld_pv, bool mm2_direct, size_t amx_wsp_bytes) {
+        const size_t scores_bytes
+                = align64(item_q_rows * ld_scores * sizeof(float));
+        const size_t pv_bytes
+                = mm2_direct ? 0 : align64(item_q_rows * ld_pv * sizeof(float));
+        const size_t prob_bytes
+                = has_prob ? align64(item_q_rows * ld_prob * prob_dt_size_) : 0;
+        pv = scores_bytes;
+        prob = pv + pv_bytes;
+        amx_wsp = prob + prob_bytes;
+        size = amx_wsp + amx_wsp_bytes;
+    }
+
+private:
+    static size_t align64(size_t n) {
+        return (n + 63) & ~static_cast<size_t>(63);
+    }
+
+    size_t prob_dt_size_ = 0;
 };
 
 // Derived compute configuration: the JIT-free arithmetic (query/KV blocking,

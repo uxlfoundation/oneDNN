@@ -1,0 +1,125 @@
+# *******************************************************************************
+# Copyright 2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+# Coverage for the model fit, derived from benchdnn's inputs/sdpa harness:
+# regions the KPI list does not reach. Sweep this file into its own CSV and
+# give both CSVs to fit_fwd_model.py; whether its winners go into the table
+# is a separate choice.
+#
+# args=--ktag=abdc stores K with the head dimension contiguous, the layout
+# frameworks pass; the driver default keeps K rows contiguous. The two
+# layouts compile different kernels (tk0 / tk1 in the key) and odd key
+# counts are 2-byte aligned only in the default layout.
+
+# Head sizes 128 to 512 at a tiny batch-head count, both layouts
+b=1 h=2 q=1 k=385 d=128 dt=f16
+b=1 h=2 q=1 k=385 d=128 dt=f16 args=--ktag=abdc
+b=1 h=2 q=1 k=385 d=256 dt=f16
+b=1 h=2 q=1 k=385 d=256 dt=f16 args=--ktag=abdc
+b=1 h=2 q=1 k=385 d=512 dt=f16
+b=1 h=2 q=1 k=385 d=512 dt=f16 args=--ktag=abdc
+b=1 h=2 q=384 k=384 d=128 dt=f16
+b=1 h=2 q=384 k=384 d=128 dt=f16 args=--ktag=abdc
+b=1 h=2 q=384 k=384 d=256 dt=f16 args=--ktag=abdc
+b=1 h=2 q=384 k=384 d=512 dt=f16
+b=1 h=2 q=384 k=384 d=512 dt=f16 args=--ktag=abdc
+
+# Grouped-query attention: q heads over fewer kv heads
+b=1 h=4 hk=2 q=1 k=385 d=128 dt=f16
+b=1 h=4 hk=2 q=1 k=385 d=128 dt=f16 args=--ktag=abdc
+b=1 h=4 hk=2 q=128 k=128 d=64 dt=f16 mask=buffer_1d mdt=f16 args=--ktag=abdc
+b=1 h=32 hk=8 q=1 k=68 d=128 dt=f16 mask=buffer_1d mdt=f16 args=--ktag=abdc
+b=1 h=32 hk=8 q=1 k=385 d=128 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=32 hk=8 q=384 k=384 d=128 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=28 hk=4 q=1 k=1025 d=128 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=28 hk=4 q=2048 k=2048 d=128 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=24 hk=8 q=1 k=2049 d=64 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=24 hk=8 q=1024 k=1024 d=64 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=2 h=32 hk=4 q=1 k=256 d=64 dt=f16
+b=3 h=28 hk=4 q=1 k=300 d=128 dt=f16 mask=causal_top_left
+
+# LLM shapes in the framework layout
+b=1 h=32 q=1 k=1025 d=96 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=32 q=2048 k=2048 d=96 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=32 q=1 k=2049 d=128 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=32 q=1024 k=1024 d=128 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+
+# Small sequences and small head sizes
+b=1 h=8 q=32 k=32 d=64 dt=f16
+b=1 h=8 q=32 k=32 d=64 dt=f16 mask=causal_top_left
+b=2 h=4 q=16 k=16 d=32 dt=f16
+b=1 h=32 q=16 k=16 d=16 dt=f16
+b=1 h=16 q=384 k=384 d=16 dt=f16
+b=1 h=12 q=384 k=384 d=64 dt=f16
+b=1 h=32 q=512 k=512 d=128 dt=f16
+
+# KPI shapes in the framework layout
+b=2 h=10 q=1024 k=1024 d=64 dt=f16 args=--ktag=abdc
+b=2 h=5 q=4096 k=4096 d=64 dt=f16 args=--ktag=abdc
+b=2 h=5 q=4096 k=77 d=64 dt=f16 args=--ktag=abdc
+b=1 h=32 q=1 k=1025 d=128 dt=f16 mask=buffer_1d mdt=f16 args=--ktag=abdc
+b=1 h=32 q=1024 k=1024 d=128 dt=f16 mask=buffer_2d mdt=f16 args=--ktag=abdc
+b=1 h=8 q=1 k=1500 d=64 dt=f16 args=--ktag=abdc
+b=1 h=8 q=1500 k=1500 d=64 dt=f16 args=--ktag=abdc
+b=1 h=16 q=1 k=1025 d=256 dt=f16 mask=buffer_1d mdt=f16 args=--ktag=abdc
+
+# Performance-CI SDPA shapes, one line per selector key
+
+# bf16 decode, D=96 (Sk 2533..3072 in the CI: one k4096 bucket)
+b=1 h=16 q=1 k=3072 d=96 dt=bf16 args=--ktag=abdc
+b=1 h=16 q=1 k=2533 d=96 dt=bf16 args=--ktag=abdc
+
+# bf16 decode, D=128, batch-x-heads buckets 128 and 256
+b=8 h=16 q=1 k=1024 d=128 dt=bf16 args=--ktag=abdc
+b=8 h=16 q=1 k=1023 d=128 dt=bf16 args=--ktag=abdc
+b=8 h=24 q=1 k=1024 d=128 dt=bf16 args=--ktag=abdc
+b=8 h=24 q=1 k=513 d=128 dt=bf16 args=--ktag=abdc
+b=16 h=16 q=1 k=683 d=128 dt=bf16 args=--ktag=abdc
+
+# bf16 grouped-query decode, D=128 (one shared k1024/q16/bh32 bucket)
+b=8 h=20 hk=4 q=1 k=718 d=128 dt=bf16 args=--ktag=abdc
+b=16 h=24 hk=2 q=1 k=699 d=128 dt=bf16 args=--ktag=abdc
+b=16 h=8 hk=2 q=1 k=763 d=128 dt=bf16 args=--ktag=abdc
+b=8 h=16 hk=4 q=1 k=725 d=128 dt=bf16 args=--ktag=abdc
+b=8 h=12 hk=4 q=1 k=723 d=128 dt=bf16 args=--ktag=abdc
+
+# bf16 decode, D=128, small batch-x-heads (one shared k1024/q1/bh32 bucket)
+b=2 h=16 q=1 k=723 d=128 dt=bf16 args=--ktag=abdc
+b=1 h=32 q=1 k=720 d=128 dt=bf16 args=--ktag=abdc
+b=1 h=26 q=1 k=944 d=128 dt=bf16 args=--ktag=abdc
+
+# bf16 grouped-query decode with a bf16 buffer mask, D=256
+b=32 h=4 hk=1 q=1 k=255 d=256 dt=bf16 mask=buffer mdt=bf16 args=--ktag=abdc
+
+# f16 prefill, D=64, seq-outer Q, K in both framework layouts
+b=16 h=12 q=1024 k=1024 d=64 dt=f16 args="--ktag=abdc --qtag=acbd"
+b=16 h=16 q=1024 k=1024 d=64 dt=f16 args="--ktag=adbc --qtag=acbd --vtag=acbd"
+b=16 h=12 q=1024 k=1024 d=64 dt=f16 args="--ktag=adbc --qtag=acbd --vtag=acbd"
+
+# f16 prefill with a causal mask, D=64, S=512
+b=64 h=12 q=512 k=512 d=64 dt=f16 mask=causal_top_left args="--ktag=abdc --qtag=acbd"
+b=32 h=12 q=512 k=512 d=64 dt=f16 mask=causal_top_left args="--ktag=abdc --qtag=acbd"
+
+# bf16 grouped-query prefill, D=256
+b=64 h=8 hk=1 q=455 k=455 d=256 dt=bf16 mask=causal_top_left args="--ktag=abdc --qtag=acbd"
+b=64 h=4 hk=1 q=164 k=164 d=256 dt=bf16 args="--ktag=abdc --qtag=acbd --vtag=acbd"
+b=1 h=16 hk=8 q=456 k=456 d=256 dt=bf16 mask=causal_top_left args=--ktag=abdc
+
+# bf16 long prefill, D=128, seq-outer K
+# (mem-check off: the 5269x5269 f32 reference needs ~7 GB)
+b=4 h=16 q=5269 k=5269 d=128 dt=bf16 args="--ktag=adbc --qtag=acbd --vtag=acbd --mem-check=false"
+
+# f16, D=64, H=20, Sq=Sk=77, driver-default layouts
+b=1 h=20 q=77 k=77 d=64 dt=f16

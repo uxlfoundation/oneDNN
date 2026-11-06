@@ -72,6 +72,17 @@ struct cudnn_matmul_t : public gpu::primitive_t {
             const bool has_eltwise
                     = attr()->post_ops_.find(primitive_kind::eltwise) != -1;
 
+            // The runtime-parameter path (cudnn_matmul_runtime_args_exec_t)
+            // does not reconstruct post_op_sum_ or act_desc_, so post-ops are
+            // dropped there. Reject the mixed combinations with runtime
+            // dims/strides and post-ops until that path preserves them.
+            const bool has_runtime_dims = memory_desc_wrapper(src_md())
+                                                  .has_runtime_dims_or_strides()
+                    || memory_desc_wrapper(weights_md(0))
+                               .has_runtime_dims_or_strides()
+                    || memory_desc_wrapper(dst_md())
+                               .has_runtime_dims_or_strides();
+
             auto *sycl_engine_impl
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
                             engine->impl());
@@ -86,6 +97,9 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                     && (f32_case || f16_case || bf16_case || s8_case
                             || f16_src_f32_dst || f32_src_f16_dst)
                     && IMPLICATION(f32_src_f16_dst, !(has_sum && has_eltwise))
+                    && IMPLICATION((f16_src_f32_dst || f32_src_f16_dst)
+                                    && has_runtime_dims,
+                            !(has_sum || has_eltwise))
                     && IMPLICATION(with_bias(),
                             (IMPLICATION(f32_case, utils::one_of(bia_dt, f32))
                                     && IMPLICATION(f16_case,

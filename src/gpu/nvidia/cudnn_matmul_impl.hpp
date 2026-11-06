@@ -212,15 +212,15 @@ struct cublas_params : cublas_base_params {
             }
         }
 
-        const auto dst_nelems = dst_d.nelems(true);
-        reorder_scratch_size_ = dst_nelems * sizeof(float);
+        // The scratch holds a f32 tensor with the dst dims and strides, so it
+        // must cover the dst span (strided descriptors span more than nelems).
+        reorder_scratch_size_ = dst_d.span() * sizeof(float);
 
         return status::success;
     }
 
     size_t scratchpad_size(const memory_desc_t *dst_md) const {
-        const auto dst_nelems = memory_desc_wrapper(dst_md).nelems(true);
-        return dst_nelems * sizeof(float);
+        return memory_desc_wrapper(dst_md).span() * sizeof(float);
     }
 
     void init_scratchpad(const memory_desc_t *dst_md,

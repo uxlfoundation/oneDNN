@@ -515,22 +515,21 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // are dense [m x seq_kv]. The injector indexes the condition through the
     // destination offsets, so the row/column strides must be [seq_kv, 1].
     // A broadcast query or key axis has effective stride 0 and uses the pre-pass.
-    bool try_select_postop = false;
+    conf.mm1_select_postop = false;
     if (p_.has_select) {
         const bool broadcast_mask
                 = (p_.seq_q > 1 && p_.cond_dims[sdpa_pd_t::mask_q_index] == 1)
                 || (p_.seq_kv > 1
                         && p_.cond_dims[sdpa_pd_t::mask_k_index] == 1);
-        try_select_postop = !p_.invert_select && !broadcast_mask
+        conf.mm1_select_postop = !p_.invert_select && !broadcast_mask
                 && (p_.cond_strides[sdpa_pd_t::mask_q_index] == p_.seq_kv
                         && p_.cond_strides[sdpa_pd_t::mask_k_index] == 1);
     }
-    conf.mm1_select_postop = try_select_postop;
 
     // The binary injector requires tensor rhs data to share the score tile's
     // layout. Keep score rows dense when a tensor rhs is used; scalar rhs and
     // eltwise post-ops are layout-independent.
-    bool dense_scores_required = try_select_postop;
+    bool dense_scores_required = conf.mm1_select_postop;
     for (const auto &pop : p_.mm1_post_ops)
         if (pop.is_binary && !pop.rhs_is_scalar) dense_scores_required = true;
     conf.ld_scores
@@ -737,7 +736,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // mm1 N is one seq_kv column block; its post-op descriptors keep the full
     // seq_kv width (full_output_width) so the folded mask/select is addressed
     // by global column.
-    auto build_mm1_descs = [&](bool select_postop) -> status_t {
+    auto build_mm1_descs = [&]() -> status_t {
         const dim_t ns[2] = {conf.mm1_n_block, conf.mm1_n_tail};
         for (int qi = 0; qi < 2; ++qi) {
             if (!ms[qi]) continue;
@@ -748,9 +747,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                         /*beta=*/0.0f, ms[qi], ns[ni], p_.hs_qk,
                         /*lda=*/p_.q_strides[row_dim],
                         /*ldb=*/conf.ldk,
-                        /*ldc=*/conf.ld_scores, &p_.mm1_post_ops, select_postop,
-                        &mm1_amx.need_config, mm1_amx.palette,
-                        &mm1_amx.wsp_size,
+                        /*ldc=*/conf.ld_scores, &p_.mm1_post_ops,
+                        conf.mm1_select_postop, &mm1_amx.need_config,
+                        mm1_amx.palette, &mm1_amx.wsp_size,
                         /*full_output_width=*/p_.seq_kv,
                         /*b_is_vnni=*/conf.mm1_needs_vnni_b));
                 descs.mm1_valid[qi][ni] = true;
@@ -799,18 +798,8 @@ status_t configure(const sdpa_full_softmax_params_t &params,
         return status::success;
     };
 
+    CHECK(build_mm1_descs());
     CHECK(build_mm2_descs());
-    if (build_mm1_descs(try_select_postop) != status::success) {
-        // A ukernel config may reject the select post-op at desc build; drop it
-        // and let the pre-pass apply the mask instead. create_kernels() mirrors
-        // this decision and additionally retries if the compiled kernel itself
-        // rejects the post-op.
-        for (int qi = 0; qi < 2; ++qi)
-            for (int ni = 0; ni < 2; ++ni)
-                descs.mm1_valid[qi][ni] = false;
-        conf.mm1_select_postop = false;
-        CHECK(build_mm1_descs(false));
-    }
 
     // Safety net: an AMX ukernel ALWAYS requires a VNNI-packed B. If any kernel
     // selected AMX tiles without its B operand packed (e.g. an unforeseen ISA/shape
@@ -912,8 +901,6 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     auto &softmax_pd_ = kernels.softmax_pd;
     auto &softmax_kernel_ = kernels.softmax_kernel;
     auto &select_kernel_ = kernels.select_kernel;
-    bool &mm1_select_postop_ = kernels.mm1_select_postop;
-    mm1_select_postop_ = conf.mm1_select_postop;
 
     const dim_t seq_kv = p_.seq_kv;
     constexpr int ndims = sdpa_pd_t::ndims;
@@ -952,9 +939,13 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     }
 
     // Compile the mm1/mm2 (+ beta-0) kernels directly from the finalized
-    // descriptors configure() stored in `descs` -- no rebuild. mm2 descriptors
-    // carry no mm1 post-op, so only mm1 is affected by the select fallback.
+    // descriptors configure() stored in `descs`.
     for (int qi = 0; qi < 2; ++qi) {
+        for (int ni = 0; ni < 2; ++ni) {
+            if (!descs.mm1_valid[qi][ni]) continue;
+            CHECK(brgemm_kernel_create(
+                    &mm1_kernels_[qi][ni], descs.mm1_desc[qi][ni]));
+        }
         for (int ki = 0; ki < 2; ++ki) {
             if (!descs.mm2_valid[qi][ki]) continue;
             for (int vi = 0; vi < 2; ++vi) {
@@ -970,45 +961,6 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
                         descs.mm2_desc_beta0[qi][vi]));
             }
         }
-    }
-
-    auto compile_mm1 = [&]() -> status_t {
-        for (int qi = 0; qi < 2; ++qi)
-            for (int ni = 0; ni < 2; ++ni) {
-                if (!descs.mm1_valid[qi][ni]) continue;
-                CHECK(brgemm_kernel_create(
-                        &mm1_kernels_[qi][ni], descs.mm1_desc[qi][ni]));
-            }
-        return status::success;
-    };
-
-    if (compile_mm1() != status::success) {
-        // The compiled ukernel rejected the folded select post-op even though
-        // the descriptor built. Drop it and let the pre-pass apply the mask:
-        // rebuild the mm1 descriptors without the post-op and recompile.
-        for (int qi = 0; qi < 2; ++qi)
-            for (int ni = 0; ni < 2; ++ni) {
-                if (!mm1_kernels_[qi][ni]) continue;
-                brgemm_kernel_destroy(mm1_kernels_[qi][ni]);
-                mm1_kernels_[qi][ni] = nullptr;
-            }
-        mm1_select_postop_ = false;
-        for (int qi = 0; qi < 2; ++qi)
-            for (int ni = 0; ni < 2; ++ni) {
-                if (!descs.mm1_valid[qi][ni]) continue;
-                const brgemm_desc_t &d = descs.mm1_desc[qi][ni];
-                brgemm_desc_t mm1_brg;
-                CHECK(build_brgemm_desc(mm1_brg, p_.mm_dt, /*beta=*/0.0f,
-                        d.bcast_dim, d.load_dim, d.reduce_dim,
-                        /*lda=*/p_.q_strides[row_dim],
-                        /*ldb=*/conf.ldk, /*ldc=*/conf.ld_scores,
-                        &p_.mm1_post_ops,
-                        /*select_postop=*/false,
-                        /*amx_need_config=*/nullptr, /*amx_palette=*/nullptr,
-                        /*amx_wsp=*/nullptr, /*full_output_width=*/seq_kv,
-                        /*b_is_vnni=*/conf.mm1_needs_vnni_b));
-                CHECK(brgemm_kernel_create(&mm1_kernels_[qi][ni], mm1_brg));
-            }
     }
 
     // Reuse the vectorized jit softmax kernel for the max/exp/normalize over
@@ -1073,7 +1025,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     // runtime argument, so one instance serves both the full and query-tail
     // tiles. The condition is dense along seq_kv (cond_col == 1) because the
     // pd requires the key axis to be full and plain.
-    if (p_.has_select && !mm1_select_postop_) {
+    if (p_.has_select && !conf.mm1_select_postop) {
         const dim_t cond_row = p_.cond_dims[sdpa_pd_t::mask_q_index] == 1
                 ? 0
                 : p_.cond_strides[sdpa_pd_t::mask_q_index];
@@ -1103,7 +1055,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
     const auto &mm2_kernels_beta0 = kernels.mm2_kernels_beta0;
     const auto &softmax_kernel = kernels.softmax_kernel;
     const auto &select_kernel = kernels.select_kernel;
-    const bool select_in_mm1 = kernels.mm1_select_postop;
+    const bool select_in_mm1 = conf.mm1_select_postop;
 
     constexpr int ndims = sdpa_pd_t::ndims;
     constexpr int row_dim = ndims - 2;

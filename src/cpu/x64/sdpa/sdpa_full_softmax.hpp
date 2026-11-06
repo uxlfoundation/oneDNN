@@ -300,11 +300,6 @@ struct sdpa_full_softmax_kernels_t {
     std::shared_ptr<primitive_desc_t> softmax_pd;
     std::shared_ptr<softmax_impl::jit_softmax_kernel_base_t> softmax_kernel;
 
-    // Final select-in-mm1 decision after kernel compilation (configure's
-    // decision, possibly downgraded if the compiled ukernel rejects the
-    // post-op); execute reads this, not the conf.
-    bool mm1_select_postop = false;
-
     // Standalone JIT select-mask pre-pass kernel (null unless a select mask is
     // present and not folded into mm1); the condition is dense along seq_kv
     // (cond_col == 1, guaranteed by the pd).

@@ -76,6 +76,11 @@ HANDLE_EXCEPTIONS_FOR_TEST(
         ASSERT_EQ(cache_blob.empty(), false);
         ASSERT_NO_THROW(p = convolution_forward(pd, cache_blob));
         ASSERT_EQ(cache_blob, p.get_cache_blob());
+
+        // The blob starts with the oneDNN version.
+        auto corrupted_blob = cache_blob;
+        corrupted_blob[0] ^= 0xFF;
+        EXPECT_ANY_THROW(convolution_forward(pd, corrupted_blob));
     }
 }
 
@@ -107,6 +112,13 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     // internal cache.
     dnnl_impl_gpu_intel_clear_device_info_cache();
 
+    // The blob starts with the oneDNN version.
+    auto corrupted_blob = cache_blob;
+    corrupted_blob[0] ^= 0xFF;
+    EXPECT_ANY_THROW(make_engine(
+            get_device(test_engine), get_context(test_engine), corrupted_blob));
+
+    dnnl_impl_gpu_intel_clear_device_info_cache();
     auto eng = make_engine(
             get_device(test_engine), get_context(test_engine), cache_blob);
 
@@ -145,6 +157,13 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     // internal cache.
     dnnl_impl_gpu_intel_clear_device_info_cache();
 
+    // The blob starts with the oneDNN version.
+    auto corrupted_blob = cache_blob;
+    corrupted_blob[0] ^= 0xFF;
+    EXPECT_ANY_THROW(make_engine(get_driver(test_engine),
+            get_device(test_engine), get_context(test_engine), corrupted_blob));
+
+    dnnl_impl_gpu_intel_clear_device_info_cache();
     auto eng = make_engine(get_driver(test_engine), get_device(test_engine),
             get_context(test_engine), cache_blob);
 

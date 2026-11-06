@@ -82,8 +82,8 @@ private:
 
     // Compute state owned by the primitive, built in init() from the pd's conf;
     // only the one matching pd()->impl_kind() is populated. Both strategies
-    // are folded in as free functions (namespace sdpa_online_softmax / sdpa_full_softmax) over
-    // the pd conf (+ descs) and these kernels.
+    // are folded in as free functions (namespace sdpa_online_softmax /
+    // sdpa_full_softmax) over the pd configuration and these kernels.
     sdpa_online_softmax_kernels_t online_kernels_;
     sdpa_full_softmax_kernels_t full_kernels_;
 };

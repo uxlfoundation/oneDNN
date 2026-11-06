@@ -300,15 +300,12 @@ void store_pv_tile(const float *pv, dim_t ld_pv, char *out, dim_t o_row_stride,
     }
 }
 
-// Build a BRGEMM descriptor and derive its AMX state from the finalized
-// descriptor.
-status_t build_brgemm_desc(sdpa_brgemm_kernel_conf_t &slot, data_type_t dt,
-        float beta, dim_t M, dim_t N, dim_t K, dim_t lda, dim_t ldb, dim_t ldc,
+// Build a finalized BRGEMM descriptor.
+status_t build_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
+        dim_t M, dim_t N, dim_t K, dim_t lda, dim_t ldb, dim_t ldc,
         const std::vector<sdpa_mm1_post_op_t> *post_ops = nullptr,
         bool select_as_postop = false, dim_t full_output_width = 0,
         bool b_is_vnni = false) {
-    brgemm_desc_t &brg = slot.desc;
-
     CHECK(brgemm_desc_init(&brg, isa_undef, brgemm_addr, dt, dt,
             /*transA=*/false, /*transB=*/false, brgemm_row_major,
             /*alpha=*/1.0f, beta, lda, ldb, ldc, M, N, K, /*strides=*/nullptr));
@@ -408,12 +405,6 @@ status_t build_brgemm_desc(sdpa_brgemm_kernel_conf_t &slot, data_type_t dt,
     }
 
     CHECK(brgemm_desc_finalize(&brg));
-
-    // brgemm_init_tiles fills the palette and returns non-success for
-    // non-AMX ISAs.
-    slot.amx.need_config
-            = brgemm_init_tiles(brg, slot.amx.palette) == status::success;
-    slot.amx.wsp_size = static_cast<size_t>(brg.get_wsp_buffer_size());
     return status::success;
 }
 
@@ -447,20 +438,7 @@ status_t uses_amx_tiles(data_type_t dt, bool &is_amx) {
 } // namespace
 
 sdpa_full_softmax_kernels_t::sdpa_full_softmax_kernels_t() = default;
-
-sdpa_full_softmax_kernels_t::~sdpa_full_softmax_kernels_t() {
-    for (int qi = 0; qi < 2; ++qi) {
-        for (int ki = 0; ki < 2; ++ki) {
-            if (mm1_kernels[qi][ki]) brgemm_kernel_destroy(mm1_kernels[qi][ki]);
-            for (int vi = 0; vi < 2; ++vi)
-                if (mm2_kernels[qi][ki][vi])
-                    brgemm_kernel_destroy(mm2_kernels[qi][ki][vi]);
-        }
-        for (int vi = 0; vi < 2; ++vi)
-            if (mm2_kernels_beta0[qi][vi])
-                brgemm_kernel_destroy(mm2_kernels_beta0[qi][vi]);
-    }
-}
+sdpa_full_softmax_kernels_t::~sdpa_full_softmax_kernels_t() = default;
 
 namespace sdpa_full_softmax {
 
@@ -720,8 +698,31 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     conf.v_block = need_copy_v ? nstl::min<dim_t>(p_.hs_v, b_panel_n) : p_.hs_v;
     conf.v_tail = p_.hs_v % conf.v_block;
 
-    // Build the mm1/mm2 BRGEMM descriptors, plus each kernel's AMX palette +
-    // tile-store wsp into the conf (the per-thread scratch size depends on them).
+    // Build mm1/mm2 descriptors and size tile-store scratch for the largest
+    // workspace. The descriptor container is shared across pd clones.
+    auto &brg_conf = conf.brgemm;
+    brg_conf = {};
+    brg_conf.descs
+            = std::make_shared<brgemm_containers::brgemm_desc_container_t>();
+    size_t max_wsp = 0;
+    auto add_brg_desc
+            = [&](int &idx, brgemm_desc_t &brg, bool needs_vnni) -> status_t {
+        // AMX ukernels require VNNI-packed B.
+        if (brg.is_tmm && !needs_vnni) return status::unimplemented;
+        if (brg.is_tmm) {
+            // The palette container's insert() cannot distinguish a duplicate
+            // palette from an initialization failure, so validate it here.
+            char palette[AMX_PALETTE_SIZE];
+            CHECK(brgemm_init_tiles(brg, palette));
+        }
+        max_wsp = nstl::max(
+                max_wsp, static_cast<size_t>(brg.get_wsp_buffer_size()));
+        idx = brg_conf.descs->insert(brg);
+        return status::success;
+    };
+
+    // Descriptor comparison does not examine post-op contents. All mm1
+    // variants use the same post-op chain and full score width; mm2 has none.
     // The query dimension splits into q_block (+ q_tail); seq_kv splits into
     // mm1_n_block (+ mm1_n_tail) for mm1 and independently into mm2_k_block
     // (+ mm2_k_tail) for mm2.
@@ -731,14 +732,13 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // seq_kv width (full_output_width) so the folded mask/select is addressed
     // by global column.
     auto build_mm1_descs = [&]() -> status_t {
-        auto &descs = conf.brg_descs;
         const dim_t ns[2] = {conf.mm1_n_block, conf.mm1_n_tail};
         for (int qi = 0; qi < 2; ++qi) {
             if (!ms[qi]) continue;
             for (int ni = 0; ni < 2; ++ni) {
                 if (!ns[ni]) continue;
-                auto &slot = descs.mm1[qi][ni];
-                CHECK(build_brgemm_desc(slot, p_.mm_dt,
+                brgemm_desc_t brg;
+                CHECK(build_brgemm_desc(brg, p_.mm_dt,
                         /*beta=*/0.0f, ms[qi], ns[ni], p_.hs_qk,
                         /*lda=*/p_.q_strides[row_dim],
                         /*ldb=*/conf.ldk,
@@ -746,7 +746,8 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                         conf.mm1_select_postop,
                         /*full_output_width=*/p_.seq_kv,
                         /*b_is_vnni=*/conf.mm1_needs_vnni_b));
-                slot.valid = true;
+                CHECK(add_brg_desc(
+                        brg_conf.mm1[qi][ni], brg, conf.mm1_needs_vnni_b));
             }
         }
         return status::success;
@@ -758,7 +759,6 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // mm2 for the first block (when the reduction is tiled) is built per
     // q-tile.
     auto build_mm2_descs = [&]() -> status_t {
-        auto &descs = conf.brg_descs;
         const dim_t ks[2] = {conf.mm2_k_block, conf.mm2_k_tail};
         for (int qi = 0; qi < 2; ++qi) {
             if (!ms[qi]) continue;
@@ -767,24 +767,26 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                 for (int vi = 0; vi < 2; ++vi) {
                     const dim_t width = vi ? conf.v_tail : conf.v_block;
                     if (!width) continue;
-                    auto &slot = descs.mm2[qi][ki][vi];
-                    CHECK(build_brgemm_desc(slot, p_.mm_dt, mm2_beta, ms[qi],
+                    brgemm_desc_t brg;
+                    CHECK(build_brgemm_desc(brg, p_.mm_dt, mm2_beta, ms[qi],
                             width, ks[ki],
                             /*lda=*/conf.ld_prob, /*ldb=*/conf.ldv,
                             /*ldc=*/mm2_ldc, nullptr, false, 0,
                             conf.mm2_needs_vnni_b));
-                    slot.valid = true;
+                    CHECK(add_brg_desc(brg_conf.mm2[qi][ki][vi], brg,
+                            conf.mm2_needs_vnni_b));
                 }
             }
             if (mm2_beta != 0.0f) {
                 for (int vi = 0; vi < 2; ++vi) {
                     const dim_t width = vi ? conf.v_tail : conf.v_block;
                     if (!width) continue;
-                    auto &slot = descs.mm2_beta0[qi][vi];
-                    CHECK(build_brgemm_desc(slot, p_.mm_dt, 0.0f, ms[qi], width,
+                    brgemm_desc_t brg;
+                    CHECK(build_brgemm_desc(brg, p_.mm_dt, 0.0f, ms[qi], width,
                             conf.mm2_k_block, conf.ld_prob, conf.ldv, mm2_ldc,
                             nullptr, false, 0, conf.mm2_needs_vnni_b));
-                    slot.valid = true;
+                    CHECK(add_brg_desc(brg_conf.mm2_beta0[qi][vi], brg,
+                            conf.mm2_needs_vnni_b));
                 }
             }
         }
@@ -793,25 +795,6 @@ status_t configure(const sdpa_full_softmax_params_t &params,
 
     CHECK(build_mm1_descs());
     CHECK(build_mm2_descs());
-
-    // Safety net: an AMX ukernel ALWAYS requires a VNNI-packed B. If any kernel
-    // selected AMX tiles without its B operand packed (e.g. an unforeseen ISA/shape
-    // combination), the B layout would be wrong -- bail out to a safe fallback
-    // rather than compute silently incorrect results.
-    for (const auto &q_slots : conf.brg_descs.mm1)
-        for (const auto &slot : q_slots)
-            if (slot.valid && slot.amx.need_config && !conf.mm1_needs_vnni_b)
-                return status::unimplemented;
-    for (const auto &q_slots : conf.brg_descs.mm2)
-        for (const auto &k_slots : q_slots)
-            for (const auto &slot : k_slots)
-                if (slot.valid && slot.amx.need_config
-                        && !conf.mm2_needs_vnni_b)
-                    return status::unimplemented;
-    for (const auto &q_slots : conf.brg_descs.mm2_beta0)
-        for (const auto &slot : q_slots)
-            if (slot.valid && slot.amx.need_config && !conf.mm2_needs_vnni_b)
-                return status::unimplemented;
 
     // Per-thread scratch, per query head of the work item: one score tile
     // [q_block x seq_kv] and one pv tile [q_block x hs_v], both f32 (BRGEMM
@@ -823,22 +806,6 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // are consecutive.
     const size_t item_q_rows
             = static_cast<size_t>(conf.heads_per_item) * q_block;
-    // AMX (bf16/f16) kernels need a per-thread tile-store scratch; size it to
-    // the largest wsp over all kernels (they run sequentially per work-item).
-    size_t max_wsp = 0;
-    auto update_max_wsp = [&](const sdpa_brgemm_kernel_conf_t &slot) {
-        if (slot.valid) max_wsp = nstl::max(max_wsp, slot.amx.wsp_size);
-    };
-    for (const auto &q_slots : conf.brg_descs.mm1)
-        for (const auto &slot : q_slots)
-            update_max_wsp(slot);
-    for (const auto &q_slots : conf.brg_descs.mm2)
-        for (const auto &k_slots : q_slots)
-            for (const auto &slot : k_slots)
-                update_max_wsp(slot);
-    for (const auto &q_slots : conf.brg_descs.mm2_beta0)
-        for (const auto &slot : q_slots)
-            update_max_wsp(slot);
     conf.amx_wsp_bytes = align64(max_wsp);
     thread_scratch.set_tile_buffers(item_q_rows, conf.ld_scores, conf.ld_prob,
             conf.ld_pv, mm2_direct, conf.amx_wsp_bytes);
@@ -899,11 +866,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
         const sdpa_full_softmax_conf_t &conf, engine_t *engine,
         sdpa_full_softmax_kernels_t &kernels) {
     const sdpa_full_softmax_params_t &p_ = conf.params;
-    // Bind conf scalars + kernel slots to the member names the body uses.
     const dim_t q_block_ = conf.q_block;
-    auto &mm1_kernels_ = kernels.mm1_kernels;
-    auto &mm2_kernels_ = kernels.mm2_kernels;
-    auto &mm2_kernels_beta0_ = kernels.mm2_kernels_beta0;
     auto &softmax_pd_ = kernels.softmax_pd;
     auto &softmax_kernel_ = kernels.softmax_kernel;
     auto &select_kernel_ = kernels.select_kernel;
@@ -944,29 +907,16 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
                 p_.v_strides[ndims - 1], conf.ldv));
     }
 
-    const auto &descs = conf.brg_descs;
-
-    // Compile the mm1/mm2 (+ beta-0) kernels directly from the finalized
-    // slots configure() stored in the conf.
-    for (int qi = 0; qi < 2; ++qi) {
-        for (int ni = 0; ni < 2; ++ni) {
-            const auto &slot = descs.mm1[qi][ni];
-            if (!slot.valid) continue;
-            CHECK(brgemm_kernel_create(&mm1_kernels_[qi][ni], slot.desc));
-        }
-        for (int ki = 0; ki < 2; ++ki) {
-            for (int vi = 0; vi < 2; ++vi) {
-                const auto &slot = descs.mm2[qi][ki][vi];
-                if (!slot.valid) continue;
-                CHECK(brgemm_kernel_create(
-                        &mm2_kernels_[qi][ki][vi], slot.desc));
-            }
-        }
-        for (int vi = 0; vi < 2; ++vi) {
-            const auto &slot = descs.mm2_beta0[qi][vi];
-            if (!slot.valid) continue;
-            CHECK(brgemm_kernel_create(&mm2_kernels_beta0_[qi][vi], slot.desc));
-        }
+    const auto &descs = conf.brgemm.descs;
+    const int num_descs = static_cast<int>(descs->refs_size());
+    kernels.brgemm_kernels.resize(num_descs);
+    kernels.brgemm_palettes.resize(num_descs);
+    for (int idx = 0; idx < num_descs; ++idx) {
+        // The descriptor container may have unused entries after growing.
+        const auto *brg = (*descs)[idx];
+        if (!brg) continue;
+        CHECK(kernels.brgemm_kernels.insert(idx, brg));
+        if (brg->is_tmm) kernels.brgemm_palettes.insert(idx, brg);
     }
 
     // Reuse the vectorized jit softmax kernel for the max/exp/normalize over
@@ -1054,10 +1004,10 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
     const sdpa_full_softmax_params_t &p_ = conf.params;
     const dim_t q_block = conf.q_block;
     const dim_t heads_per_item = conf.heads_per_item;
-    const auto &brg_descs = conf.brg_descs;
-    const auto &mm1_kernels = kernels.mm1_kernels;
-    const auto &mm2_kernels = kernels.mm2_kernels;
-    const auto &mm2_kernels_beta0 = kernels.mm2_kernels_beta0;
+    const auto &brg_conf = conf.brgemm;
+    const auto &descs = *brg_conf.descs;
+    const auto &brg_kernels = kernels.brgemm_kernels;
+    const auto &brg_palettes = kernels.brgemm_palettes;
     const auto &softmax_kernel = kernels.softmax_kernel;
     const auto &select_kernel = kernels.select_kernel;
     const bool select_in_mm1 = conf.mm1_select_postop;
@@ -1162,13 +1112,8 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
         }
         const size_t rhs_per_head = rhs.size() / heads_per_item;
 
-        // Configure AMX tiles only when the palette changes.
-        const char *active_palette = nullptr;
-        auto configure_tiles = [&](const sdpa_amx_cfg_t &cfg) {
-            if (!cfg.need_config || cfg.palette == active_palette) return;
-            amx_tile_configure(cfg.palette);
-            active_palette = cfg.palette;
-        };
+        int prev_brg_idx = -1;
+        bool used_amx = false;
 
         // mm1: scores[m, seq_kv] = Q[m, hs_qk] * K[hs_qk, seq_kv], in
         // mm1_n_block-wide column blocks (+ tail). Each call writes columns
@@ -1179,8 +1124,13 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
                 conf.k_tile_desc, my_scratch, mm_dt_sz);
         for_each_block(seq_kv, conf.mm1_n_block, [&](dim_t kv0, bool n_tail) {
             k_op.load_tile(0, kv0, n_tail);
-            configure_tiles(brg_descs.mm1[qi][n_tail].amx);
-            const brgemm_kernel_t *kernel = mm1_kernels[qi][n_tail];
+            const int brg_idx = brg_conf.mm1[qi][n_tail];
+            assert(brg_idx >= 0);
+            const bool is_amx = descs[brg_idx]->is_tmm;
+            brg_palettes.maybe_tile_configure(is_amx, prev_brg_idx, brg_idx);
+            used_amx = used_amx || is_amx;
+            const brgemm_kernel_t *kernel = brg_kernels[brg_idx];
+            assert(kernel);
             for (dim_t h = 0; h < heads_per_item; ++h) {
                 brgemm_batch_element_t be;
                 be.ptr.A = heads[h].q;
@@ -1251,14 +1201,18 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
         const bool multi_block = conf.mm2_k_block < seq_kv;
         for_each_block(seq_kv, conf.mm2_k_block, [&](dim_t kv0, bool k_tail) {
             v_op.load_tile(kv0, 0, k_tail);
-            const bool fresh_c = multi_block && kv0 == 0;
+            const bool use_beta0_kernel = multi_block && kv0 == 0;
             for_each_block(p_.hs_v, conf.v_block, [&](dim_t v0, bool v_tail) {
-                const auto &slot = fresh_c ? brg_descs.mm2_beta0[qi][v_tail]
-                                           : brg_descs.mm2[qi][k_tail][v_tail];
-                configure_tiles(slot.amx);
-                const brgemm_kernel_t *kernel = fresh_c
-                        ? mm2_kernels_beta0[qi][v_tail]
-                        : mm2_kernels[qi][k_tail][v_tail];
+                const int brg_idx = use_beta0_kernel
+                        ? brg_conf.mm2_beta0[qi][v_tail]
+                        : brg_conf.mm2[qi][k_tail][v_tail];
+                assert(brg_idx >= 0);
+                const bool is_amx = descs[brg_idx]->is_tmm;
+                brg_palettes.maybe_tile_configure(
+                        is_amx, prev_brg_idx, brg_idx);
+                used_amx = used_amx || is_amx;
+                const brgemm_kernel_t *kernel = brg_kernels[brg_idx];
+                assert(kernel);
                 for (dim_t h = 0; h < heads_per_item; ++h) {
                     float *mm2_c = conf.mm2_direct
                             ? reinterpret_cast<float *>(heads[h].out)
@@ -1278,7 +1232,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
 
         // Release AMX tiles so the configured state does not leak past this
         // work item.
-        if (active_palette) amx_tile_release();
+        if (used_amx) amx_tile_release();
     });
 
     return status::success;

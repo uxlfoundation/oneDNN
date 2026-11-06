@@ -25,8 +25,7 @@
 #include "common/optional.hpp"
 #include "common/sdpa_pd.hpp"
 
-#include "cpu/x64/amx_tile_configure.hpp"
-#include "cpu/x64/brgemm/brgemm_types.hpp"
+#include "cpu/x64/brgemm/brgemm_containers.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -36,7 +35,6 @@ struct primitive_desc_t;
 namespace cpu {
 namespace x64 {
 
-struct brgemm_kernel_t;
 class jit_generator_t;
 namespace sdpa_brgemm_copy {
 class b_packer_t;
@@ -145,16 +143,6 @@ struct sdpa_full_softmax_run_args_t {
     std::vector<const void *> mm1_post_op_rhs;
 };
 
-// AMX tile configuration for a BRGEMM kernel. Non-AMX ISAs leave need_config
-// false and wsp_size 0; AMX (bf16/f16) must load `palette` via
-// amx_tile_configure() before running and needs a wsp_size-byte tile-store
-// scratch per thread.
-struct sdpa_amx_cfg_t {
-    bool need_config = false;
-    size_t wsp_size = 0;
-    char palette[AMX_PALETTE_SIZE] = {};
-};
-
 struct tensor_copy_desc_t {
     size_t scratch_offset = 0;
     size_t batch_stride = 0;
@@ -202,19 +190,14 @@ private:
     size_t prob_dt_size_ = 0;
 };
 
-// A BRGEMM descriptor and the AMX state derived from it stay together.
-// Invalid slots correspond to unused query / N / K / V tails.
-struct sdpa_brgemm_kernel_conf_t {
-    brgemm_desc_t desc;
-    sdpa_amx_cfg_t amx;
-    bool valid = false;
-};
-
 struct sdpa_full_softmax_brgemm_t {
+    std::shared_ptr<brgemm_containers::brgemm_desc_container_t> descs;
+    // Canonical descriptor indices; -1 denotes an unused variant.
     // mm1: [is_q_tail][is_n_tail], mm2: [is_q_tail][is_k_tail][is_v_tail].
-    sdpa_brgemm_kernel_conf_t mm1[2][2], mm2[2][2][2];
+    int mm1[2][2] = {{-1, -1}, {-1, -1}};
+    int mm2[2][2][2] = {{{-1, -1}, {-1, -1}}, {{-1, -1}, {-1, -1}}};
     // Beta-zero mm2 for the first full K block when the reduction is tiled.
-    sdpa_brgemm_kernel_conf_t mm2_beta0[2][2];
+    int mm2_beta0[2][2] = {{-1, -1}, {-1, -1}};
 };
 
 // Derived compute configuration: the JIT-free arithmetic (query/KV blocking,
@@ -256,7 +239,7 @@ struct sdpa_full_softmax_conf_t {
     size_t copy_buffer_bytes = 0;
     int nthr = 0;
 
-    sdpa_full_softmax_brgemm_t brg_descs;
+    sdpa_full_softmax_brgemm_t brgemm;
 
     // The optional copy descriptors describe whole tensors packed ahead into
     // shared scratch.
@@ -271,25 +254,19 @@ struct sdpa_full_softmax_conf_t {
     }
 };
 
-// Compiled kernels for the full-softmax SDPA, owned by the primitive. The BRGEMM
-// kernels are raw handles freed in the destructor; the jit softmax and select
-// pre-pass kernels are held by shared_ptr.
+// Compiled kernels and AMX palettes for the full-softmax SDPA, owned by the
+// primitive.
 struct sdpa_full_softmax_kernels_t {
-    // Declared out-of-line (defined in sdpa_full_softmax.cpp): the shared_ptr members
-    // hold forward-declared kernel types, so construction/destruction must be
-    // instantiated where those types are complete.
+    // The packer type is forward-declared, so construction/destruction is
+    // defined where it is complete.
     sdpa_full_softmax_kernels_t();
     ~sdpa_full_softmax_kernels_t();
     sdpa_full_softmax_kernels_t(const sdpa_full_softmax_kernels_t &) = delete;
     sdpa_full_softmax_kernels_t &operator=(const sdpa_full_softmax_kernels_t &)
             = delete;
 
-    // mm1 BRGEMM kernels indexed [is_q_tail][is_n_tail], mm2 indexed
-    // [is_q_tail][is_k_tail][is_v_tail]; mm2_kernels_beta0 is the beta = 0
-    // first-block mm2 (per q-tile), built only when the reduction is tiled.
-    brgemm_kernel_t *mm1_kernels[2][2] = {};
-    brgemm_kernel_t *mm2_kernels[2][2][2] = {};
-    brgemm_kernel_t *mm2_kernels_beta0[2][2] = {};
+    brgemm_containers::brgemm_kernel_container_t brgemm_kernels;
+    brgemm_containers::brgemm_palette_container_t brgemm_palettes;
     // K / V packers. Packing ahead uses [0] for the whole tensor; packing per
     // tile uses [is_tail] for one tile (the copy kernels bake in their shape).
     std::unique_ptr<sdpa_brgemm_copy::b_packer_t> k_packers[2], v_packers[2];
@@ -306,12 +283,12 @@ struct sdpa_full_softmax_kernels_t {
 };
 
 // Query-blocked SDPA with softmax over the complete key axis, folded into the
-// CPU primitive: the primitive_desc owns the configuration (including its
-// BRGEMM slots), while the primitive owns the kernels and drives execution.
+// CPU primitive: the primitive_desc owns the configuration and descriptors,
+// while the primitive owns the kernels and drives execution.
 namespace sdpa_full_softmax {
 
 // Compute the derived configuration (query/KV blocking, per-thread + global
-// scratch layout) and build the finalized BRGEMM slots. JIT-free, so a
+// scratch layout) and build the finalized BRGEMM descriptors. JIT-free, so a
 // primitive_desc can size its scratchpad without compiling kernels.
 status_t configure(const sdpa_full_softmax_params_t &params,
         sdpa_full_softmax_conf_t &conf);

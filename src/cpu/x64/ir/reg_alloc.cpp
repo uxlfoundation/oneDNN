@@ -196,6 +196,7 @@ void compute_liveness(
 
     std::vector<std::vector<int>> successors(n_ops);
     std::vector<int> def_vregs, use_vregs;
+    bool has_back_edge = false;
 
     // The _else and if_end of each if_begin, by op index. -1 for a conditional
     // without an else, and at ops that are not an if_begin.
@@ -220,6 +221,7 @@ void compute_liveness(
         if (op.kind == op_kind_t::loop_end) {
             if (i + 1 < n_ops) successors[i].push_back(i + 1);
             successors[i].push_back(op.match + 1);
+            has_back_edge = true;
         } else if (op.kind == op_kind_t::if_begin) {
             assert(end_of[i] >= 0 && "if_begin without if_end");
             // A false condition continues at the else body, or at if_end.
@@ -264,6 +266,11 @@ void compute_liveness(
                 }
             }
         }
+        // The pass goes from the last operation to the first. Without a
+        // `loop_end` every successor comes after its operation, so the
+        // `live_in` of each successor is already computed when `live_out[i]`
+        // reads it, and another pass would change nothing.
+        if (!has_back_edge) break;
     }
 }
 

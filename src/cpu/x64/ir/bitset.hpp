@@ -32,9 +32,8 @@ namespace cpu {
 namespace x64 {
 namespace ir {
 
-// Dynamically sized bitset. Follows the `std::bitset` interface, plus `-=`
-// (set difference), `find_first()`, and `find_next()` from
-// `boost::dynamic_bitset`.
+// Dynamically sized bitset. Follows the `std::bitset` interface, plus
+// `find_first()` and `find_next()` from `boost::dynamic_bitset`.
 struct bitset_t {
     static constexpr int npos = -1;
 
@@ -50,6 +49,12 @@ struct bitset_t {
         return *this;
     }
 
+    // Clears bit `pos`.
+    bitset_t &reset(int pos) {
+        words_[pos / 64] &= ~(uint64_t(1) << (pos % 64));
+        return *this;
+    }
+
     // Clears all bits.
     bitset_t &reset() {
         std::fill(words_.begin(), words_.end(), 0);
@@ -61,15 +66,6 @@ struct bitset_t {
         assert(words_.size() == other.words_.size());
         for (size_t w = 0; w < words_.size(); w++) {
             words_[w] |= other.words_[w];
-        }
-        return *this;
-    }
-
-    // Clears the bits that are set in `other`.
-    bitset_t &operator-=(const bitset_t &other) {
-        assert(words_.size() == other.words_.size());
-        for (size_t w = 0; w < words_.size(); w++) {
-            words_[w] &= ~other.words_[w];
         }
         return *this;
     }

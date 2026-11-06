@@ -54,6 +54,11 @@ private:
     std::atomic<bool> is_initialized_;
 };
 
+// Appends the oneDNN version and git hash. Any serialized artifact consumed
+// by a different oneDNN build must be rejected because both its layout and
+// the decisions it encodes may differ.
+void serialize_version(serialization_stream_t &sstream);
+
 } // namespace impl
 } // namespace dnnl
 

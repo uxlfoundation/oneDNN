@@ -632,8 +632,9 @@ reg_alloc_result_t allocate_registers(
             add_operand(v);
         for (int v : use_vregs)
             add_operand(v);
-        for (int v = 0; v < n_vregs; v++) {
-            if (live_in[i].test(v)) extend_interval(v);
+        for (int v = live_in[i].find_first(); v != bitset_t::npos;
+                v = live_in[i].find_next(v)) {
+            extend_interval(v);
         }
     }
 

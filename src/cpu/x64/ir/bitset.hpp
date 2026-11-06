@@ -22,6 +22,10 @@
 #include <cstdint>
 #include <vector>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -29,8 +33,11 @@ namespace x64 {
 namespace ir {
 
 // Dynamically sized bitset. Follows the `std::bitset` interface, plus `-=`
-// (set difference) from `boost::dynamic_bitset`.
+// (set difference), `find_first()`, and `find_next()` from
+// `boost::dynamic_bitset`.
 struct bitset_t {
+    static constexpr int npos = -1;
+
     // Creates `size` bits, all cleared.
     explicit bitset_t(int size) : words_((size + 63) / 64, 0) {}
 
@@ -72,7 +79,32 @@ struct bitset_t {
         return words_ != other.words_;
     }
 
+    // Index of the first set bit, or `npos` if there is none.
+    int find_first() const { return find_from(0); }
+
+    // Index of the next set bit after `pos`, or `npos` if there is none.
+    int find_next(int pos) const { return find_from(pos + 1); }
+
 private:
+    int find_from(int pos) const {
+        int w = pos / 64;
+        if (w >= (int)words_.size()) return npos;
+        // Mask out the bits below `pos` and skip empty words.
+        uint64_t bits = words_[w] & (~uint64_t(0) << (pos % 64));
+        while (bits == 0) {
+            if (++w == (int)words_.size()) return npos;
+            bits = words_[w];
+        }
+        // Index of the lowest set bit is the number of trailing zeros.
+#ifdef _MSC_VER
+        unsigned long idx;
+        _BitScanForward64(&idx, bits);
+        return w * 64 + (int)idx;
+#else
+        return w * 64 + __builtin_ctzll(bits);
+#endif
+    }
+
     // Bit `pos` is bit `pos % 64` of `words_[pos / 64]`.
     std::vector<uint64_t> words_;
 };

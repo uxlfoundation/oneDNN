@@ -56,6 +56,7 @@ private:
     std::string perf_template_;
     res_t res_ {};
     int idx_;
+    int fix_times_;
     // Use vector to handle any number of primitives needed for a driver.
     // It's a driver responsibility to initialize vector at `create()` stage
     // and it utilizes the knowledge of primitive order inside the vector.

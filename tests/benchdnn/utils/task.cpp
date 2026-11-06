@@ -28,7 +28,8 @@ task_t::task_t(const std::shared_ptr<base_prb_t> &prb,
     , check_func_(check_func)
     , do_func_(do_func)
     , perf_template_(perf_template)
-    , idx_(idx) {}
+    , idx_(idx)
+    , fix_times_(fix_times_per_prb) {}
 
 int task_t::create(bool in_parallel) {
     // Report creation status for problems only in sequential mode as in
@@ -70,6 +71,8 @@ int task_t::exec() {
     if (res_.state == INITIALIZED && bench_mode != bench_mode_t::init) {
         // Differentiate a message when the run happens...
         BENCHDNN_PRINT(1, "run: %s\n", prb_->str());
+        // Parallel create leaves the chunk's last parsed value.
+        fix_times_per_prb = fix_times_;
         do_func_(*v_prim_, prb_.get(), &res_);
     } else {
         // ... versus when it didn't but still indicating the problem went

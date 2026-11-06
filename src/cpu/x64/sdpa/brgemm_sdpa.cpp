@@ -274,8 +274,7 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
         bp_.mm1_post_ops.push_back(mk);
     }
 
-    VDISPATCH_SDPA_SC(
-            sdpa_full_softmax::configure(bp_, full_conf_, full_descs_),
+    VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(bp_, full_conf_),
             "sdpa_full_softmax configuration failed");
     nthr_ = full_conf_.nthr;
     scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
@@ -291,9 +290,8 @@ status_t brgemm_sdpa_fwd_t::init(engine_t *engine) {
         return sdpa_online_softmax::create_kernels(isa_for_ir,
                 pd()->online_softmax_conf(), engine, online_kernels_);
     } else {
-        return sdpa_full_softmax::create_kernels(isa_for_ir,
-                pd()->full_softmax_conf(), pd()->full_softmax_descs(), engine,
-                full_kernels_);
+        return sdpa_full_softmax::create_kernels(
+                isa_for_ir, pd()->full_softmax_conf(), engine, full_kernels_);
     }
     assert(!"Unknown SDPA implementation kind");
     return status::unimplemented;

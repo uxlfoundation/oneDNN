@@ -75,6 +75,12 @@ status_t device_info_t::init(
     if (!cache_blob.empty()) {
         CHECK(init_from_cache_blob(cache_blob));
 
+        // Kernel binaries and the primitive blob header depend on the runtime,
+        // so a blob exported by another runtime doesn't describe this engine.
+        VERROR_ENGINE(runtime_kind_ == engine->runtime_kind(),
+                status::invalid_arguments,
+                "cache blob runtime doesn't match the engine runtime");
+
         // The runtime version gates generated code and workarounds, so a blob
         // captured under a different driver doesn't describe this device.
         const auto blob_runtime_version = runtime_version_;
@@ -92,6 +98,7 @@ status_t device_info_t::init(
     CHECK(init_extensions(engine));
     CHECK(init_attributes(engine));
     fixup_l3_cache_size();
+    runtime_kind_ = engine->runtime_kind();
 
     CHECK(init_attributes_common(engine));
 
@@ -404,6 +411,7 @@ status_t device_info_t::init_serialized_device_info(
     }
 
     serialize_version(serialized_device_info_);
+    serialized_device_info_.append(runtime_kind_);
     serialized_device_info_.append(gpu_arch_);
     serialized_device_info_.append(product_ != nullptr);
     if (product_) serialized_device_info_.append(*product_);
@@ -455,6 +463,7 @@ status_t device_info_t::init_from_cache_blob(
             cache_blob.begin() + version_data.size(), cache_blob.end()));
     deserializer_t d(s);
 
+    d.pop(runtime_kind_);
     d.pop(gpu_arch_);
     auto hadProduct = d.pop<bool>();
     if (hadProduct) {

@@ -24,6 +24,8 @@
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #endif
 
+#include <cstring>
+
 extern "C" void dnnl_impl_gpu_intel_clear_device_info_cache();
 
 namespace dnnl {
@@ -43,6 +45,16 @@ void check_engine_usable(const engine &eng) {
             {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
                     {DNNL_ARG_DST, dst}});
     strm.wait();
+}
+
+// The engine blob starts with the version (three ints and the length-prefixed
+// hash) followed by the runtime kind.
+std::vector<uint8_t> change_engine_blob_runtime(
+        std::vector<uint8_t> cache_blob) {
+    const size_t runtime_offset = 3 * sizeof(int) + sizeof(size_t)
+            + std::strlen(dnnl_version()->hash);
+    cache_blob.at(runtime_offset)++;
+    return cache_blob;
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(
@@ -118,6 +130,12 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     EXPECT_ANY_THROW(make_engine(
             get_device(test_engine), get_context(test_engine), corrupted_blob));
 
+    // A failed engine creation prints the verbose header, which creates an
+    // engine and populates the device info cache again.
+    dnnl_impl_gpu_intel_clear_device_info_cache();
+    EXPECT_ANY_THROW(make_engine(get_device(test_engine),
+            get_context(test_engine), change_engine_blob_runtime(cache_blob)));
+
     dnnl_impl_gpu_intel_clear_device_info_cache();
     auto eng = make_engine(
             get_device(test_engine), get_context(test_engine), cache_blob);
@@ -162,6 +180,13 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     corrupted_blob[0] ^= 0xFF;
     EXPECT_ANY_THROW(make_engine(get_driver(test_engine),
             get_device(test_engine), get_context(test_engine), corrupted_blob));
+
+    // A failed engine creation prints the verbose header, which creates an
+    // engine and populates the device info cache again.
+    dnnl_impl_gpu_intel_clear_device_info_cache();
+    EXPECT_ANY_THROW(make_engine(get_driver(test_engine),
+            get_device(test_engine), get_context(test_engine),
+            change_engine_blob_runtime(cache_blob)));
 
     dnnl_impl_gpu_intel_clear_device_info_cache();
     auto eng = make_engine(get_driver(test_engine), get_device(test_engine),

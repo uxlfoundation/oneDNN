@@ -309,6 +309,7 @@ private:
     void fixup_l3_cache_size();
 
     bool mayiuse_non_uniform_work_groups_ = false;
+    runtime_kind_t runtime_kind_ = runtime_kind::none;
 
     serialization_stream_t serialized_device_info_;
 };

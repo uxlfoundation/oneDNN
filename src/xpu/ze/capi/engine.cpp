@@ -23,6 +23,8 @@
 #include "xpu/ze/engine_impl.hpp"
 #include "xpu/ze/utils.hpp"
 
+#include "gpu/intel/deviceless/engine.hpp"
+
 using namespace dnnl::impl;
 
 status_t dnnl_ze_interop_engine_create(engine_t **engine,
@@ -97,6 +99,23 @@ status_t dnnl_ze_interop_engine_create_from_cache_blob(engine_t **engine,
 
     const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
     return f.engine_create(engine, driver, device, context, index, cb);
+}
+
+status_t dnnl_ze_interop_deviceless_engine_create(
+        engine_t **engine, size_t size, const uint8_t *cache_blob) {
+    VERROR_ENGINE(engine, status::invalid_arguments, VERBOSE_NULL_ARG);
+    VERROR_ENGINE(cache_blob, status::invalid_arguments, VERBOSE_NULL_ARG);
+    VERROR_ENGINE(size > 0, status::invalid_arguments, VERBOSE_NULL_ARG);
+
+    const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
+    engine_t *e = nullptr;
+    CHECK(gpu::intel::deviceless::engine_create(&e, cb));
+    std::unique_ptr<engine_t, engine_deleter_t> e_ptr(e);
+    VERROR_ENGINE(e->runtime_kind() == runtime_kind::ze,
+            status::invalid_arguments,
+            "cache blob was exported by a non-Level Zero engine");
+    *engine = e_ptr.release();
+    return status::success;
 }
 
 status_t dnnl_ze_interop_engine_get_cache_blob(

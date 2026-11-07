@@ -237,6 +237,11 @@ public:
         return mayiuse_non_uniform_work_groups_;
     }
 
+    // An engine is constructed with its runtime kind, so the runtime of a
+    // blob is needed before the device info can be initialized from it.
+    static status_t get_runtime_kind(const std::vector<uint8_t> &cache_blob,
+            runtime_kind_t &runtime_kind);
+
     /// Returns true if the engine can directly access pointers from system allocators
     bool mayiuse_system_memory_allocators() const {
         return mayiuse_system_memory_allocators_;

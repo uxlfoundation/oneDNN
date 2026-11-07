@@ -37,6 +37,31 @@ namespace gpu {
 namespace intel {
 namespace compute {
 
+namespace {
+
+// The version is compared as raw bytes before any field is read because the
+// field layout of a blob from another build is unknown.
+status_t strip_version(const std::vector<uint8_t> &cache_blob,
+        serialization_stream_t &fields) {
+    VERROR_ENGINE(!cache_blob.empty(), status::invalid_arguments,
+            "cache blob is empty");
+
+    serialization_stream_t version;
+    serialize_version(version);
+    const auto &version_data = version.get_data();
+    VERROR_ENGINE(cache_blob.size() >= version_data.size()
+                    && std::equal(version_data.begin(), version_data.end(),
+                            cache_blob.begin()),
+            status::invalid_arguments,
+            "cache blob was created by a different oneDNN version");
+
+    fields = serialization_stream_t::from_data(std::vector<uint8_t>(
+            cache_blob.begin() + version_data.size(), cache_blob.end()));
+    return status::success;
+}
+
+} // namespace
+
 uint64_t get_future_extensions(
         compute::gpu_arch_t gpu_arch, bool mayiuse_systolic) {
     using namespace compute;
@@ -444,23 +469,19 @@ status_t device_info_t::init_serialized_device_info(
     return status::success;
 }
 
+status_t device_info_t::get_runtime_kind(
+        const std::vector<uint8_t> &cache_blob, runtime_kind_t &runtime_kind) {
+    serialization_stream_t s;
+    CHECK(strip_version(cache_blob, s));
+    deserializer_t d(s);
+    d.pop(runtime_kind);
+    return status::success;
+}
+
 status_t device_info_t::init_from_cache_blob(
         const std::vector<uint8_t> &cache_blob) {
-    if (cache_blob.empty()) return status::invalid_arguments;
-
-    // The version is compared as raw bytes before any field is read because
-    // the field layout of a blob from another build is unknown.
-    serialization_stream_t version;
-    serialize_version(version);
-    const auto &version_data = version.get_data();
-    VERROR_ENGINE(cache_blob.size() >= version_data.size()
-                    && std::equal(version_data.begin(), version_data.end(),
-                            cache_blob.begin()),
-            status::invalid_arguments,
-            "cache blob was created by a different oneDNN version");
-
-    auto s = serialization_stream_t::from_data(std::vector<uint8_t>(
-            cache_blob.begin() + version_data.size(), cache_blob.end()));
+    serialization_stream_t s;
+    CHECK(strip_version(cache_blob, s));
     deserializer_t d(s);
 
     d.pop(runtime_kind_);

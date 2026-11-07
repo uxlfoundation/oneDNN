@@ -26,6 +26,10 @@
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/ocl/utils.hpp"
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/deviceless/engine.hpp"
+#endif
+
 using namespace dnnl::impl;
 
 status_t dnnl_ocl_interop_engine_create(
@@ -80,6 +84,26 @@ status_t dnnl_ocl_interop_engine_create_from_cache_blob(engine_t **engine,
 
     const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
     return f.engine_create(engine, device, context, index, cb);
+}
+
+status_t dnnl_ocl_interop_deviceless_engine_create(
+        engine_t **engine, size_t size, const uint8_t *cache_blob) {
+    bool args_ok = !utils::any_null(engine, cache_blob) && size != 0;
+    VERROR_ENGINE(args_ok, status::invalid_arguments, VERBOSE_NULL_ARG);
+
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
+    engine_t *e = nullptr;
+    CHECK(gpu::intel::deviceless::engine_create(&e, cb));
+    std::unique_ptr<engine_t, engine_deleter_t> e_ptr(e);
+    VERROR_ENGINE(e->runtime_kind() == runtime_kind::ocl,
+            status::invalid_arguments,
+            "cache blob was exported by a non-OpenCL engine");
+    *engine = e_ptr.release();
+    return status::success;
+#else
+    return status::unimplemented;
+#endif
 }
 
 status_t dnnl_ocl_interop_engine_get_cache_blob(

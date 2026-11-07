@@ -203,6 +203,66 @@ HANDLE_EXCEPTIONS_FOR_TEST(
 #endif
 
 HANDLE_EXCEPTIONS_FOR_TEST(
+        persistent_cache_api_test_t, TestPersistentCacheAPIDevicelessEngine) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    using namespace dnnl::ocl_interop;
+    const auto deviceless_engine_create
+            = dnnl_ocl_interop_deviceless_engine_create;
+#else
+    using namespace dnnl::ze_interop;
+    const auto deviceless_engine_create
+            = dnnl_ze_interop_deviceless_engine_create;
+#endif
+    engine test_engine = get_test_engine();
+
+    if (get_test_engine_kind() != engine::kind::gpu) return;
+
+    const auto cache_blob = get_engine_cache_blob(test_engine);
+    ASSERT_TRUE(!cache_blob.empty());
+
+    dnnl_engine_t c_engine = nullptr;
+    EXPECT_EQ(deviceless_engine_create(
+                      nullptr, cache_blob.size(), cache_blob.data()),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(deviceless_engine_create(&c_engine, cache_blob.size(), nullptr),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(deviceless_engine_create(&c_engine, 0, cache_blob.data()),
+            dnnl_invalid_arguments);
+    EXPECT_ANY_THROW(make_deviceless_engine({}));
+
+    // The blob starts with the oneDNN version.
+    auto corrupted_blob = cache_blob;
+    corrupted_blob[0] ^= 0xFF;
+    EXPECT_EQ(deviceless_engine_create(
+                      &c_engine, corrupted_blob.size(), corrupted_blob.data()),
+            dnnl_invalid_arguments);
+
+    const auto foreign_runtime_blob = change_engine_blob_runtime(cache_blob);
+    EXPECT_EQ(deviceless_engine_create(&c_engine, foreign_runtime_blob.size(),
+                      foreign_runtime_blob.data()),
+            dnnl_invalid_arguments);
+
+    auto eng = make_deviceless_engine(cache_blob);
+    ASSERT_EQ(eng.get_kind(), engine::kind::gpu);
+
+    // Phase 2 re-exports the blob it was given.
+    ASSERT_EQ(get_engine_cache_blob(eng), cache_blob);
+
+    dnnl_stream_t c_stream = nullptr;
+    EXPECT_EQ(
+            dnnl_stream_create(&c_stream, eng.get(), dnnl_stream_default_flags),
+            dnnl_unimplemented);
+
+    memory::desc md({4, 4}, memory::data_type::f32, memory::format_tag::ab);
+    dnnl_memory_t c_memory = nullptr;
+    EXPECT_NE(dnnl_memory_create(
+                      &c_memory, md.get(), eng.get(), DNNL_MEMORY_ALLOCATE),
+            dnnl_success);
+#endif
+}
+
+HANDLE_EXCEPTIONS_FOR_TEST(
         persistent_cache_api_test_t, TestPersistentCacheAPIMemoryDesc) {
     engine e = get_test_engine();
     auto pd = convolution_forward::primitive_desc {e,

@@ -487,7 +487,12 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         // writes to reg_D, overrunning dst and racing across K-threads.
         brgattr.use_intermediate_c_buffer
                 = bgmmc_.is_c_buf_dst_dt && bgmmc_.use_buffer_c;
-        brgattr.mem_advice = bgmmc_.mem_advice;
+        // `mem_advice` needs read-shared loads (MOVRS), which come with
+        // `avx10_2`. With a runtime M, the last M tail kernel may use
+        // `backup_isa`, which does not include `avx10_2`.
+        brgattr.mem_advice = isa_has_movrs(kernel_isa)
+                ? bgmmc_.mem_advice
+                : brgemm_hint_mem_advice_undef;
         brgattr.max_bs = bs;
         brgattr.hint_prefetchw = bgmmc_.hint_prefetchw;
         if (is_superset(kernel_isa, avx512_core_amx)

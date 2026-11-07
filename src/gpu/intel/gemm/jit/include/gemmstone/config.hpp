@@ -29,8 +29,6 @@ inline int getVerbose(GEMMVerbose v) { return 0; }
 #define GEMMSTONE_ASSERTIONS 1
 #define GEMMSTONE_IR_EXTENSION_HANDLER nullptr
 
-#define MICROKERNEL_INTERFACE
-
 #if (__cplusplus >= 202002L || _MSVC_LANG >= 202002L)
 #if __has_include(<version>)
 #include <version>
@@ -42,7 +40,7 @@ inline int getVerbose(GEMMVerbose v) { return 0; }
 
 #endif
 
-#ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
+#if defined(GEMMSTONE_OPENCL_OUTPUT) || defined(GEMMSTONE_WITH_OPENCL_RUNTIME)
 #   ifndef CL_TARGET_OPENCL_VERSION
 #       define CL_TARGET_OPENCL_VERSION 210
 #   endif

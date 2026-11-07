@@ -74,11 +74,13 @@ struct vector_compute_path_t : public compute_path_t {
                 if (blk.ld_tail_mask == ir::vreg_t::none)
                     ir.vload(b[ld], b_ptr,
                             cfg.b_off(rd_pos, cfg.ld_pos(blk, ld)),
-                            cfg.compute_path.dt_b);
+                            cfg.compute_path.dt_b,
+                            cfg.compute_path.b_load_hint);
                 else
                     ir.vload_masked(b[ld], b_ptr,
                             cfg.b_off(rd_pos, cfg.ld_pos(blk, ld)),
-                            blk.ld_tail_mask, cfg.compute_path.dt_b);
+                            blk.ld_tail_mask, cfg.compute_path.dt_b,
+                            cfg.compute_path.b_load_hint);
             }
 
             // One prefetch per B register, issued on the first `ld_block2`

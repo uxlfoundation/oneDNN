@@ -873,6 +873,9 @@ status_t init_vector_conf(
     compute_path.dt_b = brg.dt_b;
     compute_path.dt_acc = f32;
     compute_path.vnni_granularity = brg.rd_step;
+    // A is broadcast with no hint, as in `jit_brgemm_kernel_t`.
+    if (brg.read_shared_B())
+        compute_path.b_load_hint |= ir::mem_hint_t::read_shared;
     return status::success;
 }
 
@@ -891,8 +894,6 @@ status_t init_tmul_conf(compute_path_conf_t &compute_path,
             VERBOSE_UNSUPPORTED_DT);
     VCONDCHECK_BRGEMM_IR(
             !brg.fused_copy_a, VERBOSE_UNSUPPORTED_FEATURE, "fused copy A");
-    VCONDCHECK_BRGEMM_IR(brg.brgattr.mem_advice == brgemm_hint_mem_advice_undef,
-            VERBOSE_UNSUPPORTED_FEATURE, "memory advice");
 
     palette_config_t palette;
     const status_t st = brgemm_init_tiles(brg, (char *)&palette);
@@ -912,11 +913,13 @@ status_t init_tmul_conf(compute_path_conf_t &compute_path,
     compute_path.b_tile = shapes[brg.get_B_tensor(0)];
     compute_path.c_tile = shapes[brg.get_C_tensor(0, 0)];
 
-    auto load_hint = [](bool nt) {
-        return nt ? ir::mem_hint_t::non_temporal : ir::mem_hint_t::none;
-    };
-    compute_path.a_load_hint = load_hint(brg.load_nt_A);
-    compute_path.b_load_hint = load_hint(brg.load_nt_B);
+    if (brg.load_nt_A) compute_path.a_load_hint |= ir::mem_hint_t::non_temporal;
+    if (brg.load_nt_B) compute_path.b_load_hint |= ir::mem_hint_t::non_temporal;
+
+    if (brg.read_shared_A())
+        compute_path.a_load_hint |= ir::mem_hint_t::read_shared;
+    if (brg.read_shared_B())
+        compute_path.b_load_hint |= ir::mem_hint_t::read_shared;
     return status::success;
 }
 
@@ -1082,10 +1085,6 @@ status_t check_displacements(const conf_t &conf) {
 // `tiles` is the tile configuration, which only code generation reads. It is
 // kept out of `conf`, so the builder never receives it. It stays empty for the
 // vector compute path.
-//
-// TODO: reject `mem_advice` or implement it. For the vector compute path the
-// classic kernel loads B with `vmovrsd` when it is set, and matmul sets it on
-// avx10_2.
 status_t init_conf(
         conf_t &conf, ir::tile_config_t &tiles, const brgemm_desc_t &brg) {
     // GEMV and DGMM have kernels of their own.

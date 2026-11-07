@@ -128,7 +128,8 @@ struct loop_conf_t {
 //   vnni_granularity        - K elements of a column that B stores together,
 //                             1 for a plain B
 //   a_tile/b_tile/c_tile    - shapes of the tiles of A, B, and the accumulators
-//   a_load_hint/b_load_hint - hints of the A and B tile loads
+//   a_load_hint/b_load_hint - hints of the A and B loads. The vector compute
+//                             path sets only `b_load_hint`.
 struct compute_path_conf_t {
     compute_path_kind_t kind = compute_path_kind_t::vector;
     data_type_t dt_a = data_type::undef;

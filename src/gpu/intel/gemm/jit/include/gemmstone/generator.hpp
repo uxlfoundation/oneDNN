@@ -40,39 +40,39 @@
 #include "gemmstone/microkernel/package.hpp"
 #include "gemmstone/microkernel/protocol.hpp"
 
-#if defined(BINARY_OUTPUT) || defined(ZEBIN_OUTPUT) || defined(OPENCL_OUTPUT)
+#if defined(GEMMSTONE_BINARY_OUTPUT) || defined(GEMMSTONE_ZEBIN_OUTPUT) || defined(GEMMSTONE_OPENCL_OUTPUT)
 #include "internal/ngen_elf_hw_list.hpp"
 #endif
 
 GEMMSTONE_NAMESPACE_START
 
 // Macro configuration
-#ifndef GENERATOR_BASE
+#ifndef GEMMSTONE_GENERATOR_BASE
 
-#if defined(OPENCL_OUTPUT)
-#define GENERATOR_SUPER(hw) ngen::OpenCLCodeGenerator<hw>
-#define FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
-#define GENERATOR_DEBUGINFO {__FILE__, __LINE__}
-#elif defined(BINARY_OUTPUT)
-#define GENERATOR_SUPER(hw) ngen::BinaryCodeGenerator<hw>
-#define FORWARD(hw) NGEN_FORWARD(hw)
-#define GENERATOR_DEBUGINFO {}
-#elif defined(ZEBIN_OUTPUT)
-#define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
-#define FORWARD(hw) NGEN_FORWARD_ELF(hw)
-#define GENERATOR_DEBUGINFO {__FILE__, __LINE__}
+#if defined(GEMMSTONE_OPENCL_OUTPUT)
+#define GEMMSTONE_GENERATOR_SUPER(hw) ngen::OpenCLCodeGenerator<hw>
+#define GEMMSTONE_GENERATOR_FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
+#define GEMMSTONE_GENERATOR_DEBUGINFO {__FILE__, __LINE__}
+#elif defined(GEMMSTONE_BINARY_OUTPUT)
+#define GEMMSTONE_GENERATOR_SUPER(hw) ngen::BinaryCodeGenerator<hw>
+#define GEMMSTONE_GENERATOR_FORWARD(hw) NGEN_FORWARD(hw)
+#define GEMMSTONE_GENERATOR_DEBUGINFO {}
+#elif defined(GEMMSTONE_ZEBIN_OUTPUT)
+#define GEMMSTONE_GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
+#define GEMMSTONE_GENERATOR_FORWARD(hw) NGEN_FORWARD_ELF(hw)
+#define GEMMSTONE_GENERATOR_DEBUGINFO {__FILE__, __LINE__}
 #endif
 
-#define GENERATOR_BASE(hw) GENERATOR_SUPER(hw)
+#define GEMMSTONE_GENERATOR_BASE(hw) GEMMSTONE_GENERATOR_SUPER(hw)
 #endif
 
-template <ngen::HW hw> class Generator : public GENERATOR_BASE(hw) {
+template <ngen::HW hw> class Generator : public GEMMSTONE_GENERATOR_BASE(hw) {
 public:
-    using super = GENERATOR_SUPER(hw);
+    using super = GEMMSTONE_GENERATOR_SUPER(hw);
 
-    Generator(ngen::Product product) : GENERATOR_BASE(hw)(product, GENERATOR_DEBUGINFO) {}
+    Generator(ngen::Product product) : GEMMSTONE_GENERATOR_BASE(hw)(product, GEMMSTONE_GENERATOR_DEBUGINFO) {}
 
-    FORWARD(hw)
+    GEMMSTONE_GENERATOR_FORWARD(hw)
 
     // Kernel generation entrypoints.
     void gemm(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
@@ -83,7 +83,7 @@ public:
     static CommonDriverInfo driverInfo(GEMMProblem problem, const GEMMStrategy &strategy);
 
 protected:
-#if defined(OPENCL_OUTPUT) || defined(ZEBIN_OUTPUT)
+#if defined(GEMMSTONE_OPENCL_OUTPUT) || defined(GEMMSTONE_ZEBIN_OUTPUT)
     ngen::InterfaceHandler &interface = super::interface_;
 #else
     ngen::InterfaceHandler interface{hw};

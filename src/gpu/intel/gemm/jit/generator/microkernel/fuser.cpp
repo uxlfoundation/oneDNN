@@ -328,7 +328,7 @@ static void fuse(std::vector<uint8_t> &binary,
                 textSectionID, kbefore, uint64_t(removeBytes), blob.size()};
         fixupElf(newBinary, splice);
 
-#ifdef SPLICE_DEBUG
+#ifdef GEMMSTONE_SPLICE_DEBUG
         std::ofstream dump0("original." + std::to_string(id) + ".bin");
         dump0.write((const char *)binary.data(), binary.size());
 

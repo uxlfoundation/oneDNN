@@ -612,6 +612,15 @@ status_t brgemm_desc_set_attr(
         return status::unimplemented;
     }
 
+    // The kernels apply `mem_advice` with read-shared loads (MOVRS). Tile
+    // loads need AMX-MOVRS. ACE loads no tiles.
+    if (brgattr.mem_advice != brgemm_hint_mem_advice_undef) {
+        const bool loads_tiles = brg->is_tmm && !brg->is_ace();
+        const bool has_movrs = loads_tiles ? isa_has_amx_movrs(brg->isa_impl)
+                                           : isa_has_movrs(brg->isa_impl);
+        if (!has_movrs) return status::unimplemented;
+    }
+
     brg->prfA = brgattr.hint_prfA;
     brg->prfB = brgattr.hint_prfB;
     brg->prfC = brgattr.hint_prfC;

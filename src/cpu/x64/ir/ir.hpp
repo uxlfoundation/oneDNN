@@ -216,14 +216,21 @@ struct mem_t {
 // where the target has it and the plain instruction otherwise.
 //
 //   non_temporal - the data is not reused soon
+//   read_shared  - other cores also read the data
 enum class mem_hint_t : unsigned {
     none = 0,
     non_temporal = 1u << 0,
+    read_shared = 1u << 1,
 };
 
 inline mem_hint_t operator|(mem_hint_t a, mem_hint_t b) {
     return static_cast<mem_hint_t>(
             static_cast<unsigned>(a) | static_cast<unsigned>(b));
+}
+
+inline mem_hint_t &operator|=(mem_hint_t &a, mem_hint_t b) {
+    a = a | b;
+    return a;
 }
 
 inline mem_hint_t operator&(mem_hint_t a, mem_hint_t b) {
@@ -255,7 +262,8 @@ inline mem_hint_t operator&(mem_hint_t a, mem_hint_t b) {
 // mem_dt - element data type in memory, set by every vector load and store. It
 //        is the data type of the vreg when the access moves the value as it
 //        is, and a different one when the access converts.
-// hint  - for tload, the hints of the access (see `mem_hint_t`).
+// hint  - for tload, vload, and vload_masked, the hints of the access (see
+//         `mem_hint_t`).
 // match - for loop_end, index of matching loop_begin operation. For _else and
 //         if_end, index of matching if_begin operation.
 // cmp   - for if_begin, how s0 is compared with s1 or imm.
@@ -363,7 +371,8 @@ struct DNNL_API ir_t {
     // `mem_dt` is the element data type in memory. Pass the data type of the
     // vreg to move the value as it is, or a different one to convert it.
     void vzero(vreg_t dst);
-    void vload(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt);
+    void vload(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt,
+            mem_hint_t hint = mem_hint_t::none);
     void vstore(vreg_t base, dim_t disp, vreg_t src, data_type_t mem_dt);
     void vload_scalar(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt);
     void vstore_scalar(vreg_t base, dim_t disp, vreg_t src, data_type_t mem_dt);
@@ -380,7 +389,7 @@ struct DNNL_API ir_t {
     // for a full vector and `vload_scalar`/`vstore_scalar` for one element,
     // since neither needs a mask register.
     void vload_masked(vreg_t dst, vreg_t base, dim_t disp, vreg_t mask,
-            data_type_t mem_dt);
+            data_type_t mem_dt, mem_hint_t hint = mem_hint_t::none);
     void vstore_masked(vreg_t base, dim_t disp, vreg_t src, vreg_t mask,
             data_type_t mem_dt);
 

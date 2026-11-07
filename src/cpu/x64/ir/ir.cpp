@@ -101,13 +101,15 @@ void ir_t::vzero(vreg_t dst) {
     ops_.push_back(op);
 }
 
-void ir_t::vload(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt) {
+void ir_t::vload(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt,
+        mem_hint_t hint) {
     op_t op;
     op.kind = op_kind_t::vload;
     op.dst = dst;
     op.mem.base = base;
     op.mem.disp = disp;
     op.mem_dt = mem_dt;
+    op.hint = hint;
     ops_.push_back(op);
 }
 
@@ -197,8 +199,8 @@ void ir_t::set_mask_imm(vreg_t mask, int n_elems) {
     ops_.push_back(op);
 }
 
-void ir_t::vload_masked(
-        vreg_t dst, vreg_t base, dim_t disp, vreg_t mask, data_type_t mem_dt) {
+void ir_t::vload_masked(vreg_t dst, vreg_t base, dim_t disp, vreg_t mask,
+        data_type_t mem_dt, mem_hint_t hint) {
     assert(mask != vreg_t::none && "vload_masked: mask is required");
 
     op_t op;
@@ -208,6 +210,7 @@ void ir_t::vload_masked(
     op.mem.base = base;
     op.mem.disp = disp;
     op.mem_dt = mem_dt;
+    op.hint = hint;
     ops_.push_back(op);
 }
 

@@ -65,9 +65,9 @@ struct avx2_backend_t {
         gen().vmovups(gen().ptr[Xbyak::Reg64(base) + (int)disp], Xbyak::Ymm(s));
     }
 
-    // Load a full vector.
+    // Load a full vector. No AVX2 ISA has MOVRS, so there is no hinted form.
     void vload(int d, int base, dim_t disp, data_type_t mem_dt,
-            data_type_t reg_dt) {
+            data_type_t reg_dt, mem_hint_t /*hint*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
             gen().vmovups(Xbyak::Ymm(d), addr);
@@ -169,9 +169,10 @@ struct avx2_backend_t {
         gen().vmovups(Xbyak::Ymm(d), gen().ptr[gen().rip + lbl]);
     }
 
-    // Load the elements selected by `mask` and zero the rest of `dst`.
+    // Load the elements selected by `mask` and zero the rest of `dst`. There is
+    // no hinted form, as for `vload`.
     void vload_masked(int d, int base, dim_t disp, int mask, data_type_t mem_dt,
-            data_type_t reg_dt) {
+            data_type_t reg_dt, mem_hint_t /*hint*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {

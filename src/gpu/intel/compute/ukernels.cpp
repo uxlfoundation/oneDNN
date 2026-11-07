@@ -61,6 +61,8 @@ bool mayiuse_microkernels(const engine_t *engine) {
     auto *device_info = engine->device_info();
     if (device_info->runtime_version() >= xpu::runtime_version_t(24, 22, 29735))
         return true;
+    // The probe kernel needs a device.
+    if (engine->is_deviceless()) return false;
 
     auto mayiuse_mk = [](const engine_t *engine) {
         switch (engine->runtime_kind()) {

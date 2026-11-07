@@ -259,6 +259,47 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     EXPECT_EQ(make_eltwise_pd(eng).get_cache_blob_id(),
             make_eltwise_pd(test_engine).get_cache_blob_id());
 
+    // Phase 3 runs the primitive compiled in phase 2, so both engines must
+    // dispatch to the same implementation.
+    memory::desc matmul_md(
+            {64, 64}, memory::data_type::f32, memory::format_tag::ab);
+    auto deviceless_matmul_pd
+            = matmul::primitive_desc(eng, matmul_md, matmul_md, matmul_md);
+    auto matmul_pd = matmul::primitive_desc(
+            test_engine, matmul_md, matmul_md, matmul_md);
+    ASSERT_STREQ(
+            deviceless_matmul_pd.impl_info_str(), matmul_pd.impl_info_str());
+
+    std::vector<uint8_t> primitive_blob;
+    ASSERT_NO_THROW(
+            primitive_blob = matmul(deviceless_matmul_pd).get_cache_blob());
+
+    // Otherwise the primitive cache hands back the imported primitive as the
+    // reference.
+    const int primitive_cache_capacity = get_primitive_cache_capacity();
+    set_primitive_cache_capacity(0);
+    matmul imported_matmul;
+    ASSERT_NO_THROW(imported_matmul = matmul(matmul_pd, primitive_blob));
+    auto ref_matmul = matmul(matmul_pd);
+    set_primitive_cache_capacity(primitive_cache_capacity);
+
+    auto src = test::make_memory(matmul_md, test_engine);
+    auto wei = test::make_memory(matmul_md, test_engine);
+    auto dst = test::make_memory(matmul_md, test_engine);
+    auto ref_dst = test::make_memory(matmul_md, test_engine);
+    fill_data<float>(matmul_md.get_size() / sizeof(float), src);
+    fill_data<float>(matmul_md.get_size() / sizeof(float), wei);
+
+    stream strm(test_engine);
+    imported_matmul.execute(strm,
+            {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
+                    {DNNL_ARG_DST, dst}});
+    ref_matmul.execute(strm,
+            {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
+                    {DNNL_ARG_DST, ref_dst}});
+    strm.wait();
+    compare_data<float>(ref_dst, dst);
+
     dnnl_stream_t c_stream = nullptr;
     EXPECT_EQ(
             dnnl_stream_create(&c_stream, eng.get(), dnnl_stream_default_flags),

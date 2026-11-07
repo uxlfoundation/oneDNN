@@ -17,6 +17,8 @@
 #include "gpu/intel/deviceless/engine.hpp"
 #include "gpu/intel/deviceless/device_info.hpp"
 #include "gpu/intel/deviceless/engine_impl.hpp"
+#include "gpu/intel/deviceless/kernel.hpp"
+#include "gpu/intel/jit/generator_base.hpp"
 
 #include "common/serialization.hpp"
 #include "common/verbose.hpp"
@@ -59,7 +61,8 @@ status_t engine_t::create_stream(
 
 status_t engine_t::create_kernel(
         compute::kernel_t *kernel, jit::generator_base_t *jitter) const {
-    return kernels_unimplemented();
+    if (!jitter) return status::invalid_arguments;
+    return jitter->get_kernel(*kernel, this);
 }
 
 status_t engine_t::create_kernel(
@@ -76,7 +79,7 @@ status_t engine_t::create_kernels(std::vector<compute::kernel_t> *kernels,
 status_t engine_t::create_kernel_from_binary(compute::kernel_t &kernel,
         const xpu::binary_t &binary, const char *kernel_name,
         const compute::program_src_t &src) const {
-    return kernels_unimplemented();
+    return kernel_t::make(kernel, binary, kernel_name);
 }
 
 status_t engine_t::create_kernels_from_cache_blob(

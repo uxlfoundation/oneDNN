@@ -68,6 +68,8 @@ public:
     // non-negative tags.
     gpu_utils::device_id_t device_id() const override;
 
+    bool is_deviceless() const override { return true; }
+
     // The bytes must equal those of the runtime engine that imports the
     // primitives, so the layout follows the OpenCL and Level Zero engines.
     status_t serialize_device(serialization_stream_t &sstream) const override;

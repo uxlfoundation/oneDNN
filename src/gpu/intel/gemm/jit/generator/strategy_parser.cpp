@@ -833,7 +833,7 @@ static std::string unparseFuseBeta(const GEMMStrategy &s)       { return !s.fuse
 static std::string unparseFusePostOps(const GEMMStrategy &s)    { return s.fusePostOps ? " fp" : ""; }
 static std::string unparseKParallelLocal(const GEMMStrategy &s) { return !s.kParallelLocal ? "" : s.shrinkWGK ? " akr" : s.kInterleave ? " ikr" : " kr"; }
 
-std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy &strategy)
+std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     std::stringstream s;
     s.imbue(std::locale::classic());

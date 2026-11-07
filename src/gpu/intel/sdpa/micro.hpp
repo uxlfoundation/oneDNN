@@ -466,9 +466,6 @@ struct micro_bwd_t : public primitive_t {
 
             VDISPATCH_SDPA(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
-            VDISPATCH_SDPA(arch_ != compute::gpu_arch_t::xe_hpg,
-                    "fused SDPA BWD not supported for xe_hpg");
-
             bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
             use_systolic_ukernel_
                     = intel_engine->mayiuse(compute::device_ext_t::

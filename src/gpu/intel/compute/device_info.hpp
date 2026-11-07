@@ -228,6 +228,7 @@ public:
         return runtime_version_;
     }
     const std::string &name() const { return name_; }
+    const std::string &platform_name() const { return platform_name_; }
 
     bool mayiuse_ngen_kernels() const { return mayiuse_ngen_kernels_; }
 
@@ -287,6 +288,10 @@ protected:
     bool is_efficient_64bit_ = false; // Efficient 64 bit addressing available
 
     std::string name_;
+    // The OpenCL engine identifies its primitive blobs by the platform too,
+    // so a device-less engine needs it to reproduce that identity. Other
+    // runtimes leave it empty.
+    std::string platform_name_;
     xpu::runtime_version_t runtime_version_;
 
     int32_t eu_count_ = 0;

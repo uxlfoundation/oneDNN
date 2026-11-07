@@ -82,6 +82,17 @@ status_t device_info_t::init_device_name(impl::engine_t *engine) {
             device, CL_DEVICE_NAME, param_size, &name_[0], &param_size);
     OCL_CHECK(err);
 
+    // Keeps the null terminator, as `engine_t::serialize_device()` does.
+    auto platform = utils::downcast<const engine_t *>(engine)->platform();
+    err = xpu::ocl::clGetPlatformInfo(
+            platform, CL_PLATFORM_NAME, 0, nullptr, &param_size);
+    OCL_CHECK(err);
+
+    platform_name_ = std::string(param_size, '\0');
+    err = xpu::ocl::clGetPlatformInfo(platform, CL_PLATFORM_NAME, param_size,
+            &platform_name_[0], nullptr);
+    OCL_CHECK(err);
+
     return status::success;
 }
 

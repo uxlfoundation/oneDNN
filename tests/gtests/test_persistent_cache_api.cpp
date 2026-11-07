@@ -249,6 +249,16 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     // Phase 2 re-exports the blob it was given.
     ASSERT_EQ(get_engine_cache_blob(eng), cache_blob);
 
+    // Phase 3 finds the primitives compiled in phase 2 by this ID.
+    memory::desc eltwise_md(
+            {2, 16, 4, 4}, memory::data_type::f32, memory::format_tag::nchw);
+    auto make_eltwise_pd = [&](const engine &e) {
+        return eltwise_forward::primitive_desc(e, prop_kind::forward_inference,
+                algorithm::eltwise_relu, eltwise_md, eltwise_md, 0.f);
+    };
+    EXPECT_EQ(make_eltwise_pd(eng).get_cache_blob_id(),
+            make_eltwise_pd(test_engine).get_cache_blob_id());
+
     dnnl_stream_t c_stream = nullptr;
     EXPECT_EQ(
             dnnl_stream_create(&c_stream, eng.get(), dnnl_stream_default_flags),

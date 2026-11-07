@@ -93,8 +93,17 @@ gpu_utils::device_id_t engine_t::device_id() const {
 }
 
 status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
-    VERROR(common, runtime, "device-less engine can't serialize the device");
-    return status::unimplemented;
+    if (runtime_kind() == runtime_kind::ocl)
+        sstream.append_array(device_info()->platform_name().size(),
+                device_info()->platform_name().data());
+    sstream.append_array(
+            device_info()->name().size(), device_info()->name().data());
+    sstream.append(device_info()->runtime_version().major);
+    sstream.append(device_info()->runtime_version().minor);
+    sstream.append(device_info()->runtime_version().build);
+    sstream.append(device_info()->runtime_version().revision);
+
+    return status::success;
 }
 
 status_t engine_t::get_cache_blob_size(size_t *size) const {

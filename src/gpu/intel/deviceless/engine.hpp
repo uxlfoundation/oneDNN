@@ -69,8 +69,7 @@ public:
     gpu_utils::device_id_t device_id() const override;
 
     // The bytes must equal those of the runtime engine that imports the
-    // primitives, and the OpenCL engine needs the platform name, which the
-    // blob doesn't carry.
+    // primitives, so the layout follows the OpenCL and Level Zero engines.
     status_t serialize_device(serialization_stream_t &sstream) const override;
 
     status_t get_cache_blob_size(size_t *size) const override;

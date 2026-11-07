@@ -185,6 +185,12 @@ dnnl_status_t brgemm_attr_init(
         if (key_str.find(STRINGIFY(hint_load_nt_B)) != std::string::npos)
             brgattr->hint_load_nt_B = static_cast<brgemm_kernel_hint_nt_t>(
                     std::stoi(value_str));
+#if defined(brg_x64)
+        // `mem_advice` exists only in the x64 brgemm.
+        if (key_str.find(STRINGIFY(mem_advice)) != std::string::npos)
+            brgattr->mem_advice = static_cast<brgemm_kernel_hint_mem_advice_t>(
+                    std::stoi(value_str));
+#endif
     }
 
     return dnnl_success;

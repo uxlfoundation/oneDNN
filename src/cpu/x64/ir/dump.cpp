@@ -211,6 +211,8 @@ std::string hint_str(mem_hint_t hint) {
     std::string s;
     if ((hint & mem_hint_t::non_temporal) != mem_hint_t::none)
         s += ", non_temporal";
+    if ((hint & mem_hint_t::read_shared) != mem_hint_t::none)
+        s += ", read_shared";
 
     return s;
 }
@@ -277,7 +279,8 @@ std::string op_str(const ir_t &ir, const op_t &op, cpu_isa_t isa,
         case op_kind_t::tzero: return k + r(op.dst);
         case op_kind_t::vload:
         case op_kind_t::vload_scalar:
-        case op_kind_t::vload_bcast: return k + r(op.dst) + ", " + mem(op.dst);
+        case op_kind_t::vload_bcast:
+            return k + r(op.dst) + ", " + mem(op.dst) + hint_str(op.hint);
         case op_kind_t::vstore:
         case op_kind_t::vstore_scalar: return k + mem(op.s0) + ", " + r(op.s0);
         case op_kind_t::vdot:
@@ -286,7 +289,8 @@ std::string op_str(const ir_t &ir, const op_t &op, cpu_isa_t isa,
         case op_kind_t::inject_postops:
             return k + postops_str(ir, op, isa, alloc, temps);
         case op_kind_t::vload_masked:
-            return k + r(op.dst) + ", " + mem(op.dst) + ", " + r(op.s1);
+            return k + r(op.dst) + ", " + mem(op.dst) + ", " + r(op.s1)
+                    + hint_str(op.hint);
         case op_kind_t::tload:
             return k + r(op.dst) + ", " + mem(op.dst) + ", " + r(op.s1)
                     + hint_str(op.hint);

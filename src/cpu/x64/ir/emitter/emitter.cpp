@@ -248,7 +248,8 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::vload: { // overwrites dst
                 int base = gpr_use(op.mem.base).getIdx();
                 int d = reg_of(op.dst);
-                be.vload(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
+                be.vload(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst),
+                        op.hint);
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
@@ -345,8 +346,8 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 int base = gpr_use(op.mem.base).getIdx();
                 int d = reg_of(op.dst);
                 int m = mask_use(op.s1);
-                be.vload_masked(
-                        d, base, op.mem.disp, m, op.mem_dt, dt_of(op.dst));
+                be.vload_masked(d, base, op.mem.disp, m, op.mem_dt,
+                        dt_of(op.dst), op.hint);
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }

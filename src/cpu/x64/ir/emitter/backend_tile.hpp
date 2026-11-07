@@ -43,12 +43,23 @@ struct tile_backend_t {
     }
 
     // Load and store a tile, one row every `stride` bytes. The stride is the
-    // index register of the address.
+    // index register of the address. `read_shared` uses the MOVRS forms where
+    // the ISA has AMX-MOVRS.
     void tload(int d, int base, dim_t disp, int stride, mem_hint_t hint) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + Xbyak::Reg64(stride)
                 + (int)disp];
-        if ((hint & mem_hint_t::non_temporal) != mem_hint_t::none)
+        const bool non_temporal
+                = (hint & mem_hint_t::non_temporal) != mem_hint_t::none;
+        const bool read_shared
+                = (hint & mem_hint_t::read_shared) != mem_hint_t::none;
+        const bool use_movrs = read_shared && isa_has_amx_movrs(isa);
+
+        if (non_temporal && use_movrs)
+            gen().tileloaddrst1(Xbyak::Tmm(d), addr);
+        else if (non_temporal)
             gen().tileloaddt1(Xbyak::Tmm(d), addr);
+        else if (use_movrs)
+            gen().tileloaddrs(Xbyak::Tmm(d), addr);
         else
             gen().tileloadd(Xbyak::Tmm(d), addr);
     }

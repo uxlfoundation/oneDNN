@@ -72,11 +72,17 @@ struct avx512_backend_t {
     //   bf16 -> bf16  plain move
     //   bf16 -> f32   half a register read and widened
     //   f16  -> f32   half a register read and widened
+    // With `read_shared`, f32 -> f32 uses `vmovrsd` where the ISA has MOVRS.
     void vload(int d, int base, dim_t disp, data_type_t mem_dt,
-            data_type_t reg_dt) {
+            data_type_t reg_dt, mem_hint_t hint) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        const bool read_shared
+                = (hint & mem_hint_t::read_shared) != mem_hint_t::none;
+        const bool use_movrs = read_shared && isa_has_movrs(isa);
 
-        if (mem_dt == reg_dt
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32 && use_movrs) {
+            gen().vmovrsd(Xbyak::Zmm(d), addr);
+        } else if (mem_dt == reg_dt
                 && utils::one_of(reg_dt, data_type::f32, data_type::bf16)) {
             gen().vmovups(Xbyak::Zmm(d), addr);
         } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
@@ -202,13 +208,18 @@ struct avx512_backend_t {
     // An inactive element has to read as zero, or a tail iteration would
     // accumulate whatever the register happened to hold into the dot product.
     // The mask counts elements of `mem_dt`, so a converting form masks the
-    // narrow read and widens what is left.
+    // narrow read and widens what is left. The hint works as for `vload`.
     void vload_masked(int d, int base, dim_t disp, int mask, data_type_t mem_dt,
-            data_type_t reg_dt) {
+            data_type_t reg_dt, mem_hint_t hint) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
         const Xbyak::Opmask k(mask);
+        const bool read_shared
+                = (hint & mem_hint_t::read_shared) != mem_hint_t::none;
+        const bool use_movrs = read_shared && isa_has_movrs(isa);
 
-        if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32 && use_movrs) {
+            gen().vmovrsd(Xbyak::Zmm(d) | k | gen().T_z, addr);
+        } else if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
             gen().vmovups(Xbyak::Zmm(d) | k | gen().T_z, addr);
         } else if (mem_dt == data_type::bf16 && reg_dt == data_type::bf16) {
             gen().vmovdqu16(Xbyak::Zmm(d) | k | gen().T_z, addr);

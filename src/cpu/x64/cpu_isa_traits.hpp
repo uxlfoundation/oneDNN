@@ -546,6 +546,11 @@ inline bool isa_has_sat_cvt(cpu_isa_t isa, data_type_t dt) {
             && is_superset(isa, avx10_2);
 }
 
+// Check if the ISA has the read-shared loads (MOVRS)
+inline bool isa_has_movrs(cpu_isa_t isa) {
+    return is_superset(isa, avx10_2);
+}
+
 inline int isa_max_vlen(cpu_isa_t isa) {
     const bool is_avx512 = is_superset(isa, avx512_core);
     const bool is_avx2 = is_superset(isa, avx2);

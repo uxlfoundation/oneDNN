@@ -86,3 +86,6 @@
 
 # BF16 destination with bias, sum, and eltwise.
 --reset --impl=brg:sve_ --dt=bf16:bf16:bf16 --bia-dt=bf16 --stag=ab --wtag=any --dtag=ab --attr-post-ops=sum:1+relu 31x72:72x128_n"bf16_epilogue"
+# Per-row src scales when the src batch merges into M (weights without batch).
+--reset --dt=f32,s8:s8:f32 --attr-scales=src:2 6x2x64:1x64x6_n"src_row_scales_batch_merged_into_m"
+--reset --dt=f32 --attr-scales=src:2 6x1x64:1x64x6_n"src_row_scales_batch_merged_into_unit_m"

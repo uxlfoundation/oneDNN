@@ -594,9 +594,10 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     s.ka_load = s.kb_load = 16;
     if (!systolic) {
         // Keep eight bytes per integer operand without enlarging the other
-        // operand's load for mixed-precision inputs. Preserve floating-point defaults.
-        s.ka_load = Ta_load.isInteger() ? 8 / Ta_load : 4;
-        s.kb_load = problem.Tb_ext.isInteger() ? 8 / problem.Tb_ext : 4;
+        // operand's load for mixed-precision inputs. Preserve floating-point
+        // defaults, including for integer data computed in f32.
+        s.ka_load = (Ta_load.isInteger() && problem.Ta != Type::f32) ? 8 / Ta_load : 4;
+        s.kb_load = (problem.Tb_ext.isInteger() && problem.Tb != Type::f32) ? 8 / problem.Tb_ext : 4;
     }
 
     auto m_iter = std::max(1, s.unroll[LoopM] / elementsPerGRF<uint32_t>(hw));

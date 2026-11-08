@@ -512,24 +512,25 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
     VDISPATCH_MATMUL(IMPLICATION(wei_dt == u3, src_dt == f16),
             VERBOSE_UNSUPPORTED_DT_CFG);
 
+    const auto *dev_info
+            = utils::downcast<const intel::engine_t *>(engine)->device_info();
+    const auto hw = getCore(dev_info->product().family);
+    const dim_t wei_ld_bytes = types::elements_to_bytes(
+            wei_dt, gemm_desc_t::get_ld(*weights_md(0)));
+
     // u3 weights are only loaded with transposing 2D block messages, which
     // require K-contiguous weights with an aligned pitch
     if (wei_dt == u3) {
-        const auto *dev_info = utils::downcast<const intel::engine_t *>(engine)
-                                       ->device_info();
         VDISPATCH_MATMUL(dev_info->gpu_arch() >= compute::gpu_arch_t::xe_hpc,
                 VERBOSE_UNSUPPORTED_DEVICE_FEATURE,
                 "u3 weights requires 2d block loads");
         VDISPATCH_MATMUL(wei_d.matches_tag(format_tag::acb),
                 VERBOSE_UNSUPPORTED_TAG_S, "u3 weights");
-        auto hw = getCore(dev_info->product().family);
-        const dim_t ld_bytes = types::elements_to_bytes(
-                wei_dt, gemm_desc_t::get_ld(*weights_md(0)));
         const int pitch_alignment = jit::block_2d_pitch_alignment(hw);
-        VDISPATCH_MATMUL(ld_bytes % pitch_alignment == 0,
+        VDISPATCH_MATMUL(wei_ld_bytes % pitch_alignment == 0,
                 VERBOSE_UNSUPPORTED_MEM_STRIDE
                 ": u3 weights pitch (%d bytes) is not %d-byte aligned",
-                (int)ld_bytes, pitch_alignment);
+                (int)wei_ld_bytes, pitch_alignment);
     }
 
     // WOQ (fp src + int wei) requires weight scales and fpmath apply_to_int
@@ -644,25 +645,61 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
 
     // The microkernel applies scales and zero points with a single group
     // shape per operand. Common wei zero points have no groups.
+    const std::array<int, 2> src_groups = src_group_sizes();
     if (src_quant().with_scale() && src_quant().with_zp()) {
         std::array<int, 2> src_zp_group_sizes;
         calc_group_sizes(src_zp_group_sizes,
                 attr()->zero_points_.get(DNNL_ARG_SRC), src_d);
-        VDISPATCH_MATMUL(src_zp_group_sizes == src_group_sizes(),
+        VDISPATCH_MATMUL(src_zp_group_sizes == src_groups,
                 VERBOSE_UNSUPPORTED_ZP_CFG
                 ": src scale and zp groups must match");
     }
+    std::array<int, 3> wei_groups = {0, 0, 0};
+    if (wei_quant().with_scale()) {
+        calc_group_sizes(
+                wei_groups, attr()->scales_.get(DNNL_ARG_WEIGHTS), wei_d);
+    } else if (wei_quant().with_zp()) {
+        calc_group_sizes(
+                wei_groups, attr()->zero_points_.get(DNNL_ARG_WEIGHTS), wei_d);
+    }
     if (wei_quant().with_scale() && wei_quant().with_zp()
             && wei_quant().zp_mask() != 0) {
-        std::array<int, 3> wei_scale_group_sizes;
         std::array<int, 3> wei_zp_group_sizes;
-        calc_group_sizes(wei_scale_group_sizes,
-                attr()->scales_.get(DNNL_ARG_WEIGHTS), wei_d);
         calc_group_sizes(wei_zp_group_sizes,
                 attr()->zero_points_.get(DNNL_ARG_WEIGHTS), wei_d);
-        VDISPATCH_MATMUL(wei_zp_group_sizes == wei_scale_group_sizes,
+        VDISPATCH_MATMUL(wei_zp_group_sizes == wei_groups,
                 VERBOSE_UNSUPPORTED_ZP_CFG
                 ": wei scale and zp groups must match");
+    }
+
+    // abc weights that can't use block 2D loads are copied into SLM one k row
+    // at a time, and src goes through SLM when it can't use them either. With
+    // 2D quantization on both, the microkernel loads their parameters per SLM
+    // chunk of 32 k, so different k groups must both divide 32: a deeper chunk
+    // doesn't fit in registers.
+    const int src_qmask_MK = src_qmask_M() | src_qmask_K();
+    const bool src_q2d = (src_quant().with_scale()
+                                 && src_quant().scale_mask() == src_qmask_MK
+                                 && src_groups[1] < K())
+            || (src_quant().with_zp() && src_quant().zp_mask() == src_qmask_MK);
+    // Scales covering all of K and one column are applied after the GEMM.
+    const bool wei_q2d = (wei_quant().with_zp() && wei_quant().zp_mask() == 7)
+            || (wei_quant().with_scale() && wei_quant().scale_mask() == 7
+                    && (wei_groups[1] < K() || wei_groups[2] > 1));
+    if (src_q2d && wei_q2d && wei_d.matches_tag(format_tag::abc)) {
+        // The microkernel rounds groups up to powers of two.
+        const int wei_qk = utils::rnd_up_pow2(wei_groups[1]);
+        const int src_qk = utils::rnd_up_pow2(src_groups[1]);
+        const dim_t src_ld_bytes = types::elements_to_bytes(src_dt, K());
+        const bool both_slm = hw >= ngen::HW::XeHP
+                && !has_block_2d_pitch(hw, static_cast<int>(wei_ld_bytes))
+                && !has_block_2d_pitch(hw, static_cast<int>(src_ld_bytes));
+        VDISPATCH_MATMUL(!(both_slm && wei_qk != src_qk
+                                 && std::max(wei_qk, src_qk) > 32),
+                VERBOSE_UNSUPPORTED_SCALES_CFG
+                ": with abc weights, wei and src k groups must be equal or "
+                "both <= 32 (wei %d, src %d)",
+                wei_groups[1], src_groups[1]);
     }
 
     return status::success;

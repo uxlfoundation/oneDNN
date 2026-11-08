@@ -174,6 +174,16 @@ std::vector<gemmstone::StrategyRequirement> fallback_reqs(
             }
             if (!dev_info.mayiuse_systolic()) max_wg_n = 2;
             if (ta_ext.bits() <= 8) min_wg_n = 2;
+            // When k-contiguous A and B both have 2D quantization with
+            // different groups, their shared SLM chunk has to span both groups.
+            // For groups of 128 or more, only a 2-wide n unroll leaves room for
+            // it.
+            const bool a_q2d = problem.aOffset2D() || problem.aScale2D();
+            const bool b_q2d = problem.bOffset2D() || problem.bScale2D();
+            if (problem.A.layout == MatrixLayout::T && a_q2d && b_q2d
+                    && problem.aqGroupK != problem.bqGroupK
+                    && std::max(problem.aqGroupK, problem.bqGroupK) >= 128)
+                max_n_unroll = 2;
         } break;
         case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
         case compute::gpu_arch_t::xe2:

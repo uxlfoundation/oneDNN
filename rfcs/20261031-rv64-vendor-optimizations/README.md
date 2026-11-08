@@ -29,21 +29,18 @@ optimizations.
 
 Route 1 follows these steps:
 
-1. **Make RV64 JIT kernels selectable at build time.** Allow existing kernels
-   and their dispatch registrations to be compiled out. Keep all enabled by
-   default.
-2. **Make the hardware detectable through upstream Linux.** Linux must have
+1. **Make the hardware detectable through upstream Linux.** Linux must have
    merged the support needed to identify the target CPUs with
    `riscv_hwprobe()`. At minimum, we need to identify the microarchitecture.
    We recommend directly reporting the supported instruction extensions.
-3. **Update Xbyak_riscv.** Add CPU-set queries so ISA support and VLEN are
+2. **Update Xbyak_riscv.** Add CPU-set queries so ISA support and VLEN are
    detected for the CPUs that will run the kernel, including heterogeneous
    systems. Add encodings, operand checks, and tests for new instructions. For
    vendor extensions reported only through CPU identifiers, propose a lookup
    table in Xbyak_riscv.
-4. **Update oneDNN's Xbyak_riscv version** after any required upstream changes
+3. **Update oneDNN's Xbyak_riscv version** after any required upstream changes
    merge.
-5. **Submit the optimized oneDNN kernels.** Include correctness results,
+4. **Submit the optimized oneDNN kernels.** Include correctness results,
    performance measurements and supported configurations.
 
 Direct ISA reporting can take time to reach upstream Linux, and vendor
@@ -74,12 +71,18 @@ Query the selected CPUs with riscv_hwprobe()
     -> identify an A100 implementation
 Look up that implementation in the vendor table
     -> find the supported extensions and their versions
-Select a oneDNN kernel that uses those extensions
+Check the required OS support and execution-thread permissions
+    -> select a oneDNN kernel that can use those extensions
 ```
 
 In this example, Linux answers “which CPU?”, and the table answers “which
 instructions?”. Each table entry documents the mapping, including CPU
 revisions, OS requirements, and its specification references.
+
+CPU identifiers establish hardware support. Before selecting a kernel, also
+check OS support for any added register state and the executing thread's
+permission to use it. For example, Linux exposes per-thread V enablement
+through `prctl(PR_RISCV_V_GET_CONTROL)`.
 
 **Example B: Linux directly tells us whether an extension is supported.**
 
@@ -111,7 +114,8 @@ needing another model entry in our table.
 recommend Example B.** When direct reporting is available, it takes priority.
 An explicit unsupported result must not be overridden by the lookup table.
 If neither method confirms support, oneDNN uses its existing fallback.
-Extensions that add OS-managed state also need the corresponding OS support.
+Extensions that add register state need kernel support to save and restore it
+across context switches and signals.
 
 The [Linux hwprobe documentation](https://docs.kernel.org/arch/riscv/hwprobe.html)
 explains CPU identifiers, extension bits, and CPU-set queries.
@@ -284,11 +288,13 @@ its RFC describes that role, the interface oneDNN calls, and how the library
 is packaged and updated. Reviewers weigh its size and dependency cost against
 measured performance, adoption, and maintenance.
 
-#### Build-time selection of JIT extensions
+#### Optional build-time selection and runtime ISA control
 
-Route 1 allows build-time selection of JIT ISA extensions to control binary
-size. Users can omit extension-specific kernel generators and their dispatch
-registrations when those implementations are unnecessary for their deployment.
+Build-time selection can reduce binary size for constrained deployments. It
+is optional and is not a prerequisite for integrating vendor optimizations.
+Keep all JIT implementations enabled by default. Users may omit
+extension-specific kernel generators and their dispatch registrations when
+those implementations are unnecessary for their deployment.
 The selection should use a common RV64 mechanism rather than separate build
 logic for each primitive. Compiling out an extension must also remove its
 exclusive code and dependencies.
@@ -298,8 +304,12 @@ detection then determines which included implementations the hardware and OS
 can execute. Keep the portable compiler ISA baseline unchanged.
 Existing standard RVV and scalar fallbacks remain available according to the
 normal build configuration. Tests should cover both inclusion and exclusion
-of each selectable extension, and contributions should report the code-size
-impact of enabling it.
+of each selectable extension. Proposals to add build-time selection should
+report the resulting binary-size savings.
+
+For debugging and implementation comparisons, a runtime ISA control similar
+to `ONEDNN_MAX_CPU_ISA` would let users restrict which supported extensions
+oneDNN uses. This controls dispatch without removing code from the binary.
 
 ### Route 2: Vendor-library integration
 
@@ -314,11 +324,10 @@ license and describe any limits on use or redistribution. For a closed-source
 library, explain how users obtain and update it. Also describe hardware
 detection, OS requirements, and handling of heterogeneous CPUs.
 
-**Open-source libraries use a Git submodule pinned to a reviewed commit.** Users
-initialize it when enabling the library's optional build configuration. Library
-updates change that recorded commit through code review. Closed-source
-libraries may instead be supplied separately by users; they do not require a
-submodule.
+**Use FetchContent for sizeable open-source libraries.** Small libraries that
+are updated infrequently may be vendored into the source tree. Pin dependencies
+to reviewed revisions and review updates through pull requests. Closed-source
+libraries may be supplied separately by users.
 
 The adapter translates oneDNN descriptors and arguments into library calls.
 It joins the existing primitive-selection process and checks that the library
@@ -364,7 +373,8 @@ The removal process is:
 5. **Remove unused dependencies.** Stop relying on obsolete vendor support
    in oneDNN's Xbyak_riscv integration. Removal of encodings or detection APIs
    from Xbyak_riscv itself follows that project's review process. For Route 2,
-   remove an unused adapter and submodule through the same deprecation process.
+   remove an unused adapter and its dependency through the same deprecation
+   process.
 
 If removal raises the minimum ISA or removes user-visible functionality,
 document that change in the release notes.
@@ -376,14 +386,12 @@ tracking issue and release notes.
 
 The first target is matmul on SpacemiT A100 using IME:
 
-1. Make existing RV64 JIT kernels selectable at build time, including their
-   dispatch entries. Keep all kernels enabled by default.
-2. Update Xbyak_riscv to detect ISA support and VLEN for a specified CPU group.
+1. Update Xbyak_riscv to detect ISA support and VLEN for a specified CPU group.
    Check X100 and A100 separately on K3.
-3. Add IME detection, instruction encodings, and tests to Xbyak_riscv. Linux
+2. Add IME detection, instruction encodings, and tests to Xbyak_riscv. Linux
    must first expose the required CPU identification. Provide a public QEMU
    build that runs the IME tests.
-4. Update oneDNN's Xbyak_riscv version and add an IME GEMM/BRGEMM kernel with
+3. Update oneDNN's Xbyak_riscv version and add an IME GEMM/BRGEMM kernel with
    runtime dispatch to A100.
-5. Run correctness tests in QEMU and performance tests on A100, including
+4. Run correctness tests in QEMU and performance tests on A100, including
    benchdnn batches that cover the supported matmul workloads.

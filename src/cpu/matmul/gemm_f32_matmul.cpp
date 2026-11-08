@@ -51,6 +51,7 @@ status_t gemm_f32_matmul_t::pd_t::init(const engine_t *engine) {
 
     auto check_attr_scales = [&]() -> status_t {
         CHECK(attr_scales_ok(engine));
+        CHECK(wei_scales_not_over_k(engine));
         if (!attr()->scales_.has_default_values(DNNL_ARG_SRC)
                 && !attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
                 && attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0) {

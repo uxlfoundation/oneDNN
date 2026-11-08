@@ -307,8 +307,10 @@ struct GEMMProblem : public CommonProblem {
         return useBDPAS;
     }
     bool validLateScaleGroups() const {
-        return ((aScale2D() && (aqGroupK <=1 || aqGroupK % 32 == 0))
-            || (bScale2D() && (bqGroupK <=1 || bqGroupK % 32 == 0)));
+        // Every 2D scale must suit late scaling, not just one of them.
+        bool aValid = !aScale2D() || aqGroupK <= 1 || aqGroupK % 32 == 0;
+        bool bValid = !bScale2D() || bqGroupK <= 1 || bqGroupK % 32 == 0;
+        return (aScale2D() || bScale2D()) && aValid && bValid;
     }
 
     bool needsAGroupSums() const { return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb)); }

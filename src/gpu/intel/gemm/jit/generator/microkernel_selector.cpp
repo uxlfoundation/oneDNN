@@ -741,8 +741,14 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
             auto kqLoad = [&](int groupK) {
                 return (s.unrollKSLM % groupK == 0) ? s.unrollKSLM : groupK;
             };
-            if (kqLoad(problem.aqGroupK) != kqLoad(problem.bqGroupK))
-                return false;
+            if (kqLoad(problem.aqGroupK) != kqLoad(problem.bqGroupK)) {
+                // A strided along k is copied into SLM one k column at a time
+                // and has no registers left for a deeper chunk.
+                if (problem.A.layout == MatrixLayout::N) return false;
+                // Make the chunk a multiple of both groups.
+                s.unrollKSLM = lcm(s.unrollKSLM,
+                        lcm(problem.aqGroupK, problem.bqGroupK));
+            }
         }
     }
 

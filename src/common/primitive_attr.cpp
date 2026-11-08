@@ -242,7 +242,7 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
     CHECK(memory_desc_sanity_check(*user_src1_desc));
 
     // A sub-byte src1 with `any` format gets its strides resolved from
-    // `dst_md` in `set_default_formats`, which inherits dst strides verbatim
+    // `dst_md` in `set_default_formats`, which follows the dst dimension order
     // and cannot guarantee the storage-unit (byte) alignment sub-byte types
     // require. If a concrete format is passed, it gets validated using memory
     // descriptor creation public API which enforces proper strides.
@@ -330,6 +330,16 @@ status_t post_ops_t::set_default_formats(const memory_desc_t *dst_md) {
         const memory_desc_wrapper src1_mdw(src1_md);
 
         const memory_desc_wrapper dst_mdw(dst_md);
+
+        // An in-place binary reads the destination memory itself, so its
+        // descriptor is the destination's, padded strides and offset included.
+        if (src1_mdw.format_any() && entry_[idx].is_inplace_binary()) {
+            assert(!dst_mdw.format_any());
+            const auto src1_dt = src1_md.data_type;
+            src1_md = *dst_md;
+            src1_md.data_type = src1_dt;
+            continue;
+        }
 
         // 1D tensors should be plain abx.
         if (src1_mdw.format_any()) {

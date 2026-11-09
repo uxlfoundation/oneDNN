@@ -588,7 +588,7 @@ class ParserImpl:
         fields = template.rstrip().split(",")
         values = line.rstrip().split(",")
         mapping = self.dnnl_to_ir()
-        min_fields = sum((mapping[field][2] for field in fields))
+        min_fields = sum(mapping[field][2] for field in fields)
         max_fields = len(fields)
         if len(values) < min_fields:
             raise InvalidEntryError("parse error: too few fields to parse")

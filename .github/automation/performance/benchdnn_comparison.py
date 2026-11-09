@@ -32,6 +32,7 @@ import pathlib
 import statistics
 import warnings
 from collections import defaultdict
+from typing import MutableMapping
 
 import git
 from scipy.stats import ttest_ind
@@ -91,7 +92,7 @@ def compare_two_benchdnn(file1, file2, out_file=None):
     r1_ctime = defaultdict(list)
     r2_exec = defaultdict(list)
     r2_ctime = defaultdict(list)
-    r1_problem = {}
+    r1_problem: MutableMapping[str, str] = {}
 
     for key, exec_time, ctime in r1:
         normalized_key = normalize_problem_key(key)

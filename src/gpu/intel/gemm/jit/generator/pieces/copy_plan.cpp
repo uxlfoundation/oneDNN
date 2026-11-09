@@ -105,6 +105,7 @@ static bool isSubsetOf(DataType dt1, DataType dt2)
     if (dt1 == dt2) return true;
     if (isFP(dt1) && isInt(dt2)) return false;
     if (isW(dt1) && dt2 == DataType::tf32) return false;
+    if (isInt(dt1) && isInt(dt2) && isSigned(dt1) && !isSigned(dt2)) return false;
     if (isInt4(dt1) && (isB(dt2) || dt2 == DataType::hf8)) return true;
     if (dt1 == DataType::s4 && dt2 == DataType::bf8) return true;
     if (dt1 == DataType::e2m1 && isFP8(dt2)) return true;
@@ -607,21 +608,13 @@ void CopyPlan::copyThrough(CopyInstruction &i, DataType type, int stride, bool s
         i0.dst = i1.src0;
     } else {
         // No space for in-place conversion -- create temporary.
-        if (stride == 0)
+        if (stride == 0) {
             stride = std::max(1, ssize * sstride / isize);
-        int offset = 0;
-        auto tryOffset = [&](const CopyOperand &op) {
-            if (op.byteStride() == isize * stride) {
-                auto bo = op.byteOffset();
-                if (bo < GRF::bytes(hw) - stride * getBytes(type) * (i.simd - 1))
-                    offset = bo / isize;
-            }
-        };
-        if (isize <= dsize) tryOffset(i1.dst.byteOffset());
-        if (isize <= ssize) tryOffset(i0.src0.byteOffset());
-        if (type == DataType::hf)
-            offset &= ~1;
-        i0.dst = newTemp(type, i.simd, stride, 0, offset);
+            // Favor the vertical striding for byte-aligned subbyte 2d regions
+            if (ssize * i.src0.width % 8 == 0 && dsize * dstride == ssize * i.src0.vs)
+                stride = std::max(stride, dsize * dstride / isize);
+        }
+        i0.dst = newTemp(type, i.simd, stride);
         i1.src0 = i0.dst;
         i1.src0.overwriteStride = true;
 
@@ -826,7 +819,7 @@ void CopyPlan::planTypeConversions()
 
         if (is4(st) && one_of(dt, {ngen_b16_h4x(), ngen_b16_l4x()}))
             plan4BitShifts(i);
-        else if (isInt4(st) && isInt4(dt) && st != dt) {
+        else if (isInt4(st) && isInt4(dt)) {
             copyThrough(i, DataType::w);
             rerun = true;
         } else if (isInt4(st) && isInt(dt)) {
@@ -1453,6 +1446,19 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
 
     bool s4 = (i.src0.type == DataType::s4);
 
+    // 2D-aware region normalization for stride expansion
+    // E.g., every other element of a <8; 2, 1> region is <8>
+    auto reregion = [](CopyOperand& op, uint8_t gap) {
+        op.stride *= gap;
+        if (op.width > 1) {
+            if (op.width > gap) op.width /= gap;
+            else op.vs *= gap / op.width, op.width = 1;
+        }
+        if (op.width == 1) op.stride = op.vs;
+        if (op.vs == op.width * op.stride) op.width = 0;
+        if (op.width == 0) op.vs = 0;
+    };
+
     if (i.src0.stride == 1 && i.simd > 1) {
         // Split into high and low nybble conversions first, if needed.
         // If dst stride is too large, copy through uw<1>.
@@ -1462,15 +1468,10 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
             auto t = newTemp(DataType::uw, i.simd, 1);
             ie[0]->simd /= 2;
             ie[0]->op = s4 ? Opcode::shl : Opcode::and_;
+            reregion(ie[0]->src0, 2);
             ie[0]->src0.type = DataType::ub;
+            ie[0]->src0.stride /= 2;
             ie[0]->src0.offset /= 2;
-            if (ie[0]->src0.width > 1) {
-                ie[0]->src0.width /= 2;
-                if (ie[0]->src0.width == 1) {
-                    ie[0]->src0.stride = ie[0]->src0.vs / 2;
-                    ie[0]->src0.vs = ie[0]->src0.width = 0;
-                }
-            }
             ie[0]->src1 = s4 ? 4 : 0xF;
             ie[0]->dst = t;
             ie[0]->dst.stride *= 2;
@@ -1491,22 +1492,18 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
         } else {
             auto &i0 = i;
             i0.dst.stride *= 2;
-            i0.src0.stride *= 2;
+            auto s0s = i0.src0.stride;
+            reregion(i0.src0, 2);
             i0.simd /= 2;
             split(i, true);
             i0.dst.offset += i0.dst.stride / 2;
-            i0.src0.offset += i0.src0.stride / 2;
+            i0.src0.offset += s0s;
         }
     } else {
         bool even = (i.src0.offset % 2 == 0);
         if (i.dst.stride > 4) stub("Unsupported stride.");
         i.src0.stride /= 2;
         i.src0.offset /= 2;
-        if (getBits(i.dst.type) < 8) {
-            i.dst.type = DataType::ub;
-            i.dst.stride /= 2;
-            i.dst.offset /= 2;
-        }
 
         if (even) {
             // Low nybbles
@@ -1609,7 +1606,8 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
     auto ddst = CopyOperand(i.dst);
     auto ssrc = CopyOperand(i.src0);
     int tmp_elems = ddst.stride > 4 ? simd * 2 : simd;
-    auto tmp = newTemp(DataType::uw, tmp_elems, 1);
+    auto tmp_stride = std::max<int>(1, ddst.stride / 4);
+    auto tmp = newTemp(DataType::uw, tmp_elems, tmp_stride);
 
     int sStride = ssrc.stride * getBytes(ssrc.type) * 2;
     int dStride = ddst.stride / (getBytes(ssrc.type) * 2);
@@ -1650,13 +1648,13 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
 
     auto ie = splitMultiple<5>(i);
     auto osrc = i.src0;
-    auto stmp = newTemp(DataType::uw, simd, 1);
+    auto stmp = newTemp(DataType::uw, simd, tmp_stride);
 
     ie[0]->op = Opcode::mov;
     ie[0]->dst = stmp;
     ie[0]->src0 = osrc;
 
-    if (isW(osrc.type) && osrc.stride == 1 && osrc.overwrite) {
+    if (isW(osrc.type) && osrc.stride == tmp_stride && osrc.overwrite) {
         stmp = osrc;
         ie[0]->invalidate();
     }
@@ -1806,46 +1804,60 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
             ie[4]->invalidate();
         }
     } else {
+        const bool aligned = (getBits(ddst.type) * ddst.stride == getBits(tmp.type) * tmp.stride);
         const auto stride = ddst.stride / 2;
-        const auto offset = ddst.offset & 1;
+        const auto offset = ddst.offset & (aligned ? 3 : 1);
         const auto mask = (uint16_t)(0xF << (4 * offset));
 
-        ie[1]->op = Opcode::mov;
-        ie[1]->dst = tmp;
-        ie[1]->src0 = ddst;
-        ie[1]->src0.type = DataType::ub;
-        ie[1]->src0.stride = stride;
-        ie[1]->src0.offset /= 2;
+        if (!aligned) {
+            ie[1]->op = Opcode::mov;
+            ie[1]->dst = tmp;
+            ie[1]->src0 = ddst;
+            ie[1]->src0.type = DataType::ub;
+            ie[1]->src0.stride = stride;
+            ie[1]->src0.offset /= 2;
+        } else {
+            ie[1]->invalidate();
+        }
 
         if (offset) {
             ie[2]->op = Opcode::shl;
             ie[2]->simd = simd;
             ie[2]->dst = stmp;
-            ie[2]->dst.stride = 1;
             ie[2]->src0 = stmp;
-            ie[2]->src0.stride = 1;
-            ie[2]->src1 = 4;
+            ie[2]->src1 = 4 * offset;
         } else {
             ie[2]->invalidate();
+        }
+
+        if (aligned) {
+            tmp = ddst;
+            tmp.type = DataType::uw;
+            tmp.offset /= 4;
+            tmp.stride /= 4;
         }
 
         ie[3]->op = Opcode::bfn;
         ie[3]->ctrl = 0xCA;
         ie[3]->simd = simd;
         ie[3]->dst = tmp;
-        ie[3]->src0 = stmp;
-        ie[3]->src1 = tmp;
-        ie[3]->src2 = 0xFFFF ^ mask;
+        ie[3]->src0 = tmp;
+        ie[3]->src1 = stmp;
+        ie[3]->src2 = mask;
 
-        ie[4]->op = Opcode::mov;
-        ie[4]->simd = simd;
-        ie[4]->dst = ddst;
-        ie[4]->dst.type = DataType::ub;
-        ie[4]->dst.stride = stride;
-        ie[4]->dst.offset /= 2;
-        ie[4]->src0 = tmp;
-        ie[4]->src0.type = DataType::ub;
-        ie[4]->src0.stride *= 2;
+        if (!aligned) {
+            ie[4]->op = Opcode::mov;
+            ie[4]->simd = simd;
+            ie[4]->dst = ddst;
+            ie[4]->dst.type = DataType::ub;
+            ie[4]->dst.stride = stride;
+            ie[4]->dst.offset /= 2;
+            ie[4]->src0 = tmp;
+            ie[4]->src0.type = DataType::ub;
+            ie[4]->src0.stride *= 2;
+        } else {
+            ie[4]->invalidate();
+        }
     }
 }
 
@@ -2447,17 +2459,18 @@ void CopyPlan::legalizeSIMD(bool initial)
                 simdMax = std::min(simdMax, grf >> 1);
         }
 
+        bool special = false;
         if (initial) {
-            bool skip = isInt(i.dst.type) && isInt(i.src0.type) && !i.sat;
-            skip |= isInt4(i.dst.type) || isInt4(i.src0.type) || isInt4(i.src1.type) || isInt4(i.src2.type);
-            if (skip) {
-                n++; continue;
-            }
+            special = isInt(i.dst.type) && isInt(i.src0.type) && !i.sat;
+            special |= isInt4(i.dst.type) || isInt4(i.src0.type) || isInt4(i.src1.type) || isInt4(i.src2.type);
+            special &= (i.op == Opcode::mov);
+            if (special)
+                simdMax = std::max(opSimdMax(i.dst), opSimdMax(i.src0));
         }
 
         // Fracture instruction into legal SIMD lengths.
         const int simd1 = std::min<int>(rounddown_pow2(i.simd), simdMax);
-        int simd0 = simd1;
+        int simd0 = initial && special ? std::min<int>(i.simd, simdMax) : simd1;
 
         if (!initial && forceSIMD1(i))
             simd0 = 1;
@@ -2494,10 +2507,9 @@ void CopyPlan::legalizeSIMD(bool initial)
                     op.offset += (n / op.width) * op.vs;
                     n %= op.width;
                 }
-                op.offset += n * op.stride;
-                int grfOffset = op.offset / ne;
+                int grfOffset = (op.offset + n * op.stride) / ne;
                 op.grf += grfOffset;
-                op.offset -= grfOffset * ne;
+                op.offset += (n * op.stride - grfOffset * ne);
             };
 
             i.simd -= simd0;

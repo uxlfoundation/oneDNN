@@ -2236,6 +2236,59 @@ RegisterLayout RegisterLayout::trySlice(vector<int> &indices, bool column, int x
     return trySlice(nullptr, &indices, nullptr, column, x1, x2, overrunOK);
 }
 
+RegisterLayout RegisterLayout::tryCreateFromSlice(bool column, int x1, int x2, bool overrunOK, bool decoalesce) const
+{
+    auto sublayout = trySlice(column, x1, x2, overrunOK, decoalesce);
+    if (sublayout) repackSlicedBlock2D(sublayout, column, x1, x2);
+    return sublayout;
+}
+
+RegisterLayout RegisterLayout::tryCreateFromSlice(vector<RegisterRange> &subaddrs, const vector<RegisterRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
+{
+    auto sublayout = trySlice(subaddrs, addrs, column, x1, x2, overrunOK);
+    if (sublayout) repackSlicedBlock2D(sublayout, column, x1, x2);
+    return sublayout;
+}
+
+// Trailing sub-blocks of a 2D block array (simdSize == 0) are filled by the
+//  first block's load, which writes them back-to-back (no padding). If
+//  slicing shrank the blocks, their register offsets must be rebuilt from
+//  the new sizes.
+// Only do this if the original layout followed the same back-to-back rule.
+void RegisterLayout::repackSlicedBlock2D(RegisterLayout &sublayout, bool column, int x1, int x2) const
+{
+    if (!isBlock2D(astrategy.accessType)) return;
+
+    auto RegisterBlock::*nq      = column ? &RegisterBlock::nc      : &RegisterBlock::nr;
+    auto RegisterBlock::*offsetQ = column ? &RegisterBlock::offsetC : &RegisterBlock::offsetR;
+
+    // Recover which original block each sub-block came from (same selection as trySlice).
+    vector<int> origIndex;
+    for (int b = 0; b < blocks(); b++) {
+        auto &block = list[b];
+        int qq1 = clamp<int>(x1 - block.*offsetQ, 0, block.*nq);
+        int qq2 = clamp<int>(x2 - block.*offsetQ, 0, block.*nq);
+        if (qq2 > qq1) origIndex.push_back(b);
+    }
+    if (origIndex.size() != sublayout.list.size()) return;
+
+    auto packedAfter = [](const RegisterBlock &prev) {
+        return prev.offsetBytes + prev.bytes;
+    };
+    for (size_t i = 1; i < sublayout.list.size(); i++) {
+        int ob = origIndex[i];
+        if (ob == 0 || origIndex[i - 1] != ob - 1) continue;
+        auto &oblock = list[ob];
+        auto &oprev = list[ob - 1];
+        auto &nblock = sublayout.list[i];
+        auto &nprev = sublayout.list[i - 1];
+        if (oblock.simdSize != 0 || nblock.simdSize != 0) continue;
+        if (oblock.count <= 1 || nblock.count <= 1) continue;
+        if (oblock.offsetBytes != packedAfter(oprev)) continue;
+        nblock.offsetBytes = packedAfter(nprev);
+    }
+}
+
 RegisterLayout RegisterLayout::trySlice(vector<RegisterRange> *subaddrs, vector<int> *indices, const vector<RegisterRange> *addrs,
                                         bool column, int x1, int x2, bool overrunOK, bool decoalesce) const
 {

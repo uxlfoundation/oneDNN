@@ -425,6 +425,12 @@ public:
                             bool column, int x1, int x2, bool overrunOK) const;
     RegisterLayout trySlice(std::vector<int> &indices, bool column, int x1, int x2, bool overrunOK) const;
 
+    // Like trySlice, for building remainder layouts: additionally rebuilds the register offsets of
+    //  trailing sub-blocks in sliced 2D block array layouts.
+    RegisterLayout tryCreateFromSlice(bool column, int x1, int x2, bool overrunOK, bool decoalesce = false) const;
+    RegisterLayout tryCreateFromSlice(std::vector<ngen::RegisterRange> &subaddrs, const std::vector<ngen::RegisterRange> &addrs,
+                               bool column, int x1, int x2, bool overrunOK) const;
+
     // Attempt to create a 2D block layout that matches an existing layout.
     // Currently only generates regular/transpose 2D block (no VNNI support).
     RegisterLayout tryUpgradeToBlock2D(const MatrixAddressing &atype2D, const MatrixAddressingStrategy &astrategy2D) const;
@@ -446,6 +452,8 @@ protected:
     void postprocessDPASW();
 
     void finalize();
+
+    void repackSlicedBlock2D(RegisterLayout &sublayout, bool column, int x1, int x2) const;
 
     RegisterLayout trySlice(std::vector<ngen::RegisterRange> *subaddrs, std::vector<int> *indices, const std::vector<ngen::RegisterRange> *addrs,
                             bool column, int x1, int x2, bool overrunOK, bool decoalesce = false) const;

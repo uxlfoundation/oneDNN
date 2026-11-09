@@ -28,7 +28,7 @@ status_t kai_indirect_convolution_fwd_t::pd_t::init(const engine_t *engine) {
     CHECK(init_common(engine));
     init_gemm_args(OH() * OW(), IC(), KH() * KW(), MB(), 1, true);
     CHECK(init_gemm(engine));
-    return status::success;
+    return init_src_reorder(engine);
 }
 
 status_t kai_indirect_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {

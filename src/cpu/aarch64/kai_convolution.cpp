@@ -34,9 +34,17 @@ namespace aarch64 {
 kai_convolution_t::pd_t::impl_kind_t
 kai_convolution_t::pd_t::choose_impl() const {
     using base_pd_t = kai_convolution_fwd_base_t::pd_t;
+    const bool src_nhwc = src_md()->format_kind == format_kind::any
+            || memory_desc_matches_tag(*src_md(), format_tag::nhwc);
+
     if (base_pd_t::is_1x1(*this)) {
-        // Native bf16 NHWC uses indirect as in ACL. The direct and im2row
-        // paths require every 1x1 patch to lie within the source image.
+        // NCHW has to be transposed to NHWC anyway, so materialize compact GEMM
+        // rows at the same time. This path also handles padding outside the
+        // source image.
+        if (!src_nhwc) return impl_kind_t::im2row;
+
+        // Native bf16 NHWC uses indirect as in ACL. The direct and NHWC
+        // im2row paths require every 1x1 patch to lie within the source image.
         const bool all_bf16
                 = utils::everyone_is(data_type::bf16, src_md()->data_type,
                         weights_md()->data_type, dst_md()->data_type);
@@ -48,7 +56,24 @@ kai_convolution_t::pd_t::choose_impl() const {
         return unit_stride ? impl_kind_t::direct_1x1 : impl_kind_t::im2row;
     }
 
-    return impl_kind_t::indirect;
+    // Only consider im2row for NCHW, because we are doing a layout transpose anyway.
+    if (src_nhwc) return impl_kind_t::indirect;
+
+    // Interleaved BF16 GEMM collects source patches while packing A.
+    // Materializing im2row would add another buffer without avoiding packing.
+    // Keep native BF16 and FP32 with BF16 math on the indirect path.
+    if (kai_utils::is_bf16(*src_md(), *weights_md(), *attr()))
+        return impl_kind_t::indirect;
+
+    // Both paths must prepare the NCHW source: indirect transposes the full
+    // source image, while im2row collects and transposes the source patches.
+    // Bound the extra storage to 2.5x, which includes the common 3x3
+    // stride-two expansion (2.25x).
+    // MB, IC and element size cancel for these source-preserving paths.
+    const size_t src_size = static_cast<size_t>(IH()) * IW();
+    const size_t im2row_size = static_cast<size_t>(OH()) * OW() * KH() * KW();
+    return 2 * im2row_size <= 5 * src_size ? impl_kind_t::im2row
+                                           : impl_kind_t::indirect;
 }
 
 status_t kai_convolution_t::pd_t::init(const engine_t *engine) {
@@ -58,13 +83,23 @@ status_t kai_convolution_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_CONV(ndims() == 4, VERBOSE_BAD_NDIMS, "src", ndims());
     VDISPATCH_CONV(!with_groups(), VERBOSE_UNSUPPORTED_FEATURE, "groups");
 
+    const bool is_nchw = memory_desc_matches_tag(*src_md(), format_tag::nchw)
+            || memory_desc_matches_tag(*dst_md(), format_tag::nchw);
+
+    // jit:sve has a much better impl for F32 NCHW "1st conv"
+    bool use_jit_sve_1st = mayiuse(sve) && is_nchw && utils::one_of(IC(), 1, 3)
+            && src_md()->data_type == data_type::f32;
+    VDISPATCH_CONV(!use_jit_sve_1st,
+            "jit:sve for F32 NCHW 1st conv, where IC == 1 or 3");
+
     // brgconv is faster for small OC * IC (except where brg is not implemented:
-    // asimd or f16) We replicate the ACL heuristic to avoid edge case
+    // asimd, f16 or nchw) We replicate the ACL heuristic to avoid edge case
     // regressions blocking removing ACL, longer term we should re-assess this
     // heuristic specifically for KleidiAI conv
     const bool any_f16 = utils::one_of(data_type::f16, src_md()->data_type,
             weights_md()->data_type, dst_md()->data_type);
-    const bool use_brgconv = OC() * IC() <= 2048 && mayiuse(sve) && !any_f16;
+    const bool use_brgconv
+            = OC() * IC() <= 2048 && mayiuse(sve) && !any_f16 && !is_nchw;
     VDISPATCH_CONV(!use_brgconv, "brgconv:sve is faster for small OC * IC");
 
     impl_kind_ = choose_impl();

@@ -51,7 +51,7 @@ status_t kai_direct_1x1_convolution_fwd_t::pd_t::init(const engine_t *engine) {
     init_gemm_args(flatten_spatial ? MB() * OH() * OW() : OW(), IC(), 1,
             flatten_spatial ? 1 : OH(), flatten_spatial ? 1 : MB(), false);
     CHECK(init_gemm(engine));
-    return status::success;
+    return init_src_reorder(engine);
 }
 
 status_t kai_direct_1x1_convolution_fwd_t::execute(

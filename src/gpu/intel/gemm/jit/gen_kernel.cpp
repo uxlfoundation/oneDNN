@@ -416,6 +416,10 @@ status_t gen_desc_t::finalize(
             if (strategy_.fused)
                 if (strategy_.wg[LoopM] % 2 || strategy_.wg[LoopN] % 2)
                     use_linear_m = use_linear_n = false; /* cannot swap */
+            // No k loop on a 2D grid: nothing to reuse, keep the catalog walk.
+            if (k_ >= 0 && k_ <= std::max(launch.ka_load, launch.kb_load)
+                    && m_tiles > 1 && n_tiles > 1)
+                use_linear_m = use_linear_n = false;
 
             if (use_linear) {
                 if (strategy_.kParallelVariable)

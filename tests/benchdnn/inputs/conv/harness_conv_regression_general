@@ -490,3 +490,13 @@ g1mb1ic48ih10iw1oc48kh128kw1ph64pw0
 --reset
 --dt=f8_e4m3:f8_e4m3:f8_e4m3
 mb1ic60ih30oc120oh15kh3sh2ph1
+
+# NCHW im2row: dilated kernel positions entirely beyond the source rows/columns.
+--reset
+--dir=FWD_D
+--alg=direct
+--dt=f32
+--stag=abx --wtag=hwio --dtag=abx
+--fast-ref=false
+mb2ic64ih2iw8oc64oh1ow8kh3kw1dh2ph0pw0
+mb2ic64ih8iw2oc64oh8ow1kh1kw3dw2ph0pw0

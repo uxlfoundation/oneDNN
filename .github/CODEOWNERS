@@ -35,7 +35,7 @@
 # /src/gpu/generic/sycl/ @uxlfoundation/onednn-gpu-generic
 
 # Tests
-/tests/benchdnn/inputs/ @uxlfoundation/onednn-maintain
+/tests/benchdnn/inputs/ @uxlfoundation/onednn-maintain @uxlfoundation/onednn-arch
 ## Special case of internal tests
 /tests/gtests/internals/test_sdpa.cpp @uxlfoundation/onednn-gpu-intel
 /tests/gtests/internals/test_utils.cpp @uxlfoundation/onednn-gpu-intel

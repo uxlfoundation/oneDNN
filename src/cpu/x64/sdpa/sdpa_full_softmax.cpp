@@ -471,7 +471,6 @@ status_t configure(const sdpa_full_softmax_params_t &params,
 
     const bool need_copy_v = conf.mm2_needs_vnni_b || transpose_v;
 
-    const dim_t mm_wei_k_blk = sdpa_brgemm_copy::b_packer_t::k_block(p_.mm_dt);
     // Width of one packed K/V panel. A packed B operand is read by BRGEMM with
     // ldb = b_panel_n and an N block of at most b_panel_n (see b_packer_t).
     constexpr dim_t b_panel_n = sdpa_brgemm_copy::b_packer_t::panel_n;
@@ -576,31 +575,28 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     const dim_t q_tail = p_.seq_q % q_block;
     conf.q_tail = q_tail;
 
-    // Tile the seq_kv axis of both matmuls so each brgemm call's weight panel
-    // (mm1's K slice [hs_qk x kv_block], mm2's V slice [kv_block x hs_v]) stays
-    // L2-resident; an untiled matmul re-streams its whole panel per M-chunk and
-    // turns memory-bound once that panel exceeds ~L2. Size kv_block so the wider
-    // panel fits within its L2 budget, then round DOWN to a column granule:
-    // kv_granule_large when the budget allows, else kv_granule_medium, else a
-    // kv_granule_min floor (also a multiple of the packer's K block, so whole
-    // VNNI rows of V). A large head or a small L2 thus shrinks the block rather
-    // than collapsing it to the whole (untiled) axis. Clamp to seq_kv: short
-    // context runs as one untiled block (no tail, mm2 keeps beta = 0).
-    // The granules are a blocking heuristic, not a layout requirement: packed
-    // K/V accept any block (panel_offset() handles n % b_panel_n), and mm1
-    // splits kv_block into b_panel_n-wide calls on its own. A large granule of
-    // b_panel_n keeps mm1's packed-K calls free of N tails.
+    // Tile mm1's N axis (seq_kv) so each call's K panel [hs_qk x kv_block]
+    // stays L2-resident; an untiled matmul re-streams its whole panel per
+    // M-chunk and turns memory-bound once that panel exceeds ~L2. Size
+    // kv_block so the panel fits its L2 budget, then round DOWN to a column
+    // granule: kv_granule_large when the budget allows, else
+    // kv_granule_medium, else kv_granule_min. A large head or a small L2 thus
+    // shrinks the block rather than collapsing it to the whole (untiled) axis.
+    // Clamp to seq_kv: short context runs as one untiled block. The granules
+    // are a blocking heuristic, not a layout requirement: packed K accepts any
+    // block (panel_offset() handles n % b_panel_n), and mm1 splits kv_block
+    // into b_panel_n-wide calls on its own. A large granule of b_panel_n keeps
+    // mm1's packed-K calls free of N tails. mm2's seq_kv blocking is chosen
+    // separately below.
     constexpr dim_t kv_granule_large = b_panel_n;
     constexpr dim_t kv_granule_medium = 32;
     constexpr dim_t kv_granule_min = 16;
     const dim_t b_panel_budget_bytes = l2_budget_bytes / 8;
-    const dim_t hs_max = nstl::max(p_.hs_qk, p_.hs_v);
-    dim_t kv_block = b_panel_budget_bytes / (hs_max * mm_dt_sz);
-    const dim_t vt_k_pad = need_copy_v ? mm_wei_k_blk : dim_t(1);
-    const dim_t min_granule = nstl::max<dim_t>(kv_granule_min, vt_k_pad);
+    dim_t kv_block = b_panel_budget_bytes / (p_.hs_qk * mm_dt_sz);
     const dim_t granule = kv_block >= kv_granule_large
             ? kv_granule_large
-            : (kv_block >= kv_granule_medium ? kv_granule_medium : min_granule);
+            : (kv_block >= kv_granule_medium ? kv_granule_medium
+                                             : kv_granule_min);
     kv_block = nstl::max<dim_t>(
             utils::rnd_dn(kv_block, granule), kv_granule_min);
     kv_block = nstl::min<dim_t>(kv_block, p_.seq_kv);
@@ -645,16 +641,20 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // softmax is complete, so its K block is chosen independently and kept
     // deep: a reduction as shallow as mm1's N block would split it into many
     // short calls, each re-reading and re-writing the f32 [m x hs_v] partial
-    // output. On GNR, a 256-deep AMX block (capped by the budget block) was
-    // best or close for head sizes 64..256; for f32, 512..1024-deep blocks
-    // performed best for those head sizes.
+    // output. Packed V limits each call's B panel to [mm2_k_block x v_block]
+    // with v_block <= b_panel_n, so hs_v does not bound the block depth. On
+    // GNR, a 256-deep AMX block was best or close for head sizes 64..256, and
+    // on GNR, SPR and DMR it matched or beat the old head-size-bounded block
+    // (64..192 deep) for head sizes up to 1024, including asymmetric ones;
+    // for f32, 512..1024-deep blocks performed best for head sizes 64..256
+    // (GNR).
     constexpr dim_t amx_mm2_k_block = 256;
     constexpr dim_t mm2_k_block = 512;
     conf.mm1_n_block
             = need_copy_k ? nstl::min<dim_t>(kv_block, b_panel_n) : kv_block;
     conf.mm1_n_tail = p_.seq_kv % conf.mm1_n_block;
-    conf.mm2_k_block = is_amx ? nstl::min(kv_block, amx_mm2_k_block)
-                              : nstl::min(p_.seq_kv, mm2_k_block);
+    conf.mm2_k_block
+            = nstl::min(p_.seq_kv, is_amx ? amx_mm2_k_block : mm2_k_block);
     conf.mm2_k_tail = p_.seq_kv % conf.mm2_k_block;
     // >1 block -> mm2 accumulates across blocks: the first block uses a beta = 0
     // kernel (fresh C) and the rest beta = 1, so no destination pre-zeroing is

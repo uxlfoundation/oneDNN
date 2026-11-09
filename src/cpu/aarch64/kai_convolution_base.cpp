@@ -99,9 +99,13 @@ bool accumulation_mode_ok(const cpu_convolution_fwd_pd_t &pd) {
 
 std::unique_ptr<kai::ops::IGemmCommon>
 kai_convolution_fwd_base_t::pd_t::create_kai_gemm() const {
-    // Supported source and weight types match.
+    // Supported source/weight types match, including fused im2row conversion.
     return kai_utils::create_kai_gemm(
             *args_, gemm_src_dt_, gemm_src_dt_, gemm_dst_dt());
+}
+
+bool kai_convolution_fwd_base_t::pd_t::src_is_nhwc() const {
+    return memory_desc_matches_tag(*src_md(), format_tag::nhwc);
 }
 
 data_type_t kai_convolution_fwd_base_t::pd_t::gemm_dst_dt() const {
@@ -157,9 +161,11 @@ status_t kai_convolution_fwd_base_t::pd_t::init_common(const engine_t *engine) {
         CHECK(memory_desc_init_by_tag(bias_md_, format_tag::x));
     VDISPATCH_CONV_SC(attr_.set_default_formats(dst_md()),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
-    VDISPATCH_CONV(dense_layout(src_md_, format_tag::nhwc),
+    VDISPATCH_CONV(dense_layout(src_md_, format_tag::nhwc)
+                    || dense_layout(src_md_, format_tag::nchw),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
-    VDISPATCH_CONV(dense_layout(dst_md_, format_tag::nhwc),
+    VDISPATCH_CONV(dense_layout(dst_md_, format_tag::nhwc)
+                    || dense_layout(dst_md_, format_tag::nchw),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
     if (weights_md_.format_kind != format_kind::any) {
         VDISPATCH_CONV(dense_layout(weights_md_, format_tag::hwio),
@@ -188,8 +194,9 @@ void kai_convolution_fwd_base_t::pd_t::init_gemm_args(unsigned int m,
 status_t kai_convolution_fwd_base_t::pd_t::init_gemm(const engine_t *engine) {
     VDISPATCH_CONV(num_sum_post_ops(attr_.post_ops_) <= 1,
             "supports at most one sum post op");
-    const auto post_ops_fusion
-            = create_post_ops_fusion(attr_.post_ops_, !with_bias());
+    const auto post_ops_fusion = create_post_ops_fusion(attr_.post_ops_,
+            !with_bias()
+                    && memory_desc_matches_tag(*dst_md(), format_tag::nhwc));
     CHECK(post_ops.init(engine, attr_.post_ops_, *dst_md(),
             post_ops_fusion.fallback_start_index));
     if (post_ops.len() > 0) name_ += "+post_ops_fallback";
@@ -224,7 +231,7 @@ status_t kai_convolution_fwd_base_t::pd_t::init_gemm(const engine_t *engine) {
     auto scratchpad = scratchpad_registry().registrar();
     if (kernel->get_working_size() != 0) {
         // Match ACL's GEMM workspace alignment. Cache-line alignment alone
-        // can regress interleaved convolutions on large packed-input buffers.
+        // can regress interleaved convolutions on large packed-source buffers.
         // KleidiAI reports the workspace size in bytes.
         scratchpad.book<char>(memory_tracking::names::key_gemm_asm_tmp_buffer,
                 kernel->get_working_size(), PAGE_4K);
@@ -235,7 +242,21 @@ status_t kai_convolution_fwd_base_t::pd_t::init_gemm(const engine_t *engine) {
                 kernel->get_B_pretransposed_array_size());
     }
 
-    if (gemm_dst_dt() != dst_md()->data_type) {
+    if (!args_->_fixed_format && gemm_src_dt_ != weights_md()->data_type) {
+        memory_desc_t tmp_wei_md;
+        CHECK(memory_desc_init_by_tag(tmp_wei_md, weights_md()->ndims,
+                weights_md()->dims, gemm_src_dt_, format_tag::hwio));
+        CHECK(reorder_primitive_desc_create(
+                wei_reorder_pd_, engine, weights_md(), &tmp_wei_md));
+        scratchpad.book<char>(memory_tracking::names::key_reorder_space,
+                memory_desc_wrapper(tmp_wei_md).size());
+        scratchpad.book(memory_tracking::names::key_nested_multiple
+                        + attr_.post_ops_.len() + 1,
+                wei_reorder_pd_->scratchpad_registry());
+    }
+
+    if (!memory_desc_matches_tag(*dst_md(), format_tag::nhwc)
+            || gemm_dst_dt() != dst_md()->data_type) {
         memory_desc_t tmp_dst_md;
         CHECK(memory_desc_init_by_tag(tmp_dst_md, dst_md()->ndims,
                 dst_md()->dims, gemm_dst_dt(), format_tag::nhwc));
@@ -261,7 +282,31 @@ status_t kai_convolution_fwd_base_t::pd_t::init_gemm(const engine_t *engine) {
     return status::success;
 }
 
+status_t kai_convolution_fwd_base_t::pd_t::init_src_reorder(
+        const engine_t *engine) {
+    if (!src_is_nhwc()) {
+        memory_desc_t tmp_src_md;
+        auto scratchpad = scratchpad_registry().registrar();
+        CHECK(memory_desc_init_by_tag(tmp_src_md, src_md()->ndims,
+                src_md()->dims, src_md()->data_type, format_tag::nhwc));
+        VDISPATCH_CONV_SC(reorder_primitive_desc_create(src_reorder_pd_, engine,
+                                  src_md(), &tmp_src_md),
+                VERBOSE_PRIMITIVE_CREATION_FAIL, "src reorder");
+        scratchpad.book<char>(memory_tracking::names::key_conv_ncsp_src,
+                memory_desc_wrapper(tmp_src_md).size());
+        scratchpad.book(memory_tracking::names::key_nested_multiple
+                        + attr_.post_ops_.len(),
+                src_reorder_pd_->scratchpad_registry());
+    }
+
+    return status::success;
+}
+
 status_t kai_convolution_fwd_base_t::init_common(engine_t *engine) {
+    if (pd()->wei_reorder_pd_)
+        CHECK(pd()->wei_reorder_pd_->create_primitive(wei_reorder_, engine));
+    if (pd()->src_reorder_pd_)
+        CHECK(pd()->src_reorder_pd_->create_primitive(src_reorder_, engine));
     if (pd()->dst_reorder_pd_)
         CHECK(pd()->dst_reorder_pd_->create_primitive(dst_reorder_, engine));
     post_ops_ = pd()->post_ops;
@@ -301,7 +346,25 @@ status_t kai_convolution_fwd_base_t::prepare(kernel_call_args_t &args) const {
     kernel.set_nthreads(args.thread_partition.nthr);
 
     args.src_base = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    if (src_reorder_) {
+        auto *tmp_src = scratchpad.get<void>(
+                memory_tracking::names::key_conv_ncsp_src);
+        CHECK(execute_reorder(ctx, *src_reorder_, pd.src_md(),
+                pd.src_reorder_pd_->dst_md(), args.src_base, tmp_src,
+                memory_tracking::names::key_nested_multiple
+                        + pd.attr()->post_ops_.len()));
+        args.src_base = static_cast<const char *>(tmp_src);
+    }
     const auto *raw_wei = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
+    if (wei_reorder_) {
+        auto *tmp_wei = scratchpad.get<void>(
+                memory_tracking::names::key_reorder_space);
+        CHECK(execute_reorder(ctx, *wei_reorder_, pd.weights_md(),
+                pd.wei_reorder_pd_->dst_md(), raw_wei, tmp_wei,
+                memory_tracking::names::key_nested_multiple
+                        + pd.attr()->post_ops_.len() + 1));
+        raw_wei = tmp_wei;
+    }
     args.wei_base = const_cast<void *>(raw_wei);
     if (!pd.gemm_args()._fixed_format && kernel.B_is_pretransposed()) {
         args.wei_base = scratchpad.get<void>(

@@ -54,9 +54,12 @@ struct kai_convolution_fwd_base_t : public primitive_t {
         // the output is nonempty and the last required source pixel is
         // within the source image.
         static bool source_pixels_in_bounds(const cpu_convolution_fwd_pd_t &pd);
+        bool src_is_nhwc() const;
         data_type_t gemm_dst_dt() const;
 
         data_type_t gemm_src_dt_ = data_type::undef;
+        std::shared_ptr<primitive_desc_t> src_reorder_pd_;
+        std::shared_ptr<primitive_desc_t> wei_reorder_pd_;
         std::shared_ptr<primitive_desc_t> dst_reorder_pd_;
         post_ops_fallback_t post_ops;
 
@@ -68,6 +71,7 @@ struct kai_convolution_fwd_base_t : public primitive_t {
                 unsigned int k_sections, unsigned int batches,
                 unsigned int multi, bool indirect);
         status_t init_gemm(const engine_t *engine);
+        status_t init_src_reorder(const engine_t *engine);
 
         std::string name_;
 
@@ -122,7 +126,9 @@ protected:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
 private:
+    std::shared_ptr<impl::primitive_t> src_reorder_;
     std::shared_ptr<impl::primitive_t> dst_reorder_;
+    std::shared_ptr<impl::primitive_t> wei_reorder_;
     post_ops_fallback_t post_ops_;
 };
 

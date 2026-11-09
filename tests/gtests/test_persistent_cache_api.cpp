@@ -24,7 +24,11 @@
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #endif
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <vector>
+#include <unordered_map>
 
 extern "C" void dnnl_impl_gpu_intel_clear_device_info_cache();
 
@@ -45,6 +49,46 @@ void check_engine_usable(const engine &eng) {
             {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
                     {DNNL_ARG_DST, dst}});
     strm.wait();
+}
+
+// Phase 3 runs the primitive compiled in phase 2, so both engines must
+// dispatch to the same implementation.
+template <typename primitive_t>
+void check_deviceless_primitive(
+        const typename primitive_t::primitive_desc &deviceless_pd,
+        const typename primitive_t::primitive_desc &pd,
+        const std::vector<int> &src_args) {
+    ASSERT_STREQ(deviceless_pd.impl_info_str(), pd.impl_info_str());
+
+    std::vector<uint8_t> primitive_blob;
+    ASSERT_NO_THROW(
+            primitive_blob = primitive_t(deviceless_pd).get_cache_blob());
+
+    // Otherwise the primitive cache hands back the imported primitive as the
+    // reference.
+    const int primitive_cache_capacity = get_primitive_cache_capacity();
+    set_primitive_cache_capacity(0);
+    primitive_t imported_prim;
+    ASSERT_NO_THROW(imported_prim = primitive_t(pd, primitive_blob));
+    auto ref_prim = primitive_t(pd);
+    set_primitive_cache_capacity(primitive_cache_capacity);
+
+    const engine eng = pd.get_engine();
+    std::unordered_map<int, memory> args;
+    for (int arg : src_args) {
+        auto md = pd.query_md(query::exec_arg_md, arg);
+        args[arg] = test::make_memory(md, eng);
+        fill_data(md.get_data_type(), args[arg], 1.f, 1.f);
+    }
+    auto ref_args = args;
+    args[DNNL_ARG_DST] = test::make_memory(pd.dst_desc(), eng);
+    ref_args[DNNL_ARG_DST] = test::make_memory(pd.dst_desc(), eng);
+
+    stream strm(eng);
+    imported_prim.execute(strm, args);
+    ref_prim.execute(strm, ref_args);
+    strm.wait();
+    compare_data<float>(ref_args[DNNL_ARG_DST], args[DNNL_ARG_DST]);
 }
 
 // The engine blob starts with the version (three ints and the length-prefixed
@@ -259,46 +303,16 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     EXPECT_EQ(make_eltwise_pd(eng).get_cache_blob_id(),
             make_eltwise_pd(test_engine).get_cache_blob_id());
 
-    // Phase 3 runs the primitive compiled in phase 2, so both engines must
-    // dispatch to the same implementation.
+    check_deviceless_primitive<eltwise_forward>(
+            make_eltwise_pd(eng), make_eltwise_pd(test_engine), {DNNL_ARG_SRC});
+
     memory::desc matmul_md(
             {64, 64}, memory::data_type::f32, memory::format_tag::ab);
-    auto deviceless_matmul_pd
-            = matmul::primitive_desc(eng, matmul_md, matmul_md, matmul_md);
-    auto matmul_pd = matmul::primitive_desc(
-            test_engine, matmul_md, matmul_md, matmul_md);
-    ASSERT_STREQ(
-            deviceless_matmul_pd.impl_info_str(), matmul_pd.impl_info_str());
-
-    std::vector<uint8_t> primitive_blob;
-    ASSERT_NO_THROW(
-            primitive_blob = matmul(deviceless_matmul_pd).get_cache_blob());
-
-    // Otherwise the primitive cache hands back the imported primitive as the
-    // reference.
-    const int primitive_cache_capacity = get_primitive_cache_capacity();
-    set_primitive_cache_capacity(0);
-    matmul imported_matmul;
-    ASSERT_NO_THROW(imported_matmul = matmul(matmul_pd, primitive_blob));
-    auto ref_matmul = matmul(matmul_pd);
-    set_primitive_cache_capacity(primitive_cache_capacity);
-
-    auto src = test::make_memory(matmul_md, test_engine);
-    auto wei = test::make_memory(matmul_md, test_engine);
-    auto dst = test::make_memory(matmul_md, test_engine);
-    auto ref_dst = test::make_memory(matmul_md, test_engine);
-    fill_data<float>(matmul_md.get_size() / sizeof(float), src);
-    fill_data<float>(matmul_md.get_size() / sizeof(float), wei);
-
-    stream strm(test_engine);
-    imported_matmul.execute(strm,
-            {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
-                    {DNNL_ARG_DST, dst}});
-    ref_matmul.execute(strm,
-            {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
-                    {DNNL_ARG_DST, ref_dst}});
-    strm.wait();
-    compare_data<float>(ref_dst, dst);
+    check_deviceless_primitive<matmul>(
+            matmul::primitive_desc(eng, matmul_md, matmul_md, matmul_md),
+            matmul::primitive_desc(
+                    test_engine, matmul_md, matmul_md, matmul_md),
+            {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS});
 
     dnnl_stream_t c_stream = nullptr;
     EXPECT_EQ(
@@ -312,6 +326,92 @@ HANDLE_EXCEPTIONS_FOR_TEST(
             dnnl_success);
 #endif
 }
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Grouped matmul is the primitive API way to reach a microkernel
+// implementation, which makes the device-less engine fuse microkernels into
+// an OpenCL C kernel.
+HANDLE_EXCEPTIONS_FOR_TEST(persistent_cache_api_test_t,
+        TestPersistentCacheAPIDevicelessEngineMicrokernel) {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    using namespace dnnl::ocl_interop;
+#else
+    using namespace dnnl::ze_interop;
+#endif
+    using dt = memory::data_type;
+
+    engine test_engine = get_test_engine();
+
+    if (get_test_engine_kind() != engine::kind::gpu) return;
+
+    auto eng = make_deviceless_engine(get_engine_cache_blob(test_engine));
+
+    const memory::dim ngroups = 2, M = 32, K = 64, N = 64;
+    auto src_md = memory::desc::grouped({M, K}, dt::f16, 0, ngroups);
+    auto wei_md
+            = memory::desc({ngroups, K, N}, dt::f16, memory::format_tag::abc);
+    auto dst_md = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+
+    auto deviceless_pd = matmul::primitive_desc(eng, src_md, wei_md, dst_md);
+    auto pd = matmul::primitive_desc(test_engine, src_md, wei_md, dst_md);
+    // Otherwise the reference implementation would be tested.
+    ASSERT_NE(std::strstr(pd.impl_info_str(), "micro"), nullptr);
+    ASSERT_STREQ(deviceless_pd.impl_info_str(), pd.impl_info_str());
+
+    std::vector<uint8_t> primitive_blob;
+    ASSERT_NO_THROW(primitive_blob = matmul(deviceless_pd).get_cache_blob());
+
+    // Otherwise the primitive cache hands back the imported primitive as the
+    // reference.
+    const int primitive_cache_capacity = get_primitive_cache_capacity();
+    set_primitive_cache_capacity(0);
+    matmul imported_prim;
+    ASSERT_NO_THROW(imported_prim = matmul(pd, primitive_blob));
+    auto ref_prim = matmul(pd);
+    set_primitive_cache_capacity(primitive_cache_capacity);
+
+    auto set_offsets = [&](memory &mem) {
+        auto *offsets = mem.map_data<int32_t>(1);
+        for (memory::dim g = 0; g < ngroups; g++)
+            offsets[g] = static_cast<int32_t>((g + 1) * M / ngroups);
+        mem.unmap_data(offsets, 1);
+    };
+
+    auto src = test::make_memory(src_md, test_engine);
+    fill_data(dt::f16, src, 1.f, 1.f);
+    set_offsets(src);
+    auto wei = test::make_memory(wei_md, test_engine);
+    fill_data(dt::f16, wei, 1.f, 1.f);
+    auto dst = test::make_memory(dst_md, test_engine);
+    set_offsets(dst);
+    auto ref_dst = test::make_memory(dst_md, test_engine);
+    set_offsets(ref_dst);
+
+    stream strm(test_engine);
+    imported_prim.execute(strm,
+            {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
+                    {DNNL_ARG_DST, dst}});
+    ref_prim.execute(strm,
+            {{DNNL_ARG_SRC, src}, {DNNL_ARG_WEIGHTS, wei},
+                    {DNNL_ARG_DST, ref_dst}});
+    strm.wait();
+
+    // `compare_data` can't index grouped memory, but its values buffer is
+    // dense.
+    auto *got = dst.map_data<float>();
+    auto *ref = ref_dst.map_data<float>();
+    memory::dim mismatches = 0;
+    for (memory::dim i = 0; i < M * N; i++)
+        if (std::fabs(got[i] - ref[i])
+                > 1e-4f * std::max(1.f, std::fabs(ref[i])))
+            mismatches++;
+    ref_dst.unmap_data(ref);
+    dst.unmap_data(got);
+    EXPECT_EQ(mismatches, 0);
+#endif
+}
+#endif
 
 HANDLE_EXCEPTIONS_FOR_TEST(
         persistent_cache_api_test_t, TestPersistentCacheAPIMemoryDesc) {

@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -23,14 +24,11 @@
 
 using namespace testing;
 
-static std::string find_cmd_option(
-        char **argv_beg, char **argv_end, const std::string &option) {
-    for (auto arg = argv_beg; arg != argv_end; arg++) {
-        std::string s(*arg);
-        auto pos = s.find(option);
-        if (pos != std::string::npos) return s.substr(pos + option.length());
-    }
-    return {};
+// A mistyped option would otherwise silently run the tests on the default CPU
+// engine, and a release build compiles out `assert`.
+[[noreturn]] static void reject_cmd_option(const std::string &arg) {
+    std::cerr << "Unsupported option: " << arg << std::endl;
+    std::exit(EXIT_FAILURE);
 }
 
 static dnnl_engine_kind_t to_engine_kind(const std::string &str) {
@@ -38,15 +36,35 @@ static dnnl_engine_kind_t to_engine_kind(const std::string &str) {
 
     if (str == "gpu") return dnnl_gpu;
 
-    assert(!"not expected");
-    return dnnl_cpu;
+    reject_cmd_option("--engine=" + str);
 }
 
 int main(int argc, char *argv[]) {
     int result;
 
-    auto engine_str = find_cmd_option(argv, argv + argc, "--engine=");
+    const std::string engine_option = "--engine=";
+    const auto is_engine_option = [&](const std::string &arg) {
+        return arg.compare(0, engine_option.size(), engine_option) == 0;
+    };
+
+    // `InitGoogleTest` evaluates parametrized test values, which read
+    // `api_test_engine_kind`, so it must be set before the call.
+    std::string engine_str;
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        if (is_engine_option(arg))
+            engine_str = arg.substr(engine_option.size());
+    }
     api_test_engine_kind = to_engine_kind(engine_str);
+
+    ::testing::InitGoogleTest(&argc, argv);
+
+    // Only after `InitGoogleTest` has removed the gtest flags from `argv` can
+    // the remaining options be validated.
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        if (!is_engine_option(arg)) reject_cmd_option(arg);
+    }
 
 #ifndef DNNL_GPU_RUNTIME
     if (api_test_engine_kind == dnnl_graph_gpu) {
@@ -55,7 +73,6 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-    ::testing::InitGoogleTest(&argc, argv);
     result = RUN_ALL_TESTS();
 
     return result;

@@ -16,8 +16,9 @@
 
 #include "gtest/gtest.h"
 
-#include <assert.h>
 #include <atomic>
+#include <cstdlib>
+#include <iostream>
 #include <string>
 
 #include "dnnl_test_common.hpp"
@@ -95,14 +96,11 @@ int main(int argc, char *argv[]) {
     return result;
 }
 
-static std::string find_cmd_option(
-        char **argv_beg, char **argv_end, const std::string &option) {
-    for (auto arg = argv_beg; arg != argv_end; arg++) {
-        std::string s(*arg);
-        auto pos = s.find(option);
-        if (pos != std::string::npos) return s.substr(pos + option.length());
-    }
-    return {};
+// A mistyped option would otherwise silently run the tests on the default CPU
+// engine, and a release build compiles out `assert`.
+[[noreturn]] static void reject_cmd_option(const std::string &arg) {
+    std::cerr << "Unsupported option: " << arg << std::endl;
+    std::exit(EXIT_FAILURE);
 }
 
 inline dnnl::engine::kind to_engine_kind(const std::string &str) {
@@ -110,8 +108,7 @@ inline dnnl::engine::kind to_engine_kind(const std::string &str) {
 
     if (str == "gpu") return dnnl::engine::kind::gpu;
 
-    assert(!"not expected");
-    return dnnl::engine::kind::cpu;
+    reject_cmd_option("--engine=" + str);
 }
 
 // test_engine can be accessed only from tests compiled with
@@ -141,7 +138,21 @@ void dnnl_environment_t::TearDown() {}
 #endif
 
 void test_init(int argc, char *argv[]) {
-    auto engine_str = find_cmd_option(argv, argv + argc, "--engine=");
+#ifdef DNNL_TEST_WITH_ENGINE_PARAM
+    const std::string engine_option = "--engine=";
+    std::string engine_str;
+#endif
+    // `InitGoogleTest` has already removed the gtest flags from `argv`.
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+#ifdef DNNL_TEST_WITH_ENGINE_PARAM
+        if (arg.compare(0, engine_option.size(), engine_option) == 0) {
+            engine_str = arg.substr(engine_option.size());
+            continue;
+        }
+#endif
+        reject_cmd_option(arg);
+    }
 #ifdef DNNL_TEST_WITH_ENGINE_PARAM
     test_engine_kind = to_engine_kind(engine_str);
 
@@ -153,8 +164,5 @@ void test_init(int argc, char *argv[]) {
         // Exclude non-GPU tests
         ::testing::GTEST_FLAG(filter) = filter_str + ":-*_CPU*";
     }
-#else
-    assert(engine_str.empty()
-            && "--engine parameter is not supported by this test");
 #endif
 }

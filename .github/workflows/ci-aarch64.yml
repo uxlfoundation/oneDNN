@@ -98,7 +98,7 @@ jobs:
     strategy:
       matrix:
         config: [
-          { name: MacOS, label: macos-14, threading: SEQ, toolset: clang, build: RelWithAssert, testset: SMOKE },
+          { name: MacOS, label: macos-15, threading: SEQ, toolset: clang, build: RelWithAssert, testset: SMOKE },
           { name: cb100, label: ubuntu-24.04-arm, threading: OMP, toolset: clang, build: RelWithAssert, testset: SMOKE },
         ]
 

@@ -672,28 +672,37 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
     // The store payload is read through C_scaleLayout, so the temp must cover it.
     if (!state.tmpCScales.isValid() || state.tmpCScales.getLen() < state.C_scaleLayout.regs()) stub();
     vector<MaskAssignment> masks;
-    // Without a row mask, an M-remainder tile may store its out-of-range group
-    // rows past the end of the scale row, corrupting the next column's
-    // first scale entries. Mask rows using the M remainder converted to group units.
+    // Without row masking, an M-remainder tile may store its out-of-range group
+    // rows past the end of the scale row, corrupting the next column's first
+    // scale entries. Each layout block holds a single group row, so the row
+    // check is uniform across the block and is applied with a scalar branch.
+    // Combining it with the lane (N) mask would instead require SIMT `if`
+    // control flow, which is not honored in SPF mode.
     bool maskM = state.remainders[LoopM].isValid()
             && (unrollM > problem.cqGroupM);
     if (maskM && !ngen::utils::is_zero_or_pow2(problem.cqGroupM)) stub();
     if (problem.cqGroupN > 1) stub("MX C scale groups along N are not supported");
-    assignMasks(state.C_scaleLayout, maskM ? LoopM : LoopNone, LoopN, masks, strategy, state);
-    if (maskM) {
-        Subregister remInd[3];
-        for (int i = 0; i < 3; i++) remInd[i] = state.remainders[i];
-        auto qremM = state.ra.alloc_sub<uint32_t>();
-        add(1 | sat, qremM, state.remainders[LoopM], problem.cqGroupM - 1);
-        shr(1, qremM, qremM, ilog2(problem.cqGroupM));
-        remInd[LoopM] = qremM;
-        loadMasks(masks, remInd, strategy, state);
-        state.ra.safeRelease(qremM);
-    } else
-        loadMasks(masks, state.remainders, strategy, state);
+    assignMasks(state.C_scaleLayout, LoopNone, LoopN, masks, strategy, state);
+    loadMasks(masks, state.remainders, strategy, state);
 
     problem.postOps.injectMXScale(this, state.ra, C_grfs, C_ngrf, state.tmpCScales.sub(hw, 0, ngen::DataType::ub), problem.Tc_ext.ngen(), unrollN);
-    storeMatrix(state.tmpCScales, state.C_scaleLayout, state.C_scaleAddrs, strategy, state);
+
+    const auto &layout = state.C_scaleLayout;
+    GRFMultirange src = state.tmpCScales;
+    for (int l = 0; l < layout.blocks(); l++) {
+        const auto &block = layout[l];
+        Label lSkipBlock;
+        if (maskM) {
+            if (block.nr != 1) stub("MX C scale row masking requires single-row blocks");
+            // Block holds group row offsetR, i.e. rows [offsetR * cqGroupM, ...).
+            cmp(1 | le | state.flagAP, state.remainders[LoopM], uint32_t(block.offsetR * problem.cqGroupM));
+            jmpi(1 | state.flagAP, lSkipBlock);
+        }
+        auto offsetReg = contiguityCheck(hw, block, src);
+        storeMatrixBlock(src[offsetReg], block, layout.addressing(), layout.addressingStrategy(),
+                         state.C_scaleAddrs[l], strategy, state);
+        mark(lSkipBlock);
+    }
     safeReleaseMaskAssignments(masks, state);
 
     mark(lSkip);

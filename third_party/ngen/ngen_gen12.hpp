@@ -1383,7 +1383,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
             switch (opNum) {
                 case -1: {
                     if (sendg.dstRegFile == RegFileARF) return false;
-                    int dstLen = getSendgDesc().dstLen(hw, 1 << common.execSize, static_cast<SharedFunction>(sendg.sfid));
+                    int dstLen = getSendgDesc().dstLen(hw, 1 << commonXeHPC.execSize, static_cast<SharedFunction>(sendg.sfid));
                     if (dstLen == -1) {
                         region = DependencyRegion(hw);
                         region.base = sendg.dstReg;
@@ -1418,7 +1418,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
             switch (opNum) {
                 case -1: {
                     regNum = sendg.dstReg | (sendgx.dstReg8 << 8);
-                    len = getSendgDesc().dstLen(hw, 1 << common.execSize, static_cast<SharedFunction>(sendg.sfid));
+                    len = getSendgDesc().dstLen(hw, 1 << commonXeHPC.execSize, static_cast<SharedFunction>(sendg.sfid));
                     break;
                 }
                 case 0:

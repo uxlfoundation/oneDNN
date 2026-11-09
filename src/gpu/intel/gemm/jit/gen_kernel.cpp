@@ -422,6 +422,9 @@ status_t gen_desc_t::finalize(
             if (strategy_.fused)
                 if (strategy_.wg[LoopM] % 2 || strategy_.wg[LoopN] % 2)
                     use_linear_m = use_linear_n = false; /* cannot swap */
+            // No k loop: nothing to reuse, keep the catalog walk.
+            if (k_ >= 0 && k_ <= std::max(strategy_.ka_load, strategy_.kb_load))
+                use_linear_m = use_linear_n = false;
 
             // Mostly full wave: walk the dimension with fewer tiles fastest.
             bool both = use_linear && use_linear_m && use_linear_n

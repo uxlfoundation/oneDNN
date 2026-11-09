@@ -76,6 +76,11 @@
 #include "xpu/ze/verbose.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/engine.hpp"
+#endif
+
 #ifdef DNNL_EXPERIMENTAL
 #include "common/experimental.hpp"
 #endif
@@ -320,6 +325,15 @@ std::ostream &operator<<(std::ostream &ss, engine_kind_t eng_kind) {
 
 std::ostream &operator<<(std::ostream &ss, const engine_t *engine) {
     ss << dnnl_engine_kind2str(engine->kind());
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    // A device-less engine has no device index, and its primitives must not
+    // be mistaken for ones created on a real device.
+    if (engine->kind() == engine_kind::gpu
+            && utils::downcast<const gpu::intel::engine_t *>(engine)
+                       ->is_deviceless())
+        return ss << ":deviceless";
+#endif
     if (dnnl_engine_get_count(engine->kind()) > 1)
         ss << ":" + std::to_string(engine->index());
     return ss;

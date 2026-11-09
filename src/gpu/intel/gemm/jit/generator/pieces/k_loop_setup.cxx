@@ -233,8 +233,8 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
     }
 
     // Fragment the A, B layouts into smaller blocks (usually 1 row/column) for remainder loads.
-    state.A_layoutRem = state.A_layout.trySlice(state.A_addrsRem, state.A_addrs, true,  0, ka_loadRem, strategy.A.padded);
-    state.B_layoutRem = state.B_layout.trySlice(state.B_addrsRem, state.B_addrs, false, 0, kb_loadRem, strategy.B.padded);
+    state.A_layoutRem = state.A_layout.tryCreateFromSlice(state.A_addrsRem, state.A_addrs, true,  0, ka_loadRem, strategy.A.padded);
+    state.B_layoutRem = state.B_layout.tryCreateFromSlice(state.B_addrsRem, state.B_addrs, false, 0, kb_loadRem, strategy.B.padded);
     if (!state.A_layoutRem || !state.B_layoutRem) return false;
 
     // Add k masking now for block 2D loads. Otherwise it is done later, or not at all.
@@ -303,7 +303,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
             bool success = false;
 
             if (h < int(Ai_addrsK.size())) {
-                Ai_layoutK[h] = Ai_layoutRem.trySlice(Ai_addrsK[h], state.Ai_addrs, true, h, h + 1, state.Ai_strategy.padded);
+                Ai_layoutK[h] = Ai_layoutRem.tryCreateFromSlice(Ai_addrsK[h], state.Ai_addrs, true, h, h + 1, state.Ai_strategy.padded);
                 success = Ai_layoutK[h].valid();
             }
 
@@ -313,7 +313,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
                 // Maybe the subblock is OK, but we didn't get an address register. Try again without
                 //  asking for address registers.
                 Ai_addrsK.resize(1);
-                Ai_layoutK[h] = Ai_layoutRem.trySlice(true, h, h + 1, state.Ai_strategy.padded, true);
+                Ai_layoutK[h] = Ai_layoutRem.tryCreateFromSlice(true, h, h + 1, state.Ai_strategy.padded, true);
                 success = Ai_layoutK[h].valid();
             }
 
@@ -344,7 +344,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
             bool success = false;
 
             if (h < int(Bi_addrsK.size())) {
-                Bi_layoutK[h] = Bi_layoutRem.trySlice(Bi_addrsK[h], state.Bi_addrs, false, h, h + 1, state.Bi_strategy.padded);
+                Bi_layoutK[h] = Bi_layoutRem.tryCreateFromSlice(Bi_addrsK[h], state.Bi_addrs, false, h, h + 1, state.Bi_strategy.padded);
                 success = Bi_layoutK[h].valid();
             }
 
@@ -352,7 +352,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
 
             if (!success) {
                 Bi_addrsK.resize(1);
-                Bi_layoutK[h] = Bi_layoutRem.trySlice(false, h, h + 1, state.Bi_strategy.padded, true);
+                Bi_layoutK[h] = Bi_layoutRem.tryCreateFromSlice(false, h, h + 1, state.Bi_strategy.padded, true);
                 success = Bi_layoutK[h].valid();
             }
 
@@ -442,7 +442,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
             if (groupK < align) stub("Late quantization remainder spanning multiple groups is not supported");
             groups = 1;
         }
-        layoutRem = layout.trySlice(addrsRem, addrs, isA, 0, groups, layout.addressingStrategy().padded);
+        layoutRem = layout.tryCreateFromSlice(addrsRem, addrs, isA, 0, groups, layout.addressingStrategy().padded);
         if (!layoutRem) stub("Could not slice quantization parameters to RemGroups");
     };
 

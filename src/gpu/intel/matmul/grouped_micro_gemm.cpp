@@ -672,11 +672,9 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
                 ": wei scale and zp groups must match");
     }
 
-    // abc weights that can't use block 2D loads are copied into SLM one k row
-    // at a time, and src goes through SLM when it can't use them either. With
-    // 2D quantization on both, the microkernel loads their parameters per SLM
-    // chunk of 32 k, so different k groups must both divide 32: a deeper chunk
-    // doesn't fit in registers.
+    // Weights and src that can't use block 2D loads are copied into SLM, and
+    // with 2D quantization on both the microkernel loads their parameters per
+    // SLM chunk. Different k groups need a chunk that spans both.
     const int src_qmask_MK = src_qmask_M() | src_qmask_K();
     const bool src_q2d = (src_quant().with_scale()
                                  && src_quant().scale_mask() == src_qmask_MK
@@ -686,20 +684,44 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
     const bool wei_q2d = (wei_quant().with_zp() && wei_quant().zp_mask() == 7)
             || (wei_quant().with_scale() && wei_quant().scale_mask() == 7
                     && (wei_groups[1] < K() || wei_groups[2] > 1));
-    if (src_q2d && wei_q2d && wei_d.matches_tag(format_tag::abc)) {
+    if (src_q2d && wei_q2d) {
         // The microkernel rounds groups up to powers of two.
         const int wei_qk = utils::rnd_up_pow2(wei_groups[1]);
         const int src_qk = utils::rnd_up_pow2(src_groups[1]);
+        const int max_qk = std::max(wei_qk, src_qk);
         const dim_t src_ld_bytes = types::elements_to_bytes(src_dt, K());
         const bool both_slm = hw >= ngen::HW::XeHP
                 && !has_block_2d_pitch(hw, static_cast<int>(wei_ld_bytes))
                 && !has_block_2d_pitch(hw, static_cast<int>(src_ld_bytes));
-        VDISPATCH_MATMUL(!(both_slm && wei_qk != src_qk
-                                 && std::max(wei_qk, src_qk) > 32),
-                VERBOSE_UNSUPPORTED_SCALES_CFG
-                ": with abc weights, wei and src k groups must be equal or "
-                "both <= 32 (wei %d, src %d)",
-                wei_groups[1], src_groups[1]);
+        // abc weights are copied one k row at a time, which leaves room only
+        // for a chunk of 32 k.
+        if (wei_d.matches_tag(format_tag::abc)) {
+            VDISPATCH_MATMUL(!(both_slm && wei_qk != src_qk && max_qk > 32),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG
+                    ": with abc weights, wei and src k groups must be equal "
+                    "or both <= 32 (wei %d, src %d)",
+                    wei_groups[1], src_groups[1]);
+        }
+        // Before XeHPC there are no block 2D loads, so k-contiguous weights go
+        // through SLM as well. With a group of 128 or more the chunk spanning
+        // both groups doesn't fit in registers for every shape. Without DPAS
+        // the loads are only a few k deep, and no chunk spanning different
+        // groups fits.
+        const bool mismatch_slm
+                = both_slm && hw < ngen::HW::XeHPC && wei_qk != src_qk;
+        if (dev_info->mayiuse_systolic()) {
+            VDISPATCH_MATMUL(!(mismatch_slm && max_qk >= 128),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG
+                    ": on xe_hpg and xe_lpg+, wei and src k groups must be "
+                    "equal or both < 128 (wei %d, src %d)",
+                    wei_groups[1], src_groups[1]);
+        } else {
+            VDISPATCH_MATMUL(!mismatch_slm,
+                    VERBOSE_UNSUPPORTED_SCALES_CFG
+                    ": on xe_lpg, wei and src k groups must be equal "
+                    "(wei %d, src %d)",
+                    wei_groups[1], src_groups[1]);
+        }
     }
 
     return status::success;

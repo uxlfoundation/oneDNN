@@ -423,6 +423,18 @@ status_t gen_desc_t::finalize(
                 if (strategy_.wg[LoopM] % 2 || strategy_.wg[LoopN] % 2)
                     use_linear_m = use_linear_n = false; /* cannot swap */
 
+            // Mostly full wave: walk the dimension with fewer tiles fastest.
+            bool both = use_linear && use_linear_m && use_linear_n
+                    && 2 * m_tiles * n_tiles > tiles_gpu;
+            if (both ? n_tiles < m_tiles : use_linear_n && !use_linear_m) {
+                strategy_.loopOrder[0] = LoopN;
+                strategy_.loopOrder[1] = LoopM;
+            } else if (both ? m_tiles < n_tiles
+                            : use_linear_m && !use_linear_n) {
+                strategy_.loopOrder[0] = LoopM;
+                strategy_.loopOrder[1] = LoopN;
+            }
+
             if (use_linear) {
                 if (strategy_.kParallelVariable)
                     strategy_.cWalkOrder = WalkOrder::SimpleLinear;
@@ -437,13 +449,6 @@ status_t gen_desc_t::finalize(
                     strategy_.blocking[LoopN] = 16777216;
                 }
             } else if (use_linear_m || use_linear_n) {
-                if (use_linear_n && !use_linear_m) {
-                    strategy_.loopOrder[0] = LoopN;
-                    strategy_.loopOrder[1] = LoopM;
-                } else if (use_linear_m && !use_linear_n) {
-                    strategy_.loopOrder[0] = LoopM;
-                    strategy_.loopOrder[1] = LoopN;
-                }
                 strategy_.cWalkOrder = WalkOrder::SimpleLinear;
             }
         }

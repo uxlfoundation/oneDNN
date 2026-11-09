@@ -27,18 +27,6 @@
 
 GEMMSTONE_NAMESPACE_START
 
-template <typename T1, typename T2>
-static inline T1 divUp(T1 x, T2 y)
-{
-    return (x + y - 1) / y;
-}
-
-template <typename T1, typename T2>
-static inline T1 alignUp(T1 x, T2 y)
-{
-    return divUp(x, y) * y;
-}
-
 static int roundDownSmallPow2(uint16_t x)
 {
     if (x <= 1) return 1;
@@ -63,7 +51,7 @@ static int roundUpSmallPow2(uint8_t x)
 
 static int effUnroll(int u, int round)
 {
-    return round > 1 ? int(alignUp(u, round)) : u;
+    return round > 1 ? int(align_up(u, round)) : u;
 }
 
 double evaluateW(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, EvaluateAuxOutput &aux)
@@ -76,8 +64,8 @@ double evaluateW(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
 
     aux.wgK = 1;
     if (e.driverInfo.kParallelLocal()) {
-        aux.k0 = alignUp(divUp(dp.sizes.k, e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]);
-        aux.wgK = std::max(1, std::min(e.driverInfo.wg[LoopK], int(divUp(dp.sizes.k, aux.k0))));
+        aux.k0 = align_up(div_up(dp.sizes.k, e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]);
+        aux.wgK = std::max(1, std::min(e.driverInfo.wg[LoopK], int(div_up(dp.sizes.k, aux.k0))));
         if (e.driverInfo.fixedWGK())
             aux.wgK = e.driverInfo.wg[LoopK];
     }
@@ -87,7 +75,7 @@ double evaluateW(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
     else if (e.driverInfo.kParallel()) {
         if (dp.threadCount == 0) return std::numeric_limits<double>::infinity();
         int wgCountK = std::max(1, int(dp.hwThreadCapacity / dp.threadCount));
-        aux.k0 = alignUp(divUp(dp.sizes.k, wgCountK), e.driverInfo.unroll[LoopK]);
+        aux.k0 = align_up(div_up(dp.sizes.k, wgCountK), e.driverInfo.unroll[LoopK]);
         if (aux.k0 < dp.sizes.k)
             priority = -priority;
         else
@@ -119,10 +107,10 @@ double evaluateSCore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     if (e.driverInfo.kParallel())
         kthread = aux.k0;
     else if (e.driverInfo.kParallelLocal()) {
-        kthread = alignUp(divUp(k, e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]);
+        kthread = align_up(div_up(k, e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]);
         kthread = std::max<decltype(kthread)>(kthread, 2 * e.driverInfo.unroll[LoopK]);
         aux.k0 = kthread;
-        aux.wgK = std::max(1, std::min(e.driverInfo.wg[LoopK], int(divUp(k, kthread))));
+        aux.wgK = std::max(1, std::min(e.driverInfo.wg[LoopK], int(div_up(k, kthread))));
         if (e.driverInfo.fixedWGK())
             aux.wgK = e.driverInfo.wg[LoopK];
     }
@@ -178,14 +166,14 @@ double evaluateS(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
 
         if (dp.deterministic || dp.noCAtomics) wgCountK1 = wgCountK2 = 1;
 
-        auto k0_1 = int(alignUp(divUp(dp.sizes.k, wgCountK1 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
-        auto k0_2 = int(alignUp(divUp(dp.sizes.k, wgCountK2 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
+        auto k0_1 = int(align_up(div_up(dp.sizes.k, wgCountK1 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
+        auto k0_2 = int(align_up(div_up(dp.sizes.k, wgCountK2 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
 
         k0_1 = std::max(k0_1, 1);
         k0_2 = std::max(k0_2, 1);
 
-        wgCountK1 = std::max(1, int(divUp(dp.sizes.k, k0_1 * e.driverInfo.wg[LoopK])));
-        wgCountK2 = std::max(1, int(divUp(dp.sizes.k, k0_2 * e.driverInfo.wg[LoopK])));
+        wgCountK1 = std::max(1, int(div_up(dp.sizes.k, k0_1 * e.driverInfo.wg[LoopK])));
+        wgCountK2 = std::max(1, int(div_up(dp.sizes.k, k0_2 * e.driverInfo.wg[LoopK])));
 
         auto dp1 = dp;
         dp1.wgCountK = wgCountK1;
@@ -252,12 +240,12 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     if (e.driverInfo.fixedWGK())
         aux.wgK = e.driverInfo.wg[LoopK];
     else if (aux.kParallel)
-        aux.wgK = std::max(1, int(divUp(k, aux.k0)));
+        aux.wgK = std::max(1, int(div_up(k, aux.k0)));
     else if (aux.kParallelVariable) {
         /* Variable k-slicing + local k-reduction: use kr only to avoid competing atomics from same subslice */
         auto wgCount = dp.wgCountM * dp.wgCountN * dp.sizes.batch;
         if (wgCount < partialWaveCount)
-            aux.wgK = roundUpSmallPow2(divUp(partialWaveCount, int(wgCount)));
+            aux.wgK = roundUpSmallPow2(div_up(partialWaveCount, int(wgCount)));
     } else if (e.driverInfo.kParallelVariable()) {
         /* Variable k-slicing disabled: use kr to fill GPU as much as possible */
         if (threads < capacity && !noKR)
@@ -272,7 +260,7 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     if (aux.kParallel)
         kthread = aux.k0;
     else if (e.driverInfo.kParallelLocal() && !aux.kParallelVariable) {
-        kthread = alignUp(divUp(k, aux.wgK), e.driverInfo.unroll[LoopK]);
+        kthread = align_up(div_up(k, aux.wgK), e.driverInfo.unroll[LoopK]);
         kthread = aux.k0 = std::max<decltype(kthread)>(kthread, 2 * e.driverInfo.unroll[LoopK]);
     }
 
@@ -372,14 +360,14 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
 
         if (dp.deterministic || dp.noCAtomics) wgCountK1 = wgCountK2 = 1;    /* k-parallelization is not deterministic */
 
-        auto k0_1 = int(alignUp(divUp(dp.sizes.k, wgCountK1 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
-        auto k0_2 = int(alignUp(divUp(dp.sizes.k, wgCountK2 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
+        auto k0_1 = int(align_up(div_up(dp.sizes.k, wgCountK1 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
+        auto k0_2 = int(align_up(div_up(dp.sizes.k, wgCountK2 * e.driverInfo.wg[LoopK]), e.driverInfo.unroll[LoopK]));
 
         k0_1 = std::max(k0_1, 1);
         k0_2 = std::max(k0_2, 1);
 
-        wgCountK1 = std::max(1, int(divUp(dp.sizes.k, k0_1 * e.driverInfo.wg[LoopK])));
-        wgCountK2 = std::max(1, int(divUp(dp.sizes.k, k0_2 * e.driverInfo.wg[LoopK])));
+        wgCountK1 = std::max(1, int(div_up(dp.sizes.k, k0_1 * e.driverInfo.wg[LoopK])));
+        wgCountK2 = std::max(1, int(div_up(dp.sizes.k, k0_2 * e.driverInfo.wg[LoopK])));
 
         auto dp1 = dp;
         dp1.wgCountK = wgCountK1;
@@ -454,7 +442,7 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
                     aux.kParallelVariable = false;
                     int padWGs = e.driverInfo.kPadding() ? 1 : 0;
                     int wgCountK = std::max(1, int(dp.hwThreadCapacity / dp.threadCount) - padWGs);
-                    aux.k0 = alignUp(divUp(dp.sizes.k, wgCountK * aux.wgK), e.driverInfo.unroll[LoopK]);
+                    aux.k0 = align_up(div_up(dp.sizes.k, wgCountK * aux.wgK), e.driverInfo.unroll[LoopK]);
                 }
             }
         }
@@ -499,18 +487,18 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
     auto wgTileM = wgM * unrollM;
     auto wgTileN = wgN * unrollN;
 
-    dp.wgCountM = divUp(p.sizes.m, wgTileM);    /* may be adjusted later */
-    dp.wgCountN = divUp(p.sizes.n, wgTileN);
+    dp.wgCountM = div_up(p.sizes.m, wgTileM);    /* may be adjusted later */
+    dp.wgCountN = div_up(p.sizes.n, wgTileN);
     dp.wgCountK = 1;
 
     if (!e.driverInfo.fixedWG()) {
         if (p.sizes.m < wgTileM) {
-            wgM = std::max(int(divUp(p.sizes.m, unrollM)), 1);
+            wgM = std::max(int(div_up(p.sizes.m, unrollM)), 1);
             wgTileM = wgM * unrollM;
             dp.wgCountM = 1;
         }
         if (p.sizes.n < wgTileN) {
-            wgN = std::max(int(divUp(p.sizes.n, unrollN)), 1);
+            wgN = std::max(int(div_up(p.sizes.n, unrollN)), 1);
             wgTileN = wgN * unrollN;
             dp.wgCountN = 1;
         }
@@ -559,7 +547,7 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
 
     dp.hwThreadCapacity = dp.threadsPerEU * p.euCount;
     dp.hwThreadsPartialWave = threadsPerWG * ssCount;
-    dp.partialWaveCount = divUp(dp.hwThreadCapacity, dp.hwThreadsPartialWave);
+    dp.partialWaveCount = div_up(dp.hwThreadCapacity, dp.hwThreadsPartialWave);
 
     dp.autoatomic = (dp.beta == 1) && !p.cConvert && !p.postOps && e.driverInfo.mayUseAutoAtomic();
 

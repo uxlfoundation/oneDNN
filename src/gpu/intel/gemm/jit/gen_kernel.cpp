@@ -316,6 +316,7 @@ status_t gen_desc_t::finalize(
             = bare.selector.layouts[2] = "";
     const auto *base = entry_ ? entry_ : &bare;
     std::string str = kernel_override_;
+    GEMMStrategy launch;
     int row_wg_k = 0;
     try {
         if (str.empty()) {
@@ -368,7 +369,7 @@ status_t gen_desc_t::finalize(
         }
         resolved_str_ = str;
         apply_strategy(str);
-        resolve_launch(strategy_, *base, tags, eval_params);
+        launch = resolve_launch(strategy_, *base, tags, eval_params);
     } catch (const std::exception &e) { return reject(e.what()); }
     auto want = decisions_of(strategy_);
     if (l1_flush_wa_)
@@ -408,8 +409,8 @@ status_t gen_desc_t::finalize(
     // Always use variable beta for global k-parallel kernels.
     if (strategy_.kParallel && !strategy_.fuseBeta) problem_.beta = Scalar();
 
-    // Omit periodic barriers when k is small.
-    if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * strategy_.barrierFreq)
+    // Omit periodic barriers when k is small, on preflight's rounded frequency.
+    if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * launch.barrierFreq)
         strategy_.barrierFreq = 0;
 
     // Correct GRF count in following calculations for fixed systolic kernels.
@@ -499,6 +500,8 @@ status_t gen_desc_t::finalize(
     if (have != want)
         return reject("decisions changed: " + want.str() + " -> " + have.str()
                 + "," + resolved_str_);
+    gpu_assert(strategy_.barrierFreq == 0
+            || strategy_.barrierFreq == launch.barrierFreq);
     if ((have.kb || have.kv) && !strategy_.C.atomic)
         return reject("k-parallel without C atomics");
 

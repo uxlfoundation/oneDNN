@@ -62,7 +62,7 @@ struct sdpa_mm1_post_op_t {
     float alpha = 0.0f;
     float beta = 0.0f;
     // Binary rhs: a scalar uses a [1 x 1] descriptor and its pointer is not
-    // query-tile-offset. A tensor rhs uses a query-row by key-position tile;
+    // query-tile-offset. A tensor rhs is [batch, query_head, query, key];
     // dimensions and strides are derived from its PD-owned memory descriptor.
     bool rhs_is_scalar = true;
     dnnl::impl::data_type_t rhs_dt = dnnl::impl::data_type::f32;
@@ -120,6 +120,9 @@ struct sdpa_full_softmax_params_t {
     sdpa_full_softmax_schedule_t schedule = sdpa_full_softmax_schedule_t::any;
     sdpa_full_softmax_kv_packing_t kv_packing
             = sdpa_full_softmax_kv_packing_t::any;
+    // Allow stacking the query from each head of a work item into the
+    // BRGEMM rows when seq_q == 1 (see sdpa_full_softmax_conf_t::stack_heads).
+    bool allow_stack_heads = true;
 };
 
 template <typename T>
@@ -210,9 +213,23 @@ struct sdpa_full_softmax_conf_t {
             = sdpa_full_softmax_schedule_t::per_head;
     sdpa_full_softmax_kv_packing_t kv_packing
             = sdpa_full_softmax_kv_packing_t::ahead;
-    // Query heads per work item: 1, or group_head for kv_head_group.
-    dim_t heads_per_item = 1;
+    // Number of query heads in each work item: 1 for per_head,
+    // group_head for kv_head_group.
+    dim_t query_heads_per_item = 1;
+    // With seq_q == 1, stacking lets each mm1/mm2 call process the queries
+    // from all heads in a work item together with M = query_heads_per_item,
+    // instead of one query head at a time with M = 1.
+    bool stack_heads = false;
+    // q_block partitions the query sequence among work items; q_tail is the
+    // remainder. m_block is the BRGEMM row block size. Without stack_heads,
+    // m_block == q_block. Stacking processes queries from different heads
+    // together, so q_block == 1 and m_block == query_heads_per_item.
     dim_t q_block = 0, q_tail = 0;
+    dim_t m_block = 0;
+    // BRGEMM row strides: mm1_lda for Q and mm2_ldc for mm2's C. The user
+    // output uses out_ld when mm2 writes to it directly or scatters.
+    dim_t mm1_lda = 0, mm2_ldc = 0;
+    dim_t out_ld = 0;
     // mm1 writes the score tile in mm1_n_block-wide column blocks,
     // mm2 reduces P in mm2_k_block-deep blocks.
     dim_t mm1_n_block = 0, mm1_n_tail = 0;

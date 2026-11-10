@@ -43,6 +43,7 @@ struct sdpa_fwd_pd_t;
 struct sdpa_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::sdpa;
 
+    static constexpr int mask_h_index = 1;
     static constexpr int mask_q_index = 2;
     static constexpr int mask_k_index = 3;
     static constexpr int ndims = 4;

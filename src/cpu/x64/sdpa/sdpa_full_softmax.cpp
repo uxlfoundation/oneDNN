@@ -234,27 +234,20 @@ void append_mm1_rhs(std::vector<const void *> &rhs,
         const sdpa_full_softmax_run_args_t &args, dim_t batch_idx,
         dim_t query_head_idx, dim_t q0, bool select_in_mm1,
         const uint8_t *cond) {
-    const dim_t kv_head_idx = query_head_idx / p.group_head;
-    const dim_t group_idx = query_head_idx % p.group_head;
     for (size_t pi = 0; pi < p.mm1_post_ops.size(); ++pi) {
         const auto &pop = p.mm1_post_ops[pi];
         if (!pop.is_binary) continue;
         const char *base = static_cast<const char *>(args.mm1_post_op_rhs[pi]);
         if (!pop.rhs_is_scalar) {
-            // A 4D rhs indexes the flat query head, a 5D rhs splits it into
-            // (kv_head, group); broadcast axes (dim == 1) contribute nothing.
+            // The RHS is [batch, query_head, query, key]; broadcast axes
+            // (dim == 1) contribute nothing.
             const auto &d = pop.rhs_dims;
             const auto &s = pop.rhs_strides;
-            const int rn = static_cast<int>(d.size());
             dim_t off = 0;
             if (d[0] != 1) off += batch_idx * s[0];
-            if (rn == 4) {
-                if (d[1] != 1) off += query_head_idx * s[1];
-            } else {
-                if (d[1] != 1) off += kv_head_idx * s[1];
-                if (d[2] != 1) off += group_idx * s[2];
-            }
-            if (d[rn - 2] != 1) off += q0 * s[rn - 2];
+            if (d[1] != 1) off += query_head_idx * s[1];
+            if (d[sdpa_pd_t::mask_q_index] != 1)
+                off += q0 * s[sdpa_pd_t::mask_q_index];
             base += off * types::data_type_size(pop.rhs_dt);
         }
         rhs.push_back(base);
@@ -305,7 +298,7 @@ status_t build_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
         dim_t M, dim_t N, dim_t K, dim_t lda, dim_t ldb, dim_t ldc,
         const std::vector<sdpa_mm1_post_op_t> *post_ops = nullptr,
         bool select_as_postop = false, dim_t full_output_width = 0,
-        bool b_is_vnni = false) {
+        bool b_is_vnni = false, bool stack_heads = false) {
     CHECK(brgemm_desc_init(&brg, isa_undef, brgemm_addr, dt, dt,
             /*transA=*/false, /*transB=*/false, brgemm_row_major,
             /*alpha=*/1.0f, beta, lda, ldb, ldc, M, N, K, /*strides=*/nullptr));
@@ -342,13 +335,18 @@ status_t build_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
                     CHECK(memory_desc_init_by_tag(
                             rhs_md, 2, rhs_dims, pop.rhs_dt, format_tag::ab));
                 } else {
-                    const int rn = static_cast<int>(pop.rhs_dims.size());
-                    const dim_t rows = pop.rhs_dims[rn - 2] == 1 ? 1 : M;
+                    const int row_axis = stack_heads ? sdpa_pd_t::mask_h_index
+                                                     : sdpa_pd_t::mask_q_index;
+                    const dim_t rows = pop.rhs_dims[row_axis] == 1 ? 1 : M;
+
+                    constexpr int key_axis = sdpa_pd_t::mask_k_index;
                     const dim_t cols
-                            = pop.rhs_dims[rn - 1] == 1 ? 1 : full_tile_width;
+                            = pop.rhs_dims[key_axis] == 1 ? 1 : full_tile_width;
+
                     dims_t rhs_dims = {rows, cols};
-                    dims_t rhs_str = {
-                            pop.rhs_strides[rn - 2], pop.rhs_strides[rn - 1]};
+                    dims_t rhs_str = {pop.rhs_strides[row_axis],
+                            pop.rhs_strides[key_axis]};
+
                     CHECK(memory_desc_init_by_strides(
                             rhs_md, 2, rhs_dims, pop.rhs_dt, rhs_str));
                 }
@@ -558,15 +556,16 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                 ? schedule_t::kv_head_group
                 : schedule_t::per_head;
     }
-    conf.heads_per_item
+    conf.query_heads_per_item
             = conf.schedule == schedule_t::kv_head_group ? p_.group_head : 1;
 
-    dim_t q_block = item_rows / conf.heads_per_item;
+    dim_t q_block = item_rows / conf.query_heads_per_item;
     if (q_block < p_.seq_q)
         q_block = nstl::max(q_granule, utils::rnd_dn(q_block, q_granule));
     q_block = nstl::min(q_block, p_.seq_q);
     // Shrink while that leaves fewer work items than threads.
-    const dim_t head_items = p_.batch * p_.num_head_q / conf.heads_per_item;
+    const dim_t head_items
+            = p_.batch * p_.num_head_q / conf.query_heads_per_item;
     while (q_block > q_granule
             && head_items * utils::div_up(p_.seq_q, q_block) < conf.nthr)
         q_block = utils::rnd_dn(q_block - 1, q_granule);
@@ -666,15 +665,50 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // output, LDC = output row stride), skipping the pv scratch tile and the
     // down-convert/scatter, when the output is f32 with unit-stride rows. All
     // other cases (bf16/f16 output or a strided output column) keep pv+scatter.
-    const dim_t o_row_stride = p_.o_strides[row_dim];
     const dim_t o_col_stride = p_.o_strides[ndims - 1];
     const bool mm2_direct = p_.out_dt == data_type::f32 && o_col_stride == 1;
     conf.mm2_direct = mm2_direct;
     conf.ld_pv = scratch_row_ld(p_.hs_v, sizeof(float), /*allow_padding=*/true);
-    const dim_t mm2_ldc = mm2_direct ? o_row_stride : conf.ld_pv;
 
-    // BRGEMM leading dims mirror the online kernel: A/B leading dims come from
-    // the user strides (row_dim = the M/K row axis), scores/pv are dense.
+    // With seq_q == 1, the queries in a kv_head_group work item come from
+    // different heads and can be processed together as BRGEMM rows.
+    // The per-head score/P/pv tiles of a work item are already consecutive
+    // [1 x ld] rows. Every row-addressed operand must then use its head stride
+    // as the row stride:
+    //  - Q and a direct output: head rows must not overlap;
+    //  - a tensor mm1 RHS (mask) and a folded select condition: the binary
+    //    injector addresses them with score-tile offsets, so they must either
+    //    broadcast over heads or have a head stride equal to ld_scores.
+    constexpr int head_dim = 1;
+    auto can_stack_heads = [&]() {
+        if (!p_.allow_stack_heads || p_.seq_q != 1
+                || conf.query_heads_per_item == 1)
+            return false;
+        if (p_.q_strides[head_dim] < p_.hs_qk) return false;
+        if (mm2_direct && p_.o_strides[head_dim] < p_.hs_v) return false;
+        for (const auto &pop : p_.mm1_post_ops) {
+            if (!pop.is_binary || pop.rhs_is_scalar) continue;
+            if (pop.rhs_dims[head_dim] != 1
+                    && pop.rhs_strides[head_dim] != conf.ld_scores)
+                return false;
+        }
+        if (conf.mm1_select_postop
+                && (p_.cond_dims[head_dim] == 1
+                        || p_.cond_strides[head_dim] != conf.ld_scores))
+            return false;
+        return true;
+    };
+
+    // Resolve the BRGEMM row layout once; descriptors and post-ops below
+    // are built from it.
+    conf.stack_heads = can_stack_heads();
+    const int m_axis = conf.stack_heads ? head_dim : row_dim;
+    conf.m_block = conf.stack_heads ? conf.query_heads_per_item : q_block;
+    conf.mm1_lda = p_.q_strides[m_axis];
+    conf.out_ld = p_.o_strides[m_axis];
+    conf.mm2_ldc = mm2_direct ? conf.out_ld : conf.ld_pv;
+
+    // A/B leading dims come from the user strides; scores/pv are dense.
     //   mm1: scores[m, seq_kv] = Q[m, hs_qk] * K[hs_qk, seq_kv]
     //   mm2: pv[m, hs_v]       = P[m, seq_kv] * V[seq_kv, hs_v]
     // The brgemm ukernel does not support a transposed B operand and needs mm1
@@ -721,12 +755,10 @@ status_t configure(const sdpa_full_softmax_params_t &params,
         return status::success;
     };
 
-    // Descriptor comparison does not examine post-op contents. All mm1
-    // variants use the same post-op chain and full score width; mm2 has none.
-    // The query dimension splits into q_block (+ q_tail); seq_kv splits into
-    // mm1_n_block (+ mm1_n_tail) for mm1 and independently into mm2_k_block
-    // (+ mm2_k_tail) for mm2.
-    const dim_t ms[2] = {q_block, q_tail};
+    // One descriptor per block/tail combination: rows split into m_block
+    // (+ q_tail); seq_kv splits into mm1_n_block (+ mm1_n_tail) for mm1 and
+    // independently into mm2_k_block (+ mm2_k_tail) for mm2.
+    const dim_t ms[2] = {conf.m_block, conf.q_tail};
 
     // mm1 N is one seq_kv column block; its post-op descriptors keep the full
     // seq_kv width (full_output_width) so the folded mask/select is addressed
@@ -740,12 +772,12 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                 brgemm_desc_t brg;
                 CHECK(build_brgemm_desc(brg, p_.mm_dt,
                         /*beta=*/0.0f, ms[qi], ns[ni], p_.hs_qk,
-                        /*lda=*/p_.q_strides[row_dim],
+                        /*lda=*/conf.mm1_lda,
                         /*ldb=*/conf.ldk,
                         /*ldc=*/conf.ld_scores, &p_.mm1_post_ops,
                         conf.mm1_select_postop,
                         /*full_output_width=*/p_.seq_kv,
-                        /*b_is_vnni=*/conf.mm1_needs_vnni_b));
+                        /*b_is_vnni=*/conf.mm1_needs_vnni_b, conf.stack_heads));
                 CHECK(add_brg_desc(
                         brg_conf.mm1[qi][ni], brg, conf.mm1_needs_vnni_b));
             }
@@ -771,7 +803,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                     CHECK(build_brgemm_desc(brg, p_.mm_dt, mm2_beta, ms[qi],
                             width, ks[ki],
                             /*lda=*/conf.ld_prob, /*ldb=*/conf.ldv,
-                            /*ldc=*/mm2_ldc, nullptr, false, 0,
+                            /*ldc=*/conf.mm2_ldc, nullptr, false, 0,
                             conf.mm2_needs_vnni_b));
                     CHECK(add_brg_desc(brg_conf.mm2[qi][ki][vi], brg,
                             conf.mm2_needs_vnni_b));
@@ -783,8 +815,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                     if (!width) continue;
                     brgemm_desc_t brg;
                     CHECK(build_brgemm_desc(brg, p_.mm_dt, 0.0f, ms[qi], width,
-                            conf.mm2_k_block, conf.ld_prob, conf.ldv, mm2_ldc,
-                            nullptr, false, 0, conf.mm2_needs_vnni_b));
+                            conf.mm2_k_block, conf.ld_prob, conf.ldv,
+                            conf.mm2_ldc, nullptr, false, 0,
+                            conf.mm2_needs_vnni_b));
                     CHECK(add_brg_desc(brg_conf.mm2_beta0[qi][vi], brg,
                             conf.mm2_needs_vnni_b));
                 }
@@ -805,7 +838,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // the (possibly strided) user output. The tiles of the work item's heads
     // are consecutive.
     const size_t item_q_rows
-            = static_cast<size_t>(conf.heads_per_item) * q_block;
+            = static_cast<size_t>(conf.query_heads_per_item) * q_block;
     conf.amx_wsp_bytes = align64(max_wsp);
     thread_scratch.set_tile_buffers(item_q_rows, conf.ld_scores, conf.ld_prob,
             conf.ld_pv, mm2_direct, conf.amx_wsp_bytes);
@@ -1003,7 +1036,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
         const sdpa_full_softmax_run_args_t &args, int nthr) {
     const sdpa_full_softmax_params_t &p_ = conf.params;
     const dim_t q_block = conf.q_block;
-    const dim_t heads_per_item = conf.heads_per_item;
+    const dim_t query_heads_per_item = conf.query_heads_per_item;
     const auto &brg_conf = conf.brgemm;
     const auto &descs = *brg_conf.descs;
     const auto &brg_kernels = kernels.brgemm_kernels;
@@ -1012,15 +1045,15 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
     const auto &select_kernel = kernels.select_kernel;
     const bool select_in_mm1 = conf.mm1_select_postop;
 
-    constexpr int ndims = sdpa_pd_t::ndims;
-    constexpr int row_dim = ndims - 2;
     const dim_t seq_kv = p_.seq_kv;
     const bool has_select = p_.has_select;
     const bool has_mm1_postops = !p_.mm1_post_ops.empty() || select_in_mm1;
 
-    const memory_desc_wrapper o_mdw(args.out.md);
-    const dim_t o_row_stride = o_mdw.strides()[row_dim];
-    const dim_t o_col_stride = o_mdw.strides()[ndims - 1];
+    const dim_t o_col_stride = p_.o_strides[sdpa_pd_t::ndims - 1];
+    // Stacked heads: one BRGEMM call covers all heads of the work item, with
+    // head 0's pointers and the head stride as the output row stride.
+    const dim_t brgemm_calls_per_item
+            = conf.stack_heads ? 1 : query_heads_per_item;
     const data_type_t mm_dt = p_.mm_dt;
     const size_t mm_dt_sz = types::data_type_size(mm_dt);
 
@@ -1059,18 +1092,20 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
             args.cond, conf.cond_copy_desc, scratch_ptr, copy_area_offset);
 
     const dim_t n_qblk = utils::div_up(p_.seq_q, q_block);
-    // Each work item computes one query block of heads_per_item consecutive
+    // Each work item computes one query block of query_heads_per_item consecutive
     // query heads (sharing one KV head) across the full seq_kv axis, then
     // writes their [m, hs_v] output blocks. Every K/V tile is used for all
     // heads of the item before moving to the next tile.
-    parallel_nd_ext(nthr, p_.batch, p_.num_head_q / heads_per_item, n_qblk,
+    parallel_nd_ext(nthr, p_.batch, p_.num_head_q / query_heads_per_item,
+            n_qblk,
             [&](int tid, int, dim_t batch_idx, dim_t item_head_idx,
                     dim_t query_block_idx) {
-        const dim_t head0 = item_head_idx * heads_per_item;
+        const dim_t head0 = item_head_idx * query_heads_per_item;
         const dim_t kv_head_idx = head0 / p_.group_head;
         const dim_t q0 = query_block_idx * q_block;
         const dim_t m = nstl::min(q_block, p_.seq_q - q0);
         const int qi = m != q_block;
+        const dim_t call_m = qi ? conf.q_tail : conf.m_block;
 
         // Per-head tiles of this thread's scratch: f32 scores, P in the
         // compute type (the scores tile itself for f32), and the f32 pv tile.
@@ -1095,9 +1130,9 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
             char *out;
             const uint8_t *cond;
         };
-        std::vector<head_ptrs_t> heads(heads_per_item);
+        std::vector<head_ptrs_t> heads(query_heads_per_item);
         std::vector<const void *> rhs;
-        for (dim_t h = 0; h < heads_per_item; ++h) {
+        for (dim_t h = 0; h < query_heads_per_item; ++h) {
             const dim_t head = head0 + h;
             auto &hp = heads[h];
             hp.q = get_arg_ptr(q_td, batch_idx, head, q0);
@@ -1110,7 +1145,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
                 append_mm1_rhs(rhs, p_, args, batch_idx, head, q0,
                         select_in_mm1, hp.cond);
         }
-        const size_t rhs_per_head = rhs.size() / heads_per_item;
+        const size_t rhs_per_head = rhs.size() / query_heads_per_item;
 
         int prev_brg_idx = -1;
         bool used_amx = false;
@@ -1131,7 +1166,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
             used_amx = used_amx || is_amx;
             const brgemm_kernel_t *kernel = brg_kernels[brg_idx];
             assert(kernel);
-            for (dim_t h = 0; h < heads_per_item; ++h) {
+            for (dim_t h = 0; h < brgemm_calls_per_item; ++h) {
                 brgemm_batch_element_t be;
                 be.ptr.A = heads[h].q;
                 be.ptr.B = k_op.at(0, kv0);
@@ -1162,7 +1197,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
         // condition is dense along seq_kv, and both polarities and the
         // broadcast-over-rows case are baked in at build time.
         const bool prepass_select = has_select && !select_in_mm1;
-        for (dim_t h = 0; h < heads_per_item; ++h) {
+        for (dim_t h = 0; h < query_heads_per_item; ++h) {
             float *scores = scores_of(h);
             if (prepass_select && heads[h].cond) {
                 sdpa_full_softmax_select_ir::select_row_args_t sa;
@@ -1213,7 +1248,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
                 used_amx = used_amx || is_amx;
                 const brgemm_kernel_t *kernel = brg_kernels[brg_idx];
                 assert(kernel);
-                for (dim_t h = 0; h < heads_per_item; ++h) {
+                for (dim_t h = 0; h < brgemm_calls_per_item; ++h) {
                     float *mm2_c = conf.mm2_direct
                             ? reinterpret_cast<float *>(heads[h].out)
                             : pv_of(h);
@@ -1226,9 +1261,9 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
         });
 
         if (!conf.mm2_direct)
-            for (dim_t h = 0; h < heads_per_item; ++h)
-                store_pv_tile(pv_of(h), ld_pv, heads[h].out, o_row_stride,
-                        o_col_stride, p_.out_dt, m, p_.hs_v);
+            for (dim_t h = 0; h < brgemm_calls_per_item; ++h)
+                store_pv_tile(pv_of(h), ld_pv, heads[h].out, conf.out_ld,
+                        o_col_stride, p_.out_dt, call_m, p_.hs_v);
 
         // Release AMX tiles so the configured state does not leak past this
         // work item.

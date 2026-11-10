@@ -673,6 +673,18 @@ struct brgemm_desc_t {
         return !is_ace() && can_reuse_input_transform() && bdb2 > 1;
     }
 
+    // Whether other cores also read A (B), as the caller states with
+    // `mem_advice`.
+    bool read_shared_A() const noexcept {
+        return utils::one_of(brgattr.mem_advice, brgemm_hint_mem_advice_A,
+                brgemm_hint_mem_advice_A_B);
+    }
+
+    bool read_shared_B() const noexcept {
+        return utils::one_of(brgattr.mem_advice, brgemm_hint_mem_advice_B,
+                brgemm_hint_mem_advice_A_B);
+    }
+
     dim_t get_convert_wsp_buffer_size() const noexcept {
         if (!is_input_convert()) return 0;
         const dim_t n_bdb = bd_block2;

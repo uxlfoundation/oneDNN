@@ -3595,9 +3595,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     };
 
     auto load_B = [this, is_ld_tail](int vmm_load_idx, int rd, int ld) {
-        const bool mem_advice_B
-                = utils::one_of(brg.brgattr.mem_advice,
-                          brgemm_hint_mem_advice_B, brgemm_hint_mem_advice_A_B)
+        const bool mem_advice_B = brg.read_shared_B()
                 && IMPLICATION(
                         brg.dt_b == data_type::f16, brg.isa_impl == avx10_2)
                 && IMPLICATION(brg.dt_b == data_type::bf16,

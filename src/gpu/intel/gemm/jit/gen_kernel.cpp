@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstdio>
 #include <functional>
 #include <stdexcept>
 
@@ -1241,6 +1242,15 @@ status_t gen_kernel_t::get_kernel(
 
 std::string gen_desc_t::str() const {
     return dump_kernel(hw_, problem_, strategy_);
+}
+
+std::string gen_desc_t::hash() const {
+    auto s = serialize();
+    s.append(aux_params_.k0);
+    s.append(aux_params_.wgK);
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)s.get_hash());
+    return buf;
 }
 
 void gen_kernel_t::maybe_print_verbose() {

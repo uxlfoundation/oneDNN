@@ -24,22 +24,25 @@
 #include <thread>
 #include <vector>
 
+#include "common.hpp"
+#include "dnnl_common.hpp"
+#include "utils/gpu_freq.hpp"
+#include "utils/system.hpp"
+
+#ifdef BENCHDNN_WITH_GPU_FREQ
 #ifdef _WIN32
 #include "windows.h"
 #else
 #include <dlfcn.h>
 #endif
 
-#include "common.hpp"
-#include "dnnl_common.hpp"
-#include "utils/gpu_freq.hpp"
-#include "utils/system.hpp"
-
 // Types only.
 #include "level_zero/zes_api.h"
+#endif
 
 namespace gpu_freq {
 
+#ifdef BENCHDNN_WITH_GPU_FREQ
 namespace {
 
 constexpr int period_us = 1000;
@@ -57,21 +60,29 @@ void *load_ze_symbol(const char *name) {
 #endif
 }
 
+template <typename F>
+F load_ze_fn(const char *name) {
+    return reinterpret_cast<F>(load_ze_symbol(name));
+}
+
 // Reads the actual frequency of a device with `zesFrequencyGetState()` for
 // every GPU frequency domain. A call costs ~50-60 us.
 struct ze_reader_t {
     static std::unique_ptr<ze_reader_t> create(const std::string &bdf) {
-#define LOAD(var, name) \
-    auto var = reinterpret_cast<decltype(&name)>(load_ze_symbol(#name)); \
-    if (!(var)) return nullptr;
-        LOAD(init, zesInit);
-        LOAD(driver_get, zesDriverGet);
-        LOAD(device_get, zesDeviceGet);
-        LOAD(pci_props, zesDevicePciGetProperties);
-        LOAD(enum_freq, zesDeviceEnumFrequencyDomains);
-        LOAD(freq_props, zesFrequencyGetProperties);
-        LOAD(get_state, zesFrequencyGetState);
-#undef LOAD
+        auto init = load_ze_fn<decltype(&zesInit)>("zesInit");
+        auto driver_get = load_ze_fn<decltype(&zesDriverGet)>("zesDriverGet");
+        auto device_get = load_ze_fn<decltype(&zesDeviceGet)>("zesDeviceGet");
+        auto pci_props = load_ze_fn<decltype(&zesDevicePciGetProperties)>(
+                "zesDevicePciGetProperties");
+        auto enum_freq = load_ze_fn<decltype(&zesDeviceEnumFrequencyDomains)>(
+                "zesDeviceEnumFrequencyDomains");
+        auto freq_props = load_ze_fn<decltype(&zesFrequencyGetProperties)>(
+                "zesFrequencyGetProperties");
+        auto get_state = load_ze_fn<decltype(&zesFrequencyGetState)>(
+                "zesFrequencyGetState");
+        if (!init || !driver_get || !device_get || !pci_props || !enum_freq
+                || !freq_props || !get_state)
+            return nullptr;
         if (init(0) != ZE_RESULT_SUCCESS) return nullptr;
 
         uint32_t n_drv = 0;
@@ -162,7 +173,7 @@ struct period_timer_t {
 #endif
     }
 
-    void wait() {
+    void wait() const {
 #ifdef _WIN32
         if (timer_) {
             LARGE_INTEGER due;
@@ -263,6 +274,21 @@ std::vector<sample_t> stop() {
     return sampler_t::get().stop();
 }
 
+double max_mhz() {
+    return sampler_t::get().max_mhz();
+}
+#else
+void start() {}
+
+std::vector<sample_t> stop() {
+    return {};
+}
+
+double max_mhz() {
+    return 0;
+}
+#endif
+
 stats_t tail_stats(const std::vector<sample_t> &samples, double fraction) {
     stats_t st;
     auto add = [&](double mhz) {
@@ -284,10 +310,6 @@ stats_t tail_stats(const std::vector<sample_t> &samples, double fraction) {
     if (!st.n && last_before) add(last_before->mhz);
     if (st.n) st.avg /= st.n;
     return st;
-}
-
-double max_mhz() {
-    return sampler_t::get().max_mhz();
 }
 
 session_t::session_t() {

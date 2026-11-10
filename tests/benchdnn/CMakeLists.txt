@@ -32,6 +32,12 @@ include_directories_with_host_compiler(
     ${CMAKE_CURRENT_SOURCE_DIR}
     )
 
+# GPU frequency sampling via Level Zero Sysman, Intel GPUs only.
+if(DNNL_GPU_VENDOR STREQUAL "INTEL" AND NOT DNNL_GPU_RUNTIME STREQUAL "NONE")
+    include_directories_with_host_compiler(${DNNL_ZE_INCLUDE_DIR})
+    add_definitions_with_host_compiler(-DBENCHDNN_WITH_GPU_FREQ)
+endif()
+
 if(BENCHDNN_USE_RDPMC)
     add_definitions_with_host_compiler(-DBENCHDNN_USE_RDPMC)
 endif()

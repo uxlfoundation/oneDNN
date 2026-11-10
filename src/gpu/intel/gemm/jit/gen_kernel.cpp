@@ -345,6 +345,7 @@ status_t gen_desc_t::finalize(
     auto bare = make_bare_entry(catalog_hw_);
     const auto *base = entry_ ? entry_ : &bare;
     std::string str = kernel_override_;
+    GEMMStrategy launch;
     try {
         if (str.empty()) {
             // Update problem alignments to match catalog entry.
@@ -396,15 +397,13 @@ status_t gen_desc_t::finalize(
         resolved_str_ = str;
         apply_strategy(str);
         if (enable_generator_dsl()) fixup_dsl_strategy(strategy_);
-        resolve_launch(strategy_, *base, tags, eval_params);
+        launch = resolve_launch(strategy_, *base, tags, eval_params);
     } catch (const std::exception &e) { return reject(e.what()); }
-    auto want = decisions_of(strategy_);
-    // Omit periodic barriers when k is small.
-    if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * strategy_.barrierFreq)
+    // Preflight may drop decisions (e.g. kv when batched); compare against that.
+    auto want = decisions_of(launch);
+    // Omit periodic barriers when k is small, on preflight's rounded frequency.
+    if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * launch.barrierFreq)
         strategy_.barrierFreq = 0;
-
-    // Correct GRF count in following calculations for fixed systolic kernels.
-    if (strategy_.fixedSystolic) strategy_.GRFs = 256;
 
     // Disable linear ordering and persistent threads if the GEMM doesn't fill the GPU.
     if (m_ >= 0 && n_ >= 0 && eu_count_ >= 0) {
@@ -418,7 +417,7 @@ status_t gen_desc_t::finalize(
                 thread_per_tg *= std::max(aux_params_.wgK, 1);
             dim_t thread_gpu = eu_count_
                     * compute::device_info_t::threads_per_eu(
-                            product_, strategy_.GRFs);
+                            product_, launch.GRFs);
             dim_t tiles_gpu = thread_gpu / thread_per_tg;
 
             bool use_linear = (m_tiles * n_tiles <= tiles_gpu);
@@ -429,7 +428,7 @@ status_t gen_desc_t::finalize(
                 if (strategy_.wg[LoopM] % 2 || strategy_.wg[LoopN] % 2)
                     use_linear_m = use_linear_n = false; /* cannot swap */
             // No k loop on a 2D grid: nothing to reuse, keep the catalog walk.
-            if (k_ >= 0 && k_ <= std::max(strategy_.ka_load, strategy_.kb_load)
+            if (k_ >= 0 && k_ <= std::max(launch.ka_load, launch.kb_load)
                     && m_tiles > 1 && n_tiles > 1)
                 use_linear_m = use_linear_n = false;
 
@@ -469,6 +468,8 @@ status_t gen_desc_t::finalize(
     if (have != want)
         return reject("decisions changed: " + want.str() + " -> " + have.str()
                 + "," + resolved_str_);
+    gpu_assert(strategy_.barrierFreq == 0
+            || strategy_.barrierFreq == launch.barrierFreq);
     if ((have.kb || have.kv) && !strategy_.C.atomic)
         return reject("k-parallel without C atomics");
 

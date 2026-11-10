@@ -645,13 +645,13 @@ std::string deserialized_graph_t::get_string() const {
 }
 
 dnnl::graph::graph deserialized_graph_t::to_graph(
-        const graph_fpmath_mode_t &fpmath_mode) const {
+        const graph_fpmath_mode_t &fpmath_mode, bool deterministic) const {
     const dnnl::engine &engine = get_graph_engine();
     dnnl::graph::graph g(engine.get_kind());
     g.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(
                               str2fpmath_mode(fpmath_mode.mode_.c_str())),
             fpmath_mode.apply_to_int_);
-    g.set_deterministic(deterministic_ == "true");
+    g.set_deterministic(deterministic);
 
     for (const auto &aop : ops_) {
         try {

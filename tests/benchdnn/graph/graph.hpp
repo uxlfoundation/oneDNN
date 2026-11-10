@@ -50,6 +50,8 @@ struct settings_t : public base_settings_t {
     // number check.
     std::vector<size_t> expected_n_partition_vec {1};
     std::vector<graph_fpmath_mode_t> fpmath_mode_vec {graph_fpmath_mode_t {}};
+    // An empty value means `--attr-deterministic` was not given.
+    std::vector<std::string> deterministic_vec {std::string()};
     std::vector<dnnl_data_type_t> dt {dnnl_data_type_undef};
     std::vector<std::map<size_t, dnnl_data_type_t>> dt_map {
             {{SIZE_MAX, dnnl_data_type_undef}}};
@@ -67,19 +69,21 @@ struct settings_t : public base_settings_t {
 
 // TODO evaluate prb_t struct
 struct prb_t {
-    prb_t(const deserialized_graph_t &dg, const size_t &expected_n_partition);
+    prb_t(const deserialized_graph_t &dg, const size_t &expected_n_partition,
+            const std::string &deterministic);
 
     deserialized_graph_t dg;
     size_t expected_n_partition;
     graph_fpmath_mode_t fpmath_mode;
+    bool deterministic;
 };
 
 std::string case_to_str(const std::string &json_file,
         const std::map<size_t, std::string> &in_shapes,
         const std::map<size_t, std::string> &op_attrs,
         const graph_fpmath_mode_t &fpmath_mode,
-        const size_t expected_n_partitions, const int64_t mb,
-        const dnnl_data_type_t dt,
+        const std::string &deterministic, const size_t expected_n_partitions,
+        const int64_t mb, const dnnl_data_type_t dt,
         const std::map<size_t, dnnl_data_type_t> &dt_map,
         const std::map<size_t, std::string> &op_kind_map,
         const std::map<size_t, std::string> &tensor_property);

@@ -267,6 +267,27 @@ bool parse_graph_fpmath_mode(
     return true;
 }
 
+// Different from primitive problems, the graph JSON file also contains a
+// `deterministic` field which we need to handle too. Here we cannot reuse the
+// `parse_attr_deterministic()` function since `attr_t::deterministic_t` can't
+// tell "not given" from an explicit default, which is needed to override the
+// JSON field.
+bool parse_graph_deterministic(
+        std::vector<std::string> &deterministic_vec, const char *str) {
+    std::string values_str;
+    if (!parse_string(values_str, str, "attr-deterministic")) return false;
+
+    deterministic_vec.clear();
+    stringstream_t ss(values_str);
+    std::string value;
+    while (std::getline(ss, value, ',')) {
+        if (value.empty()) continue;
+        deterministic_vec.emplace_back(bool2str(parsers::str2bool(value)));
+    }
+    if (deterministic_vec.empty()) deterministic_vec.emplace_back();
+    return true;
+}
+
 std::map<std::string, std::string> parse_attrs(const std::string &attrs_str) {
     std::map<std::string, std::string> attrs_map;
     std::string::size_type key_pos = 0;

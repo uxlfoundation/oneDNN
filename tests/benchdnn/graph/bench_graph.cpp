@@ -30,6 +30,7 @@ void check_correctness(const settings_t &s) {
     for_(const auto &i_op_attrs : s.op_attrs_vec)
     for_(const auto &i_expected_n_partition : s.expected_n_partition_vec)
     for_(const auto &i_fpmath_mode : s.fpmath_mode_vec)
+    for_(const auto &i_deterministic : s.deterministic_vec)
     for_(const auto &i_op_kind_map : s.op_kind_map)
     for_(const auto &i_tensor_property : s.tensor_property_vec)
     for_(const auto &i_dt : s.dt)
@@ -40,8 +41,8 @@ void check_correctness(const settings_t &s) {
 
         res_t res {};
         const auto &cpp_pstr = case_to_str(s.json_file, i_in_shapes, i_op_attrs,
-                i_fpmath_mode, i_expected_n_partition, i_mb, i_dt, i_dt_map,
-                i_op_kind_map, i_tensor_property);
+                i_fpmath_mode, i_deterministic, i_expected_n_partition, i_mb,
+                i_dt, i_dt_map, i_op_kind_map, i_tensor_property);
         const char *pstr = cpp_pstr.c_str();
 
         // rewrite the graph
@@ -57,7 +58,7 @@ void check_correctness(const settings_t &s) {
         }
 
         BENCHDNN_PRINT(7, "[INFO] Graph dump:\n%s\n", dg.get_string().c_str());
-        const prb_t prb(dg, i_expected_n_partition);
+        const prb_t prb(dg, i_expected_n_partition, i_deterministic);
         BENCHDNN_PRINT(1, "run: %s\n", pstr);
 
         // A timer for each test case.
@@ -108,6 +109,7 @@ int bench(int argc, char **argv) {
                 || parse_graph_expected_n_partitions(
                         s.expected_n_partition_vec, argv[0])
                 || parse_graph_fpmath_mode(s.fpmath_mode_vec, argv[0])
+                || parse_graph_deterministic(s.deterministic_vec, argv[0])
                 || parse_mb(s.mb, def.mb, argv[0]) || parse_reset(s, argv[0]);
         if (!parsed_options) {
             if (!parse_input_file(s.json_file, argv[0]))

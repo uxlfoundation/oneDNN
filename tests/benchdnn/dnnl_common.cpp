@@ -363,6 +363,7 @@ int test_persistent_cache_api(
 isa_hints_t hints {isa_hints_t::none};
 
 memory_kind_ext_t memory_kind {default_memory_kind};
+memory_compression_t memory_compression {memory_compression_t::def};
 
 int default_num_streams = 1;
 int num_streams = default_num_streams;

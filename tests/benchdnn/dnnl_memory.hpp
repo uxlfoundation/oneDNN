@@ -80,6 +80,7 @@ struct dnn_mem_t {
         m_padded_ = rhs.m_padded_;
         data_ = std::move(rhs.data_);
         is_data_owner_ = rhs.is_data_owner_;
+        is_hint_alloc_ = rhs.is_hint_alloc_;
         active_ = rhs.active_;
         engine_ = std::move(rhs.engine_);
         is_mapped_ = (bool)rhs.is_mapped_;
@@ -239,6 +240,8 @@ struct dnn_mem_t {
 private:
     std::vector<void *> data_;
     bool is_data_owner_ = false;
+    // Allocated by `malloc_device_compression()`.
+    bool is_hint_alloc_ = false;
     bool active_ = false;
 
     engine_t engine_;
@@ -297,5 +300,8 @@ int check_buffer_overwrite(const dnn_mem_t &mem, int arg, res_t *res = nullptr);
 // padded area.
 dnnl_dim_t md_off_v(const dnn_mem_t &mem, const dnnl_dims_t pos,
         bool is_pos_padded = false);
+
+// Returns true if the GPU driver accepts the `--memory-compression` hint.
+bool is_memory_compression_supported(const engine_t &engine);
 
 #endif

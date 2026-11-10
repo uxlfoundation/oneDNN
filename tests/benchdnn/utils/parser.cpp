@@ -1845,6 +1845,29 @@ static bool parse_memory_kind(
     return parsed;
 }
 
+static bool parse_memory_compression(const char *str,
+        const std::string &option_name = "memory-compression") {
+    static const std::string help
+            = "MODE    (Default: `def`)\n    Sets a compression hint for GPU "
+              "memory allocated by the driver.\n    `MODE` values are `def` "
+              "(runtime default), `on` or `off`.\n";
+    bool parsed = parse_single_value_option(memory_compression,
+            memory_compression_t::def, str2memory_compression, str, option_name,
+            help);
+
+#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL \
+        && DNNL_GPU_RUNTIME != DNNL_RUNTIME_ZE
+    if (parsed) {
+        fprintf(stderr,
+                "ERROR: option `--%s` is supported with DPC++, OpenCL and "
+                "Level Zero builds only, exiting...\n",
+                option_name.c_str());
+        exit(2);
+    }
+#endif
+    return parsed;
+}
+
 // TODO: remove once the SYCL kernel compiler becomes thread-safe.
 static mode_modifier_t drop_par_create(mode_modifier_t modifier) {
 #ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
@@ -2099,8 +2122,8 @@ bool parse_bench_settings(const char *str) {
             || parse_global_impl(str) || parse_global_skip_impl(str)
             || parse_max_ms_per_prb(str) || parse_num_streams(str)
             || parse_repeats_per_prb(str) || parse_mem_check(str)
-            || parse_memory_kind(str) || parse_mode(str)
-            || parse_mode_modifier(str) || parse_start(str)
+            || parse_memory_kind(str) || parse_memory_compression(str)
+            || parse_mode(str) || parse_mode_modifier(str) || parse_start(str)
             || parse_stream_kind(str) || parse_summary(str)
             || parse_verbose(str) || parse_execution_mode(str)
             || parse_buffer_prefix(str);
@@ -2175,6 +2198,14 @@ void catch_unknown_options(const char *str) {
             && fill_input != fill_input_t::random) {
         BENCHDNN_PRINT(0, "%s\n",
                 "Error: --fill cannot be used for correctness testing.");
+        exit(2);
+    }
+    if (memory_compression != memory_compression_t::def
+            && memory_kind != memory_kind_ext_t::usm
+            && memory_kind != memory_kind_ext_t::usm_device) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: --memory-compression requires --memory-kind=usm or "
+                "usm_device.");
         exit(2);
     }
 }

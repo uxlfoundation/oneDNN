@@ -25,6 +25,22 @@
 
 #ifdef DNNL_WITH_SYCL
 #include "oneapi/dnnl/dnnl_sycl.hpp"
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include <sycl/ext/oneapi/backend/level_zero.hpp>
+#define BENCHDNN_SYCL_ZE
+#endif
+#endif
+
+#if defined(BENCHDNN_SYCL_ZE) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#include "level_zero/ze_api.h"
+#endif
+
+#ifdef BENCHDNN_SYCL_ZE
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
@@ -753,6 +769,136 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_grouped_md(
     return md;
 }
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+// From the Intel OpenCL driver private header.
+#define BENCHDNN_CL_MEM_FLAGS_INTEL 0x10001
+#define BENCHDNN_CL_MEM_COMPRESSED_HINT_INTEL (1u << 21)
+#define BENCHDNN_CL_MEM_UNCOMPRESSED_HINT_INTEL (1u << 22)
+#define BENCHDNN_CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL (1u << 23)
+
+static void *ocl_malloc_device_compression(const engine_t &engine, size_t sz) {
+    using alloc_t = void *(*)(cl_context, cl_device_id, const cl_ulong *,
+            size_t, cl_uint, cl_int *);
+    cl_context ctx = nullptr;
+    cl_device_id dev = nullptr;
+    cl_platform_id platform = nullptr;
+    cl_ulong max_alloc = 0;
+    if (dnnl_ocl_interop_engine_get_context(engine, &ctx) != dnnl_success
+            || dnnl_ocl_interop_get_device(engine, &dev) != dnnl_success
+            || clGetDeviceInfo(dev, CL_DEVICE_PLATFORM, sizeof(platform),
+                       &platform, nullptr)
+                    != CL_SUCCESS
+            || clGetDeviceInfo(dev, CL_DEVICE_MAX_MEM_ALLOC_SIZE,
+                       sizeof(max_alloc), &max_alloc, nullptr)
+                    != CL_SUCCESS)
+        return nullptr;
+    auto alloc = reinterpret_cast<alloc_t>(
+            clGetExtensionFunctionAddressForPlatform(
+                    platform, "clDeviceMemAllocINTEL"));
+    if (!alloc) return nullptr;
+    cl_ulong flags = memory_compression == memory_compression_t::on
+            ? BENCHDNN_CL_MEM_COMPRESSED_HINT_INTEL
+            : BENCHDNN_CL_MEM_UNCOMPRESSED_HINT_INTEL;
+    if (sz > max_alloc) flags |= BENCHDNN_CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL;
+    const cl_ulong props[] = {BENCHDNN_CL_MEM_FLAGS_INTEL, flags, 0};
+    cl_int err = CL_SUCCESS;
+    void *ptr = alloc(ctx, dev, props, sz, 0, &err);
+    return err == CL_SUCCESS ? ptr : nullptr;
+}
+#endif
+
+#if defined(BENCHDNN_SYCL_ZE) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+#ifdef BENCHDNN_SYCL_ZE
+// SYCL builds do not link the Level Zero loader.
+static void *find_ze_symbol(const char *name) {
+#ifdef _WIN32
+    static HMODULE lib = [] {
+        HMODULE h = GetModuleHandleA("ze_loader.dll");
+        return h ? h
+                 : LoadLibraryExA("ze_loader.dll", nullptr,
+                           LOAD_LIBRARY_SEARCH_SYSTEM32);
+    }();
+    return lib ? reinterpret_cast<void *>(GetProcAddress(lib, name)) : nullptr;
+#else
+    static void *lib = dlopen("libze_loader.so.1", RTLD_NOW | RTLD_LOCAL);
+    return lib ? dlsym(lib, name) : nullptr;
+#endif
+}
+#define BENCHDNN_ZE_FUNC(f) \
+    static auto f##_ = reinterpret_cast<decltype(&f)>(find_ze_symbol(#f))
+#else
+#define BENCHDNN_ZE_FUNC(f) static auto f##_ = &f
+#endif
+
+static void *ze_malloc_device_compression(
+        ze_context_handle_t ctx, ze_device_handle_t dev, size_t sz) {
+    BENCHDNN_ZE_FUNC(zeMemAllocDevice);
+    if (!zeMemAllocDevice_) return nullptr;
+    ze_memory_compression_hints_ext_desc_t hint = {
+            ZE_STRUCTURE_TYPE_MEMORY_COMPRESSION_HINTS_EXT_DESC, nullptr,
+            memory_compression == memory_compression_t::on
+                    ? ZE_MEMORY_COMPRESSION_HINTS_EXT_FLAG_COMPRESSED
+                    : ZE_MEMORY_COMPRESSION_HINTS_EXT_FLAG_UNCOMPRESSED};
+    ze_device_mem_alloc_desc_t desc
+            = {ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC, &hint, 0, 0};
+    void *ptr = nullptr;
+    if (zeMemAllocDevice_(ctx, &desc, sz, 64, dev, &ptr) != ZE_RESULT_SUCCESS)
+        return nullptr;
+    return ptr;
+}
+#endif
+
+#if defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+// Allocates device USM with the `--memory-compression` hint.
+static void *malloc_device_compression(const engine_t &engine, size_t sz) {
+#ifdef BENCHDNN_SYCL_ZE
+    constexpr auto ze = ::sycl::backend::ext_oneapi_level_zero;
+    if (is_sycl_engine(engine)
+            && dnnl::sycl_interop::get_context(engine).get_backend() == ze)
+        return ze_malloc_device_compression(
+                ::sycl::get_native<ze>(dnnl::sycl_interop::get_context(engine)),
+                ::sycl::get_native<ze>(dnnl::sycl_interop::get_device(engine)),
+                sz);
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    if (is_opencl_engine(engine))
+        return ocl_malloc_device_compression(engine, sz);
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+    ze_context_handle_t ctx = nullptr;
+    ze_device_handle_t dev = nullptr;
+    if (is_ze_engine(engine)
+            && dnnl_ze_interop_engine_get_context(engine, &ctx) == dnnl_success
+            && dnnl_ze_interop_engine_get_device(engine, &dev) == dnnl_success)
+        return ze_malloc_device_compression(ctx, dev, sz);
+#endif
+    BENCHDNN_PRINT(0, "%s\n",
+            "Error: --memory-compression requires an Intel GPU with the "
+            "OpenCL or Level Zero runtime, or SYCL on Level Zero.");
+    return nullptr;
+}
+#endif
+
+#ifdef DNNL_WITH_SYCL
+static void sycl_free(const engine_t &engine, void *ptr) {
+    auto ctx = dnnl::sycl_interop::get_context(engine);
+#ifdef BENCHDNN_SYCL_ZE
+    // Allocated by Level Zero, not known to the SYCL runtime.
+    if (memory_compression != memory_compression_t::def) {
+        BENCHDNN_ZE_FUNC(zeMemFree);
+        if (ptr && zeMemFree_)
+            zeMemFree_(
+                    ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
+                            ctx),
+                    ptr);
+        return;
+    }
+#endif
+    ::sycl::free(ptr, ctx);
+}
+#endif
+
 int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
 #ifdef DNNL_WITH_SYCL
     if (handle_info.is_host_ptr) {
@@ -777,7 +923,9 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
     auto md_padded = pad_memory_desc(md_, &is_canary_protected_);
     if (!md_padded) md_padded = md_;
 
-    switch (memory_kind) {
+    const bool use_hint = !is_cpu(engine_)
+            && memory_compression != memory_compression_t::def;
+    switch (use_hint ? memory_kind_ext_t::usm_device : memory_kind) {
         case memory_kind_ext_t::usm:
         case memory_kind_ext_t::buffer: {
             dnnl_sycl_interop_memory_kind_t mem_kind
@@ -804,14 +952,16 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
             const int nhandles = query_md_num_handles(md_);
             for (int i = 0; i < nhandles; i++) {
                 size_t sz = dnnl_memory_desc_get_size_v2(md_padded, i);
-                if (memory_kind == memory_kind_ext_t::usm_device) {
+                if (use_hint) {
+                    data_.push_back(malloc_device_compression(engine_, sz));
+                } else if (memory_kind == memory_kind_ext_t::usm_device) {
                     data_.push_back(::sycl::malloc_device(sz, dev, ctx));
                 } else {
                     data_.push_back(::sycl::malloc_shared(sz, dev, ctx));
                 }
                 if (sz > 0 && !data_[i]) {
                     for (void *p : data_)
-                        ::sycl::free(p, ctx);
+                        sycl_free(engine_, p);
                     DNN_SAFE(dnnl_out_of_memory, CRIT);
                 }
             }
@@ -851,7 +1001,8 @@ int dnn_mem_t::initialize_memory_create_opencl(
     auto md_padded = pad_memory_desc(md_, &is_canary_protected_);
     if (!md_padded) md_padded = md_;
 
-    switch (memory_kind) {
+    const bool use_hint = memory_compression != memory_compression_t::def;
+    switch (use_hint ? memory_kind_ext_t::usm_device : memory_kind) {
         case memory_kind_ext_t::usm:
         case memory_kind_ext_t::buffer: {
             dnnl_ocl_interop_memory_kind_t mem_kind
@@ -874,7 +1025,9 @@ int dnn_mem_t::initialize_memory_create_opencl(
             const int nhandles = query_md_num_handles(md_);
             for (int i = 0; i < nhandles; i++) {
                 size_t sz = dnnl_memory_desc_get_size_v2(md_padded, i);
-                if (memory_kind == memory_kind_ext_t::usm_device) {
+                if (use_hint) {
+                    data_.push_back(malloc_device_compression(engine_, sz));
+                } else if (memory_kind == memory_kind_ext_t::usm_device) {
                     data_.push_back(dnnl::impl::xpu::ocl::usm::malloc_device(
                             engine_, sz));
                 } else {
@@ -920,7 +1073,8 @@ int dnn_mem_t::initialize_memory_create_ze(const handle_info_t &handle_info) {
     auto md_padded = pad_memory_desc(md_, &is_canary_protected_);
     if (!md_padded) md_padded = md_;
 
-    switch (memory_kind) {
+    const bool use_hint = memory_compression != memory_compression_t::def;
+    switch (use_hint ? memory_kind_ext_t::usm_device : memory_kind) {
         case memory_kind_ext_t::usm: {
             const int nhandles = query_md_num_handles(md_);
             std::vector<void *> handles(nhandles, handle_info.ptr);
@@ -937,7 +1091,9 @@ int dnn_mem_t::initialize_memory_create_ze(const handle_info_t &handle_info) {
             const int nhandles = query_md_num_handles(md_);
             for (int i = 0; i < nhandles; i++) {
                 size_t sz = dnnl_memory_desc_get_size_v2(md_padded, i);
-                if (memory_kind == memory_kind_ext_t::usm_device) {
+                if (use_hint) {
+                    data_.push_back(malloc_device_compression(engine_, sz));
+                } else if (memory_kind == memory_kind_ext_t::usm_device) {
                     data_.push_back(
                             dnnl::impl::xpu::ze::malloc_device(engine_, sz));
                 } else {
@@ -1105,16 +1261,8 @@ int dnn_mem_t::initialize_by_host_scalar(
 static int cleanup_sycl(
         const engine_t &engine, const std::vector<void *> &data) {
 #ifdef DNNL_WITH_SYCL
-    switch (memory_kind) {
-        case memory_kind_ext_t::usm_device:
-        case memory_kind_ext_t::usm_shared: {
-            auto ctx = dnnl::sycl_interop::get_context(engine);
-            for (void *p : data)
-                ::sycl::free(p, ctx);
-            break;
-        }
-        default: break;
-    }
+    for (void *p : data)
+        sycl_free(engine, p);
 #endif
     return OK;
 }
@@ -1122,28 +1270,16 @@ static int cleanup_sycl(
 static int cleanup_opencl(
         const engine_t &engine, const std::vector<void *> &data) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    switch (memory_kind) {
-        case memory_kind_ext_t::usm_device:
-        case memory_kind_ext_t::usm_shared:
-            for (void *p : data)
-                dnnl::impl::xpu::ocl::usm::free(engine, p);
-            break;
-        default: break;
-    }
+    for (void *p : data)
+        dnnl::impl::xpu::ocl::usm::free(engine, p);
 #endif
     return OK;
 }
 
 static int cleanup_ze(const engine_t &engine, const std::vector<void *> &data) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-    switch (memory_kind) {
-        case memory_kind_ext_t::usm_device:
-        case memory_kind_ext_t::usm_shared:
-            for (void *p : data)
-                dnnl::impl::xpu::ze::free(engine, p);
-            break;
-        default: break;
-    }
+    for (void *p : data)
+        dnnl::impl::xpu::ze::free(engine, p);
 #endif
     return OK;
 }

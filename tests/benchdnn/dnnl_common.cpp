@@ -362,6 +362,7 @@ int test_persistent_cache_api(
 isa_hints_t hints {isa_hints_t::none};
 
 memory_kind_ext_t memory_kind {default_memory_kind};
+memory_compression_t memory_compression {memory_compression_t::def};
 
 int default_num_streams = 1;
 int num_streams = default_num_streams;
@@ -1584,6 +1585,24 @@ memory_kind_ext_t str2memory_kind(const char *str) {
 
     assert(!"not expected");
     return memory_kind_ext_t::usm;
+}
+
+memory_compression_t str2memory_compression(const char *str) {
+#define CASE(param) \
+    if (!strcasecmp(#param, str)) return memory_compression_t::param
+
+    CASE(def);
+    CASE(on);
+    CASE(off);
+
+#undef CASE
+
+    BENCHDNN_PRINT(0,
+            "Error: unsupported memory compression '%s'. Supported values "
+            "are 'def', 'on' and 'off'.\n",
+            str);
+    SAFE_V(FAIL);
+    return memory_compression_t::def;
 }
 
 float reorder_rescale_factor() {

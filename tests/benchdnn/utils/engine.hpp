@@ -92,6 +92,11 @@ const engine_t &get_test_engine();
 // implementations used by `--fast-ref` option.
 const engine_t &get_cpu_engine();
 
+// Engine created from the test engine blob. It has no streams or memory, so
+// it's only used to check that primitives are compilable without a device. It
+// is empty when the test engine runtime doesn't support device-less engines.
+const engine_t &get_deviceless_engine();
+
 bool is_cpu(const engine_t &engine = get_test_engine());
 bool is_gpu(const engine_t &engine = get_test_engine());
 bool is_async(const engine_t &engine = get_test_engine());

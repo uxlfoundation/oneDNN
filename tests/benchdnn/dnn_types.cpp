@@ -1523,8 +1523,9 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
                 for (auto d = 0; d < ndims; ++d)
                     src2_tensor_dims[d]
                             = (!(src2_mask & (1 << d))) ? 1 : dims[d];
-                auto rhs_src2_tensor_desc = dnn_mem_t::init_md(
-                        ndims, src2_tensor_dims, e.binary.src2_dt, tag::any);
+                auto rhs_src2_tensor_desc = dnn_mem_t::init_md(ndims,
+                        src2_tensor_dims, e.binary.src2_dt, e.binary.src2_tag,
+                        e.binary.strides2);
                 mds.emplace(
                         (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2),
                         std::move(rhs_src2_tensor_desc));

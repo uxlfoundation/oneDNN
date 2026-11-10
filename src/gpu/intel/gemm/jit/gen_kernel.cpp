@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstdio>
 #include <functional>
 #include <stdexcept>
 
@@ -1242,6 +1243,22 @@ status_t gen_kernel_t::get_kernel(
 
 std::string gen_desc_t::str() const {
     return dump_kernel(hw_, problem_, strategy_);
+}
+
+std::string gen_desc_t::hash() const {
+    // FNV-1a: stable across processes, unlike std::hash.
+    uint64_t h = 0xcbf29ce484222325ull;
+    auto add = [&](const uint8_t *p, size_t n) {
+        for (size_t i = 0; i < n; i++)
+            h = (h ^ p[i]) * 0x100000001b3ull;
+    };
+    auto stream = serialize();
+    add(stream.get_data().data(), stream.get_data().size());
+    int64_t launch[] = {aux_params_.k0, aux_params_.wgK};
+    add(reinterpret_cast<const uint8_t *>(launch), sizeof(launch));
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)h);
+    return buf;
 }
 
 void gen_kernel_t::maybe_print_verbose() {

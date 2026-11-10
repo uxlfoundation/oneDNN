@@ -395,6 +395,7 @@ status_t device_info_t::init_serialized_device_info(
     serialized_device_info_.append(product_ != nullptr);
     if (product_) serialized_device_info_.append(*product_);
     serialized_device_info_.append(ip_version_);
+    serialized_device_info_.append(device_id_);
     serialized_device_info_.append(runtime_version_.major);
     serialized_device_info_.append(runtime_version_.minor);
     serialized_device_info_.append(runtime_version_.build);
@@ -436,6 +437,7 @@ status_t device_info_t::init_from_cache_blob(
         product_ = utils::make_unique<ngen::Product>(d.pop<ngen::Product>());
     }
     d.pop(ip_version_);
+    d.pop(device_id_);
     d.pop(runtime_version_.major);
     d.pop(runtime_version_.minor);
     d.pop(runtime_version_.build);

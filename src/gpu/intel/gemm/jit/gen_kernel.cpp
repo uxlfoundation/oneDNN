@@ -342,6 +342,7 @@ status_t gen_desc_t::finalize(
 
     const auto *base = entry_;
     std::string str = kernel_override_;
+    GEMMStrategy launch;
     try {
         if (str.empty()) {
             // Update problem alignments to match catalog entry.
@@ -384,15 +385,14 @@ status_t gen_desc_t::finalize(
         if (enable_generator_dsl()) fixup_dsl_strategy(strategy_);
         auto resolved = resolve_launch(strategy_, *base, tags, eval_params);
         if (resolved.variable_beta) problem_.beta = Scalar();
+        launch = std::move(resolved.strategy);
         aux_params_ = resolved.aux;
     } catch (const std::exception &e) { return reject(e.what()); }
-    auto want = decisions_of(strategy_);
-    // Omit periodic barriers when k is small.
-    if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * strategy_.barrierFreq)
+    // Preflight may drop decisions (e.g. kv when batched); compare against that.
+    auto want = decisions_of(launch);
+    // Omit periodic barriers when k is small, on preflight's rounded frequency.
+    if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * launch.barrierFreq)
         strategy_.barrierFreq = 0;
-
-    // Correct GRF count in following calculations for fixed systolic kernels.
-    if (strategy_.fixedSystolic) strategy_.GRFs = 256;
 
     // Disable linear ordering and persistent threads if the GEMM doesn't fill the GPU.
     if (m_ >= 0 && n_ >= 0 && eu_count_ >= 0) {
@@ -406,7 +406,7 @@ status_t gen_desc_t::finalize(
                 thread_per_tg *= std::max(strategy_.wg[LoopK], 1);
             dim_t thread_gpu = eu_count_
                     * compute::device_info_t::threads_per_eu(
-                            product_, strategy_.GRFs);
+                            product_, launch.GRFs);
             dim_t tiles_gpu = thread_gpu / thread_per_tg;
 
             bool use_linear = (m_tiles * n_tiles <= tiles_gpu);
@@ -453,6 +453,8 @@ status_t gen_desc_t::finalize(
     if (have != want)
         return reject("decisions changed: " + want.str() + " -> " + have.str()
                 + "," + resolved_str_);
+    gpu_assert(strategy_.barrierFreq == 0
+            || strategy_.barrierFreq == launch.barrierFreq);
     if ((have.kb || have.kv) && !strategy_.C.atomic)
         return reject("k-parallel without C atomics");
 

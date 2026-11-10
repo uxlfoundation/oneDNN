@@ -456,7 +456,12 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             // broad set of supported data types.
             float binary_comp_po_diff_trh = 0.f;
             float binary_comp_po_rdiff_trh = 0.f;
-            if (args.dt == dnnl_f16) binary_comp_po_diff_trh = 5e-3f;
+            if (args.dt == dnnl_f16) {
+                binary_comp_po_diff_trh = 5e-3f;
+                binary_comp_po_rdiff_trh = epsilon_dt(args.dt);
+            }
+            if (args.dt == dnnl_bf16)
+                binary_comp_po_rdiff_trh = epsilon_dt(args.dt);
             if (args.dt == dnnl_f32) {
                 binary_comp_po_diff_trh = 4e-6f;
                 binary_comp_po_rdiff_trh = 1e-5f;

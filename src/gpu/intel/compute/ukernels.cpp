@@ -57,47 +57,36 @@ kernel void igc_check() {
 }
 )"""";
 
-bool mayiuse_microkernels(const engine_t *engine) {
-    auto *device_info = engine->device_info();
-    if (device_info->runtime_version() >= xpu::runtime_version_t(24, 22, 29735))
-        return true;
-    // The probe kernel needs a device.
-    if (engine->is_deviceless()) return false;
+bool probe_microkernels(
+        const engine_t *engine, const xpu::runtime_version_t &runtime_version) {
+    if (runtime_version >= xpu::runtime_version_t(24, 22, 29735)) return true;
 
-    auto mayiuse_mk = [](const engine_t *engine) {
-        switch (engine->runtime_kind()) {
+    switch (engine->runtime_kind()) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-            case runtime_kind::ocl: {
-                auto *ocl_engine
-                        = utils::downcast<const ocl::engine_t *>(engine);
-                return ocl::try_building(ocl_engine->context(),
-                        ocl_engine->device(),
-                        cl_microkernels_check_kernel_code);
-            }
+        case runtime_kind::ocl: {
+            auto *ocl_engine = utils::downcast<const ocl::engine_t *>(engine);
+            return ocl::try_building(ocl_engine->context(),
+                    ocl_engine->device(), cl_microkernels_check_kernel_code);
+        }
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-            case runtime_kind::sycl:
-                return sycl::mayiuse_microkernels(
-                        utils::downcast<const sycl::engine_t *>(engine));
+        case runtime_kind::sycl:
+            return sycl::mayiuse_microkernels(
+                    utils::downcast<const sycl::engine_t *>(engine));
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-            case runtime_kind::ze: {
-                auto *ze_engine = utils::downcast<const ze::engine_t *>(engine);
-                return ze::mayiuse_microkernels(ze_engine->device(),
-                        ze_engine->context(),
-                        cl_microkernels_check_kernel_code);
-            }
-#endif
-            default: return false;
+        case runtime_kind::ze: {
+            auto *ze_engine = utils::downcast<const ze::engine_t *>(engine);
+            return ze::mayiuse_microkernels(ze_engine->device(),
+                    ze_engine->context(), cl_microkernels_check_kernel_code);
         }
-    };
-    static std::map<engine_id_t, bool> engine_microkernel_map {
-            {engine->engine_id(), mayiuse_mk(engine)}};
-    static std::mutex map_mutex;
-    std::lock_guard<std::mutex> map_lock(map_mutex);
-    auto it = engine_microkernel_map.find(engine->engine_id());
-    if (it != std::end(engine_microkernel_map)) return it->second;
-    return engine_microkernel_map[engine->engine_id()] = mayiuse_mk(engine);
+#endif
+        default: return false;
+    }
+}
+
+bool mayiuse_microkernels(const engine_t *engine) {
+    return engine->device_info()->mayiuse_microkernels();
 }
 
 status_t validate_microkernel(const gemmstone::microkernel::Package &package,

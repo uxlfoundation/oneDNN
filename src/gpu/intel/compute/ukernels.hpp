@@ -38,6 +38,10 @@ namespace intel {
 namespace compute {
 
 extern const char *cl_microkernels_check_kernel_code;
+// Builds a probe kernel on the device unless the driver is known to support
+// microkernels. It's called once during the device info initialization.
+bool probe_microkernels(
+        const engine_t *engine, const xpu::runtime_version_t &runtime_version);
 bool mayiuse_microkernels(const engine_t *engine);
 
 // Validates a finalized microkernel package, emitting a verbose message and

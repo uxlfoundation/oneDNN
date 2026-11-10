@@ -234,6 +234,8 @@ public:
 
     bool mayiuse_systolic() const { return mayiuse_systolic_; }
 
+    bool mayiuse_microkernels() const { return mayiuse_microkernels_; }
+
     bool mayiuse_non_uniform_work_groups() const {
         return mayiuse_non_uniform_work_groups_;
     }
@@ -319,6 +321,9 @@ private:
     void fixup_l3_cache_size();
 
     bool mayiuse_non_uniform_work_groups_ = false;
+    // The microkernels probe needs a device, so its result is stored in the
+    // blob for a device-less engine.
+    bool mayiuse_microkernels_ = false;
     runtime_kind_t runtime_kind_ = runtime_kind::none;
 
     serialization_stream_t serialized_device_info_;

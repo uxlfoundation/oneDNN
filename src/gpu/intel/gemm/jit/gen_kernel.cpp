@@ -144,11 +144,11 @@ void gen_desc_t::apply_strategy(std::string str) {
     if (!ext_ok(problem_.Tb_ext, ext_dt))
         throw std::runtime_error("invalid external B data type");
     if (*pstr == '[') {
-        pstr = parsePrecisions(pstr, problem_.Tc, ext_dt);
+        /*pstr =*/parsePrecisions(pstr, problem_.Tc, ext_dt);
         if (ext_dt != problem_.Tc_ext)
             throw std::runtime_error("invalid external C data type");
     } else {
-        pstr = parsePrecision(pstr, problem_.Tc);
+        /*pstr =*/parsePrecision(pstr, problem_.Tc);
     }
     ss >> val;
     pstr = val.c_str();

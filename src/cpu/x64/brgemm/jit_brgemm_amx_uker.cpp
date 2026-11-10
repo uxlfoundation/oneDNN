@@ -2149,11 +2149,7 @@ void jit_brgemm_amx_uker_t::maybe_tileloadd_nt(
     auto &reg_base = is_A ? reg_A : reg_B;
     auto reg_stride = is_A ? reg_stride_lda : reg_stride_ldb;
 
-    const bool mem_advice_A = utils::one_of(brg.brgattr.mem_advice,
-            brgemm_hint_mem_advice_A, brgemm_hint_mem_advice_A_B);
-    const bool mem_advice_B = utils::one_of(brg.brgattr.mem_advice,
-            brgemm_hint_mem_advice_B, brgemm_hint_mem_advice_A_B);
-    bool has_mem_advice = is_A ? mem_advice_A : mem_advice_B;
+    bool has_mem_advice = is_A ? brg.read_shared_A() : brg.read_shared_B();
 
     if (brg.is_input_convert()) {
         // try_load_nt is not supported in maybe_pre_process_data as there is
@@ -2195,8 +2191,7 @@ void jit_brgemm_amx_uker_t::maybe_fused_copy_A_nt_load(
 
     if (bi.ldi->pos(0) == 0) {
         mov(reg_stride_lda, lda());
-        const bool has_mem_advice = utils::one_of(brg.brgattr.mem_advice,
-                brgemm_hint_mem_advice_A, brgemm_hint_mem_advice_A_B);
+        const bool has_mem_advice = brg.read_shared_A();
 
         auto src_offset = A_offset(bi, bdb);
         // fused copy A: load from A orig and store it aligned in the wsp buffer

@@ -190,6 +190,7 @@ public:
     bool is_integrated() const;
     bool has_l1_flush_bug() const;
     uint32_t ip_version() const { return ip_version_; }
+    uint32_t device_id() const { return device_id_; }
     int max_eus_per_wg() const { return max_eus_per_wg_; }
     static int max_eus_per_wg(gpu_arch_t gpu_arch);
 
@@ -276,6 +277,7 @@ protected:
     gpu_arch_t gpu_arch_ = compute::gpu_arch_t::unknown;
     std::unique_ptr<ngen::Product> product_;
     uint32_t ip_version_ = 0;
+    uint32_t device_id_ = 0; // PCI device id
     bool mayiuse_systolic_ = false;
     bool mayiuse_ngen_kernels_ = false;
     bool mayiuse_system_memory_allocators_ = false;

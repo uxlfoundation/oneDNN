@@ -105,6 +105,7 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
 
     eu_count_ = eu_count_ext.numTotalEUs;
     max_clock_mhz_ = static_cast<int32_t>(device_properties.coreClockRate);
+    device_id_ = device_properties.deviceId;
 
     ze_device_compute_properties_t device_compute_properties = {};
     device_compute_properties.stype

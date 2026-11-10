@@ -2279,6 +2279,12 @@ void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t dst_dt) {
         if (e.is_binary_kind()) {
             e.binary.src1_dt = dnnl_f32;
             e.binary.tag = tag::any;
+            e.binary.strides.clear();
+
+            if (e.is_binary_kind_with_ternary_op()) {
+                e.binary.src2_tag = tag::any;
+                e.binary.strides2.clear();
+            }
         } else if (e.is_sum_kind()) {
             if (dst_dt == dnnl_f32) e.sum.dt = dnnl_data_type_undef;
         }

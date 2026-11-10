@@ -640,6 +640,20 @@ int update_timer_with_profiling_info(timer::timer_t &t, bool use_profiling,
     return OK;
 }
 
+// Uses samples from the post-filter share of the window.
+static void set_gpu_freq(
+        timer::timer_t &t, const std::vector<gpu_freq::sample_t> &samples) {
+    if (samples.empty()) return;
+    const double kept = t.kept_share();
+    const auto st = gpu_freq::tail_stats(samples, kept);
+    t.set_freq(st);
+    BENCHDNN_PRINT(3,
+            "[GPU_FREQ]: samples: %zu; window: %.3f ms; tail: %.3f; used: %zu; "
+            "avg: %.0f MHz; min: %.0f MHz; max: %.0f MHz;\n",
+            samples.size(), samples.back().ms, kept, st.n, st.avg, st.min,
+            st.max);
+}
+
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
         perf_function_t &perf_func, std::vector<dnnl_exec_arg_t> &dnnl_args) {
     // Warm-up run, this is not measured due to possibility the associated
@@ -660,48 +674,6 @@ inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
         if (should_stop(t)) break;
     }
     return OK;
-}
-
-// Sets per-execution frequency of `t` measurements from the sampled `trace`.
-// Measurements are expected to be grouped by stream, and streams run
-// concurrently over the same window.
-static void set_gpu_frequency(
-        timer::timer_t &t, const gpu_freq::trace_t &trace, size_t n_streams) {
-    const size_t n = t.samples_.size();
-    if (n == 0 || n_streams == 0) return;
-
-    std::vector<double> mhz;
-    if (n % n_streams == 0) {
-        const size_t per_stream = n / n_streams;
-        for (size_t j = 0; j < n_streams; j++) {
-            std::vector<double> exec_ms(per_stream);
-            for (size_t i = 0; i < per_stream; i++)
-                exec_ms[i] = t.samples_[j * per_stream + i].ms;
-            const auto stream_mhz = gpu_freq::attribute(trace, exec_ms);
-            mhz.insert(mhz.end(), stream_mhz.begin(), stream_mhz.end());
-        }
-    }
-
-    double sum_ms = 0, sum_cycles = 0;
-    double min_mhz = 0, max_mhz = 0;
-    for (size_t i = 0; i < mhz.size(); i++) {
-        sum_ms += t.samples_[i].ms;
-        sum_cycles += t.samples_[i].ms * mhz[i];
-        min_mhz = i ? std::min(min_mhz, mhz[i]) : mhz[i];
-        max_mhz = i ? std::max(max_mhz, mhz[i]) : mhz[i];
-    }
-    BENCHDNN_PRINT(2,
-            "[GPU_FREQ]: samples: %zu; valid: %zu; window: %.3f ms; "
-            "executions: avg: %.0f MHz; min: %.0f MHz; max: %.0f MHz;\n",
-            trace.samples.size(), trace.n_valid(), trace.window_ms(),
-            sum_ms > 0 ? sum_cycles / sum_ms : 0, min_mhz, max_mhz);
-
-    std::vector<double> hz(mhz.size());
-    for (size_t i = 0; i < mhz.size(); i++)
-        hz[i] = mhz[i] * 1e6;
-    // The sampled frequency takes precedence over the one reported by the
-    // library as sampling doesn't affect kernel execution.
-    t.set_frequency(hz);
 }
 
 inline int measure_perf_aggregate(timer::timer_t &t,
@@ -750,12 +722,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
             4, "%s%d%s\n", "[PERF]: submissions: ", num_submissions, ";");
     // Measuring loop. A single synchronization point, called once, the number
     // of submissions determined above based on n_times or plain time criterion.
+    gpu_freq::session_t freq_session;
     t.reset();
-    // Sample the GPU frequency over the measured window. The sampler is
-    // started before submissions and stopped after the synchronization, so
-    // samples cover every measured execution.
-    const bool sample_freq = is_gpu() && gpu_freq::is_available();
-    if (sample_freq) gpu_freq::start();
     // Keep a separate variable due to a `break` inside the loop.
     int execute_count = 0;
     // Keep inner loop over streams for better submission overlapping.
@@ -769,17 +737,12 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     for (size_t j = 0; j < v_stream.size(); j++) {
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
     }
-
-    gpu_freq::trace_t freq_trace;
-    if (sample_freq) freq_trace = gpu_freq::stop();
+    // Stop right after the executions to exclude the profiling readback.
+    const auto freq_samples = freq_session.stop();
 
     SAFE(update_timer_with_profiling_info(
                  t, use_profiling, v_stream, execute_count),
             WARN);
-
-    // Frequency is attributed per execution before filtering, so filtered
-    // statistics report the frequency of the executions they describe.
-    if (sample_freq) set_gpu_frequency(t, freq_trace, v_stream.size());
 
     if (use_profiling) {
         for (size_t j = 0; j < v_stream.size(); j++) {
@@ -788,6 +751,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
         t.filter_collection();
     }
+
+    set_gpu_freq(t, freq_samples);
 
     return OK;
 }

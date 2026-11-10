@@ -18,52 +18,40 @@
 #define UTILS_GPU_FREQ_HPP
 
 #include <cstddef>
-#include <string>
 #include <vector>
 
-// GPU frequency sampling for performance reporting.
-//
-// A background thread polls the actual GPU frequency of the test engine device
-// while the performance loop runs. Samples are mapped to individual executions
-// to derive their frequency, which makes the `%freq%` and `%clocks%` perf
-// report options meaningful on GPU.
-//
-// The frequency is read with Level Zero Sysman `zesFrequencyGetState()`, which
-// works on Linux and Windows. The loader is loaded at run time, so there is no
-// build dependency.
+// GPU frequency sampling via Level Zero Sysman (loader loaded at run time).
 namespace gpu_freq {
 
 struct sample_t {
-    double ms; // Time since `start()`.
-    double mhz; // `0` if unknown.
+    double ms; // Time since the window start.
+    double mhz;
 };
 
-// Frequency samples collected over a measurement window, ordered by time. The
-// first sample is taken at `start()` and the last one at `stop()`.
-struct trace_t {
-    std::vector<sample_t> samples;
-
-    double window_ms() const;
-    size_t n_valid() const;
-    // Average frequency of valid samples within `[from_ms, to_ms]`. If no
-    // samples fall into the interval, the closest valid sample to its middle
-    // is used. Returns `0` if there are no valid samples.
-    double avg_mhz(double from_ms, double to_ms) const;
+struct stats_t {
+    double avg = 0, min = 0, max = 0;
+    size_t n = 0;
 };
 
-// Returns `true` if a frequency source is available for the test engine.
-bool is_available();
-// Starts sampling. No-op if no source is available.
-void start();
-// Stops sampling and returns samples collected since the last `start()`.
-trace_t stop();
-// Returns a frequency in MHz for each execution with a duration from
-// `exec_ms`, given in the submission order, by mapping executions to the
-// sampled window. Returns an empty vector if the trace has no data.
-std::vector<double> attribute(
-        const trace_t &trace, const std::vector<double> &exec_ms);
-// Maximum (RP0) hardware frequency of the device in MHz, independent of user
-// frequency limits. Returns `0` if unknown.
+// Samples GPU frequency while alive. No-op if no source is available.
+struct session_t {
+    session_t();
+    ~session_t();
+    session_t(const session_t &) = delete;
+    session_t &operator=(const session_t &) = delete;
+
+    // Stops sampling. Samples with `mhz <= 0` are invalid.
+    std::vector<sample_t> stop();
+
+private:
+    bool active_ = true;
+};
+
+// Statistics of valid samples within the last `fraction` of the window, or of
+// the last valid sample before it if there are none.
+stats_t tail_stats(const std::vector<sample_t> &samples, double fraction);
+
+// RP0 frequency in MHz, `0` if unknown.
 double max_mhz();
 
 } // namespace gpu_freq

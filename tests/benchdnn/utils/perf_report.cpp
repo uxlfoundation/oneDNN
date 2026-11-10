@@ -90,8 +90,16 @@ void base_perf_report_t::handle_option(std::ostream &s, const char *&option,
     };
 
     auto get_freq = [&](const timer::timer_t &t) -> double {
+        const double mhz = t.freq_mhz(mode);
+        if (mhz > 0) return mhz * 1e6 / unit;
         if (!t.sec(mode)) return 0;
         return t.ticks(mode) / t.sec(mode) / unit;
+    };
+
+    auto get_clocks = [&](const timer::timer_t &t) -> double {
+        const double mhz = t.freq_mhz(timer::timer_t::avg);
+        if (mhz > 0) return t.ms(mode) * mhz * 1e3 / unit;
+        return t.ticks(mode) / unit;
     };
 
     auto get_create_time = [&](const timer::timer_t &t) -> double {
@@ -145,7 +153,7 @@ void base_perf_report_t::handle_option(std::ostream &s, const char *&option,
     HANDLE("bw", s << get_bw(res->timer_map.perf_timer()));
     HANDLE("driver", s << driver_name);
     HANDLE("flops", s << get_flops(res->timer_map.perf_timer()));
-    HANDLE("clocks", s << res->timer_map.perf_timer().ticks(mode) / unit);
+    HANDLE("clocks", s << get_clocks(res->timer_map.perf_timer()));
     HANDLE("prb", s << prb_str);
     HANDLE("freq", s << get_freq(res->timer_map.perf_timer()));
     HANDLE("maxfreq", s << gpu_freq::max_mhz() * 1e6 / unit);

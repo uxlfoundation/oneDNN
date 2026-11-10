@@ -81,9 +81,9 @@ Performance profiling options supported:
 | Syntax     | Primitives | Description
 | :--        | :--        | :--
 | %@time%    | All        | Execution time in milliseconds
-| %@clocks%  | All        | Execution time in clocks
-| %@freq%    | All        | Effective CPU frequency computed as `clocks / time`. On GPU, the average actual GPU frequency sampled while the problem is measured (see `GPU Frequency Notes`)
-| %@maxfreq% | All        | Maximum (RP0) GPU frequency of the device, a static hardware property. `freq / maxfreq` gives the frequency ratio for external efficiency normalization
+| %@clocks%  | All        | Execution time in clocks. On GPU, `time * %0freq%`. See `GPU Frequency Notes`.
+| %@freq%    | All        | Effective CPU frequency computed as `clocks / time`. On GPU, the sampled actual frequency. See `GPU Frequency Notes`.
+| %@maxfreq% | All        | Maximum (RP0) GPU frequency of the device
 | %@ibytes%  | All        | Number of input memories bytes of a problem
 | %@obytes%  | All        | Number of output memories bytes of a problem
 | %@iobytes% | All        | Number of input and output memories bytes of a problem
@@ -119,20 +119,11 @@ this time doesn't represent any specific scenario.
 
 ### GPU Frequency Notes
 
-For GPU engines, benchdnn samples the actual GPU frequency with Level Zero
-Sysman (`zesFrequencyGetState()`, Linux and Windows) in a background thread
-while a problem is measured. The polling period is 1 millisecond. Additional
-samples are taken right before the first and right after the last measured
-execution, so short runs, e.g., `--mode=F` or a single execution, are covered
-as well. When Sysman is not available for the device, sampling is skipped.
-
-Each execution is placed on the sampled timeline based on its profiled
-duration and submission order, and gets the average frequency of samples
-taken during its execution, or the closest sample if there are none. Thus,
-`%-freq%`, `%0freq%`, and `%+freq%` report the frequency of the executions
-selected by the time modifier. Executions shorter than the polling period get
-a point estimate. Run with `-v2` to print sampling statistics for each
-problem.
+On GPU, benchdnn samples the actual frequency with Level Zero Sysman every
+millisecond while a problem is measured. Samples from the share of the run
+dropped by outlier filtering (warm-up) are excluded. `%@clocks%` is computed as
+`time * %0freq%`. Without Sysman, `%@freq%`, `%@clocks%`, and `%@maxfreq%`
+report `0` on GPU. Use `-v2` to print sampling statistics.
 
 ## Examples
 

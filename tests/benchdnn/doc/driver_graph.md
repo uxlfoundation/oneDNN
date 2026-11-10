@@ -207,6 +207,21 @@ Overrides the graph floating-point math mode. `MODE` is one of `strict`,
   --case=pattern/int8/int8_bf16_matmul.json
 ```
 
+### `--attr-deterministic=BOOL[,BOOL...]`
+
+Overrides the graph deterministic mode. Comma-separated values create
+alternative tests. The mode is resolved as follows:
+
+- If `--attr-deterministic` is given, its value is used.
+- Otherwise, the mode is enabled if the JSON file contains
+  `"deterministic": "true"` or the bitwise mode (`--mode=B`) is used. A JSON
+  value of `"false"` is treated the same as an absent field.
+- Otherwise, the mode is disabled.
+
+``` sh
+./benchdnn --mode=C --graph --attr-deterministic=true,false --case=op/f32/matmul.json
+```
+
 ## Batch Files
 
 `--batch=BATCH_FILE` reads benchdnn arguments from a text file. Batch files may
@@ -246,8 +261,17 @@ information:
 ./benchdnn --mode=P -v1 --graph --mb=1,2,3 --case=op/f32/conv_2d.json
 ```
 
-The graph driver does not support bitwise mode (`--mode=B`) or parallel test
-object creation (`--mode-modifier=P`). Other modes, including fast performance
-mode (`--mode=F`), are supported. The no-reference-memory modifier
+Run bitwise (numerical determinism) testing. Each partition is executed twice
+with the same inputs, and its outputs are compared for bitwise exactness.
+Deterministic mode is enabled by default in this mode; see
+`--attr-deterministic` for details:
+
+``` sh
+./benchdnn --mode=B --graph --case=op/f32/matmul.json
+```
+
+The graph driver does not support parallel test object creation
+(`--mode-modifier=P`). Other modes, including fast performance mode
+(`--mode=F`), are supported. The no-reference-memory modifier
 (`--mode-modifier=M`) is supported with modes that do not require reference
 results.

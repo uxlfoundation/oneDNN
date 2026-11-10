@@ -25,6 +25,7 @@
 #include "dnnl_common.hpp"
 #include "graph.hpp"
 #include "ref_partition.hpp"
+#include "utils/compare.hpp"
 #include "utils/execution_mode.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
@@ -236,6 +237,51 @@ int map_unmap_partition_mem(graph::partition_mem_map_t &partition_mem_map,
     return OK;
 }
 
+// Performs the bitwise validation of a partition:
+// * Saves the outputs of the first run for further comparison.
+// * Performs a second run of the compiled partition with the same inputs.
+// * Compares both outputs on bitwise exactness.
+//
+// Partition memories are expected to be mapped to host on entry and exit.
+int check_partition_bitwise(graph::partition_mem_map_t &partition_mem_map,
+        const std::vector<dnnl::graph::logical_tensor> &inputs,
+        const std::vector<dnnl::graph::logical_tensor> &outputs,
+        const std::function<int()> &execute, res_t *res) {
+    if (!has_bench_mode_bit(mode_bit_t::bitwise)) return OK;
+
+    std::unordered_map<size_t, dnn_mem_t> run1_mem_map;
+    for (const auto &out : outputs) {
+        const auto &mem = partition_mem_map.at(out.get_id()).get_mem();
+        // A memory used as reference for comparison, must be allocated on the
+        // CPU engine.
+        auto it = run1_mem_map.emplace(out.get_id(),
+                dnn_mem_t(mem.md_, dnnl_f32, tag::abx, get_cpu_engine(),
+                        /* prefill = */ false));
+        SAFE(it.first->second.reorder(mem, res), WARN);
+    }
+
+    SAFE(map_unmap_partition_mem(partition_mem_map, inputs, UNMAP, res), WARN);
+    SAFE(map_unmap_partition_mem(partition_mem_map, outputs, UNMAP, res), WARN);
+    SAFE(execute(), WARN);
+    SAFE(map_unmap_partition_mem(partition_mem_map, inputs, MAP, res), WARN);
+    SAFE(map_unmap_partition_mem(partition_mem_map, outputs, MAP, res), WARN);
+    if (res->state == SKIPPED) return OK;
+
+    compare::compare_t cmp;
+    // Only exact equality matters here; output zeros are not a trust concern.
+    cmp.set_zero_trust_percent(100.f);
+    // Inputs aren't adjusted by a reference run, so NaNs may appear; matching
+    // NaNs in both runs are still deterministic.
+    cmp.set_op_output_has_nans(true);
+    for (const auto &out : outputs) {
+        const auto &mem = partition_mem_map.at(out.get_id()).get_mem();
+        TIME_COMPARE(
+                cmp.compare(run1_mem_map.at(out.get_id()), mem, attr_t(), res));
+    }
+
+    return OK;
+}
+
 /// Get input tensors for the partition
 ///
 /// @param input_ts a vector of input tensors
@@ -307,7 +353,10 @@ int make_output_tensors(std::vector<dnnl::graph::tensor> &output_ts,
             return FAIL;
         }
         const auto &graph_mem = iter->second;
-        if (has_bench_mode_bit(mode_bit_t::corr)) {
+        // Bitwise mode re-runs the partition, so outputs must not alias
+        // inputs.
+        if (has_bench_mode_bit(mode_bit_t::corr)
+                || has_bench_mode_bit(mode_bit_t::bitwise)) {
             output_ts[idx] = graph_mem.make_graph_tensor(lt, res);
         } else {
             // For performance mode, we need special handling for graph
@@ -348,7 +397,8 @@ namespace graph {
 
 using namespace dnnl::graph;
 
-prb_t::prb_t(const deserialized_graph_t &dg, const size_t &expected_n_partition)
+prb_t::prb_t(const deserialized_graph_t &dg, const size_t &expected_n_partition,
+        const std::string &deterministic)
     : dg(dg), expected_n_partition(expected_n_partition) {
 
     const auto &fpmath = dg.get_fpmath_mode();
@@ -356,14 +406,21 @@ prb_t::prb_t(const deserialized_graph_t &dg, const size_t &expected_n_partition)
     if (!fpmath.second.empty()) {
         fpmath_mode.apply_to_int_ = parser::parsers::str2bool(fpmath.second);
     }
+
+    // The command-line value wins; otherwise a JSON request or bitwise mode
+    // enables it.
+    this->deterministic = !deterministic.empty()
+            ? parser::parsers::str2bool(deterministic)
+            : (dg.get_deterministic()
+                      || has_bench_mode_bit(mode_bit_t::bitwise));
 }
 
 std::string case_to_str(const std::string &json_file,
         const std::map<size_t, std::string> &in_shapes,
         const std::map<size_t, std::string> &op_attrs,
         const graph_fpmath_mode_t &fpmath_mode,
-        const size_t expected_n_partitions, const int64_t mb,
-        const dnnl_data_type_t dt,
+        const std::string &deterministic, const size_t expected_n_partitions,
+        const int64_t mb, const dnnl_data_type_t dt,
         const std::map<size_t, dnnl_data_type_t> &dt_map,
         const std::map<size_t, std::string> &op_kind_map,
         const std::map<size_t, std::string> &tensor_property) {
@@ -433,6 +490,10 @@ std::string case_to_str(const std::string &json_file,
         s << "--attr-fpmath=" << fpmath_mode.mode_.c_str();
         if (fpmath_mode.apply_to_int_) { s << ":true"; }
         s << " ";
+    }
+
+    if (!deterministic.empty()) {
+        s << "--attr-deterministic=" << deterministic << " ";
     }
 
     if (expected_n_partitions != 1) {
@@ -650,7 +711,7 @@ int doit(const prb_t *prb, res_t *res) {
 
     const auto &dg = prb->dg;
     const auto &graph_in_ports = dg.get_input_ports();
-    auto ograph = dg.to_graph(prb->fpmath_mode);
+    auto ograph = dg.to_graph(prb->fpmath_mode, prb->deterministic);
     DNN_GRAPH_SAFE(ograph.finalize(), WARN, res);
 
     const auto &partitions = ograph.get_partitions();
@@ -816,6 +877,28 @@ int doit(const prb_t *prb, res_t *res) {
         input_ts_all.emplace_back(input_ts);
         output_ts_all.emplace_back(output_ts);
 
+        const auto execute_partition = [&]() -> int {
+            auto &c_partition = c_partitions[i - idx_offset];
+            if (use_sycl_graph_exec(eng)) {
+                std::function<void()> record_fn
+                        = std::bind(compiled_partition_executor, c_partition,
+                                std::ref(strm), input_ts, output_ts,
+                                scratchpad_ts_all.back());
+                SAFE(execute_in_graph_mode(strm, record_fn, res), WARN);
+            } else {
+                stream_staller_t staller(strm);
+                // Need following clean-up steps as the memories have been mappped
+                // to device. Otherwise the deconstruction will fail.
+                DNN_GRAPH_SAFE(c_partition.execute(strm, input_ts, output_ts,
+                                       scratchpad_ts_all.back()),
+                        (WARN | NEED_CLEANUP), res);
+                staller.release();
+
+                DNN_GRAPH_SAFE(strm.wait(), WARN, res);
+            }
+            return OK;
+        };
+
         {
             graph_mem_check_guard_t graph_mem_check_guard(graph_mem_mgr);
             auto scratchpad_lt = c_partitions[i - idx_offset]
@@ -832,24 +915,7 @@ int doit(const prb_t *prb, res_t *res) {
             BENCHDNN_PRINT(
                     3, "[INFO]: Start execution of partition #%zd.\n", i);
 
-            if (use_sycl_graph_exec(eng)) {
-                std::function<void()> record_fn
-                        = std::bind(compiled_partition_executor,
-                                c_partitions[i - idx_offset], std::ref(strm),
-                                input_ts, output_ts, scratchpad_ts_all.back());
-                SAFE(execute_in_graph_mode(strm, record_fn, res), WARN);
-            } else {
-                stream_staller_t staller(strm);
-                // Need following clean-up steps as the memories have been mappped
-                // to device. Otherwise the deconstruction will fail.
-                DNN_GRAPH_SAFE(
-                        c_partitions[i - idx_offset].execute(strm, input_ts,
-                                output_ts, scratchpad_ts_all.back()),
-                        (WARN | NEED_CLEANUP), res);
-                staller.release();
-
-                DNN_GRAPH_SAFE(strm.wait(), WARN, res);
-            }
+            SAFE(execute_partition(), WARN);
         }
         // map memory from device back to host
         SAFE(map_unmap_partition_mem(partition_mem_map_v[i], inputs, MAP, res),
@@ -875,6 +941,11 @@ int doit(const prb_t *prb, res_t *res) {
                          partition_mem_map_v[i], res),
                     WARN);
         }
+
+        SAFE(check_partition_bitwise(partition_mem_map_v[i], inputs, outputs,
+                     execute_partition, res),
+                WARN);
+        if (res->state == SKIPPED) return OK;
 
         auto &graph_mem_req = graph_memory_req_args_t::get_instance();
         // release the memory assigned for the reference path of the partition,

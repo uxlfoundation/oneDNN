@@ -23,6 +23,7 @@
 #include "common/engine.hpp"
 #include "common/type_helpers.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 #include "ngen.hpp"
@@ -101,6 +102,8 @@ status_t device_info_t::init(
     runtime_kind_ = engine->runtime_kind();
 
     CHECK(init_attributes_common(engine));
+    mayiuse_microkernels_ = probe_microkernels(
+            utils::downcast<const intel::engine_t *>(engine), runtime_version_);
 
     if (engine->is_cache_blob_supported()) {
         CHECK(init_serialized_device_info());
@@ -438,6 +441,7 @@ status_t device_info_t::init_serialized_device_info(
     serialized_device_info_.append(mayiuse_ngen_kernels_);
     serialized_device_info_.append(mayiuse_system_memory_allocators_);
     serialized_device_info_.append(mayiuse_non_uniform_work_groups_);
+    serialized_device_info_.append(mayiuse_microkernels_);
     serialized_device_info_.append(is_efficient_64bit_);
 
     serialized_device_info_.append(name_);
@@ -497,6 +501,7 @@ status_t device_info_t::init_from_cache_blob(
     d.pop(mayiuse_ngen_kernels_);
     d.pop(mayiuse_system_memory_allocators_);
     d.pop(mayiuse_non_uniform_work_groups_);
+    d.pop(mayiuse_microkernels_);
     d.pop(is_efficient_64bit_);
 
     d.pop(name_);

@@ -64,6 +64,11 @@ const memory_kind_ext_t default_memory_kind = memory_kind_ext_t::usm;
 
 extern memory_kind_ext_t memory_kind;
 
+// GPU memory compression hint for memory allocated by the driver.
+enum class memory_compression_t { def, on, off };
+
+extern memory_compression_t memory_compression;
+
 void init_isa_settings();
 
 struct args_t {
@@ -278,6 +283,7 @@ bool check_md_consistency_with_tag(
         const_dnnl_memory_desc_t md, const std::string &tag);
 
 memory_kind_ext_t str2memory_kind(const char *str);
+memory_compression_t str2memory_compression(const char *str);
 
 float reorder_rescale_factor();
 

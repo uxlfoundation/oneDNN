@@ -80,6 +80,7 @@ struct dnn_mem_t {
         m_padded_ = rhs.m_padded_;
         data_ = std::move(rhs.data_);
         is_data_owner_ = rhs.is_data_owner_;
+        is_hint_alloc_ = rhs.is_hint_alloc_;
         active_ = rhs.active_;
         engine_ = std::move(rhs.engine_);
         is_mapped_ = (bool)rhs.is_mapped_;
@@ -239,6 +240,8 @@ struct dnn_mem_t {
 private:
     std::vector<void *> data_;
     bool is_data_owner_ = false;
+    // Allocated by `malloc_device_compression()`.
+    bool is_hint_alloc_ = false;
     bool active_ = false;
 
     engine_t engine_;

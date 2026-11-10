@@ -1013,6 +1013,7 @@ void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const Registe
                     auto C_acc = subrange(C_accRange, hw, state.Tacc, block);
                     convert(C_acc, state.Tacc, Tc_ext, strategy, state);
                 }
+                sublayoutAcc.cast(Tc_ext);
             }
             auto &sublayoutSrc = copyC ? sublayoutExt : sublayoutAcc;
             auto &C_srcRange = copyC ? C_extRange : C_accRange;

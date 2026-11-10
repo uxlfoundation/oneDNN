@@ -588,7 +588,7 @@ void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux)
     if (aux.kParallel && strategy.kParallelVariable)
         strategy.fuseBeta = strategy.fusePostOps = true;
     if (!aux.kParallel && !aux.kParallelVariable)
-        strategy.fuseBeta = strategy.fusePostOps = false;
+        strategy.fuseBeta = strategy.altFusedBeta = strategy.fusePostOps = false;
     strategy.kParallel = aux.kParallel;
     strategy.kParallelVariable = aux.kParallelVariable;
     if (aux.disableAtomics)

@@ -651,6 +651,19 @@ fill_input_t str2fill_input(const std::string &str) {
     return fill_input_t::random;
 }
 
+memory_compression_t str2memory_compression(const std::string &str) {
+    const auto s = utils::lowercase(str);
+    if (s == "def") return memory_compression_t::def;
+    if (s == "on") return memory_compression_t::on;
+    if (s == "off") return memory_compression_t::off;
+    BENCHDNN_PRINT(0,
+            "Error: unsupported memory compression '%s'. Supported values "
+            "are 'def', 'on' and 'off'.\n",
+            str.c_str());
+    SAFE_V(FAIL);
+    return memory_compression_t::def;
+}
+
 cold_cache_input_t str2cold_cache_input(const std::string &s) {
     // Allowed input: MODE[+EXTENSION[+...]]
     // Allowed extensions: TLB[:SIZE]
@@ -1849,6 +1862,29 @@ static bool parse_memory_kind(
     return parsed;
 }
 
+static bool parse_memory_compression(const char *str,
+        const std::string &option_name = "memory-compression") {
+    static const std::string help
+            = "MODE    (Default: `def`)\n    Sets a compression hint for GPU "
+              "memory allocated by the driver.\n    `MODE` values are `def` "
+              "(runtime default), `on` or `off`.\n";
+    bool parsed = parse_single_value_option(memory_compression,
+            memory_compression_t::def, parsers::str2memory_compression, str,
+            option_name, help);
+
+#if !defined(DNNL_WITH_SYCL) && DNNL_GPU_RUNTIME != DNNL_RUNTIME_OCL \
+        && DNNL_GPU_RUNTIME != DNNL_RUNTIME_ZE
+    if (parsed) {
+        fprintf(stderr,
+                "ERROR: option `--%s` is supported with DPC++, OpenCL and "
+                "Level Zero builds only, exiting...\n",
+                option_name.c_str());
+        exit(2);
+    }
+#endif
+    return parsed;
+}
+
 // TODO: remove once the SYCL kernel compiler becomes thread-safe.
 static mode_modifier_t drop_par_create(mode_modifier_t modifier) {
 #ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
@@ -2103,8 +2139,8 @@ bool parse_bench_settings(const char *str) {
             || parse_global_impl(str) || parse_global_skip_impl(str)
             || parse_max_ms_per_prb(str) || parse_num_streams(str)
             || parse_repeats_per_prb(str) || parse_mem_check(str)
-            || parse_memory_kind(str) || parse_mode(str)
-            || parse_mode_modifier(str) || parse_start(str)
+            || parse_memory_kind(str) || parse_memory_compression(str)
+            || parse_mode(str) || parse_mode_modifier(str) || parse_start(str)
             || parse_stream_kind(str) || parse_summary(str)
             || parse_verbose(str) || parse_execution_mode(str)
             || parse_buffer_prefix(str);
@@ -2173,7 +2209,6 @@ void catch_unknown_options(const char *str) {
                 "Given input:", str);
         exit(2);
     }
-
 }
 
 int parse_last_argument() {

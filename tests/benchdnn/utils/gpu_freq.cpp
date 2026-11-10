@@ -28,12 +28,11 @@
 #include "dnnl_common.hpp"
 #include "utils/gpu_freq.hpp"
 #include "utils/system.hpp"
+#include "utils/ze_loader.hpp"
 
-#ifdef BENCHDNN_WITH_GPU_FREQ
+#ifdef BENCHDNN_WITH_ZE_LOADER
 #ifdef _WIN32
 #include "windows.h"
-#else
-#include <dlfcn.h>
 #endif
 
 // Types only.
@@ -42,28 +41,10 @@
 
 namespace gpu_freq {
 
-#ifdef BENCHDNN_WITH_GPU_FREQ
+#ifdef BENCHDNN_WITH_ZE_LOADER
 namespace {
 
 constexpr int period_us = 1000;
-
-void *load_ze_symbol(const char *name) {
-#ifdef _WIN32
-    static HMODULE lib = LoadLibraryExA(
-            "ze_loader.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if (!lib) return nullptr;
-    return reinterpret_cast<void *>(GetProcAddress(lib, name));
-#else
-    static void *lib = dlopen("libze_loader.so.1", RTLD_NOW | RTLD_LOCAL);
-    if (!lib) return nullptr;
-    return dlsym(lib, name);
-#endif
-}
-
-template <typename F>
-F load_ze_fn(const char *name) {
-    return reinterpret_cast<F>(load_ze_symbol(name));
-}
 
 // Reads the actual frequency of a device with `zesFrequencyGetState()` for
 // every GPU frequency domain. A call costs ~50-60 us.

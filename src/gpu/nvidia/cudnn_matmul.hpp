@@ -121,14 +121,14 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                                     // would make the intermediate output f16
                                     // (bias_dt_mismatch_ sets dst_type_ to the
                                     // bias type), losing the f32 dst.
-                                    && IMPLICATION(
-                                            f16_src_f32_dst, bia_dt == f32)
+                                    && IMPLICATION(f16_src_f32_dst,
+                                            utils::one_of(bia_dt, f32))
                                     // f32*f32->f16 reorders a f32 scratch to
                                     // f16. A f16 bias would require a
                                     // mixed-type cudnnAddTensor into that
                                     // scratch, so only f32 bias is accepted.
-                                    && IMPLICATION(
-                                            f32_src_f16_dst, bia_dt == f32)))
+                                    && IMPLICATION(f32_src_f16_dst,
+                                            utils::one_of(bia_dt, f32))))
                     && !(with_bias() && s8_case);
             if (!ok) return status::unimplemented;
 

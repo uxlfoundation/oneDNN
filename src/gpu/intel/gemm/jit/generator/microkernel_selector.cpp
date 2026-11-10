@@ -371,8 +371,12 @@ bool GEMMSelector::prepare(const kcatalog::Entry *entry, GEMMCandidate &candidat
     strategy = GEMMStrategy(hw, stepping);
 
     if (entry) {
-        problem.A.setAlignment(std::max(problem.Ta.paddedSize(), entry->driverInfo.alignment[0]));
-        problem.B.setAlignment(std::max(problem.Tb.paddedSize(), entry->driverInfo.alignment[1]));
+        // Use the alignments the catalog entry was tuned for, but never more
+        // than the buffers have.
+        problem.A.setAlignment(std::min<int>(problem.A.alignment,
+                                             std::max(problem.Ta_ext.paddedSize(), entry->driverInfo.alignment[0])));
+        problem.B.setAlignment(std::min<int>(problem.B.alignment,
+                                             std::max(problem.Tb_ext.paddedSize(), entry->driverInfo.alignment[1])));
 
         /* Prepare strategy parameters */
         strategy.unroll[LoopM] = entry->driverInfo.unroll[LoopM];

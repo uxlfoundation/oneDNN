@@ -127,6 +127,11 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
             == CL_SUCCESS)
         max_clock_mhz_ = static_cast<int32_t>(max_clock_mhz);
 
+    cl_uint device_id = 0;
+    OCL_CHECK(xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_ID_INTEL,
+            sizeof(device_id), &device_id, nullptr));
+    device_id_ = device_id;
+
     size_t max_wg_size = 0;
     err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
             sizeof(max_wg_size), &max_wg_size, nullptr);

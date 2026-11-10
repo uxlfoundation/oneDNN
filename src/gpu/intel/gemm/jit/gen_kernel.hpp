@@ -71,6 +71,8 @@ struct gen_desc_t {
     const gemmstone::GEMMStrategy *strategy() const { return &strategy_; }
     std::string str() const;
     const std::string &resolved_str() const { return resolved_str_; }
+    // Kernel identity, 16 hex digits: serialize() bytes and the launch k0/wgK.
+    std::string hash() const;
 
     const gemmstone::CommonDriverInfo *driver_info() const {
         return &driver_info_;

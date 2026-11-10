@@ -448,11 +448,11 @@ struct gen_t : public primitive_t {
                                    << (ovr ? ""
                                            : pos + (index >= 0 ? " pin " : " "))
                                    << kernel_desc_.resolved_str();
-                        gpu_debug()
-                                << "final " << kernel_desc_.str()
-                                << ", launch k0="
-                                << kernel_desc_.aux_params()->k0
-                                << " wgK=" << kernel_desc_.aux_params()->wgK;
+                        gpu_info() << "[" << g << "] final "
+                                   << kernel_desc_.str() << " launch k0="
+                                   << kernel_desc_.aux_params()->k0
+                                   << " wgK=" << kernel_desc_.aux_params()->wgK
+                                   << " hash=" << kernel_desc_.hash();
                         return true;
                     }
                     skip("Kernel generation failed.");

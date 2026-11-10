@@ -453,6 +453,18 @@ struct gen_t : public primitive_t {
                                    << kernel_desc_.aux_params()->k0
                                    << " wgK=" << kernel_desc_.aux_params()->wgK
                                    << " hash=" << kernel_desc_.hash();
+                        if (gpu_utils::dev_getenv("GEMM_REPLAY_CHECK", false)) {
+                            // The use line replays to the same kernel.
+                            auto d = kernel_desc_;
+                            d.set_kernel_override(kernel_desc_.resolved_str());
+                            d.set_problem(problem);
+                            if (d.finalize() != status::success
+                                    || d.hash() != kernel_desc_.hash())
+                                gpu_warning()
+                                        << "[" << g << "] replay differs: "
+                                        << kernel_desc_.resolved_str() << ","
+                                        << d.reject_reason();
+                        }
                         return true;
                     }
                     skip("Kernel generation failed.");

@@ -43,6 +43,10 @@ following information is printed for certain verbosity levels.
 ## Level 8
 * Memory allocations and mapping statistics.
 
+## Level 20
+* Performance: the measuring loop window (wall-clock ms) and the profiled time
+  of each submission, per stream in submission order (GPU with profiling only).
+
 ## Level 50
 * Full path of batch file used.
 

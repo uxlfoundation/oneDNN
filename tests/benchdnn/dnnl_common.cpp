@@ -727,6 +727,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     // Measuring loop. A single synchronization point, called once, the number
     // of submissions determined above based on n_times or plain time criterion.
     t.reset();
+    const double start_ms = timer::ms_now();
     // Keep a separate variable due to a `break` inside the loop.
     int execute_count = 0;
     // Keep inner loop over streams for better submission overlapping.
@@ -740,12 +741,19 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     for (size_t j = 0; j < v_stream.size(); j++) {
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
     }
+    const double end_ms = timer::ms_now();
 
     SAFE(update_timer_with_profiling_info(
                  t, use_profiling, v_stream, execute_count),
             WARN);
 
     if (use_profiling) {
+        // Before filter_collection() drops and sorts the samples.
+        BENCHDNN_PRINT(20, "[PERF]: window(ms): %.3f %.3f; samples: %zu;\n",
+                start_ms, end_ms, t.samples_.size());
+        for (const auto &s : t.samples_)
+            BENCHDNN_PRINT(20, "[PERF]: sample(ms): %g\n", s.ms);
+
         for (size_t j = 0; j < v_stream.size(); j++) {
             notify_gpu_profiling_complete(v_stream[j]);
         }

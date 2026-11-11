@@ -574,8 +574,8 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
                     mad(simd, data(strided), -qdata(strideq), data(strided), Immediate::hf(0x6C00));  /* 0x6C00 = 2^12 */
                     break;
                 case BinaryOp::MulSub:
-                    // Mixed mode: packed bf16 must start at sub-GRF offset 0 or 16.
-                    if (bfMixed && strided == 1 && data.getOffset() % 16)
+                    // Mixed mode: packed bf16 must start at a half-GRF boundary (as legalPackedBF).
+                    if (bfMixed && strided == 1 && data.getOffset() % (GRF::bytes(hw) / 4))
                         stub("Unsupported bf16 mixed-mode mad");
                     // Pure bf16 mad: vector sources must share the destination's sub-GRF offset.
                     if (T == Type::bf16 && !bfMixed && strideq && (qdata.getOffset() != data.getOffset() || odata.getOffset() != data.getOffset()))

@@ -175,10 +175,8 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(helper.transA() == 'N', VERBOSE_UNSUPPORTED_TAG_S, "src");
     VDISPATCH_MATMUL(
             cpu::matmul::gemm_based::check_gemm_output_format(*dst_md())
-                    || cpu::matmul::gemm_based::check_gemm_input_format(
-                            *dst_md()),
+                    && !dst_d.has_broadcast(),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
-    VDISPATCH_MATMUL(helper.transC() == 'N', VERBOSE_UNSUPPORTED_TAG_S, "dst");
     VDISPATCH_MATMUL(batch_dims_have_default_order(src_d),
             "src batch dimensions must be in order");
     VDISPATCH_MATMUL(batch_dims_have_default_order(wei_d),

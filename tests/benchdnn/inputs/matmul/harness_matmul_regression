@@ -86,3 +86,6 @@
 
 # BF16 destination with bias, sum, and eltwise.
 --reset --impl=brg:sve_ --dt=bf16:bf16:bf16 --bia-dt=bf16 --stag=ab --wtag=any --dtag=ab --attr-post-ops=sum:1+relu 31x72:72x128_n"bf16_epilogue"
+
+# Zero strides
+--reset --strides=0x1:16x1:16x1,16x1:0x1:16x1,16x1:16x1:0x1 16x16:16x16

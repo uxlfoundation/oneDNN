@@ -133,6 +133,14 @@ std::string kernel_str(const GEMMProblem &problem, int unroll_m, int unroll_n,
             + std::to_string(unroll_n) + ' ' + astr + strategy;
 }
 
+// The PCI device id the LUT tier dispatches on; GEMM_DEVICE_ID (dev mode,
+// e.g. 0x674f) overrides it.
+uint32_t device_id(const compute::device_info_t &dev_info) {
+    auto s = gpu_utils::dev_getenv("GEMM_DEVICE_ID", std::string());
+    return s.empty() ? dev_info.device_id()
+                     : static_cast<uint32_t>(std::stoul(s, nullptr, 0));
+}
+
 } // anonymous namespace
 
 bool enable_generator_dsl() {
@@ -755,7 +763,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     auto append = [&](const std::vector<const kcatalog::Entry *> &v) {
         entries.insert(entries.end(), v.begin(), v.end());
     };
-    auto *lut = lut_catalog(dev_info.device_id());
+    auto *lut = lut_catalog(device_id(dev_info));
     if (lut && gpu_utils::dev_getenv("GEMM_LUT", true)) {
         // LUT entries require a direct precision match: f32 -> SSS, tf32 -> TTS.
         MatchParams lut_match = base;

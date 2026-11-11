@@ -52,6 +52,7 @@ header:
   
 # benchdnn inputs
     - 'tests/benchdnn/inputs/**'
+    - 'src/gpu/intel/gemmstone/tools/benchstone/inputs/**'
 
 # Third party components
     - 'third_party/**'

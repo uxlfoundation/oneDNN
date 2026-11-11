@@ -114,6 +114,7 @@ add_subdirectory(generator)
 add_subdirectory(generator_dsl)
 add_subdirectory(selector)
 add_subdirectory(tests)
+add_subdirectory(tools)
 
 # Copy scripts and suites into build directory.
 

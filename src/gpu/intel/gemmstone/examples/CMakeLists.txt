@@ -15,7 +15,7 @@
 #===============================================================================
 
 
-set(DSL_EXAMPLES vector_scale)
+set(DSL_EXAMPLES vector_scale exp)
 
 
 if(LevelZero_FOUND AND EXISTS ${PROJECT_SOURCE_DIR}/third_party)

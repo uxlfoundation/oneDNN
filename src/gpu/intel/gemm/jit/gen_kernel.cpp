@@ -304,6 +304,7 @@ status_t gen_desc_t::finalize(
     const auto *base = entry_ ? entry_ : &bare;
     std::string str = kernel_override_;
     GEMMStrategy launch;
+    int row_wg_k = 0;
     try {
         if (str.empty()) {
             // Update problem alignments to match catalog entry.
@@ -339,6 +340,7 @@ status_t gen_desc_t::finalize(
             row.unroll[LoopM] = um;
             row.unroll[LoopN] = un;
             parseStrategy(entry_->strategy, problem_, row);
+            row_wg_k = decisions_of(row).wgK;
             EvaluateAuxOutput sel;
             evaluate(*entry_, eval_params, sel);
             auto st = row;
@@ -427,10 +429,22 @@ status_t gen_desc_t::finalize(
             if (k_ >= 0 && k_ <= std::max(strategy_.ka_load, strategy_.kb_load))
                 use_linear_m = use_linear_n = false;
 
+            // One wave even with the row's k-threads: keep the catalog order.
+            dim_t row_k = strategy_.kParallelVariable
+                    ? 1
+                    : std::max({row_wg_k, aux_params_.wgK, 1});
+            dim_t row_thread_per_tg
+                    = strategy_.wg[LoopM] * strategy_.wg[LoopN] * row_k;
+            bool keep_order
+                    = (m_tiles * n_tiles * row_thread_per_tg <= thread_gpu);
+
             // Mostly full wave: walk the dimension with fewer tiles fastest.
             bool both = use_linear && use_linear_m && use_linear_n
                     && 2 * m_tiles * n_tiles > tiles_gpu;
-            if (both ? n_tiles < m_tiles : use_linear_n && !use_linear_m) {
+            if (keep_order) {
+                // Keep the catalog order.
+            } else if (both ? n_tiles < m_tiles
+                            : use_linear_n && !use_linear_m) {
                 strategy_.loopOrder[0] = LoopN;
                 strategy_.loopOrder[1] = LoopM;
             } else if (both ? m_tiles < n_tiles

@@ -413,6 +413,17 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
             && !(u3DwordAligned(kb_load) && u3DwordAligned(kb_load_masked)))
         stub("u3 Block2DTranspose B loads must be dword-aligned in k");
 
+    // u3 A: Block2DTranspose only (scattered loads cannot be masked for the k remainder).
+    if (problem.Ta_ext.is3() && A.accessType != AccessType::Block2DTranspose)
+        stub("u3 A access type is unsupported");
+    // u3 B: Block2DTranspose, or row-major newDP scattered.
+    bool u3ScatteredB = B.accessType == AccessType::Scattered && B.newDP && !isColMajor(problem.B.layout);
+    if (problem.Tb_ext.is3() && B.accessType != AccessType::Block2DTranspose && !u3ScatteredB)
+        stub("u3 B access type is unsupported");
+
+    if (problem.hasCMXScale() && needsTempC(problem))
+        stub("MX Scale unsupported with Temp C.");
+
     // Systolic handling.
     if (systolic) {
         auto params = systolicParams(problem);
@@ -541,8 +552,16 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (ukAlign <= 0) stub("Zero k-unroll alignment");
     unroll[LoopK] = align_up(unroll[LoopK], ukAlign);
 
-    if (unrollKSLM == 0)
+    if (unrollKSLM == 0) {
         unrollKSLM = unroll[LoopK] / slmVersions;
+        // Large quantization groups: bound the SLM copy registers.
+        int kqGroup = 1;
+        if (problem.quantized2DA()) kqGroup = lcm(kqGroup, problem.aqGroupK);
+        if (problem.quantized2DB()) kqGroup = lcm(kqGroup, problem.bqGroupK);
+        if (hw < HW::Xe3p && kqGroup > 128)
+            while (unrollKSLM > 128 && unrollKSLM % (2 * minUnrollKSLM) == 0 && kqGroup % (unrollKSLM / 2) == 0)
+                unrollKSLM /= 2;
+    }
 
     if (fixedSystolic)
         unroll[LoopK] = unrollKSLM = 32 / Ta_real;

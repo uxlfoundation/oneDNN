@@ -444,6 +444,7 @@ status_t gen_desc_t::finalize(
             // Mostly full wave: walk the dimension with fewer tiles fastest.
             bool both = use_linear && use_linear_m && use_linear_n
                     && 2 * m_tiles * n_tiles > tiles_gpu;
+            auto order0 = strategy_.loopOrder[0];
             if (keep_order) {
                 // Keep the catalog order.
             } else if (both ? n_tiles < m_tiles
@@ -454,6 +455,12 @@ status_t gen_desc_t::finalize(
                             : use_linear_m && !use_linear_n) {
                 strategy_.loopOrder[0] = LoopM;
                 strategy_.loopOrder[1] = LoopN;
+            }
+            // Log the order and fused loop: a replay has no catalog row.
+            if (strategy_.loopOrder[0] != order0) {
+                resolved_str_
+                        += strategy_.loopOrder[0] == LoopN ? " nmk" : " mnk";
+                resolved_str_ += strategy_.fusedLoop == LoopN ? " fn" : " fm";
             }
 
             if (use_linear) {

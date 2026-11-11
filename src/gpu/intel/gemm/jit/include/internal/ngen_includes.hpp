@@ -16,6 +16,21 @@
 
 #include "gemmstone/config.hpp"
 
+#ifdef GEMMSTONE_STANDALONE
+#   if defined(GEMMSTONE_ZEBIN_OUTPUT)
+#       include "ngen_elf.hpp"
+#   elif defined(GEMMSTONE_OPENCL_OUTPUT)
+#       include "ngen_opencl.hpp"
+#   elif defined(GEMMSTONE_BINARY_OUTPUT)
+#       include "ngen.hpp"
+#       include "ngen_interface.hpp"
+#   else
+#       include "ngen_asm.hpp"
+#       include "ngen_interface.hpp"
+#   endif
+#   include "ngen_register_allocator.hpp"
+#else
 #   include "ngen_asm.hpp"
 #   include "ngen_opencl.hpp"
 #   include "ngen_register_allocator.hpp"
+#endif

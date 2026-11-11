@@ -88,7 +88,12 @@ bool useAutoAtomic(HW hw, const GEMMProblem &problem, const GEMMStrategy &strate
             && hasNativeAtomicAdd(hw, problem.Tc_ext.real(), problem.C, strategy.C)
             && (problem.Tacc_min == Type::invalid || problem.Tacc_min.isSubsetOf(problem.Tc_ext))
             && !strategy.cLoadAhead
+#ifdef GEMMSTONE_STANDALONE
+            && !problem.readCheck
+#endif
+#if   !defined(GEMMSTONE_STANDALONE)
             && (problem.postOps.len() == 0 || problem.hasSum1PostOpAtEnd())
+#endif
             && (problem.cOffset != COffset::Post)
             && !isBlock2D(strategy.C.accessType);
 }
@@ -139,6 +144,12 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (hw >= HW::Xe2) for (auto *s: {&A, &B, &C, &AO, &BO, &CO, &A_scale, &B_scale,
                                       &A_prefetch, &B_prefetch, &C_prefetch, &AB_prefetchL3})
         s->newDP = true;
+
+#ifdef GEMMSTONE_STANDALONE
+    if (problem.readCheck && problem.readCheckA) A.noExtraPad = A_prefetch.noExtraPad = true;
+    if (problem.readCheck && problem.readCheckB) B.noExtraPad = B_prefetch.noExtraPad = true;
+    if (problem.readCheck && problem.readCheckC) C.noExtraPad = C_prefetch.noExtraPad = true;
+#endif
 
     if (isBlock2D(A_prefetch.accessType) && !isPacked(problem.A.layout) && !A_prefetch.address2D)
         downgradeAPFAccess(problem, *this);
@@ -216,8 +227,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     needsFusedPostOps |= (problem.cOffset == COffset::Post);
     if (!relaxedAccumulation)
         needsFusedPostOps |= (Tc.bits() != Tc_ext.bits());
+#ifndef GEMMSTONE_STANDALONE
     for (size_t i = 0; i < problem.postOps.len(); i++)
         needsFusedPostOps |= (!problem.postOps[i].is_sum());
+#endif
     if (problem.Ts != problem.Tc) {
         needsFusedPostOps |= !(problem.alpha1() || problem.alphaM1());
         needsFusedPostOps |= !(problem.beta0()  || problem.beta1());
@@ -225,6 +238,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     fusePostOps &= C.atomic;
     fusePostOps &= needsFusedPostOps;
+
+#ifdef GEMMSTONE_STANDALONE
+    fusePostOps |= forceFusedPostOps;
+#endif
 
     fuseBeta &= C.atomic;
     fuseBeta &= !problem.beta1();
@@ -729,9 +746,11 @@ bool GEMMStrategy::needsTempC(const GEMMProblem &problem) const
     }
     if (problem.Tc.bits() != problem.Tc_ext.bits()) return true;
     if (!problem.beta0() && !problem.beta1() && altFusedBeta) return true;
+#ifndef GEMMSTONE_STANDALONE
     for (size_t i = 1; i < problem.postOps.len(); i++)
         if (problem.postOps[i].is_sum())
             return true;
+#endif
     return false;
 }
 

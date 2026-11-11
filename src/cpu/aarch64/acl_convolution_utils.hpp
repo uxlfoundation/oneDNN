@@ -102,6 +102,7 @@ status_t init_scratchpad(op_t &conv, memory_tracking::registrar_t &scratchpad,
     int post_op_start_index = 0;
     CHECK(acl_utils::try_fuse_first_acl_post_op(attr_post_ops, dst_md.data_type,
             post_op_start_index, act_info, post_op_start_index));
+    CHECK(attr_post_ops.set_default_formats(&dst_md));
     CHECK(post_ops.init(engine, attr_post_ops, dst_md, post_op_start_index));
     use_dst_acc_for_sum = post_ops.has_sum();
 

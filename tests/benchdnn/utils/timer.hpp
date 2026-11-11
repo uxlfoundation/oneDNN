@@ -48,6 +48,9 @@
 
 namespace timer {
 
+// Wall-clock time, ms since the epoch.
+double ms_now();
+
 struct timer_t {
     enum mode_t { min = 0, avg = 1, max = 2, sum = 3, n_modes };
 

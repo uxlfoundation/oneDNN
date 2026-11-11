@@ -82,6 +82,9 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
                 (ss)->state = bs.state; \
                 if ((ss)->state == res_state_t::SKIPPED) { \
                     (ss)->reason = bs.reason; \
+                    BENCHDNN_PRINT(2, \
+                            "SKIP: Function '%s' at (%s:%d) returned '%s'\n", \
+                            __FUNCTION__, __FILE__, __LINE__, e.what()); \
                 } else if ((((ss)->state == res_state_t::UNIMPLEMENTED) \
                                    || ((ss)->state \
                                            == res_state_t::INVALID_ARGUMENTS)) \

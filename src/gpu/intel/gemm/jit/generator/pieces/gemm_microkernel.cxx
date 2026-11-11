@@ -35,6 +35,10 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     for (int q = 0; q < 2; q++)
         state.ra.safeRelease(state.emulate.temp[q]);
 
+#ifdef GEMMSTONE_STANDALONE
+    gemmKernelNotes(problem, strategy);
+#endif
+
     outputCRange = GRFMultirange();
     outputCLayout.clear();
     knownClobbers.clear();
@@ -216,6 +220,7 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     syncall();
 }
 
+#if defined(GEMMSTONE_BINARY_OUTPUT) || !defined(GEMMSTONE_STANDALONE)
 static inline microkernel::StructuredType::Type microType(Type T);
 
 template <HW hw>
@@ -378,5 +383,7 @@ static inline microkernel::StructuredType::Type microType(Type T)
     }
 #undef CASE
 }
+
+#endif
 
 GEMMSTONE_NAMESPACE_END

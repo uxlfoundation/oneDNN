@@ -23,7 +23,11 @@
 
 namespace gemmstone {
 enum class GEMMVerbose { DebugInfo };
+#ifdef GEMMSTONE_STANDALONE
+int getVerbose(GEMMVerbose v);
+#else
 inline int getVerbose(GEMMVerbose v) { return 0; }
+#endif
 } // namespace gemmstone
 
 #define GEMMSTONE_ASSERTIONS 1

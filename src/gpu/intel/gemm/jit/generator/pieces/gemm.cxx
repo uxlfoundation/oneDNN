@@ -58,6 +58,17 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     // Set up.
     problem.autoTypeConversions(strategy.systolic);
     gemmInitState(problem, strategy, state);
+#ifdef GEMMSTONE_STANDALONE
+
+    gemmKernelNotes(problem, strategy);
+#endif
+#ifdef GEMMSTONE_ASM_OUTPUT
+    gemmKernelAnalysis(problem, strategy, state);
+
+    std::stringstream s;
+    interface.dumpAssignments(s);
+    comment(s.str());
+#endif
 
     // Transfer surface indices to strategy AddressBases.
     strategy.A.assignSurface(state.inputs.surfaceA);
@@ -84,6 +95,21 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     // Prologue.
     if (!inFusedGEMM)
         prologue(strategy, state);
+
+#ifdef GEMMSTONE_STANDALONE
+    // Initialize tracking, if enabled.
+    gemmInitTracking(problem, strategy, state);
+
+    if (strategy.tracking.startEnd)
+        addTimepoint(TimepointThreadStart, state);
+
+    // Fill SLM with NaN for debugging, if enabled.
+    if (problem.mock.slmInit) {
+        auto Tslm = strategy.slmA ? problem.Ta :
+                    strategy.slmB ? problem.Tb : problem.Tc;
+        mockInitSLM(Tslm, gemmSLMSize(hw, problem, strategy), state);
+    }
+#endif
 
     // Grab fused ID if needed, and multiply by unroll.
     getFusedID(strategy.unroll[strategy.fusedLoop], problem, strategy, state);
@@ -259,6 +285,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         state.tmpCScales = state.ra.alloc_range(n_regs);
     }
 
+#ifndef GEMMSTONE_STANDALONE
     if (problem.postOps.cStochasticRound) {
         state.inputs.sroundSeed = state.ra.alloc_sub(DataType::ud, getHint(HintType::LongTerm, strategy));
         vector<Subregister> srcs;
@@ -266,6 +293,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         auto seedLoad = loadScalars(Type::u32, srcs, strategy, state);
         mov(1, state.inputs.sroundSeed, seedLoad);
     }
+#endif
 
     // 2D scale address handling.
     if (problem.aScale2D() && state.inputs.offsetAScale.isValid())
@@ -324,6 +352,10 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
 
         mark(lReentry);
 
+#ifdef GEMMSTONE_STANDALONE
+        if (strategy.tracking.startEnd)
+            addTimepoint(TimepointSubthreadStart, state);
+#endif
     }
 
     // Variable k-slicing logic.
@@ -616,6 +648,11 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
                 state.ra.safeRelease(temp);
             }
         };
+
+#ifdef GEMMSTONE_STANDALONE
+        if (strategy.tracking.startEnd)
+            addTimepoint(TimepointSubthreadEnd, state);
+#endif
 
         // Recompute group count if needed.
         if (state.inputs.groupCountMN.isInvalid()) {
@@ -980,6 +1017,11 @@ bool Generator<hw>::gemmBodyInternal(GEMMProblem &problem, GEMMStrategy &strateg
     // Accumulate C with panel*panel multiply.
     if (!gemmAccumulateC(problem, strategy, state)) return false;
 
+#ifdef GEMMSTONE_STANDALONE
+    if (strategy.tracking.accumDone)
+        addTimepoint(TimepointAccumDone, state);
+#endif
+
     // Final C horizontal reduction for dot product kernels.
     gemmDotReduce(problem, strategy, state);
 
@@ -987,6 +1029,13 @@ bool Generator<hw>::gemmBodyInternal(GEMMProblem &problem, GEMMStrategy &strateg
     gemmLoadABOffset(problem, strategy, state);
     if (!gemmFinalizeSums(problem, strategy, state)) return false;
     gemmApplyABOffset(problem, strategy, state);
+
+#ifdef GEMMSTONE_STANDALONE
+
+    // Store read check explicitly in case remM = 0 or remN = 0.
+    gemmFinalizeReadCheck(problem, strategy, state);
+    gemmStoreReadCheck(problem, strategy, state);
+#endif
 
     // If C is packed, update remainders and prepare to mask out border regions.
     bool remaskC_M = isPacked(problem.C.layout) && (strategy.remHandling[LoopM] != RemainderHandling::Ignore);

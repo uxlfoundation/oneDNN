@@ -48,6 +48,10 @@ GEMMSTONE_NAMESPACE_START
 // Macro configuration
 #ifndef GEMMSTONE_GENERATOR_BASE
 
+#if defined(GEMMSTONE_STANDALONE) && (defined(GEMMSTONE_ASM_OUTPUT) + defined(GEMMSTONE_BINARY_OUTPUT) + defined(GEMMSTONE_OPENCL_OUTPUT) + defined(GEMMSTONE_ZEBIN_OUTPUT) != 1)
+#error "Exactly one GEMMSTONE_*_OUTPUT format must be defined"
+#endif
+
 #if defined(GEMMSTONE_OPENCL_OUTPUT)
 #define GEMMSTONE_GENERATOR_SUPER(hw) ngen::OpenCLCodeGenerator<hw>
 #define GEMMSTONE_GENERATOR_FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
@@ -60,6 +64,10 @@ GEMMSTONE_NAMESPACE_START
 #define GEMMSTONE_GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
 #define GEMMSTONE_GENERATOR_FORWARD(hw) NGEN_FORWARD_ELF(hw)
 #define GEMMSTONE_GENERATOR_DEBUGINFO {__FILE__, __LINE__}
+#else
+#define GEMMSTONE_GENERATOR_SUPER(hw) ngen::AsmCodeGenerator
+#define GEMMSTONE_GENERATOR_FORWARD(hw)
+#define GEMMSTONE_GENERATOR_DEBUGINFO {__FILE__, __LINE__}
 #endif
 
 #define GEMMSTONE_GENERATOR_BASE(hw) GEMMSTONE_GENERATOR_SUPER(hw)
@@ -69,14 +77,20 @@ template <ngen::HW hw> class Generator : public GEMMSTONE_GENERATOR_BASE(hw) {
 public:
     using super = GEMMSTONE_GENERATOR_SUPER(hw);
 
+#ifdef GEMMSTONE_ASM_OUTPUT
+    Generator(ngen::Product product) : super(hw) {}
+#else
     Generator(ngen::Product product) : GEMMSTONE_GENERATOR_BASE(hw)(product, GEMMSTONE_GENERATOR_DEBUGINFO) {}
+#endif
 
     GEMMSTONE_GENERATOR_FORWARD(hw)
 
     // Kernel generation entrypoints.
     void gemm(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
     void gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_);
+#if defined(GEMMSTONE_BINARY_OUTPUT) || !defined(GEMMSTONE_STANDALONE)
     microkernel::Package gemmMicrokernelPackage(const GEMMProblem &problem, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_, const microkernel::Protocol &protocol, uint32_t gmdid, bool transposeC = false);
+#endif
 
     // Driver information retrieval.
     static CommonDriverInfo driverInfo(GEMMProblem problem, const GEMMStrategy &strategy);
@@ -93,8 +107,10 @@ protected:
     RegisterLayout outputCLayout;
     microkernel::ClobberSet knownClobbers;
 
+#ifndef GEMMSTONE_STANDALONE
     using Injector = PostOpsProblem::Injector<hw>;
     std::unique_ptr<Injector> postOpInjector;
+#endif
 
     class status_stream {
     protected:
@@ -113,10 +129,22 @@ protected:
 
         template <typename T>
         status_stream &operator<<(const T &obj) {
+#ifdef GEMMSTONE_ASM_OUTPUT
+            if (lineStart)
+                line << "\x1B[1;3" << cc << 'm';
+            line << obj;
+            lineStart = false;
+#endif
             return *this;
         }
 
         status_stream &operator<<(const Endl &e) {
+#ifdef GEMMSTONE_ASM_OUTPUT
+            line << "\x1B[0m";
+            lineStart = true;
+            parent.comment(line.str());
+            line.str(std::string());
+#endif
             return *this;
         }
     } status{*this};
@@ -158,7 +186,6 @@ protected:
     void setAddrRemainder(Type T, const ngen::RegisterRange &addr, const RegisterBlock &block, const ngen::Subregister &remR, const ngen::Subregister &remC, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy, const CommonStrategy &strategy, CommonState &state);
     void setAddrRemainder(const std::vector<ngen::RegisterRange> &addr, const RegisterLayout &layout, const ngen::Subregister &remR, const ngen::Subregister &remC, const CommonStrategy &strategy, CommonState &state);
 
-    ngen::Subregister startShift(const MultishiftSubregister &ptr, int shift, CommonState &state);
     SubregisterPair startShift(const SubregisterPair &ptr, int shift, CommonState &state);
     template <typename BO> typename std::enable_if<!std::is_base_of<ngen::RegData, BO>::value, BO>::type
     startShift(const BO &ptr, int shift, CommonState &state);
@@ -245,7 +272,6 @@ protected:
     ngen::Subregister copySubregister(const ngen::Subregister &reg, CommonState &state, ngen::Bundle hint = ngen::Bundle(ngen::Bundle::any, 0));
     void duplicateScalar(SubregisterPair &val, CommonState &state);
     void deduplicateScalar(SubregisterPair &val, CommonState &state);
-    MultishiftSubregister multishift(const ngen::Subregister &reg, unsigned shifts, const CommonStrategy &strategy, CommonState &state, ngen::Bundle hint = ngen::Bundle());
 
     void getFusedID(int scale, const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state);
 
@@ -278,11 +304,26 @@ protected:
     friend struct CopyResource;
     void copyRegisterBlock(Type Ts, Type Td, const RegisterBlock &blockSrc, const RegisterBlock &blockDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false);
     void copyRegisters(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
-    void copyRegisters(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
+    void copyRegisters(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
     void copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
-    void copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
+    void copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
     void copyExecute(CopyPlan &&plan, CommonState &state);
     void overlappedCopy(const GRFMultirange &src, const GRFMultirange &dst, CommonState &state);
+
+#ifdef GEMMSTONE_STANDALONE
+    // debug_tools.cxx
+    void readCheckInitMatrix(const GRFMultirange &r, const CommonStrategy &strategy);
+    void readCheckInitMatrix(const GRFMultirange &r, const RegisterLayout &layout, const CommonStrategy &strategy);
+    void readCheck(const GRFMultirange &r, const CommonStrategy &strategy, CommonState &state, const RegisterLayout *layout = nullptr);
+    void gemmFinalizeReadCheck(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void gemmStoreReadCheck(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+
+    void mockInitMatrix(Type T, const GRFMultirange &r, const CommonStrategy &strategy, bool random);
+    void mockInitSLM(Type T, size_t bytes, CommonState &state);
+
+    void gemmInitTracking(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    template <typename TT> void addTimepoint(TT type, CommonState &state);
+#endif
 
     // emulation.cxx
     friend struct ngen::EmulationImplementation;
@@ -331,8 +372,8 @@ protected:
     void makeSLMBaseRelative(ngen::Subregister addr, const GEMMState &state);
 
     // gemm_setup.cxx
-    void gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK = false);
-    void gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK = false);
+    void gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
+    void gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
 
     bool gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
     void gemmAccumulateCTeardown(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
@@ -356,7 +397,6 @@ protected:
     void gemmCalcWGRemainders(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     void gemmGetBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    void gemmReleaseBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     void gemmOffsetABC(bool initial, ngen::Subregister i0, ngen::Subregister j0, ngen::Subregister h0, ngen::Subregister i0p, ngen::Subregister j0p, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool doA = true, bool doB = true, bool doC = true, bool doBinary = false);
     void gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
@@ -382,18 +422,14 @@ protected:
 
     // k_loop.cxx
     void gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, int ka_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ha = 0);
-    void gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, const MultishiftSubregister &ka_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ha = 0);
     void gemmAIncrementInternal(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, const ngen::Subregister &ka_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ha = 0);
     template <typename I> void gemmAIncrement(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, I ka_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int ha = 0, int h = 0);
     void gemmALoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    template <typename I> void gemmALoadInc(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, I ka_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     void gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, int kb_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int hb = 0);
-    void gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, const MultishiftSubregister &kb_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int hb = 0);
     void gemmBIncrementInternal(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, const ngen::Subregister &kb_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int hb = 0);
     template <typename I> void gemmBIncrement(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, I kb_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, int hb = 0, int h = 0);
     void gemmBLoad(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
-    template <typename I> void gemmBLoadInc(const GRFMultirange &regs, const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrs, I kb_inc, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     template <bool doA> void gemmAiBiRemLoadInc(int h, bool incremental, bool incrementalCopy, bool keepAddrTogether, bool willRemask, const ngen::Subregister &kSLMX, const GRFMultirange &Xi_regs, const RegisterLayout &Xi_layout, const std::vector<ngen::RegisterRange> &Xi_addrs, const std::vector<RegisterLayout> &Xi_layoutK, const std::vector<std::vector<ngen::RegisterRange>> &Xi_addrsK, const GRFMultirange &Xo_regs, const RegisterLayout &Xo_layout, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
@@ -508,6 +544,18 @@ protected:
     void sysgemm2MultiplyChunkX32(const GEMMProblem &problem, const GEMMStrategy &strategy, int chunkA, bool odd);
     void sysgemm2MultiplyChunkX48(const GEMMProblem &problem, const GEMMStrategy &strategy, int chunkA);
 
+#ifdef GEMMSTONE_STANDALONE
+    // notes.cxx
+public:
+    std::string getNotes();
+
+protected:
+    void gemmKernelAnalysis(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
+    void gemmKernelNotes(GEMMProblem &problem, GEMMStrategy &strategy);
+    void driverInfoNotes(const CommonDriverInfo &info);
+    std::stringstream noteStream;
+#endif
+
     // post_ops.cxx
     void gemmAlphaScale(GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool cxCombine = true);
     void gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
@@ -522,9 +570,11 @@ protected:
     bool gemmBinaryOpC(BinaryOp op, bool row, bool column, Type Tco, MatrixAddressing CO, MatrixAddressingStrategy CO_strategy, ngen::Subregister base, ngen::Subregister ld, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     bool gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
+#ifndef GEMMSTONE_STANDALONE
     void gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+#endif
 
     // quantization.cxx
     bool gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
@@ -579,7 +629,11 @@ protected:
     void gemmReorderLocalIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 };
 
+#ifdef GEMMSTONE_STANDALONE
+#define MOCK_BARRIERS if (!problem.mock.barriers)
+#else
 #define MOCK_BARRIERS
+#endif
 
 template <ngen::HW hw> using gemm_kernel_generator_t = Generator<hw>;
 

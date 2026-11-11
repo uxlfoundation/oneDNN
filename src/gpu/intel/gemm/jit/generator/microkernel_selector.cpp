@@ -25,6 +25,15 @@
 #include "pieces/compute_utils.hpp"
 #include "pieces/hw_utils.hpp"
 
+#ifdef GEMMSTONE_STANDALONE
+// oneDNN ISA registration macros, enabling all ISAs.
+#define REG_XEHPG_ISA(...) __VA_ARGS__
+#define REG_XEHPC_ISA(...) __VA_ARGS__
+#define REG_XE2_ISA(...) __VA_ARGS__
+#define REG_XE3_ISA(...) __VA_ARGS__
+#define REG_XE3P_ISA(...) __VA_ARGS__
+#endif
+
 GEMMSTONE_NAMESPACE_START
 namespace microkernel {
 

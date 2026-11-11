@@ -273,6 +273,9 @@ GEMMStrategy gen_desc_t::resolve_launch(const GEMMStrategy &s,
     // The launch depends on the strategy, not on the entry.
     kcatalog::Entry e = base;
     e.driverInfo = driver_info_of(st);
+    // Preflight drops the k padding.
+    if (st.kParallel || st.kParallelVariable)
+        e.driverInfo.blockingAlt[LoopK] = s.kPadding;
     e.selector.layouts[2] = isColMajor(problem_.C.layout) ? "N" : "T";
     aux_params_ = evaluateFixed(e, getDerivedParams(e, eval_params));
 

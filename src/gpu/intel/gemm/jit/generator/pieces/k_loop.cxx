@@ -200,7 +200,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         releaseFenceTemp(slmFenceTemp);
     };
 
-    if (slmA && slmB && nbM != nbN) stub();
+    if (slmA && slmB && nbM != nbN) stub("SLM A and B require equal barrier counts");
 
     auto kLoopBarrier = [&](bool withSLMFence, KBarrierType type) {
         if (withSLMFence && type == KBarrierType::Wait) {
@@ -444,15 +444,13 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     // A/B L3 prefetch.
     gemmScheduleL3Prefetches(&ls, problem, strategy, state);
 
-    if (slmDequantize2DA && slmDequantize2DB && kaq_load != kbq_load) stub();
-    int slmKQLoad = slmDequantize2DA ? kaq_load : kbq_load;
-    bool slmDequantize2D = (slmDequantize2DA || slmDequantize2DB);
-    if (slmDequantize2D)
-        slmKQLoad = std::max(slmKQLoad, unrollKSLM);
-
-    // SLM quantization parameter loads.
-    auto reqSLMLoadQ = every(slmKQLoad)
-                     | lookahead(lookaheadSLMStore + lookaheadSLMReload + unrollKSLM - 1);
+    // SLM quantization parameter loads (A and B may have different periods).
+    auto slmKQLoad = [&](bool isA) { return std::max(isA ? kaq_load : kbq_load, unrollKSLM); };
+    auto slmDequantize2D = [&](bool isA) { return isA ? slmDequantize2DA : slmDequantize2DB; };
+    auto reqSLMLoadQ = [&](bool isA) {
+        return every(slmKQLoad(isA))
+             | lookahead(lookaheadSLMStore + lookaheadSLMReload + unrollKSLM - 1);
+    };
     // Threads split SLM quantization loads in k; in the k remainder, zero groups past k instead of loading.
     auto doSLMLoadQ = [&](Iteration h, bool isA) {
         bool xo2D = isA ? ao2D : bo2D, xs2D = isA ? as2D : bs2D;
@@ -464,7 +462,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         auto &XS_addrs = isA ? state.A_scaleAddrs  : state.B_scaleAddrs;
         int kx_slm = isA ? state.ka_slm : state.kb_slm;
         int xqGroupK = isA ? problem.aqGroupK : problem.bqGroupK;
-        bool guard = (h.remaining() < slmKQLoad) && (kx_slm < unrollKSLM) && (xqGroupK < unrollKSLM);
+        bool guard = (h.remaining() < slmKQLoad(isA)) && (kx_slm < unrollKSLM) && (xqGroupK < unrollKSLM);
 
         Label skip;
         if (guard) {
@@ -491,10 +489,9 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         }
     };
 
-    if (slmDequantize2D) ls.schedule(reqSLMLoadQ, [&](Iteration h) {
-        if (slmDequantize2DA) doSLMLoadQ(h, true);
-        if (slmDequantize2DB) doSLMLoadQ(h, false);
-    });
+    for (bool isA : {true, false})
+        if (slmDequantize2D(isA))
+            ls.schedule(reqSLMLoadQ(isA), [&, isA](Iteration h) { doSLMLoadQ(h, isA); });
 
     // SLM loads.
     auto reqSLMLoad = every(unrollKSLM)
@@ -797,10 +794,11 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     };
 
     // SLM quantization parameter address increment.
-    if (slmDequantize2D) ls.schedule(reqSLMLoadQ.delay(delaySLMInc), [&](Iteration h) {
-        if (slmDequantize2DA) doIncAq(h, false, false);
-        if (slmDequantize2DB) doIncBq(h, false, false);
-    });
+    for (bool isA : {true, false})
+        if (slmDequantize2D(isA))
+            ls.schedule(reqSLMLoadQ(isA).delay(delaySLMInc), [&, isA](Iteration h) {
+                isA ? doIncAq(h, false, false) : doIncBq(h, false, false);
+            });
 
     // SLM load address increments.
     auto doSLMLoadInc = [&](Iteration h) {
@@ -1415,20 +1413,20 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
     }
 
     // SLM quantization parameter repacking.
-    auto reqSLMRepackQ = every(slmKQLoad)
-                       | lookahead(lookaheadSLMStore + lookaheadSLMReload + strategy.slmRepackAhead);
+    auto reqSLMRepackQ = [&](bool isA) {
+        return every(slmKQLoad(isA))
+             | lookahead(lookaheadSLMStore + lookaheadSLMReload + strategy.slmRepackAhead);
+    };
 
-    if (slmDequantize2D) ls.schedule(reqSLMRepackQ, [&](Iteration h) {
-        if (slmDequantize2DA) {
-            if (slmRemActive(h)) doRemaskAq(h, true);
-            if (ao2D) gemmRepack2DOffsetData(Ta_ext, state.A_offsetLayout, state.Ar_offsetLayout, state.A_offsetRegs, state.Ar_offsetRegs, problem, strategy, state, problem.aOffsetAfterScale);
-            if (as2D) gemmRepack2DQuantizationData(state.A_scaleLayout,    state.Ar_scaleLayout,  state.A_scaleRegs,  state.Ar_scaleRegs,  problem, strategy, state);
-        }
-        if (slmDequantize2DB) {
-            if (slmRemActive(h)) doRemaskBq(h, true);
-            if (bo2D) gemmRepack2DOffsetData(Tb_ext, state.B_offsetLayout, state.Br_offsetLayout, state.B_offsetRegs, state.Br_offsetRegs, problem, strategy, state, problem.bOffsetAfterScale);
-            if (bs2D) gemmRepack2DQuantizationData(state.B_scaleLayout,    state.Br_scaleLayout,  state.B_scaleRegs,  state.Br_scaleRegs,  problem, strategy, state);
-        }
+    if (slmDequantize2DA) ls.schedule(reqSLMRepackQ(true), [&](Iteration h) {
+        if (slmRemActive(h)) doRemaskAq(h, true);
+        if (ao2D) gemmRepack2DOffsetData(Ta_ext, state.A_offsetLayout, state.Ar_offsetLayout, state.A_offsetRegs, state.Ar_offsetRegs, problem, strategy, state, problem.aOffsetAfterScale);
+        if (as2D) gemmRepack2DQuantizationData(state.A_scaleLayout,    state.Ar_scaleLayout,  state.A_scaleRegs,  state.Ar_scaleRegs,  problem, strategy, state);
+    });
+    if (slmDequantize2DB) ls.schedule(reqSLMRepackQ(false), [&](Iteration h) {
+        if (slmRemActive(h)) doRemaskBq(h, true);
+        if (bo2D) gemmRepack2DOffsetData(Tb_ext, state.B_offsetLayout, state.Br_offsetLayout, state.B_offsetRegs, state.Br_offsetRegs, problem, strategy, state, problem.bOffsetAfterScale);
+        if (bs2D) gemmRepack2DQuantizationData(state.B_scaleLayout,    state.Br_scaleLayout,  state.B_scaleRegs,  state.Br_scaleRegs,  problem, strategy, state);
     });
 
     // SLM data repacking and remasking.

@@ -174,16 +174,6 @@ std::vector<gemmstone::StrategyRequirement> fallback_reqs(
             }
             if (!dev_info.mayiuse_systolic()) max_wg_n = 2;
             if (ta_ext.bits() <= 8) min_wg_n = 2;
-            // When k-contiguous A and B both have 2D quantization with
-            // different groups, their shared SLM chunk has to span both groups.
-            // For groups of 128 or more, only a 2-wide n unroll leaves room for
-            // it.
-            const bool a_q2d = problem.aOffset2D() || problem.aScale2D();
-            const bool b_q2d = problem.bOffset2D() || problem.bScale2D();
-            if (problem.A.layout == MatrixLayout::T && a_q2d && b_q2d
-                    && problem.aqGroupK != problem.bqGroupK
-                    && std::max(problem.aqGroupK, problem.bqGroupK) >= 128)
-                max_n_unroll = 2;
         } break;
         case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
         case compute::gpu_arch_t::xe2:
@@ -680,9 +670,19 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
                                  && src_quant().scale_mask() == src_qmask_MK
                                  && src_groups[1] < K())
             || (src_quant().with_zp() && src_quant().zp_mask() == src_qmask_MK);
-    // Scales covering all of K and one column are applied after the GEMM.
-    const bool wei_q2d = (wei_quant().with_zp() && wei_quant().zp_mask() == 7)
-            || (wei_quant().with_scale() && wei_quant().scale_mask() == 7
+    // Scales covering all of K and one column are applied after the GEMM, and
+    // zero points per column without groups are a vector offset. Columns in
+    // groups are 2D, with a k group spanning all of K.
+    const int wei_zp_mask = wei_quant().zp_mask();
+    const bool wei_q2d
+            = (wei_quant().with_zp()
+                      && !attr()->zero_points_.get(DNNL_ARG_WEIGHTS)
+                                  .is_host_scalar()
+                      && wei_zp_mask != 0
+                      && !(wei_zp_mask == 5
+                              && attr()->zero_points_.has_default_groups(
+                                      DNNL_ARG_WEIGHTS)))
+            || (wei_quant().with_scale()
                     && (wei_groups[1] < K() || wei_groups[2] > 1));
     if (src_q2d && wei_q2d) {
         // The microkernel rounds groups up to powers of two.

@@ -378,10 +378,15 @@ void calc_group_sizes(std::array<int, N> &dims, const quant_entry_t &entry,
         const memory_desc_wrapper &desc) {
     memory_desc_t md;
     entry.get_md(md, *desc.md_);
-    std::transform(desc.dims(), desc.dims() + dims.size(), md.dims, begin(dims),
-            [](dim_t d, dim_t d2) -> int {
-        return static_cast<int>(d2 == 0 ? 1 : d / d2);
-    });
+    for (size_t i = 0; i < N; i++) {
+        const dim_t d = desc.dims()[i];
+        const dim_t d2 = md.dims[i];
+        const bool in_mask = entry.get_mask() & (1 << i);
+        if (d2 == 0 && !in_mask && !entry.has_default_groups())
+            dims[i] = static_cast<int>(d);
+        else
+            dims[i] = static_cast<int>(d2 == 0 ? 1 : d / d2);
+    }
 }
 
 std::array<int, 2> grouped_micro_gemm_t::pd_t::src_group_sizes() const {

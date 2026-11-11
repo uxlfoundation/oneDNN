@@ -560,6 +560,10 @@ double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Evalu
         case 'E': score = evaluateE(e, dp, aux); break;
         case 'S': score = evaluateS(e, dp, aux); break;
         case 'W': score = evaluateW(e, dp, aux); break;
+        case 'G': // Scored by evaluateG; a fixed kernel keeps its k-threads.
+            aux.wgK = std::max(1, e.driverInfo.wg[LoopK]);
+            score = std::numeric_limits<double>::quiet_NaN();
+            break;
         default:  score = std::numeric_limits<double>::quiet_NaN(); break;
     }
 

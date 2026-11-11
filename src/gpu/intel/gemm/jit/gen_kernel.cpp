@@ -353,26 +353,21 @@ status_t gen_desc_t::finalize(
 
             auto um = entry_->driverInfo.unroll[LoopM];
             auto un = entry_->driverInfo.unroll[LoopN];
-            if (entry_->model.id == 'G') {
-                // A fixed kernel: literal, as an override.
-                str = kernel_str(problem_, um, un, entry_->strategy);
-            } else {
-                GEMMStrategy row(hw_, stepping_);
-                row.unroll[LoopM] = um;
-                row.unroll[LoopN] = un;
-                parseStrategy(entry_->strategy, problem_, row);
-                row_wg_k = decisions_of(row).wgK;
-                EvaluateAuxOutput sel;
-                evaluate(*entry_, eval_params, sel);
-                auto st = row;
-                set_decisions(st, selector_decisions(row, sel));
-                // Decisions only shrink, so one correction is stable.
-                set_decisions(st,
-                        kept(resolve_launch(st, *entry_, tags, eval_params), k_,
-                                aux_params_));
-                str = kernel_str(problem_, um, un,
-                        rewriteKParallel(entry_->strategy, row, st));
-            }
+            GEMMStrategy row(hw_, stepping_);
+            row.unroll[LoopM] = um;
+            row.unroll[LoopN] = un;
+            parseStrategy(entry_->strategy, problem_, row);
+            row_wg_k = decisions_of(row).wgK;
+            EvaluateAuxOutput sel;
+            evaluate(*entry_, eval_params, sel);
+            auto st = row;
+            set_decisions(st, selector_decisions(row, sel));
+            // Decisions only shrink, so one correction is stable.
+            set_decisions(st,
+                    kept(resolve_launch(st, *entry_, tags, eval_params), k_,
+                            aux_params_));
+            str = kernel_str(problem_, um, un,
+                    rewriteKParallel(entry_->strategy, row, st));
         } else {
             entry_ = nullptr;
         }

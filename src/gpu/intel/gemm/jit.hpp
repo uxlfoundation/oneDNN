@@ -253,7 +253,7 @@ struct gen_t : public primitive_t {
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
-            bool with_binary = (post_ops_.find(binary) != -1)
+            with_binary_ = (post_ops_.find(binary) != -1)
                     || (post_ops_.find(prelu) != -1);
             bool with_eltwise = (post_ops_.find(eltwise) != -1);
 
@@ -263,7 +263,7 @@ struct gen_t : public primitive_t {
             arch_ok |= (arch_ >= arch_t::xe3p);
 
             VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
-            VDISPATCH_GEMM(IMPLICATION(with_binary, arch_ >= arch_t::xe_hp),
+            VDISPATCH_GEMM(IMPLICATION(with_binary_, arch_ >= arch_t::xe_hp),
                     VERBOSE_UNSUPPORTED_ARCH, "gpu");
 
             // Grouped scales break pre-XeHPG kernels due to increased register pressure
@@ -315,16 +315,16 @@ struct gen_t : public primitive_t {
             CHECK(init_GEMMProblem(problem, intel_engine));
 
             VDISPATCH_GEMM(IMPLICATION(problem.Tc == gemmstone::Type::f64,
-                                   !with_eltwise && !with_binary),
+                                   !with_eltwise && !with_binary_),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             if (arch_ >= arch_t::xe3p)
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 
-            bool kernel_success = false;
             // Kernel override: bare int = Nth candidate after sort (rank);
             // else strategy string.
             int index = -1;
+            bool has_override = false;
             if (is_dev_mode()) {
                 auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
                         attr()->gpu_attr_.get());
@@ -337,7 +337,8 @@ struct gen_t : public primitive_t {
                         "kernel override conflicts with GEMM_KERNEL");
                 auto kernel = kernel_override(attr());
                 index = kernel_rank(kernel);
-                if (index < 0) kernel_desc_.set_kernel_override(kernel);
+                has_override = index < 0 && !kernel.empty();
+                if (has_override) kernel_desc_.set_kernel_override(kernel);
             }
             auto lda = ld(DNNL_ARG_A);
             auto ldb = ld(DNNL_ARG_B);
@@ -345,120 +346,30 @@ struct gen_t : public primitive_t {
             auto entries = kernel_desc_.select_kernel(*dev_info_, mode, problem,
                     alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),
                     d->batch());
-            kernel_count_ = (int)entries.size();
 
             VDISPATCH_GEMM(index < (int)entries.size(),
                     "kernel override rejected: rank out of range");
 
+            base_desc_ = kernel_desc_;
+            problem_ = problem;
+            pinned_ = index >= 0;
+            entries_ = std::move(entries);
+
             // Why an override or a pinned rank does not run.
             std::string reject_reason;
-            size_t begin = index >= 0 ? index : 0;
-            size_t end = index >= 0 ? index + 1 : entries.size();
-            for (size_t entry_idx = begin; entry_idx < end; entry_idx++) {
-                auto *entry = entries[entry_idx];
-                int g = (int)(entry - jit::catalog().entries);
-                auto skip = [&](const std::string &why) {
-                    gpu_debug() << "[" << lpad(g, 4) << "] skip " << entry_idx
-                                << "/" << entries.size() << " " << entry->str()
-                                << "," << why;
-                    if ((!kernel_desc_.has_entry() || index >= 0)
-                            && reject_reason.empty())
-                        reject_reason = why;
-                };
-                kernel_desc_.set_entry(entry);
-                kernel_desc_.set_problem(problem);
-                auto status = kernel_desc_.finalize();
-                // select_kernel can return a strategy that failed in the finalize call
-                bool valid = status == status::success;
-                if (!valid)
-                    skip(kernel_desc_.reject_reason().empty()
-                                    ? "Strategy finalization failed."
-                                    : kernel_desc_.reject_reason());
-                // Global k-parallel kernels don't support post-ops or non-f32/s32
-                //   accumulation unless fusion is enabled.
-                if (kernel_desc_.driver_info()->kParallel()
-                        && !kernel_desc_.driver_info()->fusedPostOps()) {
-                    bool po_valid = !non_scale_po_
-                            && !(with_sum_ && with_c_scales())
-                            && utils::one_of(d->c_type(), f32, s32);
-                    if (!po_valid) skip("Invalid post op.");
-                    valid &= po_valid;
-                }
-                // An in-place binary post-op reads C as its right-hand side,
-                // thus C must still hold the data it came in with by the time
-                // post-ops run. Kernels splitting k between workgroups write
-                // partial sums into C - or zero it out beforehand - long before
-                // that, leaving the post-op nothing to read.
-                if (post_ops_.has_inplace_binary()) {
-                    bool c_intact = !kernel_desc_.driver_info()->kParallel()
-                            && !kernel_desc_.driver_info()->kParallelVariable();
-                    if (!c_intact) skip("In-place post op over k-parallel C.");
-                    valid &= c_intact;
-                }
-                // Limited post-op support for low-precision accumulation.
-                if (kernel_desc_.problem()->Tc.size() < 4) {
-                    bool need_x32_acc = with_binary
-                            || !IMPLICATION(with_sum_, sum_at_begin_);
-                    valid &= !need_x32_acc;
-                    if (need_x32_acc) skip("Invalid post op.");
-                }
-                // Ensure kernel can be run deterministically if required.
-                if (attr()->deterministic_) {
-                    bool deterministic
-                            = !kernel_desc_.driver_info()->nondeterministic();
-                    valid &= deterministic;
-                    if (!deterministic) skip("Non deterministic kernel.");
-                }
-
-                if (valid) {
-                    auto try_create = [&]() {
-                        compute::kernel_t kernel;
-                        const auto *intel_engine
-                                = utils::downcast<const intel::engine_t *>(
-                                        engine);
-                        auto key = std::make_shared<
-                                trivial_key_container_t<dnnl::impl::gpu::intel::
-                                                gemm::jit::gen_nocopy_desc_t>>(
-                                kernel_desc_, intel_engine->engine_id());
-                        cache_state_t kernel_cache_status;
-                        auto verbose
-                                = get_verbose(verbose_t::create_profile) >= 1;
-                        double start_ms = 0;
-                        if (verbose) start_ms = get_msec();
-                        status = get_cached_kernels<typename trivial_key_t<
-                                dnnl::impl::gpu::intel::gemm::jit::
-                                        gen_nocopy_desc_t>::value_type>(
-                                std::move(key), intel_engine, kernel,
-                                kernel_cache_status);
-                        if (verbose && status == status::success) {
-                            double duration_ms = get_msec() - start_ms;
-                            const char *str
-                                    = cache_state2str(kernel_cache_status);
-                            VPROF(start_ms, primitive, create, str,
-                                    info(engine), duration_ms);
-                        }
-                        return status;
-                    };
-                    status = try_create();
-                    if (status == status::success) {
-                        kernel_success = true;
-                        if (kernel_desc_.has_entry())
-                            gpu_info() << "[" << lpad(g, 4) << "] use "
-                                       << entry_idx << "/" << entries.size()
-                                       << (index >= 0 ? " pin" : "") << " "
-                                       << kernel_desc_.str();
-                        else
-                            gpu_info()
-                                    << "[override] use " << kernel_desc_.str();
-                        break;
-                    }
-                    skip("Kernel generation failed.");
-                }
-                // Overrides do not depend on the entry.
-                if (!kernel_desc_.has_entry()) break;
+            first_candidate_ = index >= 0 ? index : 0;
+            candidate_end_ = index >= 0 ? index + 1 : entries_.size();
+            // Overrides do not depend on the entry.
+            if (has_override)
+                candidate_end_ = nstl::min<size_t>(candidate_end_, 1);
+            for (; first_candidate_ < candidate_end_; first_candidate_++) {
+                std::string why;
+                if (init_candidate(kernel_desc_, first_candidate_, why)) break;
+                log_skip(first_candidate_, why);
+                if (has_override || pinned_) reject_reason = why;
             }
 
-            VDISPATCH_GEMM(kernel_success, "%s",
+            VDISPATCH_GEMM(first_candidate_ < candidate_end_, "%s",
                     reject_reason.empty()
                             ? "matching kernel not found in catalog"
                             : ("kernel override rejected: " + reject_reason)
@@ -476,7 +387,7 @@ struct gen_t : public primitive_t {
                     break;
                 }
                 case (int)query::gpu_kernel_count: {
-                    *(int *)result = kernel_count_;
+                    *(int *)result = (int)entries_.size();
                     break;
                 }
                 default: return gemm::pd_t::query(what, idx, result);
@@ -612,43 +523,120 @@ struct gen_t : public primitive_t {
                                                      : status::unimplemented;
         }
 
-        void init_scratchpad() {
+        // Finalizes and validates candidate idx.
+        bool init_candidate(
+                kernel_desc_t &kd, size_t idx, std::string &why) const {
+            using namespace data_type;
+            kd = base_desc_;
+            kd.set_entry(entries_[idx]);
+            kd.set_problem(problem_);
+            // select_kernel can return a strategy that fails in finalize.
+            if (kd.finalize() != status::success) {
+                why = kd.reject_reason().empty()
+                        ? "Strategy finalization failed."
+                        : kd.reject_reason();
+                return false;
+            }
+            const auto *info = kd.driver_info();
+            const auto d = desc();
+            // Global k-parallel kernels don't support post-ops or non-f32/s32
+            //   accumulation unless fusion is enabled.
+            if (info->kParallel() && !info->fusedPostOps()) {
+                bool po_valid = !non_scale_po_
+                        && !(with_sum_ && with_c_scales())
+                        && utils::one_of(d->c_type(), f32, s32);
+                if (!po_valid) {
+                    why = "Invalid post op.";
+                    return false;
+                }
+            }
+            // An in-place binary post-op reads C as its right-hand side,
+            // thus C must still hold the data it came in with by the time
+            // post-ops run. Kernels splitting k between workgroups write
+            // partial sums into C - or zero it out beforehand - long before
+            // that, leaving the post-op nothing to read.
+            if (post_ops_.has_inplace_binary()
+                    && (info->kParallel() || info->kParallelVariable())) {
+                why = "In-place post op over k-parallel C.";
+                return false;
+            }
+            // Limited post-op support for low-precision accumulation.
+            if (kd.problem()->Tc.size() < 4
+                    && (with_binary_
+                            || !IMPLICATION(with_sum_, sum_at_begin_))) {
+                why = "Invalid post op.";
+                return false;
+            }
+            // Ensure kernel can be run deterministically if required.
+            if (attr()->deterministic_ && info->nondeterministic()) {
+                why = "Non deterministic kernel.";
+                return false;
+            }
+            return true;
+        }
+
+        void log_skip(size_t idx, const std::string &why) const {
+            auto *entry = entries_[idx];
+            int g = (int)(entry - jit::catalog().entries);
+            gpu_debug() << "[" << lpad(g, 4) << "] skip " << idx << "/"
+                        << entries_.size() << " " << entry->str() << "," << why;
+        }
+
+        void log_use(size_t idx, const kernel_desc_t &kd) const {
+            if (!kd.has_entry()) {
+                gpu_info() << "[override] use " << kd.str();
+                return;
+            }
+            int g = (int)(entries_[idx] - jit::catalog().entries);
+            gpu_info() << "[" << lpad(g, 4) << "] use " << idx << "/"
+                       << entries_.size() << (pinned_ ? " pin" : "") << " "
+                       << kd.str();
+        }
+
+        size_t temp_c_elems(const gemmstone::CommonDriverInfo *info) const {
             using namespace gemmstone;
+            if (!info->needsTempC()) return 0;
+            int temp_c_elems = info->wgTile(LoopM) * info->wgTile(LoopN);
+            if (with_sum_ab())
+                temp_c_elems
+                        += nstl::max(info->wgTile(LoopM), info->wgTile(LoopN));
+            temp_c_elems = utils::rnd_up(temp_c_elems, 64);
+            return (size_t)temp_c_elems * max_k_sliced_groups(info);
+        }
+
+        size_t zero_buffer_bytes(
+                const gemmstone::CommonDriverInfo *info) const {
+            int zg_cl = 0;
+            if (info->fusedBeta()) zg_cl++;
+            if (info->fusedPostOps()) zg_cl++;
+            return (size_t)max_k_sliced_groups(info) * 64 * zg_cl;
+        }
+
+        // The scratchpad is booked for the first candidate.
+        bool fits_scratchpad(const gemmstone::CommonDriverInfo *info) const {
+            const auto *info0 = kernel_desc()->driver_info();
+            if (temp_c_elems(info) > temp_c_elems(info0)) return false;
+            return !prepare_zero_buffer_scratchpad()
+                    || zero_buffer_bytes(info) <= zero_buffer_bytes(info0);
+        }
+
+        void init_scratchpad() {
             const auto *info = kernel_desc()->driver_info();
-            if (info->needsTempC()) {
-                auto scratchpad = scratchpad_registry().registrar();
-
-                int temp_c_sz = nstl::max(
-                        (int)types::data_type_size(desc()->c_type()), 4);
-                int temp_c_elems = info->wgTile(LoopM) * info->wgTile(LoopN);
-                if (with_sum_ab())
-                    temp_c_elems += nstl::max(
-                            info->wgTile(LoopM), info->wgTile(LoopN));
-                temp_c_elems = utils::rnd_up(temp_c_elems, 64);
-                temp_c_elems *= max_k_sliced_groups();
-
-                scratchpad.book(memory_tracking::names::key_gemm_accumulator,
-                        temp_c_elems, temp_c_sz, 64, 65536);
-            }
-            if (prepare_zero_buffer_scratchpad()
-                    && (info->fusedBeta() || info->fusedPostOps())) {
-                auto scratchpad = scratchpad_registry().registrar();
-                int zg_cl = 0;
-                if (info->fusedBeta()) zg_cl++;
-                if (info->fusedPostOps()) zg_cl++;
-                size_t zero_buffer_bytes = max_k_sliced_groups() * 64 * zg_cl;
+            auto scratchpad = scratchpad_registry().registrar();
+            int temp_c_sz = nstl::max(
+                    (int)types::data_type_size(desc()->c_type()), 4);
+            scratchpad.book(memory_tracking::names::key_gemm_accumulator,
+                    temp_c_elems(info), temp_c_sz, 64, 65536);
+            if (prepare_zero_buffer_scratchpad())
                 scratchpad.book(memory_tracking::names::key_gemm_zero_buffer,
-                        zero_buffer_bytes, 1, 64, 65536);
-            }
+                        zero_buffer_bytes(info), 1, 64, 65536);
         }
 
         const jit::gen_nocopy_desc_t *kernel_desc() const {
             return &kernel_desc_;
         }
 
-        int max_k_sliced_groups() const {
-            const auto *info = kernel_desc()->driver_info();
-
+        int max_k_sliced_groups(const gemmstone::CommonDriverInfo *info) const {
             auto groups = dev_info_->hw_threads(info->grfCount)
                     / (info->wg[gemmstone::LoopM] * info->wg[gemmstone::LoopN]);
             if (info->kParallelVariable()) groups *= 2;
@@ -664,8 +652,17 @@ struct gen_t : public primitive_t {
         const compute::device_info_t *dev_info_ = nullptr;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
+        // First valid candidate, finalized.
         kernel_desc_t kernel_desc_;
-        int kernel_count_ = 0;
+
+        // State to finalize any candidate in [first_candidate_, candidate_end_).
+        kernel_desc_t base_desc_;
+        gemmstone::GEMMProblem problem_;
+        std::vector<const gemmstone::kcatalog::Entry *> entries_;
+        size_t first_candidate_ = 0;
+        size_t candidate_end_ = 0;
+        bool pinned_ = false;
+        bool with_binary_ = false;
     };
 
     gen_t(const pd_t *apd) : primitive_t(apd) {}
@@ -679,20 +676,54 @@ struct gen_t : public primitive_t {
     }
 
     status_t init_nocopy(impl::engine_t *engine) {
-        using namespace data_type;
-        auto kd = pd()->kernel_desc();
+        const char *name = "gemm_kernel";
+        size_t begin = pd()->first_candidate_, end = pd()->candidate_end_;
+        if (cache_blob()) {
+            int32_t version;
+            CHECK(cache_blob().get_value((uint8_t *)&version, sizeof(version)));
+            if (version < (int32_t)begin || version >= (int32_t)end)
+                return status::runtime_error;
+            begin = version;
+            end = begin + 1;
+        }
 
-        CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
+        // Use the first candidate that generates.
+        size_t i = begin;
+        for (; i < end; i++) {
+            std::string why;
+            if (i == pd()->first_candidate_)
+                kd_ = *pd()->kernel_desc();
+            else if (!pd()->init_candidate(kd_, i, why)) {
+                pd()->log_skip(i, why);
+                continue;
+            } else if (!pd()->fits_scratchpad(kd_.driver_info())) {
+                pd()->log_skip(i, "Scratchpad is too small.");
+                continue;
+            }
+            compute::kernel_bundle_t bundle;
+            status_t status = status::runtime_error;
+            try {
+                status = create_kernels(engine, bundle, {name}, kd_);
+            } catch (...) {}
+            // Try the next candidate on generator failures only.
+            if (status == status::unimplemented) {
+                pd()->log_skip(i, "Kernel generation failed.");
+                continue;
+            }
+            VCHECK_KERNEL(status, VERBOSE_KERNEL_CREATION_FAIL, name);
+            CHECK(bundle.get_kernels({name}, nocopy_kernel_));
+            if (!cache_blob()) pd()->log_use(i, kd_);
+            set_version((int32_t)i);
+            break;
+        }
+        VCHECK_KERNEL(i < end ? status::success : status::runtime_error,
+                VERBOSE_KERNEL_CREATION_FAIL, name);
 
-        scalar_type_ = kd->scalar_type();
+        scalar_type_ = kd_.scalar_type();
         const auto *info = nocopy_info();
 
         if (need_zero_buffer()) {
-            int zg_cl = 0;
-            if (info->fusedBeta()) zg_cl++;
-            if (info->fusedPostOps()) zg_cl++;
-
-            zero_buffer_bytes_ = pd()->max_k_sliced_groups() * 64 * zg_cl;
+            zero_buffer_bytes_ = pd()->zero_buffer_bytes(info);
 
             if (use_zero_pool()) {
                 auto zg_max = pd()->dev_info_->hw_threads();
@@ -710,7 +741,7 @@ struct gen_t : public primitive_t {
                 // IFP on (default) forces round-robin thread arbitration.
                 // Disable it on a clear mismatch with the main kernel to
                 // avoid a thread arbitration switch between dispatches.
-                params.no_subgroup_ifp = (kd->strategy()->arbitrationMode
+                params.no_subgroup_ifp = (kd_.strategy()->arbitrationMode
                         != ngen::ThreadArbitrationMode::RoundRobin);
                 CHECK(create_kernel(
                         engine, zero_fill_kernel_, "gemm_zero_fill", params));
@@ -744,13 +775,14 @@ private:
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const gemmstone::CommonDriverInfo *nocopy_info() const {
-        return pd()->kernel_desc()->driver_info();
+        return kd_.driver_info();
     }
 
     bool need_zero_buffer() const {
         return nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps();
     }
 
+    pd_t::kernel_desc_t kd_;
     compute::kernel_t nocopy_kernel_;
     compute::kernel_t zero_fill_kernel_;
     compute::scalar_type_t scalar_type_;

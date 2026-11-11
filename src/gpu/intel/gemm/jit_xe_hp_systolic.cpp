@@ -642,9 +642,13 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
                     got_info = true;
                 }
 
-                CHECK(create_kernel(engine,
+                status = create_kernel(engine,
                         kernel_[first_k_block][last_k_block], "gemm_kernel",
-                        kd));
+                        kd);
+                // No fallback for generator failures.
+                if (status == status::unimplemented)
+                    status = status::runtime_error;
+                CHECK(status);
 
                 if (!kernel_[first_k_block][last_k_block])
                     return status::runtime_error;

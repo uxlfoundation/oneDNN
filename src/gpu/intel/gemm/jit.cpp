@@ -106,7 +106,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             = (nocopy_info()->kParallel() || nocopy_info()->kParallelLocal())
             && !nocopy_info()->kParallelVariable();
 
-    auto problem = pd()->kernel_desc()->problem();
+    auto problem = kd_.problem();
 
     if (!last_k_block) flags |= gemmstone::FlagNonfinalKBlock;
     if (cmask & 1) flags |= gemmstone::FlagCOColumn;
@@ -274,7 +274,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         }
     }
 
-    auto lws_k = pd()->kernel_desc()->aux_params()->wgK;
+    auto lws_k = kd_.aux_params()->wgK;
 
     compute::range_t gws = compute::range_t::empty();
 
@@ -332,7 +332,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     gws[2] *= pd()->desc()->batch();
 
     jit::linear_order_args(arg_list, argn, lws, gws, m, n, k, disable_hilbert,
-            *nocopy_info(), pd()->kernel_desc()->aux_params(), pd()->dev_info_);
+            *nocopy_info(), kd_.aux_params(), pd()->dev_info_);
 
     if (nocopy_info()->perKSLM > 0) {
         size_t slm = nocopy_info()->slm;
@@ -375,7 +375,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 #endif
 
     const auto d = pd()->desc();
-    const auto &problem = *pd()->kernel_desc()->problem();
+    const auto &problem = *kd_.problem();
 
     const bool swap_ab = pd()->swap_ab();
 
@@ -630,8 +630,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             && pd()->post_ops()->entry_[0].kind != primitive_kind::sum)
         block_k = k;
 
-    if (k_parallel_fixed)
-        block_k = into<int32_t>(pd()->kernel_desc()->aux_params()->k0);
+    if (k_parallel_fixed) block_k = into<int32_t>(kd_.aux_params()->k0);
 
     block_m = utils::rnd_up(block_m, nocopy_info()->wgTile(gemmstone::LoopM));
     block_n = utils::rnd_up(block_n, nocopy_info()->wgTile(gemmstone::LoopN));
@@ -642,7 +641,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         block_k = std::max(k, 1);
 
         if (k_parallel_global && !nocopy_info()->fusedBeta() && beta != 1.0f
-                && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
+                && (k > k0 * kd_.aux_params()->wgK)) {
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
                     bo, ao_host_scalar, bo_host_scalar, a_scales, b_scales,
                     c_scales, ag, bg, *co, co_host_scalar, nullptr,

@@ -715,6 +715,7 @@ status_t gen_nocopy_desc_t::finalize() {
     if (kernel_override_.empty() && block_k > 0 && k_ > block_k
             && eval_params_.beta != 1.0f)
         problem_.beta = Scalar();
+    aux_params_ = EvaluateAuxOutput();
     evaluate(*entry_, eval_params_, aux_params_);
     return gen_desc_t::finalize(tags_.c_str());
 }
@@ -1156,7 +1157,8 @@ status_t gen_kernel_t::get_kernel(
     }
 #undef ARCH_DISPATCH
 
-    return status::runtime_error;
+    // Generator failure: the caller may try another kernel.
+    return status::unimplemented;
 }
 
 std::string gen_desc_t::str() const {

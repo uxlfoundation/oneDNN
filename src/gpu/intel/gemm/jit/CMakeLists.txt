@@ -53,6 +53,12 @@ foreach(d ${DIRS})
     list(APPEND SOURCES "${d_sources}")
 endforeach()
 
+# Standalone-only sources
+list(REMOVE_ITEM SOURCES
+    ${ONEDNN_GEMMSTONE_DIR}/dsl/partition.cpp
+    ${ONEDNN_GEMMSTONE_DIR}/dsl/utils/logging.cpp
+    ${ONEDNN_GEMMSTONE_DIR}/generator/ngen_elf.cpp)
+
 # There is no easy way to emulate target_compile_definitions() with the dpcpp
 # host compiler arguments. As such, we cannot split compilation of the generator
 # and codegen templates by using defines.

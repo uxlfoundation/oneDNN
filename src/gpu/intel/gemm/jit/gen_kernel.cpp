@@ -749,13 +749,14 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
 
     // Entries from both catalogs are concatenated so kernel creation
     // failures fall back to the next tier.
-    //   GEMM_LUT: try the exact-size LUT catalog first (default on).
+    //   GEMM_LUT: try the device's exact-size LUT catalog first (default on).
     int npat = static_cast<int>(match_params.size());
     std::vector<const kcatalog::Entry *> entries;
     auto append = [&](const std::vector<const kcatalog::Entry *> &v) {
         entries.insert(entries.end(), v.begin(), v.end());
     };
-    if (gpu_utils::dev_getenv("GEMM_LUT", true)) {
+    auto *lut = lut_catalog(dev_info.device_id());
+    if (lut && gpu_utils::dev_getenv("GEMM_LUT", true)) {
         // LUT entries require a direct precision match: f32 -> SSS, tf32 -> TTS.
         MatchParams lut_match = base;
         if (fpmath_tf32 && problem.Ta_ext == Type::f32
@@ -763,8 +764,8 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
             lut_match.selector.precisions[0] = "T";
             lut_match.selector.precisions[1] = "T";
         }
-        append(select(lut_catalog(), 1, &lut_match, eval_params_, aux_params_,
-                &observer));
+        append(select(
+                *lut, 1, &lut_match, eval_params_, aux_params_, &observer));
     }
 
     append(select(catalog(), npat, match_params.data(), eval_params_,

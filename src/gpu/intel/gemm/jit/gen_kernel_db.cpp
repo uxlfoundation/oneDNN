@@ -20,9 +20,12 @@ namespace gemmstone {
 #define _CATALOG_ gemm_catalog
 #include "selector/db/kernel.db"
 #undef _CATALOG_
-#define _CATALOG_ gemm_lut_catalog
-#include "selector/db/lut.db"
+// The per-device LUTs (lut_<PCI device id>.db); kkit's lut.py edits both lists.
+// lut.py: catalogs
+#define _CATALOG_ gemm_lut_674f
+#include "selector/db/lut_674f.db"
 #undef _CATALOG_
+// lut.py: end
 } // namespace gemmstone
 
 namespace dnnl {
@@ -36,20 +39,35 @@ gemmstone::kcatalog::Catalog catalog() {
     return gemmstone::gemm_catalog;
 }
 
-gemmstone::kcatalog::Catalog lut_catalog() {
-    return gemmstone::gemm_lut_catalog;
+namespace {
+struct lut_t {
+    uint32_t device_id;
+    const char *name;
+    gemmstone::kcatalog::Catalog catalog;
+};
+const lut_t luts[] = {
+        // lut.py: table
+        {0x674f, "lut_674f.db", gemmstone::gemm_lut_674f},
+        // lut.py: end
+};
+} // namespace
+
+const gemmstone::kcatalog::Catalog *lut_catalog(uint32_t device_id) {
+    for (const auto &l : luts)
+        if (l.device_id == device_id) return &l.catalog;
+    return nullptr;
 }
 
 std::string catalog_ref(const gemmstone::kcatalog::Entry *entry) {
-    static const char *const names[] = {"kernel.db", "lut.db"};
-    int t = 0;
-    for (const auto &c : {catalog(), lut_catalog()}) {
-        if (entry >= c.entries && entry < c.entries + c.entryCount)
-            return std::string(names[t]) + ":"
-                    + std::to_string(entry - c.entries);
-        t++;
-    }
-    return "?";
+    auto in = [&](const char *name, const gemmstone::kcatalog::Catalog &c) {
+        return entry >= c.entries && entry < c.entries + c.entryCount
+                ? std::string(name) + ":" + std::to_string(entry - c.entries)
+                : std::string();
+    };
+    std::string r = in("kernel.db", catalog());
+    for (const auto &l : luts)
+        r += in(l.name, l.catalog);
+    return r.empty() ? "?" : r;
 }
 
 } // namespace jit

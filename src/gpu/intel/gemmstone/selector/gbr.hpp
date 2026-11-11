@@ -19,6 +19,7 @@
 
 // The GBR ranker of the G rows (gbr.db); gbr_data.cpp is generated.
 
+#include <array>
 #include <cstdint>
 
 #include "gemmstone/config.hpp"

@@ -507,6 +507,7 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
         if (problem.allowMatrixOffset())
             mark(lDone);
     }
+#ifndef GEMMSTONE_STANDALONE
     if (doBinary) for (size_t i = 0; i < problem.postOps.len(); i++) {
         if (!problem.postOps[i].is_binary()) continue;
         bool row = problem.postOps.binaryRow[i],
@@ -525,6 +526,7 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
         else if (col)
             eaddScaled(1, offset, offset, j0, T, strategy, state);
     }
+#endif
     if (doC && problem.sumA) eaddScaled(1, offsetCO, offsetCO, i0, Tco, strategy, state);
     if (doC && problem.sumB) eaddScaled(1, offsetCO, offsetCO, j0, Tco, strategy, state);
 
@@ -1131,6 +1133,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     bool slmA = strategy.slmA, slmB = strategy.slmB;
 
     bool cLoadAhead = strategy.cLoadAhead;
+#ifdef GEMMSTONE_STANDALONE
+    cLoadAhead &= !problem.readCheck;
+#endif
     auto unrollM = strategy.unroll[LoopM];
     auto unrollN = strategy.unroll[LoopN];
     auto unrollK = strategy.unroll[LoopK];
@@ -2190,6 +2195,19 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     if (strategy.tokenAlloc)
         gemmAllocateTokens(problem, strategy, state);
 
+#ifdef GEMMSTONE_STANDALONE
+    // Initialize A/B for mock kernels.
+    if (problem.mock.abLoad && !problem.mock.abInit) {
+        bool random = problem.mock.abRandom;
+        for (auto &A_regs: state.A_regs)
+            mockInitMatrix(Ta_load, A_regs, strategy, random);
+        mockInitMatrix(Ta, state.Ar_regs, strategy, random);
+        for (auto &B_regs: state.B_regs)
+            mockInitMatrix(Tb_load, B_regs, strategy, random);
+        mockInitMatrix(Tb, state.Br_regs, strategy, random);
+    }
+#endif
+
     // Preloading C and fused beta scaling need some extra registers for C headers.
     // Temporarily free up A/B data registers for that purpose.
     releaseRanges(state.A_regs, state);
@@ -2198,6 +2216,9 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     releaseRanges(state.Br_regs, state);
 
     // Load C now if configured (and perform beta scaling).
+#ifdef GEMMSTONE_STANDALONE
+    if (!problem.mock.cUpdate)
+#endif
     if (cLoadAhead) {
         if (problem.checkBeta0 && !problem.beta.fixed())   stub();
         if (state.C_accCount > 0)                          stub();
@@ -2205,6 +2226,11 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
         status << "Loading C" << status_stream::endl;
         gemmAccessC(COperation::Load, problem, strategy, state);
+
+#ifdef GEMMSTONE_STANDALONE
+        if (problem.readCheck && problem.readCheckC)
+            readCheck(state.C_regs[0], strategy, state);
+#endif
 
         gemmBetaScale(problem, strategy, state);
     }
@@ -2252,6 +2278,13 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             }
         }
     }
+
+#ifdef GEMMSTONE_ASM_OUTPUT
+    std::stringstream s;
+    state.ra.dump(s);
+    state.dump(s);
+    comment(s.str());
+#endif
 
     return true;
 }
@@ -2755,8 +2788,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.inputs.bgPtr = interface.getArgumentIfExists("bg_ptr");
         state.inputs.surfaceBg = interface.getArgumentSurfaceIfExists("bg_ptr");
     }
+#ifndef GEMMSTONE_STANDALONE
     if (problem.postOps.cStochasticRound)
         state.inputs.sroundSeedPtr = interface.getArgument("sround_seed");
+#endif
 
     state.inputs.offsetA = interface.getArgumentIfExists("offset_A");
     state.inputs.offsetB = interface.getArgumentIfExists("offset_B");
@@ -2874,6 +2909,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     if (strategy.fuseBeta || strategy.fusePostOps)
         state.inputs.statusBuffer = interface.getArgumentIfExists("status");
 
+#ifndef GEMMSTONE_STANDALONE
     size_t poCount = problem.postOps.len();
     state.inputs.binarySrcs.resize(poCount);
     state.inputs.binaryOffsets.resize(poCount);
@@ -2890,6 +2926,14 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             for (int b = 0; b < problem.batchDims; b++)
                 state.inputs.binaryStrides[i].push_back(interface.getArgumentIfExists("stride" + std::to_string(b) + srcName));
     }
+#endif
+
+#ifdef GEMMSTONE_STANDALONE
+    if (strategy.tracking.enabled) {
+        state.tracking.surface = interface.getArgumentSurface("tracking");
+        state.tracking.stride = interface.getArgument("tracking_stride");
+    }
+#endif
 
     Subregister tgids_reordered[3];
     GRF lids_reordered[3];
@@ -3065,8 +3109,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 
     if (state.inputs.flags.isValid())
         state.ra.claim(state.inputs.flags);
+#ifndef GEMMSTONE_STANDALONE
     if (problem.postOps.cStochasticRound)
         state.ra.claim(state.inputs.sroundSeedPtr);
+#endif
     if (state.inputs.slmBase.isValid())
         state.ra.claim(state.inputs.slmBase);
 
@@ -3157,6 +3203,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     // Binary-related arguments are not claimed here, but instead
     //  are reloaded later in the kernel when needed.
 
+#ifdef GEMMSTONE_STANDALONE
+    if (strategy.tracking.enabled)
+        state.ra.claim(state.tracking.stride);
+#endif
 }
 
 // Initialize the state structure.

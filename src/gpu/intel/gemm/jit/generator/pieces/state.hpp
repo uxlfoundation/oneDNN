@@ -136,6 +136,12 @@ struct CommonState {
     GRFMultirange indexVec;                         // uw
     int ivEntries = 0;
     int aqCopies = 1, bqCopies = 1;             // sub-GRF copies of repacked A/B scales/offsets (Xe3p+)
+#ifdef GEMMSTONE_STANDALONE
+    struct {
+        uint8_t surface;                            // BTS index for tracking data buffer
+        ngen::Subregister stride;                   // uw, per-thread storage space for tracking information, in bytes
+    } tracking;
+#endif
 
     CommonState(ngen::HW hw) : ra(hw), raVFlag(hw), tokenAllocator(hw) {}
 
@@ -410,6 +416,9 @@ struct GEMMState : public CommonState {
     ngen::GRF r0InfoGRF() const;
     void setTacc(Type T);
 
+#ifdef GEMMSTONE_STANDALONE
+    void dump(std::ostream &s);
+#endif
 };
 
 GEMMSTONE_NAMESPACE_END

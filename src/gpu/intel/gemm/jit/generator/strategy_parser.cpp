@@ -199,6 +199,7 @@ struct ParserContext {
 void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrategy &strategy)
 {
     auto hw = getCore(problem.product.family);
+
     std::stringstream s(str);
     s.imbue(std::locale::classic());
 
@@ -407,6 +408,25 @@ void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrat
         {"wc", [](ParserContext& ctx) { ctx.strategy.C.smode = ScatterSIMD::Wide; }},
         {"njs", [](ParserContext& ctx) { ctx.strategy.jointSplit = false; }},
         {"up", [](ParserContext& ctx) { ctx.strategy.panelCheck = true; }},
+#ifdef GEMMSTONE_STANDALONE
+        {"pl", [](ParserContext& ctx) {
+            auto &strategy = ctx.strategy;
+            strategy.A_prefetch.prefetch = false;
+            strategy.B_prefetch.prefetch = false;
+            strategy.C_prefetch.prefetch = false;
+            strategy.A_prefetch.pfLoad = true;
+            strategy.B_prefetch.pfLoad = true;
+            strategy.C_prefetch.pfLoad = true;
+        }},
+        {"1t", [](ParserContext& ctx) { ctx.strategy.multitile = false; }},
+        {"src", [](ParserContext& ctx) { ctx.strategy.strongReadCheck = true; }},
+        {"p2d", [](ParserContext& ctx) {
+            if (ctx.strategy.prefetchA)
+                ctx.strategy.A_prefetch.accessType = AccessType::Block2D;
+            if (ctx.strategy.prefetchB)
+                ctx.strategy.B_prefetch.accessType = AccessType::Block2D;
+        }},
+#endif
         {"ek", [](ParserContext& ctx) { ctx.strategy.slmEarlyKMask = true; }},
         {"di", [](ParserContext& ctx) { ctx.strategy.delayABInc = true; }},
         {"pfaux", [](ParserContext& ctx) { ctx.strategy.pfaux = true; }},
@@ -489,6 +509,10 @@ void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrat
         /* Alignment and Warmup */
         {"l2d", [](ParserContext& ctx) { ctx.strategy.optAlignAB2D = true; }},
         {"wt", [](ParserContext& ctx) { ctx.strategy.tlbWarmup = true; }},
+#ifdef GEMMSTONE_STANDALONE
+
+        {"ffp", [](ParserContext& ctx) { ctx.strategy.forceFusedPostOps = true; }},
+#endif
     };
 
     ParserContext ctx{strategy, problem, hw, s};
@@ -552,6 +576,18 @@ void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrat
                 strategy.forceWGUpdate = WGFixed;
             } else if (mod.substr(0, 2) == "ql") {
                 strategy.skewLocalIDs = true;
+#ifdef GEMMSTONE_STANDALONE
+            } else if (mod.substr(0, 2) == "la") {
+                strategy.unalignedAccA = strategy.A.accessType;
+                strategy.A.accessType = getAccessType(mod[2]);
+            } else if (mod.substr(0, 2) == "lb") {
+                strategy.unalignedAccB = strategy.B.accessType;
+                strategy.B.accessType = getAccessType(mod[2]);
+            } else if (mod.substr(0, 4) == "xpfa") {
+                strategy.prefetchA += stoi(mod.substr(4));
+            } else if (mod.substr(0, 4) == "xpfb") {
+                strategy.prefetchB += stoi(mod.substr(4));
+#endif
             } else switch (mod[0]) {
                 case 'b':
                     if (isdigit(mod[1]))
@@ -662,12 +698,14 @@ void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrat
     if (!strategy.kInterleave && strategy.kInterleaveChunk > 0)
         throw std::runtime_error("ki needs ikr");
 
+#ifndef GEMMSTONE_STANDALONE
     size_t poCount = problem.postOps.len();
     strategy.binary.resize(poCount);
     for (auto &astrategy: strategy.binary) {
         astrategy.base = (hw >= HW::XeHPC) ? A64 : BTS;
         astrategy.newDP = strategy.C.newDP;
     }
+#endif
 
     bool surfaceAq = ((problem.quantized2DA() || problem.needsSeparateASums()) && !strategy.A.base.isStateless());
     bool surfaceBq = ((problem.quantized2DB() || problem.needsSeparateBSums()) && !strategy.B.base.isStateless());
@@ -830,7 +868,12 @@ const char *parsePrecisions(const char *s, Type &precision1, Type &precision2)
 
 static std::string unparseKParallel(const GEMMStrategy &s)      { return std::string(s.kParallel ? " kb" : "") + (s.kParallelVariable ? " kv" : ""); }
 static std::string unparseFuseBeta(const GEMMStrategy &s)       { return !s.fuseBeta ? "" : s.altFusedBeta ? " afb" : " fb"; }
-static std::string unparseFusePostOps(const GEMMStrategy &s)    { return s.fusePostOps ? " fp" : ""; }
+static std::string unparseFusePostOps(const GEMMStrategy &s) {
+#ifdef GEMMSTONE_STANDALONE
+    if (s.forceFusedPostOps) return " ffp";
+#endif
+    return s.fusePostOps ? " fp" : "";
+}
 static std::string unparseKParallelLocal(const GEMMStrategy &s) { return !s.kParallelLocal ? "" : s.shrinkWGK ? " akr" : s.kInterleave ? " ikr" : " kr"; }
 
 std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
@@ -1069,6 +1112,13 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.optAlignAB > 0)    s << " l" << strategy.optAlignAB;
     if (strategy.optAlignAB2D)      s << " l2d";
 
+#ifdef GEMMSTONE_STANDALONE
+    if (strategy.A_prefetch.pfLoad || strategy.B_prefetch.pfLoad || strategy.C_prefetch.pfLoad)
+        s << " pl";
+    if (!strategy.multitile)        s << " 1t";
+    if (strategy.strongReadCheck)   s << " src";
+#endif
+
     bool nq = false;
     for (auto &astrategy: {strategy.A, strategy.B, strategy.C, strategy.CO,
                            strategy.A_prefetch, strategy.B_prefetch, strategy.C_prefetch}) {
@@ -1223,6 +1273,5 @@ void unparseTiling(std::ostream &s, const MatrixAddressingStrategy &astrategy)
     if (astrategy.tileR || astrategy.tileC)
         s << '#' << int(astrategy.tileR) << ',' << int(astrategy.tileC);
 }
-
 
 GEMMSTONE_NAMESPACE_END

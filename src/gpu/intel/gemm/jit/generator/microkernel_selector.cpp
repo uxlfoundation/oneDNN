@@ -25,6 +25,15 @@
 #include "pieces/compute_utils.hpp"
 #include "pieces/hw_utils.hpp"
 
+#ifdef GEMMSTONE_STANDALONE
+// oneDNN ISA registration macros, enabling all ISAs.
+#define REG_XEHPG_ISA(...) __VA_ARGS__
+#define REG_XEHPC_ISA(...) __VA_ARGS__
+#define REG_XE2_ISA(...) __VA_ARGS__
+#define REG_XE3_ISA(...) __VA_ARGS__
+#define REG_XE3P_ISA(...) __VA_ARGS__
+#endif
+
 GEMMSTONE_NAMESPACE_START
 namespace microkernel {
 
@@ -473,8 +482,6 @@ static Package generatePackage(const GEMMOptions &options, HostPayload host, HWI
 {
     auto product = npack::decodeHWIPVersion(hwInfo.gmdid);
     auto hw = getCore(product.family);
-    auto stepping = hwInfo.gmdid & 0xFF;
-    (void)stepping;
 
     /* Generate interface */
     GEMMOptions effOptions = transC ? options.transpose() : options;
@@ -484,7 +491,7 @@ static Package generatePackage(const GEMMOptions &options, HostPayload host, HWI
     #define ARCH_DISPATCH(arch)                                                                         \
         case HW::arch: {                                                                                \
             Generator<HW::arch> generator(product);                                                     \
-            generator.setStepping(stepping);                                                            \
+            generator.setStepping(hwInfo.gmdid & 0xFF);                                                 \
             return generator.gemmMicrokernelPackage(candidate.problem, candidate.strategy, interface,   \
                                                     makeProtocol(options), hwInfo.gmdid, transC);       \
         }

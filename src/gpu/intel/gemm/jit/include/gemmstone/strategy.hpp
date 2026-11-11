@@ -173,6 +173,16 @@ struct CommonStrategy {
     ngen::EmulationStrategy emulate;
                                     ZPAD(C, 2)
 
+#ifdef GEMMSTONE_STANDALONE
+    struct TrackingSettings {
+        bool enabled = false;                    // Must be set to enable any tracking.
+        bool startEnd = false;                   //   Track kernel start and end.
+        bool accumDone = false;                  //   Track completion of C accumulation.
+    } tracking;
+
+    bool strongReadCheck = false;               // Enable stronger read checks? (may produce false positives)
+#endif
+
     CommonStrategy() = default;
     CommonStrategy(ngen::HW hw, int stepping = 0);
     void preflight(ngen::HW hw, const CommonProblem &problem);
@@ -315,11 +325,13 @@ struct GEMMStrategyPOD : public CommonStrategy {
                                     ZPAD(N, 3)
     int namedBarriers[2] = {0, 0};               // # of named barriers in m, n dimensions (0 to use regular barriers).
     bool skewLocalIDs = false;                   // Remap local IDs for large workgroups so that threads on the same EU don't depend on the same data.
-    bool xParallel = false;                      // TRSM: parallelize in x dimension.
     bool checkBeta1 = false;                     // If true, check for beta = 1 and handle specially.
     bool panelCheck = false;                     // If true, check for out-of-bounds panel reads.
-    bool insideSK = false;                       // Inside a superkernel?
-                                    ZPAD(O, 3)
+                                    ZPAD(O, 1)
+#ifdef GEMMSTONE_STANDALONE
+    bool forceFusedPostOps = false;              // Force fusePostOps even when not needed.
+                                    ZPAD(S, 3)
+#endif
 
     GEMMStrategyPOD() = default;
     GEMMStrategyPOD(ngen::HW hw, int stepping = 0) : CommonStrategy(hw, stepping) {}
@@ -363,8 +375,10 @@ struct GEMMStrategy : public GEMMStrategyPOD
 
     bool persistentLoop()     const { return persistent || kParallelVariable; }
 
-    bool needsMNLocalIDs()    const { return xParallel || (std::max(slmBuffersA, slmBuffersB) > 0) || cooperativePF || kParallelLocal || persistentLoop()
-                                                       || namedBarriers[LoopM] || namedBarriers[LoopN] || (dpasw && !fixedSystolic) || (l3PrefetchA || l3PrefetchB); }
+    bool needsMNLocalIDs() const {
+        return (std::max(slmBuffersA, slmBuffersB) > 0) || cooperativePF || kParallelLocal || persistentLoop()
+            || namedBarriers[LoopM] || namedBarriers[LoopN] || (dpasw && !fixedSystolic) || (l3PrefetchA || l3PrefetchB);
+    }
     bool needsKLocalIDs()     const { return kParallelLocal || persistentLoop(); }
     bool needsKLoopBarrier()  const { return (barrierFreq > 0) || (std::max(slmBuffersA, slmBuffersB) > 0); }
 
@@ -414,6 +428,7 @@ struct GEMMStrategy : public GEMMStrategyPOD
     bool bqGroupKCompatible(int groupK) const { return groupKCompatible(groupK, slmB ? unrollKSLM : kb_load); }
     static bool groupKCompatible(int groupK, int kStep) { return gcd(groupK, kStep) >= std::min(kStep, 16); }
 
+#ifndef GEMMSTONE_STANDALONE
     void serialize(SerializationStream &s) const
     {
         const GEMMStrategyPOD &pod = *this;
@@ -421,6 +436,7 @@ struct GEMMStrategy : public GEMMStrategyPOD
         for (const auto &astrategy: binary)
             s.append(astrategy);
     }
+#endif
 };
 
 bool useAutoAtomic(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy, bool ignoreBeta = false);

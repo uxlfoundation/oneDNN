@@ -19,7 +19,6 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
 
 #include "cpu/aarch64/post_ops_fallback.hpp"
 #include "cpu/matmul/cpu_matmul_pd.hpp"
@@ -96,9 +95,6 @@ struct kai_matmul_t : public primitive_t {
     kai_matmul_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(engine_t *engine) override;
-
-    status_t create_resource(
-            engine_t *engine, resource_mapper_t &mapper) const override;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 

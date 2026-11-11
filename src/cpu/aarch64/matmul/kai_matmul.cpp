@@ -14,24 +14,22 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "cpu/aarch64/matmul/kai_matmul.hpp"
+#include <memory>
+
+#include "common/dnnl_thread.hpp"
+#include "common/utils.hpp"
+#include "common/verbose_msg.hpp"
+
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/kai_utils.hpp"
-
+#include "cpu/aarch64/matmul/kai_matmul.hpp"
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/matmul/gemm_based_common.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
-#include "kai/ops/bfloat.hpp"
+
 #include "kai/ops/gemm/gemm_common.hpp"
 #include "kai/ops/gemm/kai_ops.hpp"
 #include "kai/ops/gemm/ndrange.hpp"
-
-#include <functional>
-#include <memory>
-#include "common/dnnl_thread.hpp"
-#include "common/stream.hpp"
-#include "common/utils.hpp"
-#include "common/verbose_msg.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -85,11 +83,11 @@ bool batch_dims_are_all_one(const memory_desc_wrapper &mdw) {
     return true;
 }
 
-int get_innermost_batch_stride(const memory_desc_t *md) {
-    return md->ndims > 2 ? md->format_desc.blocking.strides[md->ndims - 3] : 0;
+int get_innermost_batch_stride(const memory_desc_t &md) {
+    return md.ndims > 2 ? md.format_desc.blocking.strides[md.ndims - 3] : 0;
 }
 
-double kernel_execute_work(const kai_matmul_t::pd_t &pd) {
+double kernel_work_amount(const kai_matmul_t::pd_t &pd) {
     return static_cast<double>(pd.M()) * pd.N() * pd.K() * pd.batch();
 }
 
@@ -284,7 +282,7 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
 
     const int max_threads = dnnl_get_current_num_threads();
     const int num_threads = threads_for_kernel_execute(
-            kernel_execute_work(*this), max_threads);
+            kernel_work_amount(*this), max_threads);
 
     args_ = std::make_shared<kai::ops::GemmArgs>(get_cpu_info(), M(), N(), K(),
             sections, nbatches, nmulti, indirect, post_ops_fusion.activation,
@@ -376,13 +374,6 @@ status_t kai_matmul_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t kai_matmul_t::create_resource(
-        engine_t *engine, resource_mapper_t &mapper) const {
-    UNUSED(engine);
-    UNUSED(mapper);
-    return status::success;
-}
-
 status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     // Construct kernel identically to how we did in pd_t::init so that
@@ -441,9 +432,9 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
     const void *kernel_raw_wei = raw_wei;
     void *kernel_wei_base = wei_base;
 
-    const memory_desc_t *kernel_src_md = pd()->src_md();
-    const memory_desc_t *kernel_wei_md = pd()->weights_md();
-    const memory_desc_t *kernel_dst_md = pd()->dst_md();
+    const memory_desc_t &kernel_src_md = *pd()->src_md();
+    const memory_desc_t &kernel_wei_md = *pd()->weights_md();
+    const memory_desc_t &kernel_dst_md = *pd()->dst_md();
 
     const memory_desc_wrapper src_d(kernel_src_md);
     const memory_desc_wrapper wei_d(kernel_wei_md);
@@ -451,17 +442,17 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
     cpu::matmul::matmul_helper_t helper(src_d, wei_d, dst_d);
 
     // Leading dimensions of our matrices are the strides of the first non-dense dimensions (second logical)
-    auto ld_src = kernel_src_md->format_desc.blocking
-                          .strides[kernel_src_md->ndims - 2];
-    auto ld_dst = kernel_dst_md->format_desc.blocking
-                          .strides[kernel_dst_md->ndims - 2];
+    auto ld_src = kernel_src_md.format_desc.blocking
+                          .strides[kernel_src_md.ndims - 2];
+    auto ld_dst = kernel_dst_md.format_desc.blocking
+                          .strides[kernel_dst_md.ndims - 2];
 
     // With fixed format, weights are already packed in kai's expected
     // layout, so the row stride follows the innermost logical dimension.
     // Otherwise rely on matmul_helper_t for the kernel-facing descriptor.
     auto ld_wei = pd()->fixed_format()
-            ? kernel_wei_md->format_desc.blocking
-                      .strides[kernel_wei_md->ndims - 1]
+            ? kernel_wei_md.format_desc.blocking
+                      .strides[kernel_wei_md.ndims - 1]
             : helper.ldb();
 
     const int src_batch_stride = get_innermost_batch_stride(kernel_src_md);

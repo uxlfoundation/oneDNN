@@ -63,8 +63,6 @@ rnn_cell_execution_sig(ref_rnn_fwd_f32_t::cell_execution_ref);
 template <>
 rnn_cell_execution_sig(ref_rnn_fwd_f32_t::cell_execution_brgemm);
 template <>
-rnn_cell_execution_sig(ref_rnn_bwd_f32_t::cell_execution_brgemm);
-template <>
 rnn_cell_execution_sig(ref_rnn_fwd_f32_t::cell_execution_gru);
 template <>
 rnn_cell_execution_sig(ref_rnn_fwd_f32_t::cell_execution_gru_lbr);
@@ -74,8 +72,6 @@ template <>
 rnn_merged_layer_execution_sig(ref_rnn_fwd_f32_t::merged_layer_brgemm);
 template <>
 rnn_cell_execution_sig(ref_rnn_bwd_f32_t::cell_execution_ref);
-template <>
-rnn_cell_execution_sig(ref_rnn_bwd_f32_t::cell_execution_brgemm);
 template <>
 rnn_cell_execution_sig(ref_rnn_bwd_f32_t::cell_execution_brgemm);
 template <>

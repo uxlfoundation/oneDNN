@@ -20,10 +20,12 @@
 #include "gemmstone/problem.hpp"
 #include "internal/utils.hpp"
 #include "ngen_core.hpp"
+#include "selector/gbr.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 GEMMSTONE_NAMESPACE_START
 
@@ -576,6 +578,9 @@ double evaluate(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Evalu
         case 'E': score = evaluateE(e, dp, aux); break;
         case 'S': score = evaluateS(e, dp, aux); break;
         case 'W': score = evaluateW(e, dp, aux); break;
+        case 'G': // Scored by evaluateG; a fixed kernel keeps its k-threads.
+            aux.wgK = std::max(1, e.driverInfo.wg[LoopK]);
+            /* fall through */
         default:  score = std::numeric_limits<double>::quiet_NaN(); break;
     }
 
@@ -604,6 +609,66 @@ EvaluateAuxOutput deriveAuxOutput(const kcatalog::Entry &e, const DerivedEvaluat
             && !di.shrinkWGK())
         aux.k0 = splitK0(e, dp.sizes.k);
     return aux;
+}
+
+void evaluateG(const kcatalog::Entry *const *entries, int n, const EvaluateParams &p, double *scores)
+{
+    auto esize = [](const kcatalog::string &precision) {
+        return extPrecision(precision, false).bits() / 8.;
+    };
+    gbr::Shape shape = {p.sizes.m, p.sizes.n, p.sizes.k, p.sizes.batch, p.euCount};
+    // One call per scorer (the model's parameter).
+    std::vector<gbr::Row> rows;
+    std::vector<int> idx;
+    std::vector<double> out;
+    rows.reserve(n);
+    idx.reserve(n);
+    for (int s = 0; s < gbr::nScorers; s++) {
+        rows.clear();
+        idx.clear();
+        for (int i = 0; i < n; i++) {
+            auto &e = *entries[i];
+            if (int(e.model.params[0]) != s) continue;
+            auto &di = e.driverInfo;
+            rows.push_back({e.strategy, di.unroll[LoopM], di.unroll[LoopN], di.wg[LoopM], di.wg[LoopN], di.wg[LoopK],
+                            p.product.threadsPerEU(di.grfCount), esize(e.selector.precisions[0]),
+                            esize(e.selector.precisions[1])});
+            idx.push_back(i);
+        }
+        if (rows.empty()) continue;
+        out.resize(rows.size());
+        gbr::score(s, rows.data(), int(rows.size()), shape, out.data());
+        for (size_t r = 0; r < rows.size(); r++)
+            scores[idx[r]] = out[r];
+    }
+}
+
+bool gbrRowOK(const kcatalog::Entry &e, const EvaluateParams &p)
+{
+    auto &s = gbr::scorers[int(e.model.params[0])];
+    return gbr::deviceOK(s, p.deviceId, ngen::getCore(p.product.family)) && gbr::alignOK(s, p.sizes.m, p.sizes.k);
+}
+
+bool gbrSupported(const GEMMProblem &problem, const EvaluateParams &p) {
+    using namespace gbr;
+    auto m = p.sizes.m, n = p.sizes.n, k = p.sizes.k;
+    if (m <= 0 || n <= 0 || k <= 0 || p.sizes.batch != 1) return false;
+    if (problem.aOffset != ABOffset::None || problem.bOffset != ABOffset::None) return false;
+    if (problem.aScale2D() || problem.bScale2D()) {
+        // Both sides, one scale type, k-groups in mxGroup steps
+        if (!problem.aScale2D() || !problem.bScale2D()) return false;
+        auto Ts = problem.Ta_scale;
+        if (Ts != problem.Tb_scale || (Ts != Type::f8_e8m0 && Ts != Type::f32)) return false;
+        if (problem.aqGroupK % mxGroup != 0 || problem.bqGroupK % mxGroup != 0) return false;
+        // mx: K bytes of the narrower of A, B in mxKBytes steps (K % 64 with f4)
+        int bits = std::min(problem.Ta_ext.bits(), problem.Tb_ext.bits());
+        if (Ts == Type::f8_e8m0 && k * bits % (8 * mxKBytes) != 0) return false;
+        // f4 A with f32 scales (f16 dpas upconvert): k-groups in 64 steps.
+        if (problem.Ta_ext.isF4() && Ts != Type::f8_e8m0 && (problem.aqGroupK % 64 != 0 || problem.bqGroupK % 64 != 0))
+            return false;
+    }
+    auto hw = ngen::getCore(p.product.family);
+    return std::any_of(scorers, scorers + nScorers, [&](const Scorer &s) { return deviceOK(s, p.deviceId, hw); });
 }
 
 void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux)

@@ -232,6 +232,8 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
 
     // Debugging/perf overrides of the full-softmax strategies:
     // ONEDNN_SDPA_SCHEDULE={per_head,kv_head_group,split_kv,auto},
+    // ONEDNN_SDPA_SPLIT_KV_CHUNKS=<n> (seq_kv chunks per split_kv work item;
+    // 0 or unset lets the cost model choose),
     // ONEDNN_SDPA_KV_PACKING={ahead,per_tile,auto} and
     // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking).
     const std::string schedule = getenv_string_user("SDPA_SCHEDULE");
@@ -245,6 +247,10 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
         VDISPATCH_SDPA(
                 utils::one_of(schedule, std::string(), std::string("auto")),
                 "unknown ONEDNN_SDPA_SCHEDULE value '%s'", schedule.c_str());
+    bp_.split_kv_chunks = getenv_int_user("SDPA_SPLIT_KV_CHUNKS", 0);
+    VDISPATCH_SDPA(bp_.split_kv_chunks >= 0,
+            "invalid ONEDNN_SDPA_SPLIT_KV_CHUNKS value %lld",
+            static_cast<long long>(bp_.split_kv_chunks));
     const std::string kv_packing = getenv_string_user("SDPA_KV_PACKING");
     if (kv_packing == "ahead")
         bp_.kv_packing = sdpa_full_softmax_kv_packing_t::ahead;

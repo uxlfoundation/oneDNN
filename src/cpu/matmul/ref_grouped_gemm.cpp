@@ -35,9 +35,9 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
-// Two grouped matmul patterns are supported:
-// 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
-// 2D grouped src (variable K) x 2D grouped wei (variable M) -> dense 3D dst
+// Two grouped matmul patterns are supported, `*` is the variable dim:
+// grouped src {G, *, K} x dense wei [G, K, N] -> grouped dst {G, *, N}
+// grouped src {G, M, *} x grouped wei {G, *, N} -> dense dst [G, M, N]
 status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper wei_d(pd()->weights_md(0));
@@ -46,17 +46,15 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
 
     const bool is_2dby2d = pd()->is_2dby2d();
 
-    const dim_t group_count = src_d.sparse_desc().grouped_desc.group_count;
+    const dim_t group_count = src_d.dims()[0];
     // M is total_M for 2Dx3D, K is total_K for 2Dx2D
     const dim_t M = pd()->M();
     const dim_t K = pd()->K();
     const dim_t N = pd()->N();
-    const int wei_ndims = wei_d.ndims();
-    const int dst_ndims = dst_d.ndims();
 
     // Layouts are plain, so K is walked with a stride
-    const dim_t src_stride_k = src_d.strides()[1];
-    const dim_t wei_stride_k = wei_d.strides()[wei_ndims - 2];
+    const dim_t src_stride_k = src_d.strides()[2];
+    const dim_t wei_stride_k = wei_d.strides()[1];
 
     const void *src_data = CTX_IN_MEM(const void *, DNNL_ARG_SRC, 0);
     const int32_t *src_offsets = CTX_IN_MEM(const int32_t *, DNNL_ARG_SRC, 1);
@@ -77,8 +75,9 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     // int src follows ref_matmul_int8_t, the pd guarantees int wei for it
     const bool use_int_arithmetic = types::is_integral_dt(src_dt);
 
-    // Scales and zero points are dense row-major tensors over the src [M, K]
-    // and wei [G, K, N] or [K, N] dims in their masks
+    // Scales and zero points are dense row-major tensors over the src
+    // {G, M, K} and wei {G, K, N} dims in their masks, a mask covering the
+    // variable dim indexes it over all groups
     const auto &attr_scales = pd()->attr()->scales_;
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const auto src_scale_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
@@ -133,8 +132,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     // Validate runtime group offsets: the tensor split along with src and
     // grouped binary post-op tensors must share the src offsets, and 2Dx2D
     // groups must align with the coarsest scales K-group
-    const dim_t src_total
-            = src_d.dims()[src_d.sparse_desc().grouped_desc.variable_dim_idx];
+    const dim_t src_total = src_d.grouped_total();
     const dim_t k_align
             = is_2dby2d ? std::max(src_scale_group_k, wei_scale_group_k) : 1;
     for (dim_t group_id = 0; group_id < group_count; ++group_id) {
@@ -153,43 +151,41 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
             const int po_arg
                     = DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx) | DNNL_ARG_SRC_1;
             const auto bin_offsets = CTX_IN_MEM(const int32_t *, po_arg, 1);
-            if (bin_offsets[group_id] != end
-                    || end > entry.binary.src1_desc.dims[0])
-                return status::invalid_arguments;
+            if (bin_offsets[group_id] != end) return status::invalid_arguments;
         }
     }
 
     // Parallelize over dst rows flattened across all groups to keep the work
     // balanced when group sizes are highly skewed (e.g., "hot" benchdnn
     // profile where one group holds almost all tokens)
-    const dim_t total_rows = utils::array_product(dst_d.dims(), dst_ndims - 1);
+    const dim_t total_rows = is_2dby2d ? group_count * M : M;
     parallel_nd(total_rows, [= COMPAT_THIS_CAPTURE](dim_t row) {
-        // Logical indices of the elements, K and N are set below
+        // Logical indices of the elements: the group, then an index along
+        // the variable dim that spans all groups. K and N are set below
         dims_t src_dims_idx {}, wei_dims_idx {}, dst_dims_idx {};
         dim_t group_id, k_start = 0, K_g = K;
         if (is_2dby2d) {
-            // src [M, total_K] and wei [total_K, N] are split along K, dst is
+            // src {G, M, *} and wei {G, *, N} are split along K, dst is
             // [G, M, N]
             group_id = row / M;
             k_start = (group_id == 0) ? 0 : src_offsets[group_id - 1];
             K_g = src_offsets[group_id] - k_start;
-            src_dims_idx[0] = dst_dims_idx[1] = row % M;
-            dst_dims_idx[0] = group_id;
+            src_dims_idx[1] = dst_dims_idx[1] = row % M;
         } else {
-            // src [total_M, K] and dst [total_M, N] are split along M, wei is
+            // src {G, *, K} and dst {G, *, N} are split along M, wei is
             // [G, K, N]
             group_id = std::upper_bound(
                                src_offsets, src_offsets + group_count, row)
                     - src_offsets;
             // Rows past the last offset belong to no group and stay untouched
             if (group_id == group_count) return;
-            src_dims_idx[0] = dst_dims_idx[0] = row;
-            wei_dims_idx[0] = group_id;
+            src_dims_idx[1] = dst_dims_idx[1] = row;
         }
-        auto &src_k_dim = src_dims_idx[1];
-        auto &wei_k_dim = wei_dims_idx[wei_ndims - 2];
-        auto &wei_n_dim = wei_dims_idx[wei_ndims - 1];
-        auto &dst_n_dim = dst_dims_idx[dst_ndims - 1];
+        src_dims_idx[0] = wei_dims_idx[0] = dst_dims_idx[0] = group_id;
+        auto &src_k_dim = src_dims_idx[2];
+        auto &wei_k_dim = wei_dims_idx[1];
+        auto &wei_n_dim = wei_dims_idx[2];
+        auto &dst_n_dim = dst_dims_idx[2];
 
         // Note, that K_g == 0 must still write zeros
         const dim_t k_group_size = std::min(k_block, K_g);
@@ -207,21 +203,21 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                 float src_scale = 1.0f, wei_scale = 1.0f;
                 if (with_src_zps) {
                     const dim_t src_zp_offset = matmul_helper_t::get_quant_off(
-                            src_dims_idx, 2, src_zp_mask, src_zp_group_m,
+                            src_dims_idx, 3, src_zp_mask, src_zp_group_m,
                             src_zp_group_k, src_zp_md);
                     src_zp = io::load_int_value(
                             src_zp_dt, src_zps, src_zp_offset);
                 }
                 if (with_wei_zps) {
                     const dim_t wei_zp_offset = matmul_helper_t::get_quant_off(
-                            wei_dims_idx, wei_ndims, wei_zp_mask,
-                            wei_zp_group_k, wei_zp_group_n, wei_zp_md);
+                            wei_dims_idx, 3, wei_zp_mask, wei_zp_group_k,
+                            wei_zp_group_n, wei_zp_md);
                     wei_zp = io::load_int_value(
                             wei_zp_dt, wei_zps, wei_zp_offset);
                 }
                 if (with_src_scales) {
                     const dim_t src_scale_offset
-                            = matmul_helper_t::get_quant_off(src_dims_idx, 2,
+                            = matmul_helper_t::get_quant_off(src_dims_idx, 3,
                                     src_scale_mask, src_scale_group_m,
                                     src_scale_group_k, src_scale_md);
                     src_scale = io::load_float_value(
@@ -229,10 +225,9 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                 }
                 if (with_wei_scales) {
                     const dim_t wei_scale_offset
-                            = matmul_helper_t::get_quant_off(wei_dims_idx,
-                                    wei_ndims, wei_scale_mask,
-                                    wei_scale_group_k, wei_scale_group_n,
-                                    wei_scale_md);
+                            = matmul_helper_t::get_quant_off(wei_dims_idx, 3,
+                                    wei_scale_mask, wei_scale_group_k,
+                                    wei_scale_group_n, wei_scale_md);
                     wei_scale = io::load_float_value(
                             wei_scale_dt, wei_scales, wei_scale_offset);
                 }
@@ -265,7 +260,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
 
             if (with_bias)
                 result += io::load_float_value(
-                        bia_dt, bias_data, bia_d.off(group_id, n));
+                        bia_dt, bias_data, bia_d.off(group_id, 0, n));
 
             // Post-Ops support: binary mul with grouped or dense
             // (incl. NVFP4 recipe with global scale) tensor, eltwise
@@ -282,14 +277,11 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                             | DNNL_ARG_SRC_1;
                     const auto bin_data = CTX_IN_MEM(const void *, po_arg);
                     const memory_desc_wrapper bin_d(entry.binary.src1_desc);
-                    const dim_t bin_N = bin_d.dims()[1];
-                    // Per-group [G, 1] is indexed by the group, per-row
-                    // [total_M, *] by the dst row
-                    const bool per_group
-                            = bin_d.dims()[0] == group_count && bin_N == 1;
-                    const dims_t bin_dims_idx
-                            = {per_group ? group_id : dst_dims_idx[0],
-                                    bin_N > 1 ? n : 0};
+                    // src1 is indexed as dst and broadcast along its unit dims
+                    dims_t bin_dims_idx {};
+                    for (int d = 0; d < 3; ++d)
+                        bin_dims_idx[d]
+                                = bin_d.dims()[d] == 1 ? 0 : dst_dims_idx[d];
                     const float val = io::load_float_value(bin_d.data_type(),
                             bin_data, bin_d.off_v(bin_dims_idx));
                     result = binary_po_[binary_idx++].compute_scalar(

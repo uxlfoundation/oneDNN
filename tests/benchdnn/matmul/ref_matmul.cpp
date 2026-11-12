@@ -184,7 +184,7 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
     p.N = prb->n;
     p.K = prb->k;
 
-    // Grouped memory strides are queried as well
+    // Grouped memory strides are queried as well, their group stride is 0
     const auto &src_strides = p.src_m->strides();
     const auto &wei_strides = p.wei_m->strides();
     const auto &dst_strides = p.dst_m->strides();
@@ -409,11 +409,11 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
 // selected by which argument is grouped alongside src:
 //
 //   variable M (2Dx3D): src+dst grouped. M_g varies per group; K, N fixed.
-//     src/dst are concatenated buffers [total_M, K] / [total_M, N];
-//     wei is per-group dense [G, K, N]. Supports a per-group bias [G, N].
+//     src {G, *, K} and dst {G, *, N} hold total_M rows over all groups;
+//     wei is per-group dense [G, K, N]. Supports a per-group bias [G, 1, N].
 //
 //   variable K (2Dx2D): src+wei grouped. K_g varies per group; M, N fixed.
-//     src [M, total_K] and wei [total_K, N] are concatenated along K,
+//     src {G, M, *} and wei {G, *, N} hold total_K over all groups,
 //     dst is dense [G, M, N]. No bias.
 //
 // Grouped args are grouped f32 reference memories:
@@ -432,7 +432,8 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
 
     // Precompute common parameters for the different chunks computations
     const chunk_params_t params = make_chunk_params(prb, args);
-    const int64_t wei_g_stride = var_M ? params.wei_m->strides()[0] : 0;
+    // Grouped wei (var_K) has a zero group stride
+    const int64_t wei_g_stride = params.wei_m->strides()[0];
 
     const int64_t N_chunks = div_up(prb->n, params.dst_N_group);
 
@@ -462,17 +463,16 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         // (var_K) lead with the group dim
         const int64_t m0 = var_M ? off : 0;
         const int64_t k0 = var_M ? 0 : off;
-        const int64_t wei_g = var_M ? g : 0;
         const int64_t dst_g = var_M ? 0 : g;
 
         // Data is accessed by strides, scales and zero points by logical
-        // row-major offsets
+        // row-major offsets over src {G, M, K} and wei {G, K, N}, where an
+        // index along the variable dim spans all groups
         const int64_t src_base
                 = m0 * params.src_m_stride + k0 * params.src_k_stride;
-        const int64_t src_attr_base = m0 * prb->k + k0;
-        const int64_t wei_base
-                = wei_g * wei_g_stride + k0 * params.wei_k_stride;
-        const int64_t wei_attr_base = (wei_g * prb->k + k0) * prb->n;
+        const int64_t src_attr_base = (g * prb->m + m0) * prb->k + k0;
+        const int64_t wei_base = g * wei_g_stride + k0 * params.wei_k_stride;
+        const int64_t wei_attr_base = (g * prb->k + k0) * prb->n;
         const int64_t dst_row_base = dst_g * prb->m + m0;
 
         // var_K reduces over the group K_g only, not total_K

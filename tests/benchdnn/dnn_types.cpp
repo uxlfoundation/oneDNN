@@ -1483,11 +1483,16 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
             auto rhs_tensor_desc = dnn_mem_t::init_md(ndims, rhs_tensor_dims,
                     po_rhs_tensor_entry.dt, po_rhs_tensor_entry.tag,
                     po_rhs_tensor_entry.strides);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
             if (e.binary.grouped) {
-                rhs_tensor_desc = dnn_mem_t::init_grouped_md(ndims,
-                        rhs_tensor_dims, po_rhs_tensor_entry.dt,
-                        grouped_var_dim_idx, grouped_count);
+                // A grouped operand over [total, X] is {G, *, X}
+                const dnnl_dims_t grouped_dims = {grouped_count,
+                        DNNL_VARIABLE_DIM_VAL, rhs_tensor_dims[ndims - 1]};
+                rhs_tensor_desc = dnn_mem_t::init_grouped_md(3, grouped_dims,
+                        po_rhs_tensor_entry.dt,
+                        rhs_tensor_dims[grouped_var_dim_idx], {});
             }
+#endif
             mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                 | po_rhs_tensor_entry.arg_attr_mask),
                     std::move(rhs_tensor_desc));

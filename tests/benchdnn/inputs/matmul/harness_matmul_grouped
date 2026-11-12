@@ -3,6 +3,9 @@
 # Section B = 2Dx2D (variable contraction dim K)
 # Section C = 2Dx2D scaled (fp8 with K-grouped scales)
 #
+# Grouped operands are 3D with the groups in dim 0, so masks are over src
+# {G, M, K} and wei {G, K, N} in both variants
+#
 # --- Section A: 2Dx3D variant: variable M, weights 3D [G, K, N] -------------
 #
 # Format: the sizes field is either explicit sizes or a named profile:
@@ -22,8 +25,9 @@
 # - Data types: f32, bf16, f16, u8/s8 with s4/u4 weights
 # - Bias: --bia-dt=f32/bf16/f16, --bia_mask=2 (per-expert bias [num_experts, N])
 # - Empty groups (M_g = 0): balanced at small M (E=4, M=8 -> [0,3,4,1])
-# - Row-wise src scales: --attr-scales=src:1
-# - Grouped src scales: 3:f16:1x32 (grouped along K, mask = (1<<0) | (1<<1))
+# - Row-wise src scales: --attr-scales=src:3 (mask = (1<<0) | (1<<1))
+# - Grouped src scales: 7:f16:1x32 (grouped along K,
+#           mask = (1<<0) | (1<<1) | (1<<2))
 # - Column-wise wei scales: 5 (scales vary by expert and N, mask = (1<<0) | (1<<2))
 # - Grouped wei scales: 7:f32:32x1 (grouped along K, mask = (1<<0) | (1<<1) | (1<<2))
 # - Column-wise weight zero points: --attr-zero-points=wei:5:s8 (mask = (1<<0) | (1<<2))
@@ -68,7 +72,7 @@
 --dt=u8:s4:bf16,s8:s4:bf16,u8:s4:bf16
 --wtag=any,abc,acb
 --grouped=0:4:balanced
---attr-scales=src:1+wei:7:bf16:128x1,src:1+wei:7:bf16:32x1
+--attr-scales=src:3+wei:7:bf16:128x1,src:3+wei:7:bf16:32x1
 32x512:4x512x256
 
 # Combine row-wise src scales and zp u8/s8/s32
@@ -77,8 +81,8 @@
 --wtag=abc,acb
 --grouped=0:4:balanced
 --bia-dt=undef,bf16 --bia_mask=2
---attr-scales=src:1+wei:7:f32:128x1
---attr-zero-points=,src:1:u8,src:1:s8,src:1:s32
+--attr-scales=src:3+wei:7:f32:128x1
+--attr-zero-points=,src:3:u8,src:3:s8,src:3:s32
 32x512:4x512x256
 
 # Combine blocked src scales and zp u8/s8/s32
@@ -87,8 +91,8 @@
 --wtag=abc,acb
 --grouped=0:4:balanced
 --bia-dt=undef,bf16 --bia_mask=2
---attr-scales=src:3:f32:1x128
---attr-zero-points=,src:3:u8:1x128,src:3:s8:1x128,src:3:s32:1x128
+--attr-scales=src:7:f32:1x128
+--attr-zero-points=,src:7:u8:1x128,src:7:s8:1x128,src:7:s32:1x128
 32x512:4x512x256
 
 # int src + int wei with column-wise scales and ZPs
@@ -148,7 +152,7 @@
 --dt=u8:s8:f32,s8:s8:f32,u8:u8:f32
 --wtag=abc,acb
 --grouped=0:4:balanced
---attr-scales=src:3:f16:1x128+wei:7:f16:128x1
+--attr-scales=src:7:f16:1x128+wei:7:f16:128x1
 --attr-zero-points=,wei:7:s8:128x1
 8x512:4x512x256
 
@@ -156,7 +160,7 @@
 --reset
 --dt=f8_e5m2:f8_e5m2:bf16
 --wtag=abc,acb
---attr-scales=,src:1+wei:5,src:3:e8m0:1x32+wei:7:e8m0:32x1
+--attr-scales=,src:3+wei:5,src:7:e8m0:1x32+wei:7:e8m0:32x1
 --grouped=0:4:balanced
 8x128:4x128x64
 
@@ -165,14 +169,14 @@
 --dt=f8_e4m3:f8_e4m3:bf16
 --wtag=abc,acb
 --grouped=0:4:balanced
---attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1,src:3:e8m0:1x32+wei:5,src:1+wei:7:e8m0:32x1
+--attr-scales=src:7:e8m0:1x32+wei:7:e8m0:32x1,src:7:e8m0:1x32+wei:5,src:3+wei:7:e8m0:32x1
 32x128:4x128x64
 
 # f8_e4m3 row-wise src + column-wise wei scales across varied shapes
 --reset
 --dt=f8_e4m3:f8_e4m3:bf16
 --wtag=abc,acb
---attr-scales=src:1+wei:5
+--attr-scales=src:3+wei:5
 --batch=shapes_grouped
 
 # f4_e2m1 with e8m0 block scales
@@ -180,7 +184,7 @@
 --dt=f4_e2m1:f4_e2m1:bf16
 --wtag=abc,acb
 --grouped=0:4:balanced
---attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--attr-scales=src:7:e8m0:1x32+wei:7:e8m0:32x1
 32x128:4x128x64
 
 # 2D-grouped wei scales: blocked along N as well as K, so each expert holds
@@ -189,7 +193,7 @@
 --dt=f8_e4m3:f8_e4m3:bf16,f4_e2m1:f4_e2m1:bf16
 --wtag=abc,acb
 --grouped=0:4:balanced
---attr-scales=wei:7:e8m0:32x32,src:3:e8m0:1x32+wei:7:e8m0:32x32
+--attr-scales=wei:7:e8m0:32x32,src:7:e8m0:1x32+wei:7:e8m0:32x32
 32x128:4x128x64
 
 # 2D-grouped wei scales + zero points - WOQ
@@ -208,7 +212,7 @@
 --dt=f4_e2m1:f4_e2m1:bf16
 --wtag=abc,acb
 --grouped=0:4:balanced
---attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
+--attr-scales=src:7:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
 --attr-post-ops=mul:f32:0,mul:f16:0,mul:bf16:0
 32x128:4x128x64
 
@@ -308,8 +312,8 @@
 --dt=s8:s8:f32
 --wtag=abc
 --grouped=0:4:balanced
---attr-scales=src:3:f32:1x64+wei:7:f32:64x1
---attr-zero-points=src:3:s8:1x32+wei:7:s8:64x1
+--attr-scales=src:7:f32:1x64+wei:7:f32:64x1
+--attr-zero-points=src:7:s8:1x32+wei:7:s8:64x1
 32x128:4x128x32
 
 # Weight scales grouped along N with a single group along K
@@ -363,7 +367,7 @@
 --reset
 --dt=f8_e4m3:f8_e4m3:bf16
 --dtag=abc,acb
---attr-scales=src:3:e8m0:1x32+wei:3:e8m0:32x1
+--attr-scales=src:7:e8m0:1x32+wei:7:e8m0:32x1
 --grouped=1:4:64+0+128+64
 32x256:256x48
 --grouped=1:4:balanced,1:4:hot.100
@@ -372,7 +376,7 @@
 # DeepSeek Wgrad: f32 (SM90) or e8m0 (SM100) scales per 128 K elements
 --reset
 --dt=f8_e4m3:f8_e4m3:f32,f8_e4m3:f8_e4m3:bf16
---attr-scales=src:3:f32:1x128+wei:3:f32:128x1,src:3:e8m0:1x128+wei:3:e8m0:128x1
+--attr-scales=src:7:f32:1x128+wei:7:f32:128x1,src:7:e8m0:1x128+wei:7:e8m0:128x1
 --grouped=1:3:128+0+256
 24x384:384x40
 --grouped=1:4:balanced
@@ -382,20 +386,20 @@
 # K and N grouped wei scales
 --reset
 --dt=f8_e5m2:f8_e5m2:f16
---attr-scales=src:3:f32:1x32+wei:3:f8_e4m3:64x1,src:3:f8_e4m3:1x32+wei:3:e8m0:32x1,src:3:e8m0:1x64+wei:3:f32:32x1,src:3:f8_e4m3:1x32,wei:3:f32:64x16
+--attr-scales=src:7:f32:1x32+wei:7:f8_e4m3:64x1,src:7:f8_e4m3:1x32+wei:7:e8m0:32x1,src:7:e8m0:1x64+wei:7:f32:32x1,src:7:f8_e4m3:1x32,wei:7:f32:64x16
 --grouped=1:4:balanced
 32x256:256x48
 
 # Single group, and all tokens in one group
 --reset
 --dt=f8_e4m3:f8_e4m3:bf16
---attr-scales=src:3:e8m0:1x32+wei:3:e8m0:32x1
+--attr-scales=src:7:e8m0:1x32+wei:7:e8m0:32x1
 --grouped=1:1:balanced,1:6:hot.100
 24x96:96x40
 
 # Single K block (gK == total_K) next to empty groups
 --reset
 --dt=f8_e4m3:f8_e4m3:bf16
---attr-scales=src:3:e8m0:1x32,wei:3:e8m0:32x1,src:3:e8m0:1x32+wei:3:e8m0:32x1
+--attr-scales=src:7:e8m0:1x32,wei:7:e8m0:32x1,src:7:e8m0:1x32+wei:7:e8m0:32x1
 --grouped=1:2:32+0,1:3:0+32+0
 16x32:32x16

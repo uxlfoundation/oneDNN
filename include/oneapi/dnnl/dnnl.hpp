@@ -3055,46 +3055,56 @@ struct memory : public handle<dnnl_memory_t> {
         /// Common use case is Mixture-of-Experts (MoE) workloads where each expert
         /// processes different numbers of tokens.
         ///
+        /// The descriptor is always 3D: `adims[0]` is the number of groups, and
+        /// one of the other two dims is #DNNL_VARIABLE_DIM_VAL, the dim whose
+        /// size varies per group. The size of each group comes from the offsets
+        /// at execution time.
+        ///
         /// Memory layout consists of two buffers:
         /// - Buffer 0 (values): Concatenated data [group0 | group1 | ... | groupN-1]
         /// - Buffer 1 (offsets): Cumulative indices [size0, size0 + size1, ...]
         ///
         /// Example in the context of MoE:
         /// Below is how to describe 3 experts with token counts [1, 3, 5] and feature dim 256
-        /// - Descriptor dims: {9, 256} where 9 is 1 + 3 + 5 (total tokens)
-        /// - Variable dimension: 0 (token count varies per expert)
-        /// - Group count: 3 (number of experts)
+        /// - Descriptor dims: {3, #DNNL_VARIABLE_DIM_VAL, 256}
+        /// - Total: 9 (1 + 3 + 5 tokens)
         /// - Values buffer: 9 x 256 elements
         /// - Offsets buffer: [1, 4, 9] (cumulative token counts)
         ///
-        /// `variable_dim_idx` may be either 0 or 1:
-        /// - `variable_dim_idx == 0` implies row-major storage (`ab`)
-        /// - `variable_dim_idx == 1` implies col-major storage (`ba`)
+        /// `astrides` are in elements and in `adims` order.
+        /// @note
+        ///     `astrides[0]` must be 0.
+        ///     One of the other two strides must be 1 and the other one is the
+        ///     leading dimension.
+        ///     Empty strides imply that the variable dim is the outermost one.
         ///
         /// @note
         ///     Only s32 offsets are currently supported.
         ///
-        /// @param adims Tensor dimensions. For the variable dimension,
-        ///     specify the total size (sum across all groups).
+        /// @param adims Tensor dimensions: the number of groups and the two
+        ///     matrix dimensions, with #DNNL_VARIABLE_DIM_VAL at the variable
+        ///     one.
         /// @param adata_type Data type of tensor elements.
-        /// @param variable_dim_idx Index of dimension that varies between groups.
-        /// @param group_count Number of groups (e.g., number of experts in MoE).
+        /// @param total Size of the variable dimension summed over all groups.
+        /// @param astrides Strides of the values buffer. Default: empty.
         /// @param offsets_dt Data type of offsets buffer. Default: s32.
         /// @param allow_empty Allow construction to fail without exception.
         ///     Returns zero descriptor on failure. Default: false.
         /// @returns Memory descriptor for grouped encoding.
-        static desc grouped(const dims &adims, data_type adata_type,
-                int variable_dim_idx, dim group_count,
+        static desc grouped(const dims &adims, data_type adata_type, dim total,
+                const dims &astrides = {},
                 data_type offsets_dt = data_type::s32,
                 bool allow_empty = false) {
 
             validate_dims(adims);
+            if (!astrides.empty()) validate_dims(astrides, (int)adims.size());
             dnnl_memory_desc_t md = nullptr;
             dnnl_status_t status
                     = dnnl_memory_desc_create_with_grouped_encoding(&md,
                             (int)adims.size(), adims.data(),
-                            convert_to_c(adata_type), variable_dim_idx,
-                            group_count, convert_to_c(offsets_dt));
+                            convert_to_c(adata_type), total,
+                            astrides.empty() ? nullptr : astrides.data(),
+                            convert_to_c(offsets_dt));
             if (!allow_empty)
                 error::wrap_c_api(
                         status, "could not create a grouped memory descriptor");

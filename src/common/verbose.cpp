@@ -565,10 +565,8 @@ std::string md2fmt_str(
         case format_kind::opaque: ss << "::"; break;
         case format_kind::sparse: ss << ":" << mdw.encoding();
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-            if (mdw.is_grouped_desc()) {
-                ss << ":" << mdw.sparse_desc().grouped_desc.variable_dim_idx;
-                ss << ":" << mdw.sparse_desc().grouped_desc.group_count;
-            }
+            if (mdw.is_grouped_desc())
+                ss << ":" << md2dim_str(md, dims_type_t::strides);
 #endif
             ss << ":";
             break;
@@ -607,8 +605,15 @@ std::string md2dim_str(const memory_desc_t *md, dims_type_t dims_type) {
     std::string s;
 
     assert(dims_type == dims_type_t::dims || dims_type == dims_type_t::strides);
-    const auto &dims_obj
-            = dims_type == dims_type_t::dims ? mdw.dims() : mdw.strides();
+    dims_t dims_obj {};
+    utils::array_copy(dims_obj,
+            dims_type == dims_type_t::dims ? mdw.dims() : mdw.strides(),
+            mdw.ndims());
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // A grouped md shows `total` at its variable dim
+    if (dims_type == dims_type_t::dims && mdw.is_grouped_desc())
+        dims_obj[mdw.grouped_variable_dim()] = mdw.grouped_total();
+#endif
 
     s += get_val_str(dims_obj[0]);
     for (int d = 1; d < mdw.ndims(); ++d)
@@ -697,8 +702,7 @@ std::string arg2str(int arg) {
     return s;
 }
 
-static std::ostream &print_attr(std::ostream &ss, const primitive_attr_t *attr,
-        const memory_desc_t *dst_md) {
+std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
     struct {
         const char *operator()() {
             current[0] = next;
@@ -814,21 +818,6 @@ static std::ostream &print_attr(std::ostream &ss, const primitive_attr_t *attr,
                         int mask = 0;
                         for (int d = 0; d < md.ndims; ++d)
                             mask += md.dims[d] != 1 ? (1 << d) : 0;
-#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-                        // For the grouped matmul with grouped dst, both
-                        // per-group [G, 1] and per-token [M, 1] shapes would
-                        // get mask 1 above. However, per-group [G, 1] requires
-                        // mask `0` for binary_mul if grouped dst is used
-                        // (mainly NVFP4 global scale case)
-                        const memory_desc_wrapper dst_mdw(dst_md);
-                        if (dst_mdw.is_grouped_desc()) {
-                            const auto &dst_g
-                                    = dst_mdw.sparse_desc().grouped_desc;
-                            if (md.dims[0] == dst_g.group_count
-                                    && md.dims[1] == 1)
-                                mask = 0;
-                        }
-#endif
                         ss << ":" << mask;
                         const memory_desc_wrapper mdw(md);
                         switch (mdw.format_kind()) {
@@ -889,10 +878,6 @@ static std::ostream &print_attr(std::ostream &ss, const primitive_attr_t *attr,
         ss << ":" << attr->dropout_.use_host_scalars_;
     }
     return ss;
-}
-
-std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
-    return print_attr(ss, attr, nullptr);
 }
 
 std::string attr2str(const primitive_attr_t *attr) {
@@ -1308,8 +1293,7 @@ std::string init_info_matmul(const engine_t *e, const pd_t *pd) {
             pd->invariant_wei_user_format_kind(), bia_md,
             pd->invariant_bia_user_format_kind(), dst_md,
             pd->invariant_dst_user_format_kind());
-    ss << ",";
-    print_attr(ss, pd->attr(), dst_md) << ",";
+    ss << "," << pd->attr() << ",";
 
     if (pd->has_runtime_dims_or_strides()) {
         ss << "runtime_dims_masks:" << get_runtime_mask(src_md) << ":"

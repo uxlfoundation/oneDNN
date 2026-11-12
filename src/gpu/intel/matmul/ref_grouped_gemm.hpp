@@ -36,9 +36,9 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-// Two grouped matmul patterns are supported:
-// 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
-// 2D grouped src (variable K) x 2D grouped wei (variable M) -> dense 3D dst
+// Two grouped matmul patterns are supported, `*` is the variable dim:
+// grouped src {G, *, K} x dense wei [G, K, N] -> grouped dst {G, *, N}
+// grouped src {G, M, *} x grouped wei {G, *, N} -> dense dst [G, M, N]
 struct ref_grouped_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public matmul::pd_t {
@@ -59,8 +59,7 @@ struct ref_grouped_t : public primitive_t {
             is_2dby2d_ = wei_d.is_grouped_desc();
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
-            const auto &src_grouped = src_d.sparse_desc().grouped_desc;
-            group_count_ = src_grouped.group_count;
+            group_count_ = src_d.dims()[0];
 
             // Scales and zero points layouts are checked by
             // grouped_matmul_attr_check(), their data types here
@@ -138,16 +137,14 @@ struct ref_grouped_t : public primitive_t {
             return status::success;
         }
 
-        // Re-interpret src1 as a 3D view so the generic post-op code applies:
-        //   per-group  [G, 1]       -> [G, 1, 1]
-        //   per-token  [total_M, 1] -> [1, total_M, 1]
-        //   per-token  [total_M, N] -> [1, total_M, N]
+        // The generic post-op code indexes src1 by the group, the row in all
+        // groups and the column, so a grouped src1 {G, *, N} is viewed as a
+        // dense [1, total_M, N]. Dense src1 are used as is
         status_t setup_post_ops(const impl::engine_t *engine) {
             auto &attr_po = attr_.post_ops_;
             generic_po_ = attr_po;
 
-            const dim_t total_tokens = src_md()->dims[0];
-            const dim_t N = dst_md()->dims[1];
+            const dim_t N = dst_md()->dims[2];
 
             // 3D view of grouped dst [G, DNNL_RUNTIME_DIM_VAL, N]
             const dims_t po_dst_dims = {group_count_, DNNL_RUNTIME_DIM_VAL, N};
@@ -163,15 +160,15 @@ struct ref_grouped_t : public primitive_t {
                 if (memory_desc_wrapper(attr_src1).format_any())
                     CHECK(memory_desc_init_by_strides(attr_src1, nullptr));
 
+                auto &generic_src1 = generic_po_.entry_[i].binary.src1_desc;
                 const memory_desc_wrapper src1_mdw(attr_src1);
-                const bool per_group = src1_mdw.ndims() == 2
-                        && src1_mdw.dims()[0] == group_count_
-                        && src1_mdw.dims()[1] == 1;
-
-                const dims_t dims_3d = {per_group ? group_count_ : 1,
-                        per_group ? 1 : total_tokens, src1_mdw.dims()[1]};
-                CHECK(memory_desc_init_by_strides(
-                        generic_po_.entry_[i].binary.src1_desc, 3, dims_3d,
+                if (!src1_mdw.is_grouped_desc()) {
+                    generic_src1 = attr_src1;
+                    continue;
+                }
+                const dims_t dims_3d
+                        = {1, src1_mdw.grouped_total(), src1_mdw.dims()[2]};
+                CHECK(memory_desc_init_by_strides(generic_src1, 3, dims_3d,
                         src1_mdw.data_type(), nullptr));
             }
             return status::success;

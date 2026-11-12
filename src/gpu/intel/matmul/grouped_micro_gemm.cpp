@@ -872,9 +872,13 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     // Grouped src is common to both workloads, its variable dim selects which
     // axis is partitioned (grouped_matmul_desc_init() checked the others)
     VDISPATCH_MATMUL(src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-    switch (src_d.sparse_desc().grouped_desc.variable_dim_idx) {
-        case 0: CHECK(init_m_axis(engine)); break;
-        case 1: CHECK(init_k_axis(engine)); break;
+    // The workloads still take 2D grouped dims and strides, 3D grouped mds
+    // go to the reference implementation
+    VDISPATCH_MATMUL(
+            src_d.ndims() == 2, VERBOSE_BAD_NDIMS, "src", src_d.ndims());
+    switch (axis()) {
+        case grouped_axis_t::m_axis: CHECK(init_m_axis(engine)); break;
+        case grouped_axis_t::k_axis: CHECK(init_k_axis(engine)); break;
         default: return status::unimplemented;
     }
     bool with_post_op = !attr()->post_ops_.has_default_values();

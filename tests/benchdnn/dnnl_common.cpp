@@ -1601,10 +1601,20 @@ float reorder_rescale_factor() {
 dims_t md2dims(const_dnnl_memory_desc_t md, int mask, bool extend_by_ones,
         const std::vector<int64_t> &groups) {
     auto ndims = query_md_ndims(md);
+    dnnl_dims_t md_dims;
+    std::copy(query_md_dims(md), query_md_dims(md) + DNNL_MAX_NDIMS, md_dims);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // A grouped md runs over `total` along its variable dim, and a mask
+    // covering that dim fuses the group dim into it
+    if (has_grouped_encoding(md)) {
+        const int var_dim = get_grouped_dims(md, md_dims);
+        if (mask & (1 << var_dim)) mask &= ~1;
+    }
+#endif
     dims_t dims;
     for (int d = 0; d < ndims; ++d) {
         if (mask & (1 << d)) {
-            dims.push_back(query_md_dims(md)[d]);
+            dims.push_back(md_dims[d]);
             // Note: groups are done for matmul's last two dimensions.
             const auto group_dim = d - (ndims - 2);
             if (!groups.empty() && group_dim >= 0) {

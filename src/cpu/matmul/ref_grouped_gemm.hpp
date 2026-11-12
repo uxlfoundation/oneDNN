@@ -35,9 +35,9 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
-// Two grouped matmul patterns are supported:
-// 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
-// 2D grouped src (variable K) x 2D grouped wei (variable M) -> dense 3D dst
+// Two grouped matmul patterns are supported, `*` is the variable dim:
+// grouped src {G, *, K} x dense wei [G, K, N] -> grouped dst {G, *, N}
+// grouped src {G, M, *} x grouped wei {G, *, N} -> dense dst [G, M, N]
 struct ref_grouped_t : public primitive_t {
     struct pd_t : public cpu_matmul_pd_t {
         using cpu_matmul_pd_t::cpu_matmul_pd_t;

@@ -21,15 +21,15 @@
 //
 // Per group g: C[g] = A[g] * B[g] (+ scales, and bias / zero-points for 2Dx3D)
 //
-// 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
+// grouped src {G, *, K} x dense wei [G, K, N] -> grouped dst {G, *, N}
 // partner_offsets buffer is dst_offsets
 //
-// 2D grouped src (variable K) x 2D grouped wei (variable M) -> dense 3D dst
+// grouped src {G, M, *} x grouped wei {G, *, N} -> dense dst [G, M, N]
 // partner_offsets buffer is wei_offsets
 //
 // Tensors, scales and zero points are accessed by logical indices and strides
-// of their [G, rows, cols] views: a 2D tensor has a zero group stride, and an
-// index along its variable dim spans all groups
+// of their [G, rows, cols] dims: a grouped tensor has a zero group stride, and
+// an index along its variable dim spans all groups
 //
 // get_global_id(0): group index
 // get_global_id(1): output row (m) within the group
@@ -43,7 +43,7 @@
 //  u8/s8 src, u8/s8/s4/u4/f8/f4 wei (incl. WOQ)
 //  row/col-wise, K-grouped or KxN-grouped (wei) scales & zero-points
 //  common wei zero-point (u3 wei), incl. host-side scalar
-//  bias [group_count, N] and post-ops
+//  bias [group_count, 1, N] and post-ops
 __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         __global const int *src_offsets, __global const WEI_DATA_T *wei,
         __global const int *partner_offsets, __global DST_DATA_T *dst,
@@ -56,14 +56,14 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         const long dst_stride_n
 #if WITH_BIAS
         ,
-        __global const BIA_DATA_T *bias, // Bias [group_count, N]
+        __global const BIA_DATA_T *bias, // Bias [group_count, 1, N]
         const long bia_stride_g, const long bia_stride_n
 #endif
 #if WITH_SRC_SCALES
         ,
         __global const SRC_SCALES_DATA_T *src_scales,
-        const long src_scale_stride_m, const long src_scale_stride_k,
-        const long src_scale_group_k
+        const long src_scale_stride_g, const long src_scale_stride_m,
+        const long src_scale_stride_k, const long src_scale_group_k
 #endif
 #if WITH_WEI_SCALES
         ,
@@ -164,7 +164,8 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         FLT_ACC_DATA_T src_scale = 1.f;
         FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
-        src_scale = SRC_SCALES_TO_REF(src_scales[m_abs * src_scale_stride_m
+        src_scale = SRC_SCALES_TO_REF(src_scales[group_id * src_scale_stride_g
+                + m_abs * src_scale_stride_m
                 + k_group_start / src_scale_group_k * src_scale_stride_k]);
 #endif
 #if WITH_WEI_SCALES

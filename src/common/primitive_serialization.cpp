@@ -89,10 +89,9 @@ void serialize(serialization_stream_t &sstream, const memory_desc_t &md) {
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
             if (md.format_desc.sparse_desc.encoding
                     == sparse_encoding::grouped) {
-                sstream.append(
-                        md.format_desc.sparse_desc.grouped_desc.group_count);
-                sstream.append(md.format_desc.sparse_desc.grouped_desc
-                                       .variable_dim_idx);
+                const auto &grouped = md.format_desc.sparse_desc.grouped_desc;
+                sstream.append(grouped.total);
+                sstream.append_array(md.ndims, grouped.strides);
             }
 #endif
             break;

@@ -39,16 +39,14 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa>
-struct brgemm_convolution_bwd_strided_t : public primitive_t {
+// The implementation is compiled once for all ISAs; `isa` is a runtime
+// value carried in `jit_brgemm_conv_conf_t::isa`.
+// `brgemm_convolution_bwd_strided_t` below only provides a distinct type per
+// ISA for implementation lists.
+struct brgemm_convolution_bwd_strided_base_t : public primitive_t {
 
     struct pd_t : public cpu_convolution_bwd_data_pd_t {
         using cpu_convolution_bwd_data_pd_t::cpu_convolution_bwd_data_pd_t;
-
-        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgconv_strided:", isa, ""),
-                brgemm_convolution_bwd_strided_t);
-
-        status_t init(const engine_t *engine);
 
         int brgs_sz_ {};
         std::shared_ptr<brgemm_containers::brgemm_desc_container_t> brgs_;
@@ -102,12 +100,15 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
                 int &kw_full_e, int &kw_e) const;
         void get_iw_range(
                 int iw, int iw_raw, int kw, int &ow_s, int &ow_e) const;
+
+    protected:
+        status_t init(const engine_t *engine, cpu_isa_t isa);
     };
 
-    brgemm_convolution_bwd_strided_t(const pd_t *apd)
+    brgemm_convolution_bwd_strided_base_t(const pd_t *apd)
         : primitive_t(apd), bias_d(pd()->weights_md(1)) {}
 
-    ~brgemm_convolution_bwd_strided_t() override = default;
+    ~brgemm_convolution_bwd_strided_base_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 
@@ -240,15 +241,10 @@ private:
 
     std::vector<std::unique_ptr<jit_brgemm_kernel_post_ops_base_t>> kernels_po_;
 
-    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-
-    std::unique_ptr<jit_avx512_core_brgemm_conv_bwd_trans_kernel::
-                    jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>>
-            copy_to_pbuffer_;
-
-    std::unique_ptr<jit_avx512_core_brgemm_conv_bwd_copy_kernel::
-                    jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>>
-            copy_to_output_buffer_;
+    // Hold `Vmm`-templated kernels, whose `Vmm` is chosen at runtime from
+    // `isa`.
+    std::unique_ptr<jit_generator_t> copy_to_pbuffer_;
+    std::unique_ptr<jit_generator_t> copy_to_output_buffer_;
     std::unique_ptr<jit_generator_t> comp_vpad_pbuffer_;
 
     size_t acc_dsz, bia_dsz, src_dsz, wei_dsz, dst_dsz;
@@ -270,6 +266,25 @@ private:
     bool need_postwork;
     bool need_compensation;
     bool is_amx;
+};
+
+template <cpu_isa_t isa>
+struct brgemm_convolution_bwd_strided_t
+    : public brgemm_convolution_bwd_strided_base_t {
+    struct pd_t : public brgemm_convolution_bwd_strided_base_t::pd_t {
+        using base_pd_t = brgemm_convolution_bwd_strided_base_t::pd_t;
+        using base_pd_t::base_pd_t;
+
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgconv_strided:", isa, ""),
+                brgemm_convolution_bwd_strided_t);
+
+        status_t init(const engine_t *engine) {
+            return base_pd_t::init(engine, isa);
+        }
+    };
+
+    brgemm_convolution_bwd_strided_t(const pd_t *apd)
+        : brgemm_convolution_bwd_strided_base_t(apd) {}
 };
 
 } // namespace x64

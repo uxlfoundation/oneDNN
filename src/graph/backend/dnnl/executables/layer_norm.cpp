@@ -41,6 +41,7 @@ layernorm_executable_t::desc_t layernorm_executable_t::create_desc(
     }
 
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
     float epsilon = 1e-5f;
     if (op->has_attr(op_attr::epsilon))
         epsilon = op->get_attr<float>(op_attr::epsilon);
@@ -104,6 +105,7 @@ layernorm_bwd_executable_t::desc_t layernorm_bwd_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
 
     auto epsilon = op->get_attr<float>(op_attr::epsilon);
     auto flags = dnnl::normalization_flags::none;

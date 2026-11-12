@@ -110,7 +110,7 @@ deconv_fwd_executable_t::desc_t deconv_fwd_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    set_graph_attributes(prm_attr, graph_attr);
+    set_graph_attributes(prm_attr, graph_attr, true);
 
     auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     src = to_format_any(src);
@@ -171,7 +171,7 @@ deconv_bwd_data_executable_t::desc_t deconv_bwd_data_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    set_graph_attributes(prm_attr, graph_attr);
+    set_graph_attributes(prm_attr, graph_attr, true);
 
     auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     diff_dst = to_format_any(diff_dst);
@@ -224,7 +224,7 @@ deconv_bwd_weights_executable_t::create_desc(std::shared_ptr<op_t> &op,
                 = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
-    set_graph_attributes(prm_attr, graph_attr);
+    set_graph_attributes(prm_attr, graph_attr, true);
 
     auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     src = to_format_any(src);

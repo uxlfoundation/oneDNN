@@ -47,6 +47,7 @@ eltwise_executable_t::desc_t eltwise_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
 
     auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
@@ -82,6 +83,7 @@ eltwise_bwd_executable_t::desc_t eltwise_bwd_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
 
     const float alpha = op->has_attr(op_attr::alpha)
             ? op->get_attr<float>(op_attr::alpha)
@@ -223,6 +225,7 @@ binary_executable_t::desc_t binary_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
 
     auto src0 = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     auto src1 = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
@@ -277,6 +280,7 @@ prelu_executable_t::desc_t prelu_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
 
     auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     auto wei = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
@@ -310,6 +314,7 @@ prelu_bwd_executable_t::desc_t prelu_bwd_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
 
     auto forward_data = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     auto wei = make_dnnl_memory_desc(op->get_input_logical_tensor(1));

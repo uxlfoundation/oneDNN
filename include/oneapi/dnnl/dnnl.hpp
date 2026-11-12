@@ -3293,7 +3293,7 @@ struct memory : public handle<dnnl_memory_t> {
         ///
         /// @note
         ///     This API is only applicable to memory descriptors with format
-        ///     kind #dnnl_blocked.
+        ///     kind #dnnl_blocked or with grouped encoding.
         ///
         /// @returns A copy of the strides vector.
         /// @returns An empty #dnnl::memory::dims if the memory descriptor

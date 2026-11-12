@@ -1393,7 +1393,8 @@ dnnl_status_t DNNL_API dnnl_memory_desc_permute_axes(
 ///
 /// The following queries are applicable only to format kind #dnnl_blocked.
 ///  - Strides (#dnnl_query_strides) between the outermost blocks or in case
-///    of plain (non-blocked) formats the strides between dimensions
+///    of plain (non-blocked) formats the strides between dimensions, also
+///    applicable to memory descriptors with grouped encoding
 ///  - Number of innermost blocks (#dnnl_query_inner_nblks_s32), e.g.
 ///    `{4, 16, 4}` in case of `OIhw_4i16o4i`
 ///  - Size of the innermost blocks (#dnnl_query_inner_blks), e.g. 3 in case
@@ -1445,7 +1446,8 @@ dnnl_status_t DNNL_API dnnl_memory_desc_query(
 ///
 /// The following queries are applicable only to format kind #dnnl_blocked.
 ///  - Strides (#dnnl_query_strides) between the outermost blocks or in case
-///    of plain (non-blocked) formats the strides between dimensions
+///    of plain (non-blocked) formats the strides between dimensions, also
+///    applicable to memory descriptors with grouped encoding
 ///  - Number of innermost blocks (#dnnl_query_inner_nblks_s32), e.g.
 ///    `{4, 16, 4}` in case of `OIhw_4i16o4i`
 ///  - Size of the innermost blocks (#dnnl_query_inner_blks), e.g. 3 in case

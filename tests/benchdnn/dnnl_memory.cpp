@@ -69,7 +69,11 @@ dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
     : engine_(engine), is_mapped_(false) {
     const int ndims = query_md_ndims(md);
     if (ndims > 0) {
-        auto md_wrapper = dnn_mem_t::init_md(ndims, query_md_dims(md), dt, tag);
+        // A dense copy of grouped memory holds its values as a flat buffer
+        const dnnl_dims_t vals_dims = {query_md_nnz(md)};
+        auto md_wrapper = has_grouped_encoding(md)
+                ? dnn_mem_t::init_md(1, vals_dims, dt, tag::abx)
+                : dnn_mem_t::init_md(ndims, query_md_dims(md), dt, tag);
         md_ = md_wrapper.release();
         active_ = (initialize(prefill) == OK);
     }
@@ -311,6 +315,8 @@ size_t dnn_mem_t::size(int index) const {
 int64_t dnn_mem_t::nelems(bool with_padded_dims) const {
     const auto &_dims = with_padded_dims ? padded_dims() : dims();
     if (ndims() == 0) return 0;
+    // Grouped values are `total` long along the variable dim
+    if (has_grouped_encoding(md_)) return query_md_nnz(md_);
 
     int64_t n = 1;
     for (int i = 0; i < ndims(); ++i)
@@ -1423,11 +1429,16 @@ size_t get_logical_size(const_dnnl_memory_desc_t md) {
 
     const auto dims = query_md_dims(md);
     int64_t nelems = 1;
-    for (int i = 0; i < ndims; ++i) {
-        // TODO: enable when there's a base_prb_t which can pass md from prb and
-        // not from a primitive.
-        if (dims[i] == DNNL_RUNTIME_DIM_VAL) return 0;
-        nelems *= dims[i];
+    if (has_grouped_encoding(md)) {
+        // Grouped values are `total` long along the variable dim
+        nelems = query_md_nnz(md);
+    } else {
+        for (int i = 0; i < ndims; ++i) {
+            // TODO: enable when there's a base_prb_t which can pass md from prb
+            // and not from a primitive.
+            if (dims[i] == DNNL_RUNTIME_DIM_VAL) return 0;
+            nelems *= dims[i];
+        }
     }
 
     const auto dt = query_md_data_type(md);

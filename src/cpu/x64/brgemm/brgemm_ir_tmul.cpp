@@ -47,6 +47,9 @@ struct tmul_compute_path_t : public compute_path_t {
     bool loads_accumulators() const override { return true; }
     bool stores_accumulators() const override { return true; }
 
+    // Average code size over `n_ops()` of built unrolled TMUL kernels.
+    double code_bytes_per_op() const override { return 7.5; }
+
     // One tile per (M tile, N tile) of the block, in row order.
     std::vector<ir::vreg_t> init_accumulators(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk) const override {

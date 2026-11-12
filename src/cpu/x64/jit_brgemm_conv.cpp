@@ -698,6 +698,42 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
 }
 
 template <cpu_isa_t isa>
+struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
+    brgemm_thread_ctx_t(const brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
+            brgemm_batch_element_t *__restrict brg_batch_, char *c_buffer_,
+            char *wsp_tile_, const char *__restrict weights_)
+        : brgemm_ctx(brgemm_ctx_)
+        , ithr(ithr_)
+        , brg_batch(brg_batch_)
+        , c_buffer(c_buffer_)
+        , wsp_tile(wsp_tile_)
+        , weights(weights_) {}
+
+    const brgemm_exec_ctx_t &brgemm_ctx;
+    int ithr {0};
+    brgemm_batch_element_t *__restrict brg_batch {nullptr};
+    char *__restrict c_buffer {nullptr};
+    char *__restrict wsp_tile {nullptr};
+    int cur_brg_idx {-1};
+    dim_t g {-1}, n {-1}, ocb {-1};
+    dim_t od {-1}, odb {-1}, oh {-1}, ohb {-1}, owb {-1};
+    dim_t icc {-1};
+    int32_t src_zp_val {0};
+    int32_t *__restrict src_zp_comp_ptr {nullptr};
+    const int32_t *__restrict dst_zp_vals {nullptr};
+    int32_t *__restrict s8s8_comp_ptr {nullptr};
+    const void *__restrict src_scales {nullptr};
+    const void *__restrict wei_scales {nullptr};
+    const void *__restrict dst_scales {nullptr};
+    char *__restrict inp_buffer {nullptr};
+    const char *__restrict input {nullptr};
+    uint8_t *__restrict inp_buffer_mask {nullptr};
+    const char *const __restrict weights {nullptr};
+    void *__restrict inp_buffer_zero {nullptr};
+    void *__restrict fp8_convert_wsp {nullptr};
+};
+
+template <cpu_isa_t isa>
 dim_t brgemm_convolution_fwd_t<isa>::get_src_base_offset(
         const brgemm_thread_ctx_t &btc, const dim_t ic) const {
     const auto &jcp = pd()->jcp_;
@@ -1308,41 +1344,6 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
     return status::success;
 }
-template <cpu_isa_t isa>
-struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
-    brgemm_thread_ctx_t(const brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
-            brgemm_batch_element_t *__restrict brg_batch_, char *c_buffer_,
-            char *wsp_tile_, const char *__restrict weights_)
-        : brgemm_ctx(brgemm_ctx_)
-        , ithr(ithr_)
-        , brg_batch(brg_batch_)
-        , c_buffer(c_buffer_)
-        , wsp_tile(wsp_tile_)
-        , weights(weights_) {}
-
-    const brgemm_exec_ctx_t &brgemm_ctx;
-    int ithr {0};
-    brgemm_batch_element_t *__restrict brg_batch {nullptr};
-    char *__restrict c_buffer {nullptr};
-    char *__restrict wsp_tile {nullptr};
-    int cur_brg_idx {-1};
-    dim_t g {-1}, n {-1}, ocb {-1};
-    dim_t od {-1}, odb {-1}, oh {-1}, ohb {-1}, owb {-1};
-    dim_t icc {-1};
-    int32_t src_zp_val {0};
-    int32_t *__restrict src_zp_comp_ptr {nullptr};
-    const int32_t *__restrict dst_zp_vals {nullptr};
-    int32_t *__restrict s8s8_comp_ptr {nullptr};
-    const void *__restrict src_scales {nullptr};
-    const void *__restrict wei_scales {nullptr};
-    const void *__restrict dst_scales {nullptr};
-    char *__restrict inp_buffer {nullptr};
-    const char *__restrict input {nullptr};
-    uint8_t *__restrict inp_buffer_mask {nullptr};
-    const char *const __restrict weights {nullptr};
-    void *__restrict inp_buffer_zero {nullptr};
-    void *__restrict fp8_convert_wsp {nullptr};
-};
 
 template <cpu_isa_t isa>
 status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {

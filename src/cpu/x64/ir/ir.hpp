@@ -556,6 +556,19 @@ void emit_loop_reg(ir_t &ir, vreg_t count_reg, body_t body) {
     ir.if_end(guard);
 }
 
+// Returns the number of operations `ir` would have with every loop of its
+// `n_levels` innermost nesting levels unrolled.
+//
+// A loop with no loop inside is at level 1. Any other loop is one level above
+// the highest level of the loops inside it. An unrolled loop counts the
+// operations of its body once per iteration, without its `loop_begin` and
+// `loop_end`. A loop with a runtime iteration count stays a loop. With
+// `n_levels` of 0, the count is `ir.n_ops()`.
+//
+// A builder uses it to predict the size of a kernel with more loops unrolled
+// from an IR it has built, without building that IR.
+dim_t n_ops_unrolled(const ir_t &ir, int n_levels);
+
 } // namespace ir
 } // namespace x64
 } // namespace cpu

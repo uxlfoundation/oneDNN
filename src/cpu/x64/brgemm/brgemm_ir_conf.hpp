@@ -79,21 +79,24 @@ struct out_block_t {
 //   tmul   - multiplies tiles of A and B into tile accumulators
 enum class compute_path_kind_t { vector, tmul };
 
-// How the loop nest is emitted.
+// How a level of the loop nest is emitted.
 //
+//   unrolled - every block is emitted at its position and the pointers of the
+//              level do not move
 //   looped   - a run of more than one block is a runtime loop that moves the
-//              pointers, as in `jit_brgemm_kernel_t`
-//   unrolled - every block is emitted at its position and no pointer moves, as
-//              in `jit_brgemm_amx_uker_t`
-enum class schedule_t { looped, unrolled };
+//              pointers of the level
+enum class level_form_t { unrolled, looped };
 
 // Loop nest configuration.
 //
-//   schedule       - how the loop nest is emitted
-//   innermost_loop - which of the M and N levels the unrolled schedule emits
-//                    inside the other
+//   m_form/n_form  - how the M and N levels are emitted
+//   bs_form        - how the batch level is emitted, looped with `var_bs`
+//   k_form         - how the K level is emitted
+//   innermost_loop - which of the M and N levels is inside the other
 //   batch_kind     - how a batch element gives the address of its A and B
 //   max_bs         - maximum batch size known at IR generation time
+//   var_bs         - the batch size can change on each call, up to `max_bs`.
+//                    The kernel reads `BS`.
 //   load_dim       - N, the columns of C
 //   lda/ldb/ldc    - leading dimensions of A, B, and C, in elements
 //   bd_block       - M rows per block
@@ -109,10 +112,14 @@ enum class schedule_t { looped, unrolled };
 //   ldb_tail       - N columns left over after every full N register
 //   rdb_tail       - K elements left over after the full K blocks
 struct loop_conf_t {
-    schedule_t schedule = schedule_t::looped;
+    level_form_t m_form = level_form_t::looped;
+    level_form_t n_form = level_form_t::looped;
+    level_form_t bs_form = level_form_t::looped;
+    level_form_t k_form = level_form_t::looped;
     brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
     brgemm_batch_kind_t batch_kind = brgemm_addr;
     dim_t max_bs = 0;
+    bool var_bs = true;
     dim_t load_dim = 0;
     dim_t lda = 0, ldb = 0, ldc = 0;
     int bd_block = 0, ld_block = 0, ld_block2 = 0, rd_block = 0;

@@ -37,6 +37,10 @@ namespace {
 struct vector_compute_path_t : public compute_path_t {
     // One accumulator per (M row, N register), in row order. They are the rows
     // of the output that the output path works on.
+    //
+    // The accumulators start at zero even when beta is 1, and the output path
+    // adds C after the reduction, as in the classic kernel. Loading C into them
+    // up front would make every FMA chain wait for those loads.
     std::vector<ir::vreg_t> init_accumulators(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk) const override {
         std::vector<ir::vreg_t> acc(

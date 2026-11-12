@@ -40,19 +40,27 @@ namespace brgemm_ir {
 //
 // For each output block the builder calls `init_accumulators()` before the
 // batch loop, then `emit_microkernel()` for each K run of each batch element.
-// The unrolled schedule calls `load_accumulators()` instead of
-// `init_accumulators()` when beta is 1, and `store_accumulators()` at the end
-// of the block. The compute path chooses the layout of the accumulators.
+// It calls `load_accumulators()` instead of `init_accumulators()` when beta is
+// 1 and `loads_accumulators()` is true, and `store_accumulators()` at the end
+// of the block when `stores_accumulators()` is true. The compute path chooses
+// the layout of the accumulators.
 struct compute_path_t {
     virtual ~compute_path_t() = default;
+
+    // True if the accumulators start from C when beta is 1. Otherwise they
+    // start at zero and the output path adds C.
+    virtual bool loads_accumulators() const { return false; }
+
+    // True if `store_accumulators()` ends the block. Otherwise the output path
+    // applies the output stages to the accumulators and stores them.
+    virtual bool stores_accumulators() const { return false; }
 
     // Creates the accumulators of `blk` and zeroes them.
     virtual std::vector<ir::vreg_t> init_accumulators(
             ir::ir_t &ir, const conf_t &cfg, const out_block_t &blk) const
             = 0;
 
-    // Creates the accumulators of `blk` and loads them from C at `c_ptr`. Like
-    // `store_accumulators()`, only the TMUL compute path implements it.
+    // Creates the accumulators of `blk` and loads them from C at `c_ptr`.
     virtual std::vector<ir::vreg_t> load_accumulators(ir::ir_t &ir,
             const conf_t &cfg, const out_block_t &blk, ir::vreg_t c_ptr) const {
         assert(!"load_accumulators: not supported by the compute path");
@@ -60,10 +68,6 @@ struct compute_path_t {
     }
 
     // Stores the accumulators of `blk` to C at `c_ptr` unchanged.
-    //
-    // Only the unrolled schedule calls it, and that schedule runs only the
-    // TMUL compute path (`init_conf()`). The other compute paths keep this
-    // default.
     virtual void store_accumulators(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t c_ptr) const {

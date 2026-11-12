@@ -269,7 +269,7 @@ uint32_t get_num_ways_in_cache(int level) {
 #endif
 }
 
-unsigned get_per_core_cache_size(int level) {
+unsigned get_per_core_cache_size(int level, cache_type_t type) {
     auto guess = [](int level) {
         switch (level) {
             case 1: return 32U * 1024;
@@ -278,10 +278,21 @@ unsigned get_per_core_cache_size(int level) {
             default: return 0U;
         }
     };
+
+    // Only level 1 has an instruction cache.
+    const bool is_instruction = type == cache_type_t::instruction;
+    if (is_instruction && level != 1) return 0;
+
 #if DNNL_X64
     if (x64::cpu().getDataCacheLevels() == 0) return guess(level);
-    return x64::platform::get_per_core_cache_size(level);
+    const unsigned size = x64::platform::get_per_core_cache_size(level, type);
+    // The x64 query reads L1i from CPUID leaf 4, which AMD reserves, or on a
+    // hybrid CPU from its topology. On AMD, and on a CPU that does not report
+    // L1i, it returns 0, and L1i is the guess.
+    if (is_instruction && size == 0) return guess(level);
+    return size;
 #elif DNNL_AARCH64
+    // Only the data caches are read, so L1i gets the size of L1d.
     const auto num_caches
             = static_cast<int>(aarch64::cpu().getLastDataCacheLevel());
 

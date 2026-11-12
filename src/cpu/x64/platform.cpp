@@ -468,8 +468,56 @@ unsigned get_per_core_cache_size_cpuid(int level) {
     return 0;
 }
 
-unsigned get_per_core_cache_size(int level) {
+// CPUID-based size of L1i in bytes (leaf 4), 0 if the leaf describes no
+// instruction cache. L1i is private to a core.
+unsigned get_l1i_size_cpuid() {
+    uint32_t data[4];
+    for (uint32_t sub = 0;; sub++) {
+        Xbyak::util::Cpu::getCpuidEx(0x4, sub, data);
+        const uint32_t cache_type = data[0] & 0x1f;
+        if (cache_type == 0) return 0; // no more cache entries
+        const uint32_t cache_level = (data[0] >> 5) & 0x7;
+        if (cache_type != 2 || cache_level != 1) continue;
+        const uint32_t ways = (data[1] >> 22) + 1;
+        const uint32_t partitions = ((data[1] >> 12) & 0x3ff) + 1;
+        const uint32_t line_size = (data[1] & 0xfff) + 1;
+        const uint32_t sets = data[2] + 1;
+        return ways * partitions * line_size * sets;
+    }
+}
+
+#ifndef __APPLE__
+// Smallest L1i in bytes among present core types, from the CPU topology.
+unsigned get_l1i_size_hybrid() {
+    const auto &topo = get_topology_cache().topology;
+    const auto &cache_sizes = get_hybrid_core_cache_sizes();
+
+    uint32_t min_cache_bytes = (std::min)(
+            topo.getCache(cache_sizes.pcore_cpu, Xbyak::util::L1i).size,
+            topo.getCache(cache_sizes.lp_core_cpu, Xbyak::util::L1i).size);
+    if (cache_sizes.lpe_core_cpu != SIZE_MAX) {
+        min_cache_bytes = (std::min)(min_cache_bytes,
+                topo.getCache(cache_sizes.lpe_core_cpu, Xbyak::util::L1i).size);
+    }
+    return min_cache_bytes;
+}
+#endif
+
+unsigned get_per_core_cache_size(int level, cpu::platform::cache_type_t type) {
     if (level < 1 || level > 3) { return 0; }
+
+    // Cached: `get_l1i_size_cpuid()` runs serializing CPUID instructions, and
+    // the result never changes.
+    if (type == cpu::platform::cache_type_t::instruction) {
+        if (level != 1) return 0;
+#ifdef __APPLE__
+        static const unsigned l1i_size = get_l1i_size_cpuid();
+#else
+        static const unsigned l1i_size
+                = is_hybrid() ? get_l1i_size_hybrid() : get_l1i_size_cpuid();
+#endif
+        return l1i_size;
+    }
 
 #ifdef __APPLE__
     return get_per_core_cache_size_cpuid(level);

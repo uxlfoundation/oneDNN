@@ -43,8 +43,8 @@ using namespace data_type;
 #define ndims_pick(v5, v4, v3) \
     ((ndims == 5) ? (v5) : (ndims == 4) ? (v4) : (ndims == 3) ? (v3) : 0)
 
-template <cpu_isa_t isa>
-status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
+status_t brgemm_1x1_convolution_fwd_base_t::pd_t::init(
+        const engine_t *engine, cpu_isa_t isa) {
     using namespace data_type;
     using namespace utils;
 
@@ -166,8 +166,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
+status_t brgemm_1x1_convolution_fwd_base_t::pd_t::init_brgemm_desc() {
 
     const auto src_type = src_md(0)->data_type;
     const auto wei_type = weights_md(0)->data_type;
@@ -193,9 +192,9 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
         brg_strides.stride_b = jcp_.brg_stride_b;
         const auto strides_ptr
                 = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
-        CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type,
-                false, false, brgemm_row_major, alpha, vbeta, LDA, jcp_.LDB,
-                jcp_.LDC, vM, vN, vK, strides_ptr));
+        CHECK(brgemm_desc_init(&brg, jcp_.isa, jcp_.brg_type, src_type,
+                wei_type, false, false, brgemm_row_major, alpha, vbeta, LDA,
+                jcp_.LDB, jcp_.LDC, vM, vN, vK, strides_ptr));
 
         brgemm_attr_t brgattr;
         brgattr.max_bs = jcp_.gemm_batch_size;
@@ -241,8 +240,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_1x1_convolution_fwd_t<isa>::init(engine_t *engine) {
+status_t brgemm_1x1_convolution_fwd_base_t::init(engine_t *engine) {
     auto ndims = pd()->ndims();
     if (ndims < 3 || ndims > 5) assert(!"Invalid ndims!");
 
@@ -274,9 +272,10 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::init(engine_t *engine) {
     dst_d_sz = OD * dst_h_sz;
 
     const auto src_type = pd()->src_md(0)->data_type;
-    const bool req_emulation = utils::one_of(isa, avx512_core_fp16, avx10_2);
+    const bool req_emulation
+            = utils::one_of(jcp.isa, avx512_core_fp16, avx10_2);
     const data_type_t last_ic_block_dt
-            = get_mac_emu_data_type(src_type, isa, req_emulation);
+            = get_mac_emu_data_type(src_type, jcp.isa, req_emulation);
     const auto last_ic_block = data_type_vnni_granularity(last_ic_block_dt);
 
     wei_ic_stride = jcp.wei_plain ? jcp.oc_without_padding : jcp.oc_block;
@@ -299,15 +298,14 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::init(engine_t *engine) {
         if (brg != nullptr && brg->bcast_dim > 0 && brg->load_dim > 0
                 && brg->reduce_dim > 0 && !brg_kernels_[brg_idx]) {
             CHECK(brg_kernels_.insert(brg_idx, brg));
-            const bool is_amx = brgemm_convolution_utils::is_amx(isa);
+            const bool is_amx = brgemm_convolution_utils::is_amx(jcp.isa);
             if (is_amx && brg->is_tmm) brgemm_palettes_.insert(brg_idx, brg);
         }
     }
     return status::success;
 }
 
-template <cpu_isa_t isa>
-void brgemm_1x1_convolution_fwd_t<isa>::maybe_rtus(int ithr,
+void brgemm_1x1_convolution_fwd_base_t::maybe_rtus(int ithr,
         const char *__restrict src, char *__restrict inp_buffer,
         uint8_t *__restrict inp_buffer_mask, int g, int n, dim_t icc, dim_t od,
         dim_t oh, dim_t ow) const {
@@ -393,8 +391,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::maybe_rtus(int ithr,
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
+void brgemm_1x1_convolution_fwd_base_t::exec_ker(
         const brgemm_exec_ctx_t &brgemm_ctx, int ithr,
         brgemm_batch_element_t *const __restrict brg_batch,
         char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
@@ -421,7 +418,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
     const auto &jcp = pd()->jcp_;
     auto ndims = pd()->ndims();
 
-    const bool is_amx = brgemm_convolution_utils::is_amx(isa);
+    const bool is_amx = brgemm_convolution_utils::is_amx(jcp.isa);
     char *const wsp_tile = is_amx
             ? brgemm_ctx.wsp_tile + ithr * jcp.amx_buf_size_per_thread
             : nullptr;
@@ -575,8 +572,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
+void brgemm_1x1_convolution_fwd_base_t::execute_os_blocking(
         const brgemm_exec_ctx_t &brgemm_ctx,
         brgemm_batch_element_t *const brg_batch_global, const void *src_scales,
         const void *wei_scales, const void *dst_scales, void *dst_scales_inv,
@@ -586,7 +582,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
         uint8_t *inp_buffer_mask_base, char *fp8_wsp_base) const {
 
     const auto *jcp_ptr = &pd()->jcp_;
-    const bool is_amx = brgemm_convolution_utils::is_amx(isa);
+    const bool is_amx = brgemm_convolution_utils::is_amx(jcp_ptr->isa);
 
     parallel(jcp_ptr->nthr,
             [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
@@ -678,8 +674,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
     });
 }
 
-template <cpu_isa_t isa>
-void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
+void brgemm_1x1_convolution_fwd_base_t::execute_full_spatial(
         const brgemm_exec_ctx_t &brgemm_ctx,
         brgemm_batch_element_t *const brg_batch_global, const void *src_scales,
         const void *wei_scales, const void *dst_scales, void *dst_scales_inv,
@@ -688,7 +683,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
         char *const c_buffer_global, char *fp8_wsp_base) const {
 
     const auto *jcp_ptr = &pd()->jcp_;
-    const bool is_amx = brgemm_convolution_utils::is_amx(isa);
+    const bool is_amx = brgemm_convolution_utils::is_amx(jcp_ptr->isa);
 
     parallel(jcp_ptr->nthr,
             [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
@@ -750,8 +745,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
     });
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
+status_t brgemm_1x1_convolution_fwd_base_t::execute_forward_all(
         const exec_ctx_t &ctx) const {
 
     brgemm_exec_ctx_t brgemm_ctx(ctx, pd());

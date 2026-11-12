@@ -1053,6 +1053,13 @@ status_t dnnl_memory_desc_query(
             }
             break;
         case query::strides:
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            if (memory_desc_wrapper(md).is_grouped_desc()) {
+                *(const dims_t **)result
+                        = &md->format_desc.sparse_desc.grouped_desc.strides;
+                break;
+            }
+#endif
             if (!is_blocked) return status::invalid_arguments;
             *(const dims_t **)result = &md->format_desc.blocking.strides;
             break;

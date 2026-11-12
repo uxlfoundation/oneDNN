@@ -127,8 +127,7 @@ int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
 
 } // anonymous namespace
 
-template <cpu_isa_t isa>
-int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
+int brgemm_matmul_base_t::pd_t::get_brg_kernel_idx(bool is_bs_tail,
         bool do_initialization, int m_ker_idx, int n_ker_idx, bool is_K_tail,
         bool is_prefetching) const {
     dim_t bs = get_brg_batchsize(bgmmc_, is_bs_tail, is_K_tail);
@@ -136,8 +135,8 @@ int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
             m_ker_idx, n_ker_idx, is_K_tail, bs, is_prefetching);
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
+status_t brgemm_matmul_base_t::pd_t::init(
+        const engine_t *engine, cpu_isa_t isa) {
     const auto src_dt = src_md_.data_type;
     const auto wei_dt = weights_md_.data_type;
     const auto dst_dt = dst_md_.data_type;
@@ -547,8 +546,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
+status_t brgemm_matmul_base_t::init(engine_t *engine) {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     const int max_m_ker_idx
             = bgmmc.is_runtime_M ? max_num_dynamic_m_tails + 1 : 2;
@@ -584,8 +582,15 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
                     db_desc.load_dim = i_M ? bgmmc.M_tail : bgmmc.M_blk;
 
                     if (db_desc.reduce_dim > 0 && db_desc.load_dim > 0) {
-                        CHECK(safe_ptr_assign(reducers_[i_M][i_K],
-                                new reducer_t(bgmmc, db_desc)));
+                        if (is_superset(bgmmc.isa, avx512_core)) {
+                            CHECK(safe_ptr_assign(reducers_[i_M][i_K],
+                                    new jit_brgemm_kernel_reduce_t<Xbyak::Zmm>(
+                                            bgmmc, db_desc)));
+                        } else {
+                            CHECK(safe_ptr_assign(reducers_[i_M][i_K],
+                                    new jit_brgemm_kernel_reduce_t<Xbyak::Ymm>(
+                                            bgmmc, db_desc)));
+                        }
                         CHECK(reducers_[i_M][i_K]->create_kernel());
                     }
                 }
@@ -638,8 +643,7 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
+struct brgemm_matmul_base_t::brg_matmul_exec_ctx_t {
     brg_matmul_exec_ctx_t(
             const exec_ctx_t &ctx, const pd_t *pd, matmul_helper_t &helper)
         : bgmmc_(pd->get_brgemm_matmul_conf())
@@ -708,7 +712,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                           key_brgemm_primitive_buffer_reduce)
                 : nullptr;
 
-        is_amx_ = isa_has_tile_accumulators(isa);
+        is_amx_ = isa_has_tile_accumulators(bgmmc.isa);
         wsp_tile_ptr_ = is_amx_
                 ? ctx.get_scratchpad_grantor().template get<char>(
                           key_conv_amx_tile_buffer)
@@ -1971,8 +1975,7 @@ private:
     }
 };
 
-template <cpu_isa_t isa>
-bool brgemm_matmul_t<isa>::determine_prefetch(const dim_t mb, const dim_t m_end,
+bool brgemm_matmul_base_t::determine_prefetch(const dim_t mb, const dim_t m_end,
         const dim_t nb, const dim_t n_end, const brgemm_matmul_conf_t &bgmmc,
         const brg_matmul_exec_ctx_t &brgmm_ctx) const {
     // Prefetch if not the last BRGEMM in the chunk and
@@ -1996,8 +1999,7 @@ bool brgemm_matmul_t<isa>::determine_prefetch(const dim_t mb, const dim_t m_end,
     return do_prefetch;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
+status_t brgemm_matmul_base_t::execute_body(const exec_ctx_t &ctx) const {
     const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
@@ -2024,7 +2026,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         const auto &bgmmc = pd()->get_brgemm_matmul_conf();
         const bool use_buffer_a
                 = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
-        const bool is_amx = isa_has_tile_accumulators(isa);
+        const bool is_amx = isa_has_tile_accumulators(bgmmc.isa);
         const dim_t M_chunks = brgmm_ctx.get_M_chunks();
         const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
         const dim_t M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
@@ -2174,8 +2176,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::compute_kernel(
+void brgemm_matmul_base_t::compute_kernel(
         const brg_matmul_exec_ctx_t &brgmm_ctx, const char *A_data_batch_ptr,
         const char *B_data_batch_ptr, int ithr, dim_t b_idx, dim_t m_blk_idx,
         dim_t n_blk_idx, dim_t k_blk_idx, bool do_init, int &prev_ker_idx,
@@ -2378,8 +2379,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
             ithr, b_idx, m_blk_idx, n_blk_idx);
 }
 
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::fill_per_mn_compensation(
+void brgemm_matmul_base_t::fill_per_mn_compensation(
         const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t b_idx,
         dim_t m_blk_idx, dim_t n_blk_idx, const char *A_data_batch_ptr,
         const char *B_data_batch_ptr, dim_t m_kernel_size, dim_t n_kernel_size,
@@ -2486,8 +2486,7 @@ void brgemm_matmul_t<isa>::fill_per_mn_compensation(
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::maybe_reduce_A(
+void brgemm_matmul_base_t::maybe_reduce_A(
         const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t gemm_batch,
         dim_t m_blk_idx, dim_t n_blk_idx, dim_t k_chunk_idx, bool do_init,
         bool has_K_tail, bool do_K_tail) const {
@@ -2545,8 +2544,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_A(
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
+void brgemm_matmul_base_t::maybe_reduce_and_convert_partial_results_A(
         const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const {
     // Partial results appear when parallel reduction is used.
     //
@@ -2652,8 +2650,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
     });
 }
 
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
+void brgemm_matmul_base_t::maybe_reduce_partial_results_and_apply_postops(
         const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const {
     if (!brgmm_ctx_ptr->parallel_reduction_is_used()) return;
 
@@ -2829,8 +2826,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
     });
 }
 
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
+void brgemm_matmul_base_t::copy_a_chunk_in_buffer(
         const brg_matmul_exec_ctx_t &brgmm_ctx, const char *A_data_batch_ptr,
         int ithr, dim_t m_blk_idx, dim_t k_blk_idx) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
@@ -2889,8 +2885,7 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
+void brgemm_matmul_base_t::copy_b_chunk_in_buffer(
         const brg_matmul_exec_ctx_t &brgmm_ctx, const char *B_data_batch_ptr,
         int ithr, dim_t b_idx, dim_t n_blk_idx, dim_t k_blk_idx) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
@@ -2954,7 +2949,7 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
         ctx.wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(b_idx, k, n);
         ctx.zp_b_value_ptr = brgmm_ctx.get_wei_zp_ptr(b_idx, k, n);
         if (bgmmc.blocked_B && !bgmmc.is_f16_with_int_wei
-                && isa == avx512_core_fp16) {
+                && bgmmc.isa == avx512_core_fp16) {
             cvt_float16_to_float((float *)ctx.tr_src, (float16_t *)ctx.src,
                     bgmmc.wei_n_blk * ctx.current_K_iters);
         } else {
@@ -3010,8 +3005,7 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_matmul_t<isa>::accumulate(
+void brgemm_matmul_base_t::accumulate(
         char *result_ptr, const char *reduce_ptr, size_t size) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     const bool c_buf_is_dst_dt = bgmmc.is_c_buf_dst_dt && bgmmc.nthr_k > 1;

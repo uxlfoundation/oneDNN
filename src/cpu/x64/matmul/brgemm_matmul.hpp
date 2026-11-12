@@ -51,15 +51,13 @@ constexpr int max_num_brg_kernels_matmul = 2 * 2 * 2
         * (max_num_dynamic_m_tails + 1 /* main kernel size */)
         * 2; //prefetching on/off
 
-template <cpu_isa_t isa>
-struct brgemm_matmul_t : public primitive_t {
+// The implementation is compiled once for all ISAs; `isa` is a runtime
+// value carried in `brgemm_matmul_conf_t::isa`. `brgemm_matmul_t<isa>` below
+// only provides a distinct type per ISA for implementation lists.
+struct brgemm_matmul_base_t : public primitive_t {
     struct pd_t : public ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t {
         using ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("brg_matmul:", isa, ""), brgemm_matmul_t);
-
-        status_t init(const engine_t *engine);
         int get_brg_kernel_idx(bool is_bs_tail, bool do_initialization,
                 int m_ker_idx, int n_ker_idx, bool is_K_tail,
                 bool is_prefetching) const;
@@ -70,12 +68,15 @@ struct brgemm_matmul_t : public primitive_t {
             return bgmmc_;
         }
 
+    protected:
+        status_t init(const engine_t *engine, cpu_isa_t isa);
+
     private:
         brgemm_desc_t brg_descs_[max_num_brg_kernels_matmul];
         brgemm_matmul_conf_t bgmmc_;
     };
 
-    brgemm_matmul_t(const pd_t *apd) : primitive_t(apd) {}
+    brgemm_matmul_base_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(engine_t *engine) override;
     static constexpr data_type_t acc_type = data_type::s32;
@@ -137,9 +138,26 @@ private:
     // Per-(M, N) compensation kernel
     std::unique_ptr<per_mn_comp_kernel_t> per_mn_comp_kernel_;
 
-    using reducer_t
-            = jit_brgemm_kernel_reduce_t<typename cpu_isa_traits_t<isa>::Vmm>;
-    std::unique_ptr<reducer_t> reducers_[2][2];
+    // Holds `jit_brgemm_kernel_reduce_t<Vmm>`, whose `Vmm` is chosen at
+    // runtime from `isa`.
+    std::unique_ptr<jit_generator_t> reducers_[2][2];
+};
+
+template <cpu_isa_t isa>
+struct brgemm_matmul_t : public brgemm_matmul_base_t {
+    struct pd_t : public brgemm_matmul_base_t::pd_t {
+        using base_pd_t = brgemm_matmul_base_t::pd_t;
+        using base_pd_t::base_pd_t;
+
+        DECLARE_COMMON_PD_T(
+                JIT_IMPL_NAME_HELPER("brg_matmul:", isa, ""), brgemm_matmul_t);
+
+        status_t init(const engine_t *engine) {
+            return base_pd_t::init(engine, isa);
+        }
+    };
+
+    brgemm_matmul_t(const pd_t *apd) : brgemm_matmul_base_t(apd) {}
 };
 
 } // namespace matmul

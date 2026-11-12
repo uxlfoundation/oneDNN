@@ -26,6 +26,9 @@ namespace gemmstone {
 #include "selector/db/lut_674f.db"
 #undef _CATALOG_
 // lut.py: end
+#define _CATALOG_ gemm_gbr_catalog
+#include "selector/db/gbr.db"
+#undef _CATALOG_
 } // namespace gemmstone
 
 namespace dnnl {
@@ -58,13 +61,17 @@ const gemmstone::kcatalog::Catalog *lut_catalog(uint32_t device_id) {
     return nullptr;
 }
 
+gemmstone::kcatalog::Catalog gbr_catalog() {
+    return gemmstone::gemm_gbr_catalog;
+}
+
 std::string catalog_ref(const gemmstone::kcatalog::Entry *entry) {
     auto in = [&](const char *name, const gemmstone::kcatalog::Catalog &c) {
         return entry >= c.entries && entry < c.entries + c.entryCount
                 ? std::string(name) + ":" + std::to_string(entry - c.entries)
                 : std::string();
     };
-    std::string r = in("kernel.db", catalog());
+    std::string r = in("kernel.db", catalog()) + in("gbr.db", gbr_catalog());
     for (const auto &l : luts)
         r += in(l.name, l.catalog);
     return r.empty() ? "?" : r;

@@ -556,6 +556,12 @@ void jit_softmax_sve_t::accumulate_vsum() {
         mov(vsum.d, P_ALL_ONE, vone.d);
         fdiv(vsum.s, P_ALL_ONE / T_m, v_tmp0.s);
         if (is_inf_as_zero_) {
+            // vmax starts at -FLT_MAX. For an all -inf row it stays there,
+            // so every difference is -inf. The exp injector clamps these
+            // values and returns tiny positive numbers, leaving a tiny sum.
+            // A row with a finite value and no NaN or +inf has a maximum
+            // attained by an input, which contributes exp(0) = 1.
+            // Clear the reciprocal when the original row sum is below 0.5.
             fdup(vtmp.s, 0.5);
             fcmlt(P_TMP.s, P_ALL_ONE / T_z, v_tmp0.s, vtmp.s);
             mov(vsum.s, P_TMP / T_m, 0);
@@ -891,6 +897,9 @@ void jit_softmax_asimd_t::accumulate_vsum() {
 
     get_horizontal_op(vsum, op_t::sum);
     if (is_softmax_) {
+        // Match the all -inf row handling in jit_softmax_sve_t::accumulate_vsum()
+        // fcmgt marks original row sums below 0.5, and bic clears their
+        // reciprocals. A NaN sum leaves its reciprocal unchanged.
         if (is_inf_as_zero_) {
             fmov(vtmp.s, 0.5);
             fcmgt(vtmp.s, vtmp.s, vsum.s);

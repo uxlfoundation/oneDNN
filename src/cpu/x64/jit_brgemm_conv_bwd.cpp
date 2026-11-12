@@ -100,8 +100,8 @@ status_t fwd_conv_desc_create(
 }
 } // namespace
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_bwd_t<isa>::pd_t::init(const engine_t *engine) {
+status_t brgemm_convolution_bwd_base_t::pd_t::init(
+        const engine_t *engine, cpu_isa_t isa) {
     using namespace data_type;
     using namespace utils;
 
@@ -123,14 +123,19 @@ status_t brgemm_convolution_bwd_t<isa>::pd_t::init(const engine_t *engine) {
 
     while (++it != it.end()) {
         fwd_pd_ = *it;
-        using fwd_1x1_conv_pd_t =
-                typename brgemm_1x1_convolution_fwd_t<isa>::pd_t;
-        const auto pd_1x1 = dynamic_cast<fwd_1x1_conv_pd_t *>((*it).get());
-        if (pd_1x1 != nullptr) break; // 1x1 implementation found
+        // The base `pd_t` is shared by all ISAs, so the ISA is matched
+        // explicitly.
+        const auto pd_1x1
+                = dynamic_cast<const brgemm_1x1_convolution_fwd_base_t::pd_t *>(
+                        (*it).get());
+        if (pd_1x1 != nullptr && pd_1x1->jcp_.isa == isa)
+            break; // 1x1 implementation found
 
-        using fwd_conv_pd_t = typename brgemm_convolution_fwd_t<isa>::pd_t;
-        const auto pd = dynamic_cast<fwd_conv_pd_t *>((*it).get());
-        if (pd != nullptr) break; // non-1x1 implementation found
+        const auto pd
+                = dynamic_cast<const brgemm_convolution_fwd_base_t::pd_t *>(
+                        (*it).get());
+        if (pd != nullptr && pd->jcp_.isa == isa)
+            break; // non-1x1 implementation found
     }
     if (it == it.end()) return status::unimplemented;
 
@@ -144,7 +149,7 @@ status_t brgemm_convolution_bwd_t<isa>::pd_t::init(const engine_t *engine) {
     if (bias_md_.format_kind == format_kind::any)
         bias_md_ = *fwd_pd_->weights_md(1);
 
-    init_name();
+    init_name(isa);
     auto scratchpad = scratchpad_registry().registrar();
     scratchpad.book(
             memory_tracking::names::key_nested, fwd_pd_->scratchpad_registry());
@@ -152,13 +157,11 @@ status_t brgemm_convolution_bwd_t<isa>::pd_t::init(const engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_bwd_t<isa>::init(engine_t *engine) {
+status_t brgemm_convolution_bwd_base_t::init(engine_t *engine) {
     return pd()->fwd_pd_->create_primitive(fwd_p_, engine);
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t brgemm_convolution_bwd_base_t::execute(const exec_ctx_t &ctx) const {
     const auto &args = ctx.args();
     exec_args_t conv_args;
     conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC);

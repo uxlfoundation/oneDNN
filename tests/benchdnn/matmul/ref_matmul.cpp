@@ -86,18 +86,6 @@ struct chunk_params_t {
     dnnl_data_type_t bia_dt, dst_dt;
 };
 
-// Strides of a reference memory. Grouped memory strides can't be queried from
-// the library yet, its values are dense with the variable dim outermost.
-static dims_t get_strides(const prb_t *prb, const dnn_mem_t &mem, int arg) {
-    if (!prb->sparse_options.is_grouped(arg))
-        return dims_t(mem.strides(), mem.strides() + mem.ndims());
-
-    const int var_dim = prb->sparse_options.get_variable_dim_idx(arg);
-    dims_t strides(mem.ndims(), 1);
-    strides[var_dim] = mem.dims()[1 - var_dim];
-    return strides;
-}
-
 // Precompute parameters for compute_ref_matmul_chunk
 // based on the problem definition and the provided arguments
 static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
@@ -196,12 +184,13 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
     p.N = prb->n;
     p.K = prb->k;
 
-    const auto src_strides = get_strides(prb, *p.src_m, DNNL_ARG_SRC);
-    const auto wei_strides = get_strides(prb, *p.wei_m, DNNL_ARG_WEIGHTS);
-    const auto dst_strides = get_strides(prb, *p.dst_m, DNNL_ARG_DST);
-    const size_t src_ndims = src_strides.size();
-    const size_t wei_ndims = wei_strides.size();
-    const size_t dst_ndims = dst_strides.size();
+    // Grouped memory strides are queried as well
+    const auto &src_strides = p.src_m->strides();
+    const auto &wei_strides = p.wei_m->strides();
+    const auto &dst_strides = p.dst_m->strides();
+    const int src_ndims = p.src_m->ndims();
+    const int wei_ndims = p.wei_m->ndims();
+    const int dst_ndims = p.dst_m->ndims();
     p.src_m_stride = src_strides[src_ndims - 2];
     p.src_k_stride = src_strides[src_ndims - 1];
     p.wei_k_stride = wei_strides[wei_ndims - 2];

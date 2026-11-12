@@ -18,7 +18,7 @@
 // the register allocator and code emitter.
 //
 // This kernel uses the classic kernels as a reference: `jit_brgemm_kernel_t`
-// for the looped schedule and `jit_brgemm_amx_uker_t` for the unrolled one. It
+// for the vector compute path and `jit_brgemm_amx_uker_t` for the TMUL one. It
 // is comparable with them instruction for instruction when it comes to compute
 // structure.
 //
@@ -76,16 +76,17 @@ namespace {
 //
 // Note:
 // - Registers created inside a loop body (the accumulators, the B vectors, the
-//   A broadcast, and the batch, A, and B pointers) are local temporaries and
-//   are not included here.
+//   A broadcast, the batch pointer, and the A and B pointers of each batch
+//   element) are local temporaries and are not included here.
 
 // Registers that advance by a fixed byte offset as the nest walks the output.
-// The unrolled schedule does not advance them.
+// Only the looped levels advance them.
 struct advancing_regs_t {
-    // Current C pointer. The N loop advances it by one block per iteration,
-    // then the M loop rewinds it and steps to the next M block with one
-    // constant. The classic kernel keeps a second base pointer for this
-    // instead. One running pointer saves the general-purpose register.
+    // Current C pointer. Of the M and N loops, the inner one advances it by
+    // one block per iteration, then the outer one rewinds it and steps to its
+    // next block with one constant. The classic kernel keeps a second base
+    // pointer for this instead. One running pointer saves the general-purpose
+    // register.
     ir::vreg_t c_ptr = ir::vreg_t::none;
     // Pointer the finished block is stored through. It holds the `ptr_D`
     // kernel argument on a post-ops call and `ptr_C` otherwise, and can be the
@@ -93,20 +94,18 @@ struct advancing_regs_t {
     // the same data type and leading dimension (`init_output_conf()`), so it
     // advances like `c_ptr`.
     ir::vreg_t store_ptr = ir::vreg_t::none;
-    // Byte offset into A of the current M block. Starts at 0 and advances by
-    // one block per iteration of the M loop. `none` in the unrolled schedule.
+    // Byte offset into A of the current M block. Starts at 0 and moves like
+    // `c_ptr`, but only along M. `none` when the M level is unrolled.
     ir::vreg_t a_off = ir::vreg_t::none;
-    // Byte offset into B of the current N block. Advances by one block per
-    // iteration of the N loop and is set back before the next M block. `none`
-    // in the unrolled schedule.
+    // Byte offset into B of the current N block. Starts at 0 and moves like
+    // `c_ptr`, but only along N. `none` when the N level is unrolled.
     ir::vreg_t b_off = ir::vreg_t::none;
     // Current bias pointer. The bias is indexed by the load dimension only, so
-    // it advances with the N loop and is rewound before the next M block.
-    // `none` without the `bias` stage.
+    // it moves like `b_off`. `none` without the `bias` stage.
     ir::vreg_t bias_ptr = ir::vreg_t::none;
-    // Current weights-scale pointer. A per-N scale advances and rewinds like
-    // `bias_ptr`, a common one stays at its only element.
-    // `none` without a weights scale stage.
+    // Current weights-scale pointer. A per-N scale moves like `bias_ptr`. A
+    // common one stays at its only element. `none` without a weights scale
+    // stage.
     ir::vreg_t wei_scale_ptr = ir::vreg_t::none;
 };
 
@@ -114,14 +113,19 @@ struct advancing_regs_t {
 struct invariant_regs_t {
     // Base pointer of the batch-element array.
     ir::vreg_t batch = ir::vreg_t::none;
-    // Batch size loop count. `none` when max_bs == 1 (single batch element)
-    // and in the unrolled schedule, which always runs `max_bs` elements.
+    // Batch size loop count. `none` when `max_bs == 1` (single batch element)
+    // or without `var_bs`.
     ir::vreg_t bs = ir::vreg_t::none;
     // A and B base pointers, the `ptr_A` and `ptr_B` kernel arguments, which
     // `brgemm_offs` adds the byte offsets of each batch element to. `none` for
     // `brgemm_addr`, where each element holds its own pointers.
     ir::vreg_t a_base = ir::vreg_t::none;
     ir::vreg_t b_base = ir::vreg_t::none;
+    // A and B pointers of the only batch element, set once for the kernel when
+    // no level moves them (see `init_m_loop_input_regs()`). `none` otherwise,
+    // and `emit_batch_level()` creates them for each batch element.
+    ir::vreg_t a_ptr = ir::vreg_t::none;
+    ir::vreg_t b_ptr = ir::vreg_t::none;
     // The `do_post_ops` kernel argument. Non-zero applies the post-ops and
     // stores to D, zero stores to C. `none` when the kernel has no post-op.
     ir::vreg_t do_post_ops = ir::vreg_t::none;
@@ -138,12 +142,41 @@ struct m_loop_input_regs_t {
     invariant_regs_t invariant;
 };
 
+// Sets `a_ptr` and `b_ptr` to the A and B of the batch element at
+// `batch_ptr + disp`, at the current M and N block. Mirrors
+// `set_A_B_matrices()` in `jit_brgemm_kernel.cpp`.
+void emit_batch_element_ptrs(ir::ir_t &ir, const conf_t &cfg,
+        const m_loop_input_regs_t &regs, ir::vreg_t batch_ptr, dim_t disp,
+        ir::vreg_t a_ptr, ir::vreg_t b_ptr) {
+
+    switch (cfg.loop.batch_kind) {
+        case brgemm_addr:
+            ir.load(a_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(ptr.A));
+            ir.load(b_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(ptr.B));
+            break;
+        case brgemm_offs:
+            ir.load(a_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(offset.A));
+            ir.add_reg(a_ptr, regs.invariant.a_base);
+            ir.load(b_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(offset.B));
+            ir.add_reg(b_ptr, regs.invariant.b_base);
+            break;
+        default: assert(!"unsupported batch kind"); break;
+    }
+
+    // Shift to the current M and N block.
+    if (regs.advancing.a_off != ir::vreg_t::none)
+        ir.add_reg(a_ptr, regs.advancing.a_off);
+    if (regs.advancing.b_off != ir::vreg_t::none)
+        ir.add_reg(b_ptr, regs.advancing.b_off);
+}
+
 // Sets up the M-loop input registers.
 //
-// Loads the kernel argument pointers and the batch count, and zeroes the
-// running A and B offsets.
+// Loads the kernel argument pointers and the batch count, zeroes the running A
+// and B offsets, and sets the A and B pointers when no level moves them.
 m_loop_input_regs_t init_m_loop_input_regs(ir::ir_t &ir, const conf_t &cfg) {
     m_loop_input_regs_t regs;
+    const loop_conf_t &loop = cfg.loop;
 
     regs.advancing.c_ptr = ir.new_gpr();
     ir.load_param(regs.advancing.c_ptr, GET_OFF(ptr_C));
@@ -151,24 +184,39 @@ m_loop_input_regs_t init_m_loop_input_regs(ir::ir_t &ir, const conf_t &cfg) {
     regs.invariant.batch = ir.new_gpr();
     ir.load_param(regs.invariant.batch, GET_OFF(batch));
 
-    if (cfg.loop.schedule == schedule_t::looped && cfg.loop.max_bs > 1) {
+    if (loop.var_bs && loop.max_bs > 1) {
         regs.invariant.bs = ir.new_gpr();
         ir.load_param(regs.invariant.bs, GET_OFF(BS));
     }
 
-    if (cfg.loop.batch_kind == brgemm_offs) {
+    if (loop.batch_kind == brgemm_offs) {
         regs.invariant.a_base = ir.new_gpr();
         ir.load_param(regs.invariant.a_base, GET_OFF(ptr_A));
         regs.invariant.b_base = ir.new_gpr();
         ir.load_param(regs.invariant.b_base, GET_OFF(ptr_B));
     }
 
-    if (cfg.loop.schedule == schedule_t::looped) {
+    if (loop.m_form == level_form_t::looped) {
         regs.advancing.a_off = ir.new_gpr();
         ir.mov_imm(regs.advancing.a_off, 0);
+    }
 
+    if (loop.n_form == level_form_t::looped) {
         regs.advancing.b_off = ir.new_gpr();
         ir.mov_imm(regs.advancing.b_off, 0);
+    }
+
+    // With one batch element, only a looped M, N, or K level moves the A and B
+    // pointers. When none of them is looped, the pointers are set once for the
+    // kernel.
+    if (loop.max_bs == 1
+            && utils::everyone_is(level_form_t::unrolled, loop.m_form,
+                    loop.n_form, loop.k_form)) {
+        regs.invariant.a_ptr = ir.new_gpr();
+        regs.invariant.b_ptr = ir.new_gpr();
+
+        emit_batch_element_ptrs(ir, cfg, regs, regs.invariant.batch, 0,
+                regs.invariant.a_ptr, regs.invariant.b_ptr);
     }
 
     if (cfg.output.has_stage(output_stage_t::bias)) {
@@ -225,10 +273,9 @@ m_loop_input_regs_t init_m_loop_input_regs(ir::ir_t &ir, const conf_t &cfg) {
 //
 // Each level of the loop nest (M, N, K, and the batch) has a list of its
 // blocks, stored as runs of blocks with the same size. The code of a block
-// depends only on its size and its position, so the looped schedule emits one
-// body per run, and the unrolled schedule one body per block. The looped
-// schedule does not use the batch list: it runs the batch as a runtime loop
-// over `BS` elements.
+// depends only on its size and its position, so a looped level emits one body
+// per run, and an unrolled level one body per block. With `var_bs`, the batch
+// does not use its list: it is a runtime loop over `BS` elements.
 
 // Consecutive blocks of one loop level with the same size.
 //
@@ -263,35 +310,54 @@ std::vector<block_run_t> bs_runs(const loop_conf_t &loop) {
     return {{1, loop.max_bs}};
 }
 
-// Emits one level of the loop nest from its runs, for the looped schedule.
+// Emits one level of the loop nest from its runs, looped.
 //
 // A run of more than one block becomes a runtime loop whose step moves the
 // pointers by one block. A run of one block is emitted once, without a step
 // (see `emit_loop_imm()`). Its accesses add its position to their
 // displacements, so the pointers do not move to it.
 //
-//   ptr_pos - where the pointers stand when the level starts, in elements
-//             from the first block
-//   body    - `body(size, pos)` emits a block of `size` elements at `pos`
-//             elements from the pointers
-//   step    - `step(n)` moves the pointers by `n` elements
+// The level inside this one (N inside M, or M inside N) moves its own pointers
+// as it runs, and they stay moved after each block of this level. The step of
+// this level moves them back to where they stood before the block. `inner_pos`
+// tracks where they stand.
 //
-// Returns where the pointers stand after the level.
-dim_t emit_looped_level(ir::ir_t &ir, const std::vector<block_run_t> &runs,
-        dim_t ptr_pos, const std::function<void(dim_t, dim_t)> &body,
-        const std::function<void(dim_t)> &step) {
+// Example: N inside M, and N is one run of 3 blocks of 16 elements. After each
+// M block the N pointers stand at 48. The M step moves the M pointers by one
+// block and the N pointers by -48.
+//
+//   pos       - where the pointers of this level stand, in elements from its
+//               first block. The level updates it to where it leaves them.
+//   inner_pos - where the pointers of the level inside stand, in elements from
+//               its first block. `body` updates it.
+//   body      - `body(size, pos)` emits a block of `size` elements at `pos`
+//               elements from the pointers
+//   step      - `step(n, inner_n)` moves the pointers of this level by `n`
+//               elements and the pointers of the level inside by `inner_n`
+//               elements
+void emit_looped_level(ir::ir_t &ir, const std::vector<block_run_t> &runs,
+        dim_t &pos, dim_t &inner_pos,
+        const std::function<void(dim_t, dim_t)> &body,
+        const std::function<void(dim_t, dim_t)> &step) {
+
     dim_t start = 0;
     for (const block_run_t &run : runs) {
-        const dim_t pos = start - ptr_pos;
-        ir::emit_loop_imm(ir, run.count, [&]() { body(run.size, pos); },
-                [&]() { step(run.size); });
+        const dim_t run_pos = start - pos;
+        const dim_t inner_start = inner_pos;
+
+        ir::emit_loop_imm(ir, run.count, [&]() { body(run.size, run_pos); },
+                [&]() { step(run.size, inner_start - inner_pos); });
 
         // A runtime loop runs its step after every iteration, including the
-        // last one.
-        if (run.count > 1) ptr_pos += run.count * run.size;
+        // last one, so the pointers of the level inside are back where they
+        // stood before the run. After a run of one block, they stay where
+        // `body` left them.
+        if (run.count > 1) {
+            pos += run.count * run.size;
+            inner_pos = inner_start;
+        }
         start += run.count * run.size;
     }
-    return ptr_pos;
 }
 
 // Returns an upper bound, in elements, on the distance between the pointers
@@ -313,26 +379,27 @@ dim_t max_looped_pos(const std::vector<block_run_t> &runs) {
     return std::max(max_pos, ptr_pos);
 }
 
-// Emits one level of the loop nest from its runs, for the unrolled schedule.
+// Emits one level of the loop nest from its runs, unrolled.
 //
 // Each block is emitted at its position, and the pointers never move.
 //
+//   pos  - where the pointers stand, in elements from the first block
 //   body - `body(size, pos)` emits a block of `size` elements at `pos`
 //          elements from the pointers
-void emit_unrolled_level(const std::vector<block_run_t> &runs,
+void emit_unrolled_level(const std::vector<block_run_t> &runs, dim_t pos,
         const std::function<void(dim_t, dim_t)> &body) {
 
-    dim_t pos = 0;
+    dim_t start = 0;
     for (const block_run_t &run : runs) {
         for (dim_t i = 0; i < run.count; i++) {
-            body(run.size, pos);
-            pos += run.size;
+            body(run.size, start - pos);
+            start += run.size;
         }
     }
 }
 
-// Returns the number of elements a level covers. It bounds every position the
-// unrolled schedule addresses on the level.
+// Returns the number of elements a level covers. It bounds every position an
+// unrolled level addresses.
 dim_t level_size(const std::vector<block_run_t> &runs) {
     dim_t size = 0;
     for (const block_run_t &run : runs) {
@@ -341,52 +408,48 @@ dim_t level_size(const std::vector<block_run_t> &runs) {
     return size;
 }
 
-// Sets `a_ptr` and `b_ptr` to the A and B of the batch element at
-// `batch_ptr + disp`. Mirrors `set_A_B_matrices()` in `jit_brgemm_kernel.cpp`.
-void emit_batch_element_ptrs(ir::ir_t &ir, const conf_t &cfg,
-        const invariant_regs_t &regs, ir::vreg_t batch_ptr, dim_t disp,
-        ir::vreg_t a_ptr, ir::vreg_t b_ptr) {
+// Returns an upper bound, in elements, on the positions a level in `form`
+// addresses and moves its pointers to.
+dim_t max_level_pos(const std::vector<block_run_t> &runs, level_form_t form) {
+    return form == level_form_t::looped ? max_looped_pos(runs)
+                                        : level_size(runs);
+}
 
-    switch (cfg.loop.batch_kind) {
-        case brgemm_addr:
-            ir.load(a_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(ptr.A));
-            ir.load(b_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(ptr.B));
+// Emits one level of the loop nest from its runs in `form`, with the
+// parameters of `emit_looped_level()`. An unrolled level has no step, and the
+// pointers of the level inside stay where each block leaves them.
+void emit_level(ir::ir_t &ir, const std::vector<block_run_t> &runs,
+        level_form_t form, dim_t &pos, dim_t &inner_pos,
+        const std::function<void(dim_t, dim_t)> &body,
+        const std::function<void(dim_t, dim_t)> &step) {
+
+    switch (form) {
+        case level_form_t::unrolled:
+            emit_unrolled_level(runs, pos, body);
             break;
-        case brgemm_offs:
-            ir.load(a_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(offset.A));
-            ir.add_reg(a_ptr, regs.a_base);
-            ir.load(b_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(offset.B));
-            ir.add_reg(b_ptr, regs.b_base);
+        case level_form_t::looped:
+            emit_looped_level(ir, runs, pos, inner_pos, body, step);
             break;
-        default: assert(!"unsupported batch kind"); break;
     }
 }
 
-// One batch element.
-//
-// Derives the A and B pointers of the element, shifts them to the current M and
-// N block, then runs the reduction loop over K.
-void emit_bs_body(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
-        const m_loop_input_regs_t &regs, const out_block_t &blk,
-        const std::vector<ir::vreg_t> &acc, ir::vreg_t batch_ptr) {
+// Like the overload above, for a level whose step does not move the pointers of
+// the level inside. `step(n)` moves the pointers of the level by `n` elements.
+void emit_level(ir::ir_t &ir, const std::vector<block_run_t> &runs,
+        level_form_t form, dim_t &pos,
+        const std::function<void(dim_t, dim_t)> &body,
+        const std::function<void(dim_t)> &step) {
 
-    const ir::vreg_t a_ptr = ir.new_gpr();
-    const ir::vreg_t b_ptr = ir.new_gpr();
-    emit_batch_element_ptrs(
-            ir, cfg, regs.invariant, batch_ptr, 0, a_ptr, b_ptr);
+    dim_t inner_pos = 0;
+    emit_level(ir, runs, form, pos, inner_pos, body,
+            [&](dim_t n, dim_t) { step(n); });
+}
 
-    // Shift to the current M and N block.
-    ir.add_reg(a_ptr, regs.advancing.a_off);
-    ir.add_reg(b_ptr, regs.advancing.b_off);
-
-    // Advance to the next batch element. A single batch element has no next
-    // one, so nothing is emitted then.
-    if (cfg.loop.max_bs > 1) {
-        ir.add_imm(batch_ptr, sizeof(brgemm_batch_element_t));
-        // The classic kernel prefetches the next element for the address kind
-        // only.
-        if (cfg.loop.batch_kind == brgemm_addr) ir.prefetch(batch_ptr, 0);
-    }
+// The K level of one batch element. Reduces K into `acc` from `a_ptr` and
+// `b_ptr`, which a looped K level moves.
+void emit_k_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
+        const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
+        ir::vreg_t a_ptr, ir::vreg_t b_ptr) {
 
     // Advance the A and B pointers by `rd` elements of K.
     auto step = [&](dim_t rd) {
@@ -396,11 +459,84 @@ void emit_bs_body(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 
     // K tail needs no mask. A reduction step reads a full B vector along N
     // and one element of A, so a short tail is just fewer steps.
-    emit_looped_level(
-            ir, k_runs(cfg.loop), 0, [&](dim_t rd_loop, dim_t rd_start) {
+    dim_t k_pos = 0;
+    emit_level(ir, k_runs(cfg.loop), cfg.loop.k_form, k_pos,
+            [&](dim_t rd_loop, dim_t rd_start) {
         cp.emit_microkernel(
                 ir, cfg, blk, acc, a_ptr, b_ptr, rd_start, (int)rd_loop);
     }, step);
+}
+
+// The batch level of one block. Reduces every batch element into `acc`.
+//
+// With `var_bs` it is a runtime loop over `BS` elements. Otherwise it is the
+// `max_bs` elements of `bs_runs()` in `bs_form`.
+void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
+        const m_loop_input_regs_t &regs, const out_block_t &blk,
+        const std::vector<ir::vreg_t> &acc) {
+
+    const loop_conf_t &loop = cfg.loop;
+
+    // The only batch element, whose A and B pointers are set for the kernel.
+    if (regs.invariant.a_ptr != ir::vreg_t::none) {
+        emit_k_level(ir, cfg, cp, blk, acc, regs.invariant.a_ptr,
+                regs.invariant.b_ptr);
+        return;
+    }
+
+    if (loop.var_bs) {
+        // `BS` is known only at run time, so the batch level cannot be unrolled.
+        assert(loop.bs_form == level_form_t::looped);
+
+        const ir::vreg_t batch_ptr = ir.new_gpr();
+        ir.mov_reg(batch_ptr, regs.invariant.batch);
+
+        auto element = [&]() {
+            const ir::vreg_t a_ptr = ir.new_gpr();
+            const ir::vreg_t b_ptr = ir.new_gpr();
+
+            emit_batch_element_ptrs(ir, cfg, regs, batch_ptr, 0, a_ptr, b_ptr);
+
+            // Advance to the next batch element. A single batch element has no
+            // next one, so nothing is emitted then.
+            if (loop.max_bs > 1) {
+                ir.add_imm(batch_ptr, sizeof(brgemm_batch_element_t));
+
+                // The classic kernel prefetches the next element for the
+                // address kind only.
+                if (loop.batch_kind == brgemm_addr) ir.prefetch(batch_ptr, 0);
+            }
+
+            emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr);
+        };
+
+        if (loop.max_bs > 1)
+            ir::emit_loop_reg(ir, regs.invariant.bs, element);
+        else
+            ir::emit_loop_imm(ir, 1, element);
+
+        return;
+    }
+
+    // An unrolled batch addresses every element from the `batch` argument. A
+    // looped one moves its pointer, so it uses a copy of `batch`.
+    ir::vreg_t batch_ptr = regs.invariant.batch;
+    if (loop.bs_form == level_form_t::looped) {
+        batch_ptr = ir.new_gpr();
+        ir.mov_reg(batch_ptr, regs.invariant.batch);
+    }
+
+    const dim_t element_size = sizeof(brgemm_batch_element_t);
+    dim_t bs_pos = 0;
+
+    emit_level(ir, bs_runs(loop), loop.bs_form, bs_pos, [&](dim_t, dim_t bs) {
+        const ir::vreg_t a_ptr = ir.new_gpr();
+        const ir::vreg_t b_ptr = ir.new_gpr();
+
+        emit_batch_element_ptrs(
+                ir, cfg, regs, batch_ptr, bs * element_size, a_ptr, b_ptr);
+        emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr);
+    }, [&](dim_t bs) { ir.add_imm(batch_ptr, bs * element_size); });
 }
 
 // One stage of a post-ops call, applied to the accumulators of the block.
@@ -505,35 +641,19 @@ void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
     }
 }
 
-// One N block.
+// The output path of one block. Adds C when beta is 1, applies the post-ops
+// stages on a post-ops call, and stores the block to C, or to D on a post-ops
+// call.
 //
-// Creates the accumulators of the block with the compute path, reduces them
-// over the batch, and stores them to C, or to D on a post-ops call.
-void emit_n_block(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
-        const m_loop_input_regs_t &regs, const out_block_t &blk) {
+// It works on the accumulators as the rows of the output, one register per
+// (M row, N register).
+void emit_output_path(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
+        const m_loop_input_regs_t &regs, const out_block_t &blk,
+        const std::vector<ir::vreg_t> &acc) {
 
-    const std::vector<ir::vreg_t> acc = cp.init_accumulators(ir, cfg, blk);
-
-    // Batch reduction over the bs dimension.
-    const ir::vreg_t batch_ptr = ir.new_gpr();
-    ir.mov_reg(batch_ptr, regs.invariant.batch);
-
-    auto bs_body
-            = [&]() { emit_bs_body(ir, cfg, cp, regs, blk, acc, batch_ptr); };
-
-    if (cfg.loop.max_bs > 1)
-        ir::emit_loop_reg(ir, regs.invariant.bs, bs_body);
-    else
-        ir::emit_loop_imm(ir, 1, bs_body);
-
-    // Only the vector compute path exists so far. Its accumulators are the rows
-    // of the output, one register per (M row, N register), so the output path
-    // below works on them directly.
-    //
-    // The kernel takes only 0 and 1 for beta. C is added after the reduction,
-    // as in the classic kernel. Loading it into the accumulators up front
-    // would make every FMA chain wait for those loads.
-    if (cfg.output.beta != 0.0f) {
+    // The kernel takes only 0 and 1 for beta. C is added here unless the
+    // accumulators started from it.
+    if (cfg.output.beta != 0.0f && !cp.loads_accumulators()) {
         for (int bd = 0; bd < blk.bd_block; bd++) {
             for (int ld = 0; ld < blk.ld_block2; ld++) {
                 const ir::vreg_t c = ir.new_vec(cfg.output.dt_c);
@@ -578,142 +698,109 @@ void emit_n_block(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
     }
 }
 
-// Emits the loop nest of the looped schedule, which walks N inside M, as
-// `jit_brgemm_kernel_t` does.
-void emit_looped_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
+// One output block.
+//
+// Creates the accumulators of the block with the compute path and reduces them
+// over the batch. Then the compute path stores them to C when
+// `stores_accumulators()` is true. Otherwise the output path stores them to C,
+// or to D on a post-ops call.
+void emit_block(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
+        const m_loop_input_regs_t &regs, const out_block_t &blk) {
+
+    const bool acc_from_c = cfg.output.beta != 0.0f && cp.loads_accumulators();
+    const std::vector<ir::vreg_t> acc = acc_from_c
+            ? cp.load_accumulators(ir, cfg, blk, regs.advancing.c_ptr)
+            : cp.init_accumulators(ir, cfg, blk);
+
+    emit_batch_level(ir, cfg, cp, regs, blk, acc);
+
+    if (cp.stores_accumulators())
+        cp.store_accumulators(ir, cfg, blk, acc, regs.advancing.store_ptr);
+    else
+        emit_output_path(ir, cfg, cp, regs, blk, acc);
+}
+
+// Returns the block of `bd_block` rows at `bd_start` and `ld_elems` elements of
+// N at `ld_start`. An N block is whole registers, except the N tail of
+// `ldb_tail` elements, which is one masked register.
+out_block_t make_out_block(const conf_t &cfg, dim_t bd_block, dim_t bd_start,
+        dim_t ld_elems, dim_t ld_start, ir::vreg_t ld_tail_mask) {
+
+    const bool is_ld_tail = ld_elems % cfg.loop.ld_block != 0;
+    return {(int)bd_block, (int)utils::div_up(ld_elems, cfg.loop.ld_block),
+            bd_start, ld_start, is_ld_tail ? ld_tail_mask : ir::vreg_t::none};
+}
+
+// Moves the pointers of the M and N levels by `bd` rows and `ld` elements of
+// N. C moves along M and N with one `add`. The A offset depends only on M, and
+// the B offset, the bias, and a per-N weights scale only on N.
+void emit_mn_step(ir::ir_t &ir, const conf_t &cfg, const advancing_regs_t &regs,
+        dim_t bd, dim_t ld) {
+
+    if (bd != 0) ir.add_imm(regs.a_off, cfg.a_off(bd, 0));
+    if (ld != 0) ir.add_imm(regs.b_off, cfg.b_off(0, ld));
+
+    // `store_ptr` is a separate register only when `beta == 1` and the kernel
+    // has a post-op, so it needs its own move only then.
+    ir.add_imm(regs.c_ptr, cfg.c_off(bd, ld));
+    if (regs.store_ptr != regs.c_ptr)
+        ir.add_imm(regs.store_ptr, cfg.c_off(bd, ld));
+
+    if (ld != 0) {
+        if (cfg.output.has_stage(output_stage_t::bias))
+            ir.add_imm(regs.bias_ptr, cfg.bias_off(ld));
+        if (cfg.output.has_stage(output_stage_t::wei_scale_per_n))
+            ir.add_imm(regs.wei_scale_ptr, cfg.wei_scale_off(ld));
+    }
+}
+
+// Emits the loop nest over the output blocks.
+//
+// `innermost_loop` decides which of the M and N levels is inside the other, as
+// in `top_loop()` of the uker.
+void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
         const m_loop_input_regs_t &regs) {
+
+    const loop_conf_t &loop = cfg.loop;
 
     // Every partial N block is the same width, so one mask serves the whole
     // kernel.
     ir::vreg_t ld_tail_mask = ir::vreg_t::none;
 
-    if (cfg.loop.ldb_tail > 0) {
+    if (loop.ldb_tail > 0) {
         ld_tail_mask = ir.new_mask();
-        ir.set_mask_imm(ld_tail_mask, cfg.loop.ldb_tail);
+        ir.set_mask_imm(ld_tail_mask, loop.ldb_tail);
     }
 
-    // Where the N pointers stand, and where they stood at the start of the
-    // current M block, in elements of N.
-    dim_t n_ptr_pos = 0, n_start = 0;
+    const std::vector<block_run_t> m = m_runs(loop);
+    const std::vector<block_run_t> n = n_runs(loop);
 
-    // Advance the N pointers by `ld` elements. `store_ptr` is a separate
-    // register only when `beta == 1` and the kernel has a post-op, so it needs
-    // its own advance only then.
-    auto n_step = [&](dim_t ld) {
-        ir.add_imm(regs.advancing.b_off, cfg.b_off(0, ld));
-        ir.add_imm(regs.advancing.c_ptr, cfg.c_off(0, ld));
-        if (regs.advancing.store_ptr != regs.advancing.c_ptr)
-            ir.add_imm(regs.advancing.store_ptr, cfg.c_off(0, ld));
-        if (cfg.output.has_stage(output_stage_t::bias))
-            ir.add_imm(regs.advancing.bias_ptr, cfg.bias_off(ld));
-        if (cfg.output.has_stage(output_stage_t::wei_scale_per_n))
-            ir.add_imm(regs.advancing.wei_scale_ptr, cfg.wei_scale_off(ld));
-    };
+    // Where the M and N pointers stand, in elements from the first block.
+    dim_t m_pos = 0, n_pos = 0;
 
-    // Advance the M pointers by `bd` rows and move the N pointers back to
-    // where they stood at the start of the M block. C moves along M and N
-    // with one `add`. The bias and a per-N weights scale do not depend on M,
-    // so they only move back. The B offset depends only on N, so it is set
-    // instead of moved.
-    auto m_step = [&](dim_t bd) {
-        const dim_t ld = n_start - n_ptr_pos;
-        ir.add_imm(regs.advancing.a_off, cfg.a_off(bd, 0));
-        ir.add_imm(regs.advancing.c_ptr, cfg.c_off(bd, ld));
-        if (regs.advancing.store_ptr != regs.advancing.c_ptr)
-            ir.add_imm(regs.advancing.store_ptr, cfg.c_off(bd, ld));
-        if (ld != 0) {
-            if (cfg.output.has_stage(output_stage_t::bias))
-                ir.add_imm(regs.advancing.bias_ptr, cfg.bias_off(ld));
-            if (cfg.output.has_stage(output_stage_t::wei_scale_per_n))
-                ir.add_imm(regs.advancing.wei_scale_ptr, cfg.wei_scale_off(ld));
-            ir.mov_imm(regs.advancing.b_off, cfg.b_off(0, n_start));
-        }
-        n_ptr_pos = n_start;
-    };
-
-    emit_looped_level(
-            ir, m_runs(cfg.loop), 0, [&](dim_t bd_block, dim_t bd_start) {
-        n_start = n_ptr_pos;
-        n_ptr_pos = emit_looped_level(ir, n_runs(cfg.loop), n_start,
-                [&](dim_t ld_elems, dim_t ld_start) {
-            // An N block is whole registers, except the N tail of `ldb_tail`
-            // elements, which is one masked register.
-            const bool is_ld_tail = ld_elems % cfg.loop.ld_block != 0;
-            const out_block_t blk {(int)bd_block,
-                    (int)utils::div_up(ld_elems, cfg.loop.ld_block), bd_start,
-                    ld_start, is_ld_tail ? ld_tail_mask : ir::vreg_t::none};
-            emit_n_block(ir, cfg, cp, regs, blk);
-        }, n_step);
-    }, m_step);
-}
-
-// Emits the loop nest of the unrolled schedule, as `jit_brgemm_amx_uker_t`
-// does.
-//
-// Every M, N, and K block is emitted at its position, so no pointer moves.
-// `innermost_loop` decides which of the M and N levels is inside the other, as
-// in `top_loop()` of the uker. The kernel always runs `max_bs` batch elements
-// and does not read `BS`, as the uker does without `var_bs`.
-//
-// There are no output stages yet. The accumulators of a block start at zero,
-// or at C when beta is 1, and are stored to C unchanged. The uker also loads C
-// into the accumulators when beta is 1 (`may_load_accumulators_`).
-void emit_unrolled_nest(ir::ir_t &ir, const conf_t &cfg,
-        const compute_path_t &cp, const m_loop_input_regs_t &regs) {
-
-    // Sets `a_ptr` and `b_ptr` to the batch element `bs`. With one batch
-    // element this happens once for the whole kernel. Otherwise it happens for
-    // each element of each block, as in the uker.
-    const ir::vreg_t a_ptr = ir.new_gpr();
-    const ir::vreg_t b_ptr = ir.new_gpr();
-    auto set_ptrs = [&](dim_t bs) {
-        const dim_t disp = bs * (dim_t)sizeof(brgemm_batch_element_t);
-        emit_batch_element_ptrs(ir, cfg, regs.invariant, regs.invariant.batch,
-                disp, a_ptr, b_ptr);
-    };
-
-    if (cfg.loop.max_bs == 1) set_ptrs(0);
-
-    const std::vector<block_run_t> batch = bs_runs(cfg.loop);
-    const std::vector<block_run_t> k = k_runs(cfg.loop);
-
-    auto emit_block = [&](dim_t bd_block, dim_t bd_start, dim_t ld_elems,
-                              dim_t ld_start) {
-        // No N tail reaches this schedule, so a block is whole registers.
-        const int ld_block2 = (int)(ld_elems / cfg.loop.ld_block);
-        const out_block_t blk {
-                (int)bd_block, ld_block2, bd_start, ld_start, ir::vreg_t::none};
-
-        const std::vector<ir::vreg_t> acc = cfg.output.beta != 0.0f
-                ? cp.load_accumulators(ir, cfg, blk, regs.advancing.c_ptr)
-                : cp.init_accumulators(ir, cfg, blk);
-
-        emit_unrolled_level(batch, [&](dim_t, dim_t bs) {
-            if (cfg.loop.max_bs > 1) set_ptrs(bs);
-
-            emit_unrolled_level(k, [&](dim_t rd_block, dim_t rd_start) {
-                cp.emit_microkernel(ir, cfg, blk, acc, a_ptr, b_ptr, rd_start,
-                        (int)rd_block);
-            });
-        });
-
-        cp.store_accumulators(ir, cfg, blk, acc, regs.advancing.store_ptr);
-    };
-
-    const std::vector<block_run_t> m = m_runs(cfg.loop);
-    const std::vector<block_run_t> n = n_runs(cfg.loop);
-
-    if (cfg.loop.innermost_loop == brgemm_ld_loop_innermost) {
-        emit_unrolled_level(m, [&](dim_t bd_block, dim_t bd_start) {
-            emit_unrolled_level(n, [&](dim_t ld_elems, dim_t ld_start) {
-                emit_block(bd_block, bd_start, ld_elems, ld_start);
-            });
+    if (loop.innermost_loop == brgemm_ld_loop_innermost) {
+        emit_level(ir, m, loop.m_form, m_pos, n_pos,
+                [&](dim_t bd_block, dim_t bd_start) {
+            emit_level(ir, n, loop.n_form, n_pos,
+                    [&](dim_t ld_elems, dim_t ld_start) {
+                const out_block_t blk = make_out_block(cfg, bd_block, bd_start,
+                        ld_elems, ld_start, ld_tail_mask);
+                emit_block(ir, cfg, cp, regs, blk);
+            }, [&](dim_t ld) { emit_mn_step(ir, cfg, regs.advancing, 0, ld); });
+        }, [&](dim_t bd, dim_t ld) {
+            emit_mn_step(ir, cfg, regs.advancing, bd, ld);
         });
     } else {
-        emit_unrolled_level(n, [&](dim_t ld_elems, dim_t ld_start) {
-            emit_unrolled_level(m, [&](dim_t bd_block, dim_t bd_start) {
-                emit_block(bd_block, bd_start, ld_elems, ld_start);
-            });
+        emit_level(ir, n, loop.n_form, n_pos, m_pos,
+                [&](dim_t ld_elems, dim_t ld_start) {
+            emit_level(ir, m, loop.m_form, m_pos,
+                    [&](dim_t bd_block, dim_t bd_start) {
+                const out_block_t blk = make_out_block(cfg, bd_block, bd_start,
+                        ld_elems, ld_start, ld_tail_mask);
+                emit_block(ir, cfg, cp, regs, blk);
+            }, [&](dim_t bd) { emit_mn_step(ir, cfg, regs.advancing, bd, 0); });
+        }, [&](dim_t ld, dim_t bd) {
+            emit_mn_step(ir, cfg, regs.advancing, bd, ld);
         });
     }
 }
@@ -732,14 +819,10 @@ void emit_unrolled_nest(ir::ir_t &ir, const conf_t &cfg,
 // The output is partitioned into M blocks of `bd_block` rows, each split into
 // N blocks of `ld_block2 * ld_block` columns. Each block keeps its result in
 // registers across the whole batch and K reduction, then stores it once. The
-// schedule decides how the loop nest walks the blocks.
+// `level_form_t` of each level decides how the loop nest walks the blocks.
 void build_brgemm(const conf_t &cfg, const compute_path_t &cp, ir::ir_t &ir) {
     const m_loop_input_regs_t regs = init_m_loop_input_regs(ir, cfg);
-
-    switch (cfg.loop.schedule) {
-        case schedule_t::looped: emit_looped_nest(ir, cfg, cp, regs); break;
-        case schedule_t::unrolled: emit_unrolled_nest(ir, cfg, cp, regs); break;
-    }
+    emit_nest(ir, cfg, cp, regs);
 }
 
 // Picks the compute path the caller chose when it created the descriptor.
@@ -785,17 +868,27 @@ status_t init_loop_conf(
     VCONDCHECK_BRGEMM_IR(
             brgattr.bd_mask_level == 0, VERBOSE_UNSUPPORTED_FEATURE, "bd_mask");
 
-    // The classic kernels are picked the same way.
-    const bool unrolled = brg.can_dispatch_uker();
-    loop.schedule = unrolled ? schedule_t::unrolled : schedule_t::looped;
+    // When `can_dispatch_uker()` is true, `use_uker` is set and `max_bs` is the
+    // only batch size of a call. Otherwise the kernel reads `BS`.
+    const bool can_dispatch_uker = brg.can_dispatch_uker();
+    loop.var_bs = !can_dispatch_uker;
+
+    // Every level is unrolled when the classic kernels use the uker, and looped
+    // when they use `jit_brgemm_kernel_t`.
+    const level_form_t form
+            = can_dispatch_uker ? level_form_t::unrolled : level_form_t::looped;
+    loop.m_form = form;
+    loop.n_form = form;
+    loop.bs_form = form;
+    loop.k_form = form;
 
     const bool is_tmul = kind == compute_path_kind_t::tmul;
-    VCONDCHECK_BRGEMM_IR(IMPLICATION(is_tmul, unrolled),
-            VERBOSE_UNSUPPORTED_FEATURE, "looped schedule with tiles");
+    VCONDCHECK_BRGEMM_IR(IMPLICATION(is_tmul, !loop.var_bs),
+            VERBOSE_UNSUPPORTED_FEATURE, "variable batch size with tiles");
 
-    // Reject the uker features that the unrolled schedule does not have yet,
-    // under the conditions in which the uker uses them.
-    if (unrolled) {
+    // Reject the uker features that the kernel does not have yet, under the
+    // conditions in which the uker uses them.
+    if (can_dispatch_uker) {
         auto prefetches = [](const brgemm_prf_t &prf) {
             return prf.sprinkled || prf.dist0 >= 0 || prf.dist1 >= 0
                     || prf.dist2 >= 0 || prf.distNTA >= 0;
@@ -812,7 +905,9 @@ status_t init_loop_conf(
                 VERBOSE_UNSUPPORTED_FEATURE, "C prefetch");
     }
 
-    loop.innermost_loop = brg.innermost_loop;
+    // Without the uker, N is inside M, as in `jit_brgemm_kernel_t`.
+    loop.innermost_loop
+            = can_dispatch_uker ? brg.innermost_loop : brgemm_ld_loop_innermost;
     loop.batch_kind = brg.type;
     loop.max_bs = brgattr.max_bs;
     loop.load_dim = brg.load_dim;
@@ -1036,21 +1131,19 @@ status_t init_output_conf(output_conf_t &output, compute_path_kind_t kind,
 //
 // Every address the builder emits is a base register plus a build-time
 // displacement encoded in the instruction, and every pointer move is a
-// build-time immediate, so both have to fit in int32. `max_looped_pos()`
-// bounds the positions and moves along each level of the looped schedule, and
-// `level_size()` the positions of the unrolled one. Checking the offset at the
-// bounds of all levels covers every displacement and move, including the M
-// step, which moves C along M and N in one `add`. The B prefetch is not
-// checked here, see `emit_microkernel()`.
+// build-time immediate, so both have to fit in int32. `max_level_pos()` bounds
+// the positions and moves along each level for its `level_form_t`. Checking
+// the offset at the bounds of all levels covers every displacement and move,
+// including the step of the outer one of the M and N loops, which moves C
+// along M and N with one `add`. The B prefetch is not checked here, see
+// `emit_microkernel()`.
 status_t check_displacements(const conf_t &conf) {
     auto fits = [](dim_t v) { return jit_generator_t::imm_fits_int32(v); };
-    const bool looped = conf.loop.schedule == schedule_t::looped;
-    auto max_pos = [&](const std::vector<block_run_t> &runs) {
-        return looped ? max_looped_pos(runs) : level_size(runs);
-    };
-    const dim_t m = max_pos(m_runs(conf.loop));
-    const dim_t n = max_pos(n_runs(conf.loop));
-    const dim_t k = max_pos(k_runs(conf.loop));
+
+    const loop_conf_t &loop = conf.loop;
+    const dim_t m = max_level_pos(m_runs(loop), loop.m_form);
+    const dim_t n = max_level_pos(n_runs(loop), loop.n_form);
+    const dim_t k = max_level_pos(k_runs(loop), loop.k_form);
 
     VCONDCHECK_BRGEMM_IR(fits(conf.a_off(m, k)), VERBOSE_UNSUPPORTED_FEATURE,
             "A displacement overflows int32");
@@ -1064,11 +1157,11 @@ status_t check_displacements(const conf_t &conf) {
             VERBOSE_UNSUPPORTED_FEATURE,
             "weights scale displacement overflows int32");
 
-    // The unrolled schedule addresses every batch element from the start of
-    // the batch.
-    const dim_t bs = level_size(bs_runs(conf.loop));
+    // Without `var_bs`, the batch elements are addressed with displacements
+    // from the batch pointer.
+    const dim_t bs = max_level_pos(bs_runs(loop), loop.bs_form);
     const dim_t batch_off = bs * (dim_t)sizeof(brgemm_batch_element_t);
-    VCONDCHECK_BRGEMM_IR(IMPLICATION(!looped, fits(batch_off)),
+    VCONDCHECK_BRGEMM_IR(IMPLICATION(!loop.var_bs, fits(batch_off)),
             VERBOSE_UNSUPPORTED_FEATURE, "batch displacement overflows int32");
 
     return status::success;

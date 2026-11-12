@@ -44,6 +44,9 @@ struct tmul_compute_path_t : public compute_path_t {
         ir.mov_imm(c_stride_, cfg.c_off(1, 0));
     }
 
+    bool loads_accumulators() const override { return true; }
+    bool stores_accumulators() const override { return true; }
+
     // One tile per (M tile, N tile) of the block, in row order.
     std::vector<ir::vreg_t> init_accumulators(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk) const override {

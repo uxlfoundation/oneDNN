@@ -231,7 +231,7 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
             = desc()->softmax_alg == alg_kind::softmax_accurate_inf_as_zero;
 
     // Debugging/perf overrides of the full-softmax strategies:
-    // ONEDNN_SDPA_SCHEDULE={per_head,kv_head_group,auto},
+    // ONEDNN_SDPA_SCHEDULE={per_head,kv_head_group,split_kv,auto},
     // ONEDNN_SDPA_KV_PACKING={ahead,per_tile,auto} and
     // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking).
     const std::string schedule = getenv_string_user("SDPA_SCHEDULE");
@@ -239,6 +239,8 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
         bp_.schedule = sdpa_full_softmax_schedule_t::per_head;
     else if (schedule == "kv_head_group")
         bp_.schedule = sdpa_full_softmax_schedule_t::kv_head_group;
+    else if (schedule == "split_kv")
+        bp_.schedule = sdpa_full_softmax_schedule_t::split_kv;
     else
         VDISPATCH_SDPA(
                 utils::one_of(schedule, std::string(), std::string("auto")),

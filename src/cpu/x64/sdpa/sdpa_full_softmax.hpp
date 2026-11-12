@@ -50,7 +50,8 @@ struct jit_softmax_kernel_base_t;
 // Block over seq_q into q_block tiles. Each tile computes scores for all seq_kv
 // keys, then applies softmax over that axis using the JIT softmax kernel.
 // Parallelize over batch x query heads (one head or one KV-head group per work
-// item, see sdpa_full_softmax_schedule_t) x query-tiles.
+// item, see sdpa_full_softmax_schedule_t) x query-tiles, and with split_kv
+// also over seq_kv chunks.
 // -----------------------------------------------------------------------------
 
 // One mm1 (QK^T) post-op in chain order, folded into the BRGEMM store: binary
@@ -72,7 +73,17 @@ struct sdpa_mm1_post_op_t {
 // Work decomposition. per_head: a work item is one query block of one query
 // head. kv_head_group: a work item is one query block of all query heads that
 // share a KV head, so each K/V tile is read once for the whole group.
-enum class sdpa_full_softmax_schedule_t { any, per_head, kv_head_group };
+// split_kv: kv_head_group work items are also split along seq_kv, for when the
+// work items alone cannot keep all threads busy. mm1, softmax and mm2 then run
+// as separate parallel phases: mm1 and mm2 split seq_kv into chunks, the
+// softmax processes complete score rows, and the mm2 results of the chunks are
+// summed.
+enum class sdpa_full_softmax_schedule_t {
+    any,
+    per_head,
+    kv_head_group,
+    split_kv
+};
 
 // Where K and V are packed when BRGEMM needs them packed. ahead: whole tensors
 // are packed into shared scratch before the main loop. per_tile: a work item
@@ -193,6 +204,18 @@ private:
     size_t prob_dt_size_ = 0;
 };
 
+// Layout of the split_kv schedule. mm1 and mm2 split seq_kv into chunks of
+// mm1_chunk and mm2_chunk keys; the last chunk also takes the remainder.
+// Scores, P and the f32 mm2 results of each mm2 chunk are kept in shared
+// buffers with one row per (batch, query head, query).
+struct sdpa_full_softmax_split_kv_t {
+    dim_t mm1_chunk = 0, mm1_chunks = 0;
+    dim_t mm2_chunk = 0, mm2_chunks = 0;
+    // Buffer offsets in the shared scratch area. Without a separate P buffer
+    // (f32 compute), P is stored in place of the scores.
+    size_t scores = 0, prob = 0, partials = 0;
+};
+
 struct sdpa_full_softmax_brgemm_t {
     std::shared_ptr<brgemm_containers::brgemm_desc_container_t> descs;
     // Canonical descriptor indices; -1 denotes an unused variant.
@@ -214,7 +237,7 @@ struct sdpa_full_softmax_conf_t {
     sdpa_full_softmax_kv_packing_t kv_packing
             = sdpa_full_softmax_kv_packing_t::ahead;
     // Number of query heads in each work item: 1 for per_head,
-    // group_head for kv_head_group.
+    // group_head for kv_head_group and split_kv.
     dim_t query_heads_per_item = 1;
     // With seq_q == 1, stacking lets each mm1/mm2 call process the queries
     // from all heads in a work item together with M = query_heads_per_item,
@@ -252,14 +275,16 @@ struct sdpa_full_softmax_conf_t {
     bool mm1_select_postop = false;
     size_t amx_wsp_bytes = 0;
     sdpa_full_softmax_thread_scratch_t thread_scratch;
+    // The scratchpad holds one block per thread followed by a shared area.
     size_t scratch_per_thread = 0;
-    size_t copy_buffer_bytes = 0;
+    size_t shared_scratch_bytes = 0;
     int nthr = 0;
 
     sdpa_full_softmax_brgemm_t brgemm;
+    sdpa_full_softmax_split_kv_t split_kv;
 
     // The optional copy descriptors describe whole tensors packed ahead into
-    // shared scratch.
+    // the shared scratch area.
     utils::optional_t<tensor_copy_desc_t> q_copy_desc, k_copy_desc, v_copy_desc,
             o_copy_desc, cond_copy_desc;
     // Tile buffers for packing per tile: scratch_offset is relative to the
@@ -267,7 +292,8 @@ struct sdpa_full_softmax_conf_t {
     utils::optional_t<tensor_copy_desc_t> k_tile_desc, v_tile_desc;
 
     size_t scratch_total(int n) const {
-        return scratch_per_thread * static_cast<size_t>(n) + copy_buffer_bytes;
+        return scratch_per_thread * static_cast<size_t>(n)
+                + shared_scratch_bytes;
     }
 };
 

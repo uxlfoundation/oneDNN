@@ -77,7 +77,8 @@ struct sdpa_mm1_post_op_t {
 // work items alone cannot keep all threads busy. mm1, softmax and mm2 then run
 // as separate parallel phases: mm1 and mm2 split seq_kv into chunks, the
 // softmax processes complete score rows, and the mm2 results of the chunks are
-// summed.
+// summed. any: configure() picks the schedule with the smallest estimated
+// time.
 enum class sdpa_full_softmax_schedule_t {
     any,
     per_head,
@@ -131,6 +132,8 @@ struct sdpa_full_softmax_params_t {
     sdpa_full_softmax_schedule_t schedule = sdpa_full_softmax_schedule_t::any;
     sdpa_full_softmax_kv_packing_t kv_packing
             = sdpa_full_softmax_kv_packing_t::any;
+    // seq_kv chunks per work item for split_kv; <= 0 lets configure() choose.
+    dim_t split_kv_chunks = 0;
     // Allow stacking the query from each head of a work item into the
     // BRGEMM rows when seq_q == 1 (see sdpa_full_softmax_conf_t::stack_heads).
     bool allow_stack_heads = true;
@@ -204,13 +207,14 @@ private:
     size_t prob_dt_size_ = 0;
 };
 
-// Layout of the split_kv schedule. mm1 and mm2 split seq_kv into chunks of
-// mm1_chunk and mm2_chunk keys; the last chunk also takes the remainder.
+// Layout of the split_kv schedule. mm1 and mm2 split seq_kv into mm1_chunks
+// and mm2_chunks key ranges that start at block boundaries; the last range
+// ends at seq_kv.
 // Scores, P and the f32 mm2 results of each mm2 chunk are kept in shared
 // buffers with one row per (batch, query head, query).
 struct sdpa_full_softmax_split_kv_t {
-    dim_t mm1_chunk = 0, mm1_chunks = 0;
-    dim_t mm2_chunk = 0, mm2_chunks = 0;
+    dim_t mm1_chunks = 0;
+    dim_t mm2_chunks = 0;
     // Buffer offsets in the shared scratch area. Without a separate P buffer
     // (f32 compute), P is stored in place of the scores.
     size_t scores = 0, prob = 0, partials = 0;

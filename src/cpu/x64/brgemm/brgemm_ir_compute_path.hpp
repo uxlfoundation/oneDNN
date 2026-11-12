@@ -55,6 +55,13 @@ struct compute_path_t {
     // applies the output stages to the accumulators and stores them.
     virtual bool stores_accumulators() const { return false; }
 
+    // Average size in bytes of the code of one IR operation of a kernel on
+    // this compute path. The kernel estimates its code size from it.
+    virtual double code_bytes_per_op() const {
+        assert(!"code_bytes_per_op: not supported by the compute path");
+        return 0;
+    }
+
     // Creates the accumulators of `blk` and zeroes them.
     virtual std::vector<ir::vreg_t> init_accumulators(
             ir::ir_t &ir, const conf_t &cfg, const out_block_t &blk) const

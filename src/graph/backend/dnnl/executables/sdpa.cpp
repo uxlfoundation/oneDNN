@@ -52,8 +52,7 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     dnnl::primitive_attr attr, qk_attr, vs_attr;
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     // sdpa primitive does not accept non-default apply_to_int.
-    attr.set_fpmath_mode(
-            static_cast<dnnl::fpmath_mode>(graph_attr.get_fpmath().mode_));
+    set_graph_attributes(attr, graph_attr);
     if (with_dropout_) {
         dnnl::memory::desc dropout_mask_desc;
         auto prop_type
@@ -279,8 +278,7 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
             op->get_attr<std::string>(op_attr::vs_acc_mode)));
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     // sdpa primitive does not accept non-default apply_to_int.
-    attr.set_fpmath_mode(
-            static_cast<dnnl::fpmath_mode>(graph_attr.get_fpmath().mode_));
+    set_graph_attributes(attr, graph_attr);
 
     if (with_dropout_) {
         dnnl::memory::desc dropout_mask_desc;

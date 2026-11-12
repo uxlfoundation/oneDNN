@@ -51,11 +51,19 @@ using exec_args = std::unordered_map<int, memory>;
 
 using pd_cache_t = std::unordered_map<op_t *, graph::utils::any_t>;
 
-inline void set_graph_attributes(
-        dnnl::primitive_attr &attr, const graph_attr_t &graph_attr) {
+// Propagates graph-level attributes to a primitive attribute. The fpmath mode
+// and deterministic settings are safe for all primitives: primitives that are
+// not affected simply ignore them. However, apply_to_int combined with a
+// non-strict fpmath mode is rejected at creation time by primitives that do
+// not support fpmath mode (everything except matmul, conv, deconv, inner
+// product, and rnn), so it's only propagated when the caller's underlying
+// primitive supports it.
+inline void set_graph_attributes(dnnl::primitive_attr &attr,
+        const graph_attr_t &graph_attr, bool allows_apply_to_int = false) {
     const auto &fpmath = graph_attr.get_fpmath();
+    const bool apply_to_int = allows_apply_to_int && fpmath.apply_to_int_;
     attr.set_fpmath_mode(
-            static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
+            static_cast<dnnl::fpmath_mode>(fpmath.mode_), apply_to_int);
     attr.set_deterministic(graph_attr.get_deterministic());
 }
 

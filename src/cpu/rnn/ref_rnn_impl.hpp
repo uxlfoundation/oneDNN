@@ -55,10 +55,7 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-using namespace dnnl::impl::utils;
-using namespace dnnl::impl::memory_tracking::names;
-using namespace rnn_utils;
-#define AOC array_offset_calculator
+#define AOC utils::array_offset_calculator
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
@@ -77,33 +74,35 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     const data_type_t weights_layer_dt
             = this->desc()->weights_layer_desc.data_type;
 
-    VDISPATCH_RNN(
-            one_of(cell_kind, alg_kind::vanilla_rnn, alg_kind::vanilla_lstm,
-                    alg_kind::vanilla_gru, alg_kind::lbr_gru,
-                    alg_kind::vanilla_augru, alg_kind::lbr_augru),
+    VDISPATCH_RNN(utils::one_of(cell_kind, alg_kind::vanilla_rnn,
+                          alg_kind::vanilla_lstm, alg_kind::vanilla_gru,
+                          alg_kind::lbr_gru, alg_kind::vanilla_augru,
+                          alg_kind::lbr_augru),
             VERBOSE_BAD_ALGORITHM);
     VDISPATCH_RNN(IMPLICATION(aprop == prop_kind::forward,
-                          one_of(this->desc()->prop_kind, forward_training,
-                                  forward_inference)),
+                          utils::one_of(this->desc()->prop_kind,
+                                  forward_training, forward_inference)),
             VERBOSE_BAD_PROPKIND);
     VDISPATCH_RNN(IMPLICATION(aprop == backward,
-                          one_of(this->desc()->prop_kind, backward)),
+                          utils::one_of(this->desc()->prop_kind, backward)),
             VERBOSE_BAD_PROPKIND);
     VDISPATCH_RNN(src_layer_dt == src_type, VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_RNN(everyone_is(weights_type, weights_iter_dt, weights_layer_dt),
+    VDISPATCH_RNN(
+            utils::everyone_is(weights_type, weights_iter_dt, weights_layer_dt),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_RNN(this->set_default_params() == status::success,
             VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
-    rnn_ = zero<decltype(rnn_)>();
+    rnn_ = utils::zero<decltype(rnn_)>();
     rnn_.is_brgemm = false;
-    VDISPATCH_RNN(init_conf<class_name>(rnn_, *this->desc(), *this->attr(),
-                          this->src_md(0), this->src_md(1), this->src_md(2),
-                          this->weights_md(0), this->weights_md(1),
-                          this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
-                          this->dst_md(0), this->dst_md(1), this->dst_md(2),
-                          this->arg_md(DNNL_ARG_BIAS)),
+    VDISPATCH_RNN(
+            rnn_utils::init_conf<class_name>(rnn_, *this->desc(), *this->attr(),
+                    this->src_md(0), this->src_md(1), this->src_md(2),
+                    this->weights_md(0), this->weights_md(1),
+                    this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
+                    this->dst_md(1), this->dst_md(2),
+                    this->arg_md(DNNL_ARG_BIAS)),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "rnn");
 
     VDISPATCH_RNN(IMPLICATION(rnn_.is_f16_conf(), !rnn_.is_training),
@@ -149,7 +148,7 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
 
     // Set weights descriptors to desired format
     memory_desc_t new_weights_layer_md = *this->weights_md(0);
-    CHECK(set_expected_desc(
+    CHECK(rnn_utils::set_expected_desc(
             rnn_, new_weights_layer_md, rnn_utils::weights_type_t::layer));
     if (this->weights_layer_md_.format_kind == format_kind::any) {
         this->weights_layer_md_ = new_weights_layer_md;
@@ -159,7 +158,7 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     }
 
     memory_desc_t new_weights_iter_md = *this->weights_md(1);
-    CHECK(set_expected_desc(
+    CHECK(rnn_utils::set_expected_desc(
             rnn_, new_weights_iter_md, rnn_utils::weights_type_t::iter));
     if (this->weights_iter_md_.format_kind == format_kind::any) {
         this->weights_iter_md_ = new_weights_iter_md;
@@ -171,7 +170,7 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     if (rnn_.is_lstm_projection) {
         memory_desc_t new_weights_projection_md
                 = *this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION);
-        CHECK(set_expected_desc(rnn_, new_weights_projection_md,
+        CHECK(rnn_utils::set_expected_desc(rnn_, new_weights_projection_md,
                 rnn_utils::weights_type_t::projection));
         if (this->weights_projection_md_.format_kind == format_kind::any) {
             this->weights_projection_md_ = new_weights_projection_md;
@@ -188,11 +187,11 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
                     == status::success,
             "layout consistency check failed");
 
-    set_conf<class_name>(rnn_, *this->desc(), this->weights_md(0),
+    rnn_utils::set_conf<class_name>(rnn_, *this->desc(), this->weights_md(0),
             this->weights_md(1), this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
             this->diff_weights_md(0), this->diff_weights_md(1),
             this->arg_md(DNNL_ARG_DIFF_WEIGHTS_PROJECTION));
-    set_workspace_sizes<class_name>(rnn_, *this->desc());
+    rnn_utils::set_workspace_sizes<class_name>(rnn_, *this->desc());
 
     // INIT MATMULS
     auto init_matmul_pd
@@ -320,34 +319,35 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     const data_type_t weights_layer_dt
             = this->desc()->weights_layer_desc.data_type;
 #if DNNL_X64
-    bool is_f32 = everyone_is(
+    bool is_f32 = utils::everyone_is(
             data_type::f32, src_layer_dt, weights_iter_dt, weights_layer_dt);
-    bool is_impl_bf16 = everyone_is(data_type::bf16, src_type, weights_type);
-    bool is_fpmath_bf16 = one_of(
+    bool is_impl_bf16
+            = utils::everyone_is(data_type::bf16, src_type, weights_type);
+    bool is_fpmath_bf16 = utils::one_of(
             this->attr()->fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any);
     bool allow_down_conversion_to_bf16
             = is_f32 && is_fpmath_bf16 && is_impl_bf16;
 #endif
 
     // Initialized rnn_ early to get correct verbose output
-    rnn_ = zero<decltype(rnn_)>();
+    rnn_ = utils::zero<decltype(rnn_)>();
     rnn_.is_brgemm = true;
-    VDISPATCH_RNN(
-            one_of(cell_kind, alg_kind::vanilla_rnn, alg_kind::vanilla_lstm,
-                    alg_kind::vanilla_gru, alg_kind::lbr_gru,
-                    alg_kind::vanilla_augru, alg_kind::lbr_augru),
+    VDISPATCH_RNN(utils::one_of(cell_kind, alg_kind::vanilla_rnn,
+                          alg_kind::vanilla_lstm, alg_kind::vanilla_gru,
+                          alg_kind::lbr_gru, alg_kind::vanilla_augru,
+                          alg_kind::lbr_augru),
             VERBOSE_BAD_ALGORITHM);
     VDISPATCH_RNN(IMPLICATION(aprop == prop_kind::forward,
-                          one_of(this->desc()->prop_kind, forward_training,
-                                  forward_inference)),
+                          utils::one_of(this->desc()->prop_kind,
+                                  forward_training, forward_inference)),
             VERBOSE_BAD_PROPKIND);
     // LBR is not supported for training in brgemm
-    VDISPATCH_RNN(IMPLICATION(one_of(cell_kind, alg_kind::lbr_gru,
+    VDISPATCH_RNN(IMPLICATION(utils::one_of(cell_kind, alg_kind::lbr_gru,
                                       alg_kind::lbr_augru),
                           this->desc()->prop_kind == forward_inference),
             VERBOSE_BAD_ALGORITHM);
     VDISPATCH_RNN(IMPLICATION(aprop == backward,
-                          one_of(this->desc()->prop_kind, backward)),
+                          utils::one_of(this->desc()->prop_kind, backward)),
             VERBOSE_BAD_PROPKIND);
     // TODO: Enable diff_weights_overwrite support
     VDISPATCH_RNN(IMPLICATION(aprop == backward,
@@ -358,12 +358,12 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
 #if DNNL_X64
     VDISPATCH_RNN(IMPLICATION(!allow_down_conversion_to_bf16,
                           src_layer_dt == src_type
-                                  && everyone_is(weights_type, weights_iter_dt,
-                                          weights_layer_dt)),
+                                  && utils::everyone_is(weights_type,
+                                          weights_iter_dt, weights_layer_dt)),
             VERBOSE_UNSUPPORTED_DT);
 #else
     VDISPATCH_RNN(src_layer_dt == src_type
-                    && everyone_is(
+                    && utils::everyone_is(
                             weights_type, weights_iter_dt, weights_layer_dt),
             VERBOSE_UNSUPPORTED_DT);
 #endif
@@ -371,16 +371,17 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
-    VDISPATCH_RNN(init_conf<class_name>(rnn_, *this->desc(), *this->attr(),
-                          this->src_md(0), this->src_md(1), this->src_md(2),
-                          this->weights_md(0), this->weights_md(1),
-                          this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
-                          this->dst_md(0), this->dst_md(1), this->dst_md(2),
-                          this->arg_md(DNNL_ARG_BIAS)),
+    VDISPATCH_RNN(
+            rnn_utils::init_conf<class_name>(rnn_, *this->desc(), *this->attr(),
+                    this->src_md(0), this->src_md(1), this->src_md(2),
+                    this->weights_md(0), this->weights_md(1),
+                    this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
+                    this->dst_md(1), this->dst_md(2),
+                    this->arg_md(DNNL_ARG_BIAS)),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "rnn");
 
-    VDISPATCH_RNN(IMPLICATION(one_of(this->desc()->prop_kind, forward_training,
-                                      backward),
+    VDISPATCH_RNN(IMPLICATION(utils::one_of(this->desc()->prop_kind,
+                                      forward_training, backward),
                           (rnn_.is_xf16_conf() || rnn_.is_f32_conf())),
             VERBOSE_PROPKIND_DT_MISMATCH);
 
@@ -485,7 +486,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     VDISPATCH_RNN(this->attr()->has_default_values(attr_mask),
             VERBOSE_UNSUPPORTED_ATTR);
 
-    set_conf<class_name>(rnn_, *this->desc(), this->weights_md(0),
+    rnn_utils::set_conf<class_name>(rnn_, *this->desc(), this->weights_md(0),
             this->weights_md(1), this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
             this->diff_weights_md(0), this->diff_weights_md(1),
             this->arg_md(DNNL_ARG_DIFF_WEIGHTS_PROJECTION));
@@ -494,7 +495,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
             sizeof(src_layer_t), sizeof(scratch_t)));
 
     // must be called after configure_brgemm()
-    set_workspace_sizes<class_name>(rnn_, *this->desc());
+    rnn_utils::set_workspace_sizes<class_name>(rnn_, *this->desc());
 
 #if DNNL_X64
     // Only AMX LSTM supports s8s8 now
@@ -504,7 +505,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
 
     // Set weights descriptors to desired format
     memory_desc_t new_weights_layer_md = *this->weights_md(0);
-    CHECK(set_expected_desc(
+    CHECK(rnn_utils::set_expected_desc(
             rnn_, new_weights_layer_md, rnn_utils::weights_type_t::layer));
     if (this->weights_layer_md_.format_kind == format_kind::any) {
         this->weights_layer_md_ = new_weights_layer_md;
@@ -514,7 +515,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     }
 
     memory_desc_t new_weights_iter_md = *this->weights_md(1);
-    CHECK(set_expected_desc(
+    CHECK(rnn_utils::set_expected_desc(
             rnn_, new_weights_iter_md, rnn_utils::weights_type_t::iter));
     if (this->weights_iter_md_.format_kind == format_kind::any) {
         this->weights_iter_md_ = new_weights_iter_md;
@@ -525,7 +526,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     if (rnn_.is_lstm_projection) {
         memory_desc_t new_weights_projection_md
                 = *this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION);
-        CHECK(set_expected_desc(rnn_, new_weights_projection_md,
+        CHECK(rnn_utils::set_expected_desc(rnn_, new_weights_projection_md,
                 rnn_utils::weights_type_t::projection));
         if (this->weights_projection_md_.format_kind == format_kind::any) {
             this->weights_projection_md_ = new_weights_projection_md;
@@ -600,7 +601,8 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init(
     }
     if (st == status::success) {
         size_t scratchpad_sz {0}, ws_sz {0};
-        get_scratchpad_and_workspace_sizes(rnn_, scratchpad_sz, ws_sz);
+        rnn_utils::get_scratchpad_and_workspace_sizes(
+                rnn_, scratchpad_sz, ws_sz);
 
         init_scratchpad(scratchpad_sz);
         // initialize the workspace if needed
@@ -627,8 +629,8 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
         static constexpr size_t data_align
                 = alignof(float); // "worst" case scenario
         static constexpr size_t perf_align = 4096;
-        scratchpad.book(key_rnn_space, scratchpad_sz, data_size, data_align,
-                perf_align);
+        scratchpad.book(memory_tracking::names::key_rnn_space, scratchpad_sz,
+                data_size, data_align, perf_align);
     }
 
     const int max_nparts
@@ -637,14 +639,17 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
             ? 2
             : 1;
     const dim_t ptr_wei_sz = rnn_.n_layer * rnn_.n_dir * max_nparts;
-    scratchpad.template book<float *>(key_rnn_ptrs_wei_layer, ptr_wei_sz);
-    scratchpad.template book<float *>(key_rnn_ptrs_wei_iter, ptr_wei_sz);
-    scratchpad.template book<float *>(key_rnn_ptrs_wei_projection, ptr_wei_sz);
+    scratchpad.template book<float *>(
+            memory_tracking::names::key_rnn_ptrs_wei_layer, ptr_wei_sz);
+    scratchpad.template book<float *>(
+            memory_tracking::names::key_rnn_ptrs_wei_iter, ptr_wei_sz);
+    scratchpad.template book<float *>(
+            memory_tracking::names::key_rnn_ptrs_wei_projection, ptr_wei_sz);
 
     const auto bias_dt_size
             = types::data_type_size(this->arg_md(DNNL_ARG_BIAS)->data_type);
-    scratchpad.template book<void *>(
-            key_rnn_ptrs_bia, ptr_wei_sz * bias_dt_size);
+    scratchpad.template book<void *>(memory_tracking::names::key_rnn_ptrs_bia,
+            ptr_wei_sz * bias_dt_size);
 
 #if DNNL_X64 || DNNL_AARCH64
     if (rnn_.is_brgemm)
@@ -673,7 +678,8 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
     }
 
     scratchpad.template book<void *>(
-            key_nested_multiple + 0, max_nested_scratchpad_size);
+            memory_tracking::names::key_nested_multiple + 0,
+            max_nested_scratchpad_size);
 }
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
@@ -801,7 +807,8 @@ template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 const std::shared_ptr<primitive_t> &
 dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
-        acc_type>::get_matmul_layer(cell_position_t cell_position) const {
+        acc_type>::get_matmul_layer(rnn_utils::cell_position_t cell_position)
+        const {
     const auto &rnn = pd()->rnn_;
     const auto src_ld = rnn.src_layer_ld(cell_position);
     const auto LDB1 = rnn.src_layer_ld_;
@@ -822,7 +829,8 @@ template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 const std::shared_ptr<primitive_t> &
 dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
-        acc_type>::get_matmul_iter(cell_position_t cell_position) const {
+        acc_type>::get_matmul_iter(rnn_utils::cell_position_t cell_position)
+        const {
     const auto &rnn = pd()->rnn_;
     const auto src_ld = rnn.src_iter_ld(cell_position);
     const auto LDB1 = rnn.src_iter_ld_;
@@ -843,7 +851,8 @@ template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 const std::shared_ptr<primitive_t> &
 dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
-        acc_type>::get_matmul_part2(cell_position_t cell_position) const {
+        acc_type>::get_matmul_part2(rnn_utils::cell_position_t cell_position)
+        const {
     const auto &rnn = pd()->rnn_;
     const auto ldb = rnn.dst_iter_part2_ld(cell_position);
     const auto LDB1 = rnn.ws_states_layer_ld;
@@ -898,7 +907,8 @@ rnn_matmul_sig((ref_rnn_common_t<aprop, src_type, weights_type,
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
-            key_nested_multiple, matmul_prim->pd()->scratchpad_registry());
+            memory_tracking::names::key_nested_multiple,
+            matmul_prim->pd()->scratchpad_registry());
     matmul_ctx.set_scratchpad_grantor(nested_grantor);
 
     return matmul_prim->execute(matmul_ctx);
@@ -958,7 +968,7 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
             weights_projection_, rnn.n_layer, rnn.n_dir);
     const AOC<const float, 3> weights_peephole(
             weights_peephole_, rnn.n_layer, rnn.n_dir, 3 * rnn.dhc);
-    bias_linear_exec_aoc_t bias(rnn, bias_);
+    rnn_utils::bias_linear_exec_aoc_t bias(rnn, bias_);
     const AOC<gemm_acc_t, 3> diff_weights_layer(diff_weights_layer_,
             rnn.n_layer, rnn.n_dir,
             rnn.diff_weights_layer_nld * rnn.diff_weights_layer_ld);
@@ -991,9 +1001,9 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         if (IMPLICATION(rnn.merge_gemm_layer, aprop != target_prop))
             return dnnl_success;
 
-        cell_position_t cell_position = middle_cell;
-        if (lay == 0) cell_position |= first_layer;
-        cell_position |= merged_layer;
+        rnn_utils::cell_position_t cell_position = rnn_utils::middle_cell;
+        if (lay == 0) cell_position |= rnn_utils::first_layer;
+        cell_position |= rnn_utils::merged_layer;
 
         const src_layer_t *src_layer = lay == 0 && rnn.skip_src_layer_copy()
                 ? src_layer_
@@ -1051,25 +1061,26 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
 
             // the cell_position is used only when skip_data_copy is
             // supported currently supported only for forward
-            cell_position_t cell_position = middle_cell;
-            if (iter == 0) cell_position |= first_iter;
-            if (lay == 0) cell_position |= first_layer;
-            if (iter == rnn.n_iter - 1) cell_position |= last_iter;
-            if (lay == rnn.n_layer - 1) cell_position |= last_layer;
+            rnn_utils::cell_position_t cell_position = rnn_utils::middle_cell;
+            if (iter == 0) cell_position |= rnn_utils::first_iter;
+            if (lay == 0) cell_position |= rnn_utils::first_layer;
+            if (iter == rnn.n_iter - 1) cell_position |= rnn_utils::last_iter;
+            if (lay == rnn.n_layer - 1) cell_position |= rnn_utils::last_layer;
 
             // The dst_* paths should be before the src_* paths as
             // the later will override cell_src_layer and
             // cell_src_iter appropriately for 1st layer and 1st
             // iter.
-            const bool last_iter_skip_copy
-                    = rnn.skip_dst_iter_copy() && (cell_position & last_iter);
+            const bool last_iter_skip_copy = rnn.skip_dst_iter_copy()
+                    && (cell_position & rnn_utils::last_iter);
             if (last_iter_skip_copy) {
                 cell_dst_layer = dst_iter_ + dst_iter_mdw.off(lay, dir, 0, 0);
                 cell_src_layer
                         = dst_iter_ + dst_iter_mdw.off(lay - 1, dir, 0, 0);
             }
 
-            if (rnn.skip_dst_layer_copy() && (cell_position & last_layer)) {
+            if (rnn.skip_dst_layer_copy()
+                    && (cell_position & rnn_utils::last_layer)) {
                 // Note: for last layer and last iter, the output is in dst_layer
                 // and still need to be copied to dst_iter
                 cell_dst_layer = dst_layer_ + dst_layer_mdw.off(iter, 0, 0);
@@ -1080,24 +1091,26 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                         ? dst_layer_ + dst_layer_mdw.off(iter - 1, 0, 0)
                         : cell_src_iter;
             }
-            if (rnn.skip_src_iter_copy() && (cell_position & first_iter))
+            if (rnn.skip_src_iter_copy()
+                    && (cell_position & rnn_utils::first_iter))
                 cell_src_iter = src_iter_ + src_iter_mdw.off(lay, dir, 0, 0);
 
-            if (rnn.skip_src_layer_copy() && (cell_position & first_layer))
+            if (rnn.skip_src_layer_copy()
+                    && (cell_position & rnn_utils::first_layer))
                 cell_src_layer = src_layer_ + src_layer_mdw.off(iter, 0, 0);
 
             // because the c state is always f32 and require no
             // conversion, we can always skip to copy for the 1st
             // and last iteration
             if (iter == 0 && src_iter_c_) {
-                cell_src_iter_c = inc_ptr(src_iter_c_, rnn.src_iter_c_dt,
-                        src_iter_c_mdw.off(lay, dir, 0, 0));
-                cell_position |= c_state_first_iter;
+                cell_src_iter_c = rnn_utils::inc_ptr(src_iter_c_,
+                        rnn.src_iter_c_dt, src_iter_c_mdw.off(lay, dir, 0, 0));
+                cell_position |= rnn_utils::c_state_first_iter;
             }
             if (iter == rnn.n_iter - 1 && dst_iter_c_) {
-                cell_dst_iter_c = inc_ptr(dst_iter_c_, rnn.dst_iter_c_dt,
-                        dst_iter_c_mdw.off(lay, dir, 0, 0));
-                cell_position |= c_state_last_iter;
+                cell_dst_iter_c = rnn_utils::inc_ptr(dst_iter_c_,
+                        rnn.dst_iter_c_dt, dst_iter_c_mdw.off(lay, dir, 0, 0));
+                cell_position |= rnn_utils::c_state_last_iter;
             }
             const size_t sg_start_idx = rnn.n_iter_scratch_gates == 1
                     ? static_cast<size_t>(0)
@@ -1205,7 +1218,8 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                                         * rnn.scratch_gates_nld
                                         * rnn.scratch_gates_ld,
                         rnn.scratch_gates_ld, states_iter, states_iter_ld,
-                        rnn.diff_weights_beta(cell_position_t::merged_iter),
+                        rnn.diff_weights_beta(
+                                rnn_utils::cell_position_t::merged_iter),
                         &(diff_weights_iter(lay, dir, 0)),
                         rnn.diff_weights_iter_ld));
             }
@@ -1217,8 +1231,10 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                         1.0f, (weights_t *)scratch_gates_, rnn.scratch_gates_ld,
                         states_iter, states_iter_ld,
                         rnn.diff_weights_beta(niter_merge_gemm_iter
-                                        ? cell_position_t::middle_cell
-                                        : cell_position_t::merged_iter),
+                                        ? rnn_utils::cell_position_t::
+                                                  middle_cell
+                                        : rnn_utils::cell_position_t::
+                                                  merged_iter),
                         &(diff_weights_iter(lay, dir, 0)),
                         rnn.diff_weights_iter_ld));
             }
@@ -1231,7 +1247,7 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
 
 // for bf32 src_data_t(bf16) and input_data_t(f32) types can be different.
 template <typename src_data_t, typename input_data_t>
-void copy_init_layer_fwd_template(const rnn_conf_t &rnn,
+void copy_init_layer_fwd_template(const rnn_utils::rnn_conf_t &rnn,
         src_data_t *__restrict ws_states_layer_,
         const input_data_t *__restrict xt_, const memory_desc_wrapper &xt_d) {
 
@@ -1243,7 +1259,7 @@ void copy_init_layer_fwd_template(const rnn_conf_t &rnn,
         src_data_t *ws_l2r_ptr = &(ws_states_layer(0, it + 1, b, 0));
         src_data_t *ws_r2l_ptr
                 = &(ws_states_layer(rnn.n_dir - 1, rnn.n_iter - it, b, 0));
-        if (rnn.exec_dir != r2l) {
+        if (rnn.exec_dir != rnn_utils::r2l) {
             if (rnn.is_bf32()) {
                 cvt_float_to_bfloat16(
                         (bfloat16_t *)ws_l2r_ptr, (const float *)xxt, rnn.slc);
@@ -1253,7 +1269,7 @@ void copy_init_layer_fwd_template(const rnn_conf_t &rnn,
                     ws_l2r_ptr[c] = static_cast<src_data_t>(xxt[c]);
             }
         }
-        if (rnn.exec_dir != l2r) {
+        if (rnn.exec_dir != rnn_utils::l2r) {
             if (rnn.is_bf32()) {
                 cvt_float_to_bfloat16(
                         (bfloat16_t *)ws_r2l_ptr, (const float *)xxt, rnn.slc);
@@ -1267,7 +1283,7 @@ void copy_init_layer_fwd_template(const rnn_conf_t &rnn,
 }
 
 template <typename acc_data_t>
-void copy_init_layer_bwd_template(const rnn_conf_t &rnn,
+void copy_init_layer_bwd_template(const rnn_utils::rnn_conf_t &rnn,
         acc_data_t *ws_diff_states_layer_, const acc_data_t *diff_dst_layer_,
         const memory_desc_wrapper &diff_dst_layer_d) {
     const AOC<acc_data_t, 5> ws_diff_states_layer(ws_diff_states_layer_,
@@ -1275,7 +1291,7 @@ void copy_init_layer_bwd_template(const rnn_conf_t &rnn,
             rnn.ws_diff_states_layer_ld);
 
     switch (rnn.exec_dir) {
-        case bi_concat:
+        case rnn_utils::bi_concat:
             parallel_nd(rnn.n_iter, rnn.mb, [&](dim_t it, dim_t b) {
                 const auto diff_dst_layer_x
                         = diff_dst_layer_ + diff_dst_layer_d.blk_off(it, b);
@@ -1288,7 +1304,7 @@ void copy_init_layer_bwd_template(const rnn_conf_t &rnn,
                 }
             });
             break;
-        case bi_sum:
+        case rnn_utils::bi_sum:
             parallel_nd(rnn.n_iter, rnn.mb, [&](dim_t it, dim_t b) {
                 const auto diff_dst_layer_x
                         = diff_dst_layer_ + diff_dst_layer_d.blk_off(it, b);
@@ -1301,7 +1317,7 @@ void copy_init_layer_bwd_template(const rnn_conf_t &rnn,
                 }
             });
             break;
-        case l2r:
+        case rnn_utils::l2r:
             parallel_nd(rnn.n_iter, rnn.mb, [&](dim_t it, dim_t b) {
                 const auto diff_dst_layer_x
                         = diff_dst_layer_ + diff_dst_layer_d.blk_off(it, b);
@@ -1311,7 +1327,7 @@ void copy_init_layer_bwd_template(const rnn_conf_t &rnn,
                 }
             });
             break;
-        case r2l:
+        case rnn_utils::r2l:
             parallel_nd(rnn.n_iter, rnn.mb, [&](dim_t it, dim_t b) {
                 const auto diff_dst_layer_x = diff_dst_layer_
                         + diff_dst_layer_d.blk_off(rnn.n_iter - it - 1, b);
@@ -1328,7 +1344,7 @@ void copy_init_layer_bwd_template(const rnn_conf_t &rnn,
 #define RNN_DECL_COPY_INIT_LAYER_FWD(cname) \
     template <> \
     template <typename input_data_t> \
-    void cname::copy_init_layer(const rnn_conf_t &rnn, \
+    void cname::copy_init_layer(const rnn_utils::rnn_conf_t &rnn, \
             src_layer_t *ws_states_layer_, gemm_acc_t *ws_diff_states_layer_, \
             const input_data_t *xt_, const gemm_acc_t *diff_dst_layer_) \
             const { \
@@ -1339,7 +1355,7 @@ void copy_init_layer_bwd_template(const rnn_conf_t &rnn,
 #define RNN_DECL_COPY_INIT_LAYER_BWD(cname) \
     template <> \
     template <typename input_data_t> \
-    void cname::copy_init_layer(const rnn_conf_t &rnn, \
+    void cname::copy_init_layer(const rnn_utils::rnn_conf_t &rnn, \
             src_layer_t *ws_states_layer_, gemm_acc_t *ws_diff_states_layer_, \
             const input_data_t *xt_, const gemm_acc_t *diff_dst_layer_) \
             const { \
@@ -1353,8 +1369,8 @@ void copy_init_layer_bwd_template(const rnn_conf_t &rnn,
  * If input states are of type f32 then h state is quantized and c_state is copied
  * */
 template <typename src_data_t, typename input_data_t>
-void copy_init_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
-        src_data_t *__restrict ws_states_iter_,
+void copy_init_iter_fwd_template(const rnn_utils::rnn_conf_t &rnn,
+        const rnn_pd_t *pd, src_data_t *__restrict ws_states_iter_,
         void *__restrict ws_states_iter_c_,
         const input_data_t *__restrict src_iter_,
         const memory_desc_wrapper &src_iter_d,
@@ -1414,9 +1430,9 @@ void copy_init_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 }
 
 template <typename acc_data_t>
-void copy_init_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
-        acc_data_t *ws_diff_states_iter_, acc_data_t *ws_diff_states_iter_c_,
-        const acc_data_t *diff_dst_iter_,
+void copy_init_iter_bwd_template(const rnn_utils::rnn_conf_t &rnn,
+        const rnn_pd_t *pd, acc_data_t *ws_diff_states_iter_,
+        acc_data_t *ws_diff_states_iter_c_, const acc_data_t *diff_dst_iter_,
         const memory_desc_wrapper diff_dst_iter_d,
         const float *diff_dst_iter_c_,
         const memory_desc_wrapper diff_dst_iter_c_d) {
@@ -1429,11 +1445,13 @@ void copy_init_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
     if (diff_dst_iter_) {
         parallel_nd(rnn.n_layer, rnn.n_dir, rnn.mb,
                 [&](dim_t lay, dim_t dir, dim_t b) {
-            array_copy(&(ws_diff_states_iter(lay, dir, rnn.n_iter, b, 0)),
+            utils::array_copy(
+                    &(ws_diff_states_iter(lay, dir, rnn.n_iter, b, 0)),
                     diff_dst_iter_ + diff_dst_iter_d.blk_off(lay, dir, b),
                     rnn.dic);
             if (pd->cell_kind() == alg_kind::vanilla_lstm)
-                array_copy(&(ws_diff_states_iter_c(lay, dir, rnn.n_iter, b, 0)),
+                utils::array_copy(
+                        &(ws_diff_states_iter_c(lay, dir, rnn.n_iter, b, 0)),
                         diff_dst_iter_c_
                                 + diff_dst_iter_c_d.blk_off(lay, dir, b),
                         rnn.dhc);
@@ -1453,7 +1471,7 @@ void copy_init_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 #define RNN_DECL_COPY_INIT_ITER_FWD(cname) \
     template <> \
     template <typename input_data_t> \
-    void cname::copy_init_iter(const rnn_conf_t &rnn, \
+    void cname::copy_init_iter(const rnn_utils::rnn_conf_t &rnn, \
             src_layer_t *__restrict ws_states_iter_, \
             void *__restrict ws_states_iter_c_, \
             gemm_acc_t *__restrict ws_diff_states_iter_, \
@@ -1472,7 +1490,7 @@ void copy_init_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 #define RNN_DECL_COPY_INIT_ITER_BWD(cname) \
     template <> \
     template <typename input_data_t> \
-    void cname::copy_init_iter(const rnn_conf_t &rnn, \
+    void cname::copy_init_iter(const rnn_utils::rnn_conf_t &rnn, \
             src_layer_t *ws_states_iter_, void *ws_states_iter_c_, \
             gemm_acc_t *ws_diff_states_iter_, \
             gemm_acc_t *ws_diff_states_iter_c_, const input_data_t *src_iter_, \
@@ -1486,9 +1504,10 @@ void copy_init_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
     }
 
 template <typename src_data_t, typename dst_layer_dt, typename dst_iter_dt>
-void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
-        dst_layer_dt *dst_layer_, memory_desc_wrapper &dst_layer_d,
-        const dst_iter_dt *dst_iter_, const memory_desc_wrapper &dst_iter_d,
+void copy_res_layer_fwd_template(const rnn_utils::rnn_conf_t &rnn,
+        const rnn_pd_t *pd, dst_layer_dt *dst_layer_,
+        memory_desc_wrapper &dst_layer_d, const dst_iter_dt *dst_iter_,
+        const memory_desc_wrapper &dst_iter_d,
         const src_data_t *ws_states_layer_) {
 
     const AOC<const src_data_t, 5> ws_states_layer(ws_states_layer_,
@@ -1499,7 +1518,8 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 
     const bool dequantize
             = pd->dst_md(0)->data_type == data_type::f32 && rnn.is_int8_conf();
-    const bool dequantize_at_copy = dequantize && rnn.exec_dir != bi_sum;
+    const bool dequantize_at_copy
+            = dequantize && rnn.exec_dir != rnn_utils::bi_sum;
 
     // minor optimization helper for a compiler
     static constexpr bool rnn_u8u8_case
@@ -1548,16 +1568,16 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
     parallel_nd(rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0), rnn.mb,
             [&](dim_t it, dim_t b) {
         int dir = 0;
-        if (rnn.exec_dir != r2l) {
+        if (rnn.exec_dir != rnn_utils::r2l) {
             const auto *ss = &ws_states_layer(rnn.n_layer, dir, it + 1, b, 0);
             auto *dd = &dst_layer_[dst_layer_d.blk_off(it, b, dir * rnn.dlc)];
             copy_vec(dd, ss);
             dir = 1;
         }
-        if (rnn.exec_dir != l2r) {
+        if (rnn.exec_dir != rnn_utils::l2r) {
             const auto *ss
                     = &ws_states_layer(rnn.n_layer, dir, rnn.n_iter - it, b, 0);
-            if (rnn.exec_dir == bi_sum) {
+            if (rnn.exec_dir == rnn_utils::bi_sum) {
                 auto *dd = &dst_layer_[dst_layer_d.blk_off(it, b, 0)];
                 acc_vec(dd, ss);
             } else {
@@ -1571,7 +1591,7 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
         parallel_nd(rnn.mb, [&](dim_t b) {
             const dim_t it = rnn.n_iter - 1;
             int dir = 0;
-            if (rnn.exec_dir != r2l) {
+            if (rnn.exec_dir != rnn_utils::r2l) {
                 const auto *ss = dst_iter_
                         + dst_iter_d.blk_off(rnn.n_layer - 1, dir, b, 0);
                 auto *dd = &dst_layer_[dst_layer_d.blk_off(
@@ -1579,10 +1599,10 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
                 copy_vec(dd, (src_data_t *)ss);
                 dir = 1;
             }
-            if (rnn.exec_dir != l2r) {
+            if (rnn.exec_dir != rnn_utils::l2r) {
                 const auto *ss = dst_iter_
                         + dst_iter_d.blk_off(rnn.n_layer - 1, dir, b, 0);
-                if (rnn.exec_dir == bi_sum) {
+                if (rnn.exec_dir == rnn_utils::bi_sum) {
                     auto *dd = &dst_layer_[dst_layer_d.blk_off(it, b, 0)];
                     acc_vec(dd, (src_data_t *)ss);
                 } else {
@@ -1596,7 +1616,7 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 }
 
 template <typename acc_data_t>
-void copy_res_layer_bwd_template(const rnn_conf_t &rnn,
+void copy_res_layer_bwd_template(const rnn_utils::rnn_conf_t &rnn,
         acc_data_t *diff_src_layer_, memory_desc_wrapper &diff_src_layer_d,
         const acc_data_t *ws_diff_states_layer_) {
     const AOC<const acc_data_t, 5> ws_diff_states_layer(ws_diff_states_layer_,
@@ -1607,9 +1627,10 @@ void copy_res_layer_bwd_template(const rnn_conf_t &rnn,
         int dir = 0;
         for (int s = 0; s < rnn.slc; s++) {
             acc_data_t *dst_addr = diff_src_layer_
-                    + diff_src_layer_d.blk_off(
-                            (rnn.exec_dir == r2l) ? rnn.n_iter - 1 - it : it, b,
-                            dir * rnn.slc + s);
+                    + diff_src_layer_d.blk_off((rnn.exec_dir == rnn_utils::r2l)
+                                    ? rnn.n_iter - 1 - it
+                                    : it,
+                            b, dir * rnn.slc + s);
             acc_data_t res = ws_diff_states_layer(0, 0, it, b, s);
             if (rnn.n_dir - 1)
                 res += ws_diff_states_layer(0, 1, rnn.n_iter - 1 - it, b, s);
@@ -1621,7 +1642,7 @@ void copy_res_layer_bwd_template(const rnn_conf_t &rnn,
 #define RNN_DECL_COPY_RES_LAYER_FWD(cname) \
     template <> \
     template <typename dst_layer_dt, typename dst_iter_dt> \
-    void cname::copy_res_layer(const rnn_conf_t &rnn, \
+    void cname::copy_res_layer(const rnn_utils::rnn_conf_t &rnn, \
             dst_layer_dt *dst_layer_, gemm_acc_t *diff_src_layer, \
             const dst_iter_dt *dst_iter_, const src_layer_t *ws_states_layer_, \
             const gemm_acc_t *ws_diff_states_layer_) const { \
@@ -1634,7 +1655,7 @@ void copy_res_layer_bwd_template(const rnn_conf_t &rnn,
 #define RNN_DECL_COPY_RES_LAYER_BWD(cname) \
     template <> \
     template <typename dst_layer_dt, typename dst_iter_dt> \
-    void cname::copy_res_layer(const rnn_conf_t &rnn, \
+    void cname::copy_res_layer(const rnn_utils::rnn_conf_t &rnn, \
             dst_layer_dt *dst_layer_, gemm_acc_t *diff_src_layer_, \
             const dst_iter_dt *dst_iter_, const src_layer_t *ws_states_layer_, \
             const gemm_acc_t *ws_diff_states_layer_) const { \
@@ -1644,11 +1665,12 @@ void copy_res_layer_bwd_template(const rnn_conf_t &rnn,
     }
 
 template <typename src_data_t, typename dst_iter_dt, typename dst_layer_dt>
-void copy_res_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
-        dst_iter_dt *dst_iter_, memory_desc_wrapper &dst_iter_d,
-        void *dst_iter_c_, memory_desc_wrapper dst_iter_c_d,
-        const dst_layer_dt *dst_layer_, memory_desc_wrapper dst_layer_d,
-        const src_data_t *ws_states_iter_, const void *ws_states_iter_c_) {
+void copy_res_iter_fwd_template(const rnn_utils::rnn_conf_t &rnn,
+        const rnn_pd_t *pd, dst_iter_dt *dst_iter_,
+        memory_desc_wrapper &dst_iter_d, void *dst_iter_c_,
+        memory_desc_wrapper dst_iter_c_d, const dst_layer_dt *dst_layer_,
+        memory_desc_wrapper dst_layer_d, const src_data_t *ws_states_iter_,
+        const void *ws_states_iter_c_) {
     if (dst_iter_ == nullptr) return;
 
     const AOC<const src_data_t, 5> ws_states_iter(ws_states_iter_,
@@ -1695,9 +1717,10 @@ void copy_res_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 }
 
 template <typename acc_data_t>
-void copy_res_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
-        acc_data_t *diff_src_iter_, memory_desc_wrapper &diff_src_iter_d,
-        float *diff_src_iter_c_, memory_desc_wrapper &diff_src_iter_c_d,
+void copy_res_iter_bwd_template(const rnn_utils::rnn_conf_t &rnn,
+        const rnn_pd_t *pd, acc_data_t *diff_src_iter_,
+        memory_desc_wrapper &diff_src_iter_d, float *diff_src_iter_c_,
+        memory_desc_wrapper &diff_src_iter_c_d,
         const acc_data_t *ws_diff_states_iter_,
         const acc_data_t *ws_diff_states_iter_c_) {
     const AOC<const acc_data_t, 5> ws_diff_states_iter(ws_diff_states_iter_,
@@ -1725,9 +1748,10 @@ void copy_res_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 #define RNN_DECL_COPY_RES_ITER_FWD(cname) \
     template <> \
     template <typename dst_iter_dt, typename dst_layer_dt> \
-    void cname::copy_res_iter(const rnn_conf_t &rnn, dst_iter_dt *dst_iter_, \
-            void *dst_iter_c_, gemm_acc_t *diff_src_iter_, \
-            float *diff_src_iter_c_, const dst_layer_dt *dst_layer_, \
+    void cname::copy_res_iter(const rnn_utils::rnn_conf_t &rnn, \
+            dst_iter_dt *dst_iter_, void *dst_iter_c_, \
+            gemm_acc_t *diff_src_iter_, float *diff_src_iter_c_, \
+            const dst_layer_dt *dst_layer_, \
             const src_layer_t *ws_states_layer_, \
             const void *ws_states_iter_c_, \
             const gemm_acc_t *ws_diff_states_iter_, \
@@ -1743,10 +1767,10 @@ void copy_res_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 #define RNN_DECL_COPY_RES_ITER_BWD(cname) \
     template <> \
     template <typename output_data_t, typename dst_data_t> \
-    void cname::copy_res_iter(const rnn_conf_t &rnn, output_data_t *dst_iter_, \
-            void *dst_iter_c_, gemm_acc_t *diff_src_iter_, \
-            float *diff_src_iter_c_, const dst_data_t *dst_layer_, \
-            const src_layer_t *ws_states_layer_, \
+    void cname::copy_res_iter(const rnn_utils::rnn_conf_t &rnn, \
+            output_data_t *dst_iter_, void *dst_iter_c_, \
+            gemm_acc_t *diff_src_iter_, float *diff_src_iter_c_, \
+            const dst_data_t *dst_layer_, const src_layer_t *ws_states_layer_, \
             const void *ws_states_iter_c_, \
             const gemm_acc_t *ws_diff_states_iter_, \
             const gemm_acc_t *ws_diff_states_iter_c_) const { \
@@ -1934,7 +1958,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             pd()->info(ctx.stream()->engine()));
 #endif
 
-    const rnn_conf_t &rnn = this->pd()->rnn_;
+    const rnn_utils::rnn_conf_t &rnn = this->pd()->rnn_;
     auto src_layer = CTX_IN_MEM(const src_layer_t *, DNNL_ARG_SRC_LAYER);
     auto augru_attention
             = CTX_IN_MEM(const src_layer_t *, DNNL_ARG_AUGRU_ATTENTION);
@@ -1974,20 +1998,21 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             projection_weights_n_comp + rnn.weights_projection_comp_offset);
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
-    auto ptr_wei_layer
-            = scratchpad.template get<weights_t *>(key_rnn_ptrs_wei_layer);
-    auto ptr_wei_iter
-            = scratchpad.template get<weights_t *>(key_rnn_ptrs_wei_iter);
-    auto ptr_wei_projection
-            = scratchpad.template get<weights_t *>(key_rnn_ptrs_wei_projection);
-    auto ptr_bias = scratchpad.template get<void *>(key_rnn_ptrs_bia);
+    auto ptr_wei_layer = scratchpad.template get<weights_t *>(
+            memory_tracking::names::key_rnn_ptrs_wei_layer);
+    auto ptr_wei_iter = scratchpad.template get<weights_t *>(
+            memory_tracking::names::key_rnn_ptrs_wei_iter);
+    auto ptr_wei_projection = scratchpad.template get<weights_t *>(
+            memory_tracking::names::key_rnn_ptrs_wei_projection);
+    auto ptr_bias = scratchpad.template get<void *>(
+            memory_tracking::names::key_rnn_ptrs_bia);
 #if DNNL_X64 || DNNL_AARCH64
-    const auto scratch_gates_blocked
-            = scratchpad.template get<scratch_t>(key_rnn_gates_blocked);
-    const auto scratch_src_layer
-            = scratchpad.template get<scratch_t>(key_rnn_src_layer_trans);
-    const auto scratch_src_iter
-            = scratchpad.template get<scratch_t>(key_rnn_src_iter_trans);
+    const auto scratch_gates_blocked = scratchpad.template get<scratch_t>(
+            memory_tracking::names::key_rnn_gates_blocked);
+    const auto scratch_src_layer = scratchpad.template get<scratch_t>(
+            memory_tracking::names::key_rnn_src_layer_trans);
+    const auto scratch_src_iter = scratchpad.template get<scratch_t>(
+            memory_tracking::names::key_rnn_src_iter_trans);
 #endif
 
     gemm_acc_t *gemm_acc_scratchpad = nullptr;
@@ -1998,17 +2023,18 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
 #if DNNL_X64
         if (rnn.is_cell_amx()) {
             gemm_acc_scratchpad = scratchpad.template get<gemm_acc_t>(
-                    key_brgemm_primitive_buffer);
+                    memory_tracking::names::key_brgemm_primitive_buffer);
         }
 #endif
         addr_batch_global = scratchpad.template get<brgemm_batch_element_t>(
-                key_brgemm_primitive_batch);
+                memory_tracking::names::key_brgemm_primitive_batch);
     }
 #endif
 
     // Fetching buffers from the workspace
     // if no workspace was provided we use the scratchpad
-    char *scratch_ptr = scratchpad.template get<char>(key_rnn_space);
+    char *scratch_ptr = scratchpad.template get<char>(
+            memory_tracking::names::key_rnn_space);
     char *ws_ptr = nullptr;
     if (rnn.use_workspace)
         ws_ptr = rnn.is_fwd ? CTX_OUT_MEM(char *, DNNL_ARG_WORKSPACE)
@@ -2086,18 +2112,18 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
                 weights_iter_md->dims, data_type::bf16, tag));
 
         if (rnn.is_augru) {
-            const auto bf32_augru_attention
-                    = scratchpad.template get<src_layer_t>(
-                            key_rnn_bf32_attention_trans);
+            const auto bf32_augru_attention = scratchpad.template get<
+                    src_layer_t>(
+                    memory_tracking::names::key_rnn_bf32_attention_trans);
             cvt_float_to_bfloat16((bfloat16_t *)bf32_augru_attention,
                     (float *)augru_attention, rnn.n_iter * rnn.mb);
             augru_attention = bf32_augru_attention;
         }
         engine_t *engine = ctx.stream()->engine();
-        auto wei_layer_mem
-                = scratchpad.get_memory_storage(key_rnn_bf32_wei_layer_trans);
-        auto wei_iter_mem
-                = scratchpad.get_memory_storage(key_rnn_bf32_wei_iter_trans);
+        auto wei_layer_mem = scratchpad.get_memory_storage(
+                memory_tracking::names::key_rnn_bf32_wei_layer_trans);
+        auto wei_iter_mem = scratchpad.get_memory_storage(
+                memory_tracking::names::key_rnn_bf32_wei_iter_trans);
         {
             std::unique_ptr<memory_t, memory_deleter_t> reorder_dst;
             CHECK(safe_ptr_assign(reorder_dst,
@@ -2108,12 +2134,13 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false};
             exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
             auto *nested_grantor = create_nested_grantor(
-                    ctx.get_scratchpad_grantor(), key_nested_multiple,
+                    ctx.get_scratchpad_grantor(),
+                    memory_tracking::names::key_nested_multiple,
                     bf32_wei_layer_reorder_->pd()->scratchpad_registry());
             reorder_ctx.set_scratchpad_grantor(nested_grantor);
             CHECK(bf32_wei_layer_reorder_->execute(reorder_ctx));
             w_layer = scratchpad.template get<weights_t>(
-                    key_rnn_bf32_wei_layer_trans);
+                    memory_tracking::names::key_rnn_bf32_wei_layer_trans);
             weights_layer_md = &wei_layer_desc;
         }
 
@@ -2127,12 +2154,13 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false};
             exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
             auto *nested_grantor = create_nested_grantor(
-                    ctx.get_scratchpad_grantor(), key_nested_multiple,
+                    ctx.get_scratchpad_grantor(),
+                    memory_tracking::names::key_nested_multiple,
                     bf32_wei_iter_reorder_->pd()->scratchpad_registry());
             reorder_ctx.set_scratchpad_grantor(nested_grantor);
             CHECK(bf32_wei_iter_reorder_->execute(reorder_ctx));
             w_iter = scratchpad.template get<weights_t>(
-                    key_rnn_bf32_wei_iter_trans);
+                    memory_tracking::names::key_rnn_bf32_wei_iter_trans);
             weights_iter_md = &wei_iter_desc;
         }
     }

@@ -759,19 +759,18 @@ constexpr dim_t ace_ker_size_threshold = 48;
 constexpr dim_t amx_ker_size_threshold = 800;
 
 bool jit_brgemm_amx_uker_t::may_load_accumulators(const brgemm_desc_t &brg) {
-    // if beta == 1 and C datatype is f32 it is better to perform addition by
-    // reading tiles directly from C instead of by reading/writing by vectors
+    // If beta == 1 and alpha is 0 or 1, it is better to load C directly into the
+    // tiles instead of adding it by vectors. tileloadd copies raw bytes, so C
+    // must hold the tile accumulator type: s32 for int8, f32 otherwise.
     // ACE palette does not support tileloadd, so we must use vector path
     // Per-K scales / per-(M,N) compensation must be applied to the current
     // K-block's partial result only, so previous results must not be
     // pre-loaded into the tile accumulators.
+    const auto tile_acc_dt = brg.is_int8 ? data_type::s32 : data_type::f32;
     return one_of(brg.alpha, 0.f, 1.f) && brg.beta == 1.f && !brg.is_ace()
-            && brg.dt_c == brg.dt_d && !brg.has_per_k_scales()
-            && !brg.with_per_mn_compensation
+            && brg.dt_c == tile_acc_dt && brg.dt_c == brg.dt_d
+            && !brg.has_per_k_scales() && !brg.with_per_mn_compensation
             && IMPLICATION(brg.is_input_convert(), brg.is_fp8_via_convert())
-            && IMPLICATION(
-                    brg.is_f32 || brg.is_bf16, brg.dt_c == data_type::f32)
-            && IMPLICATION(brg.is_int8, brg.is_integer_acc())
             && brg.brgattr.bd_mask_level == 0;
 }
 

@@ -207,10 +207,12 @@ size_t get_md_hash(const memory_desc_t &md) {
             // User cannot initialize `packed_desc` therefore `packed_desc`
             // is always zero initialized.
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-            seed = hash_combine(
-                    seed, md.format_desc.sparse_desc.grouped_desc.group_count);
-            seed = hash_combine(seed,
-                    md.format_desc.sparse_desc.grouped_desc.variable_dim_idx);
+            if (md.format_desc.sparse_desc.encoding
+                    == sparse_encoding::grouped) {
+                const auto &grouped = md.format_desc.sparse_desc.grouped_desc;
+                seed = hash_combine(seed, grouped.total);
+                seed = get_array_hash(seed, grouped.strides, md.ndims);
+            }
 #endif
             break;
         default: assert(!"unknown format_kind");

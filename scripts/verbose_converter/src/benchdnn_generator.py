@@ -383,12 +383,21 @@ class TagTripletMixin:
 
 
 class StridesMixin(TagTripletMixin):
+    def _grouped_tag(self, arg: str, strides: str) -> str:
+        # the contiguous dim picks the layout of a grouped operand
+        return "ab" if strides.split("x")[-1] == "1" else "ba"
+
     @property
     def tags(self):
         tags = []
         strides = []
 
         def add_strides_or_tag(arg, md: ir.MemoryDescriptor):
+            if md.grouped is not None:
+                tag = self._grouped_tag(arg, md.grouped.strides)
+                tags.append(f"--{arg[0]}tag={tag}")
+                strides.append("")
+                return
             if md.format_kind == "sparse":
                 strides.append(md.strides)
                 return
@@ -665,19 +674,23 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
         encoding = ":".join(encodings.get(arg, "") for arg in counts)
         return f"--encoding={encoding}"
 
+    def _is_grouped(self, arg) -> bool:
+        return any(
+            md.arg == arg and md.grouped is not None for md in self.entry.mds
+        )
+
     @property
     def grouped(self) -> str:
-        # grouped params come from the src variable dim
-        src_md = next((md for md in self.entry.mds if md.arg == "src"), None)
-        desc = src_md.grouped if src_md is not None else None
-        if desc is None:
+        # grouped src is {G, *, K} with grouped dst, or {G, M, *} with grouped
+        # wei, and its dims show the size summed over all groups at `*`
+        if not self._is_grouped("src"):
             return ""
-        var_idx, count = desc.variable_dim_idx, desc.group_count
+        var_idx = 0 if self._is_grouped("dst") else 1
+        src_dims = self.entry.shapes.split(":")[0].split("x")
+        count, total_dim = int(src_dims[0]), int(src_dims[var_idx + 1])
         # verbose omits per-group sizes, so split the src dim evenly, for
         # variable K in units of the scales K group that every size must
         # be a multiple of
-        src_dims = self.entry.shapes.split(":")[0].split("x")
-        total_dim = int(src_dims[var_idx])
         unit = self._scales_k_group() if var_idx == 1 else 1
         if total_dim % unit:
             unit = 1
@@ -697,6 +710,27 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
             groups = [int(g) for g in scale.groups.split("x")]
             unit = max(unit, groups[-1] if arg.startswith("src") else groups[0])
         return unit
+
+    def _grouped_tag(self, arg: str, strides: str) -> str:
+        # benchdnn `ab` gives strides {0, cols, 1} and `ba` gives {0, 1, rows}
+        # for the [rows, cols] matrix of a grouped operand, unit extents may
+        # make both strides 1
+        src, wei = (s.split("x") for s in self.entry.shapes.split(":")[:2])
+        dims = {"src": src[1:], "wei": wei[1:], "dst": [src[1], wei[2]]}
+        rows, cols = dims[arg]
+        matrix_strides = strides.split("x")[1:]
+        if matrix_strides == ["1", rows] and matrix_strides != [cols, "1"]:
+            return "ba"
+        return super()._grouped_tag(arg, strides)
+
+    @property
+    def shapes(self):
+        # benchdnn takes the matrix of a grouped operand, without the group dim
+        shapes = self.entry.shapes.split(":")
+        for i, arg in enumerate(("src", "wei")):
+            if self._is_grouped(arg):
+                shapes[i] = shapes[i].split("x", 1)[1]
+        return ":".join(shapes)
 
     @property
     def aux(self):

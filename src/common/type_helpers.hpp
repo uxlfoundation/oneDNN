@@ -514,15 +514,15 @@ inline bool rnn_packed_desc_is_equal(
 }
 
 inline bool sparse_desc_is_equal(
-        const sparse_desc_t &lhs, const sparse_desc_t &rhs) {
+        const sparse_desc_t &lhs, const sparse_desc_t &rhs, int ndims) {
     bool ok = lhs.encoding == rhs.encoding && lhs.nnz == rhs.nnz;
     if (!ok) return false;
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     if (lhs.encoding == sparse_encoding::grouped) {
-        ok = ok && lhs.grouped_desc.group_count == rhs.grouped_desc.group_count
-                && lhs.grouped_desc.variable_dim_idx
-                        == rhs.grouped_desc.variable_dim_idx;
+        ok = ok && lhs.grouped_desc.total == rhs.grouped_desc.total
+                && utils::array_cmp(lhs.grouped_desc.strides,
+                        rhs.grouped_desc.strides, ndims);
         if (!ok) return false;
     }
 #endif
@@ -764,8 +764,8 @@ inline bool operator==(const memory_desc_t &lhs, const memory_desc_t &rhs) {
         return types::rnn_packed_desc_is_equal(lhs.format_desc.rnn_packed_desc,
                 rhs.format_desc.rnn_packed_desc);
     else if (lhs.format_kind == format_kind::sparse)
-        return types::sparse_desc_is_equal(
-                lhs.format_desc.sparse_desc, rhs.format_desc.sparse_desc);
+        return types::sparse_desc_is_equal(lhs.format_desc.sparse_desc,
+                rhs.format_desc.sparse_desc, lhs.ndims);
     else if (lhs.format_kind == format_kind::zen_packed)
         return lhs.format_desc.zen_packed_desc.size
                 == rhs.format_desc.zen_packed_desc.size

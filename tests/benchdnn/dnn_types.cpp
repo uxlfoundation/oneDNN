@@ -1484,11 +1484,6 @@ dnnl_status_t attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
             DNN_SAFE_STATUS(dnn_mem_t::init_md(rhs_tensor_desc, ndims,
                     rhs_tensor_dims, po_rhs_tensor_entry.dt,
                     po_rhs_tensor_entry.tag, po_rhs_tensor_entry.strides));
-            if (e.binary.grouped) {
-                DNN_SAFE_STATUS(dnn_mem_t::init_grouped_md(rhs_tensor_desc,
-                        ndims, rhs_tensor_dims, po_rhs_tensor_entry.dt,
-                        grouped_var_dim_idx, grouped_count));
-            }
             mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                 | po_rhs_tensor_entry.arg_attr_mask),
                     std::move(rhs_tensor_desc));

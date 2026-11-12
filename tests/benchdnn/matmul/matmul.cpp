@@ -50,18 +50,15 @@ namespace matmul {
 
 // Helper to create grouped memory descriptor
 //
-// Supported configurations:
+// Problem descriptors stay 2D, grouped operands are 3D with the groups in dim 0
+// and DNNL_VARIABLE_DIM_VAL (`*`) at the variable dim:
 //  2Dx3D:
 //   --grouped=0:G:size_0+...+size_{G-1} total_MxK:GxKxN
-//   src [total_M, K] (dim 0 variable)
-//   wei is dense 3D [G, K, N]
-//   dst [total_M, N] (dim 0 variable)
+//   src {G, *, K}, wei is dense 3D [G, K, N], dst {G, *, N}
 //
 //  2Dx2D:
 //   --grouped=1:G:size_0+...+size_{G-1} Mxtotal_K:total_KxN
-//   src [M, total_K] (dim 1 variable, col-major implicit)
-//   wei [total_K, N] (dim 0 variable, row-major)
-//   dst is dense 3D [G, M, N]
+//   src {G, M, *}, wei {G, *, N}, dst is dense 3D [G, M, N]
 static dnnl_status_t create_grouped_md(
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> &md, const prb_t *prb,
         data_kind_t kind, dnnl_data_type_t dt) {
@@ -72,25 +69,24 @@ static dnnl_status_t create_grouped_md(
     if (arg == DNNL_ARG_UNDEF) return dnnl_invalid_arguments;
     if (!prb->sparse_options.is_grouped(arg)) return dnnl_invalid_arguments;
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Variable dim of the [rows, cols] matrix
     const int variable_dim_idx = prb->sparse_options.get_variable_dim_idx(arg);
     const int64_t group_count = prb->sparse_options.get_group_count();
 
-    dnnl_dims_t dims_2d;
     // 2Dx3D: src [m, k], wei dense, dst [m, n]
     // 2Dx2D: src [m, k], wei [k, n], dst dense
-    if (arg == DNNL_ARG_SRC) {
-        dims_2d[0] = prb->m;
-        dims_2d[1] = prb->k;
-    } else if (arg == DNNL_ARG_WEIGHTS) {
-        dims_2d[0] = prb->k;
-        dims_2d[1] = prb->n;
-    } else { // DNNL_ARG_DST
-        dims_2d[0] = prb->m;
-        dims_2d[1] = prb->n;
-    }
+    const int64_t rows = arg == DNNL_ARG_WEIGHTS ? prb->k : prb->m;
+    const int64_t cols = arg == DNNL_ARG_SRC ? prb->k : prb->n;
 
-    return dnn_mem_t::init_grouped_md(
-            md, 2, dims_2d, dt, variable_dim_idx, group_count, dnnl_s32);
+    dnnl_dims_t dims = {group_count, rows, cols};
+    dims[1 + variable_dim_idx] = DNNL_VARIABLE_DIM_VAL;
+    const int64_t total = variable_dim_idx == 0 ? rows : cols;
+
+    return dnn_mem_t::init_grouped_md(md, 3, dims, dt, total, {}, dnnl_s32);
+#else
+    return dnnl_success;
+#endif
 }
 
 dims_t get_runtime_dims(const dims_t &dims, const dims_mask_t &mask) {
@@ -219,10 +215,10 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
 
         if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
                 && prb->sparse_options.is_grouped(DNNL_ARG_DST)) {
-            // verify_grouped_input() enforces bia_mask=2 (N-only)
+            // Bias is [G, 1, N], verify_grouped_input() enforces bia_mask=2
             const int64_t group_count = prb->sparse_options.get_group_count();
-            const dnnl_dim_t grouped_bias_dims[2] = {group_count, prb->n};
-            DNN_SAFE_STATUS(dnn_mem_t::init_md(bia_d, 2, grouped_bias_dims,
+            const dnnl_dim_t grouped_bias_dims[3] = {group_count, 1, prb->n};
+            DNN_SAFE_STATUS(dnn_mem_t::init_md(bia_d, 3, grouped_bias_dims,
                     force_f32_dt ? dnnl_f32 : prb->bia_dt, tag::abx));
         } else {
             DNN_SAFE_STATUS(dnn_mem_t::init_md(bia_d, prb->ndims,
@@ -482,11 +478,10 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
     return OK;
 }
 
-// Filling for mem_fp that takes into account density and zero points
+// Filling for the first `nelems` elements of mem_fp that takes into account
+// density and zero points
 static void fill_dense_fp_values(data_kind_t kind, const prb_t *prb,
-        const cfg_t &cfg, dnn_mem_t &mem_fp) {
-    const int64_t nelems = mem_fp.nelems();
-
+        const cfg_t &cfg, dnn_mem_t &mem_fp, int64_t nelems) {
     cfg_t::density_args_t density_args;
     density_args.data_kind = kind;
     density_args.n_acc = prb->k;
@@ -597,11 +592,11 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
         return FAIL;
     }
 
-    fill_dense_fp_values(kind, prb, cfg, mem_fp);
-
-    // Ref memory is grouped with the same layout, so values are reordered as
-    // flat buffers
-    const dnnl_dims_t vals_dims = {mem_dt.nelems()};
+    // Ref memory is grouped with the same layout, so values are filled and
+    // reordered as flat buffers, including the padding of the leading dim
+    const int64_t nelems = mem_fp.size() / sizeof(float);
+    fill_dense_fp_values(kind, prb, cfg, mem_fp, nelems);
+    const dnnl_dims_t vals_dims = {nelems};
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> fp_vals_md;
     DNN_SAFE(dnn_mem_t::init_md(fp_vals_md, 1, vals_dims, dnnl_f32, tag::abx),
             WARN);
@@ -697,7 +692,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
             }
         });
     } else {
-        fill_dense_fp_values(kind, prb, cfg, mem_fp);
+        fill_dense_fp_values(kind, prb, cfg, mem_fp, mem_fp.nelems());
     }
 
     SAFE(mem_dt.reorder(mem_fp, res, cfg.get_swapped_dt(kind)), WARN);
@@ -794,6 +789,16 @@ void prb_t::skip_invalid(res_t *res) const {
             res->reason = reason_t::invalid;
             return;
         }
+    }
+
+    // Grouped binary post-op operands are not created by benchdnn yet
+    if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
+            && prb->attr.post_ops.binary_index() != -1) {
+        BENCHDNN_PRINT(2, "[SKIP][%s:%d]: %s\n", __FILE__, __LINE__,
+                "Binary post-ops with grouped memory are not supported yet.");
+        res->state = SKIPPED;
+        res->reason = reason_t::skip_not_supported;
+        return;
     }
 
     // var_K K-grouped scales are a grid over total_K, so every group size

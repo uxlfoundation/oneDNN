@@ -59,6 +59,10 @@ namespace matmul {
 //  2Dx2D:
 //   --grouped=1:G:size_0+...+size_{G-1} Mxtotal_K:total_KxN
 //   src {G, M, *}, wei {G, *, N}, dst is dense 3D [G, M, N]
+//
+// For a grouped operand, `--stag`, `--wtag`, or `--dtag` set to `ab` or `abc`
+// (`ba` or `acb`) make the last (middle) dim contiguous, other tags give the
+// default layout with the variable dim outermost
 static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
         const prb_t *prb, data_kind_t kind, dnnl_data_type_t dt) {
     dnnl_memory_desc_t md {};
@@ -78,12 +82,21 @@ static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
     // 2Dx2D: src [m, k], wei [k, n], dst dense
     const int64_t rows = arg == DNNL_ARG_WEIGHTS ? prb->k : prb->m;
     const int64_t cols = arg == DNNL_ARG_SRC ? prb->k : prb->n;
+    const std::string &tag = arg == DNNL_ARG_SRC ? prb->stag
+            : arg == DNNL_ARG_WEIGHTS            ? prb->wtag
+                                                 : prb->dtag;
 
     dnnl_dims_t dims = {group_count, rows, cols};
     dims[1 + variable_dim_idx] = DNNL_VARIABLE_DIM_VAL;
     const int64_t total = variable_dim_idx == 0 ? rows : cols;
 
-    return dnn_mem_t::init_grouped_md(3, dims, dt, total, {}, dnnl_s32);
+    dims_t strides;
+    if (tag == "ab" || tag == "abc")
+        strides = {0, cols, 1};
+    else if (tag == "ba" || tag == "acb")
+        strides = {0, 1, rows};
+
+    return dnn_mem_t::init_grouped_md(3, dims, dt, total, strides, dnnl_s32);
 #else
     return md;
 #endif

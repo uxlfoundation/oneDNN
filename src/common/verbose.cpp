@@ -803,10 +803,13 @@ static std::ostream &print_attr(std::ostream &ss, const primitive_attr_t *attr,
                 } break;
                 case primitive_kind::binary: {
                     const post_ops_t::entry_t::binary_t &eb = e.binary;
-                    const auto &md = eb.user_src1_desc;
-                    ss << delim << eb.alg << ":" << md.data_type;
+                    const auto &src1_md = eb.user_src1_desc;
+                    ss << delim << eb.alg << ":" << src1_md.data_type;
+                    const bool is_ternary = e.is_binary_with_ternary_op();
+                    const char *arg_delim = is_ternary ? "." : ":";
 
-                    auto dump = [&](const memory_desc_t &md) {
+                    auto dump = [&](const memory_desc_t &md,
+                                        const char *mask_delim) {
                         int mask = 0;
                         for (int d = 0; d < md.ndims; ++d)
                             mask += md.dims[d] != 1 ? (1 << d) : 0;
@@ -825,32 +828,34 @@ static std::ostream &print_attr(std::ostream &ss, const primitive_attr_t *attr,
                                 mask = 0;
                         }
 #endif
-                        ss << ":" << mask;
+                        ss << mask_delim << mask;
                         const memory_desc_wrapper mdw(md);
                         switch (mdw.format_kind()) {
                             case format_kind::blocked:
                                 if (!mdw.count_non_unit_dims(1)) {
-                                    ss << ":" << md2fmt_tag_str(&eb.src1_desc);
+                                    ss << arg_delim << md2fmt_tag_str(&md);
                                     const auto &strides_str
-                                            = md2fmt_strides_str(&eb.src1_desc);
+                                            = md2fmt_strides_str(&md);
                                     if (!strides_str.empty())
-                                        ss << ":" << strides_str;
+                                        ss << arg_delim << strides_str;
                                 }
                                 break;
                             case format_kind::sparse:
                                 if (mdw.is_grouped_desc()) {
-                                    ss << ":grouped";
+                                    ss << arg_delim << "grouped";
                                     break;
                                 }
                                 assert(!"unsupported sparse encoding");
                                 break;
-                            case format_kind::any: ss << ":any"; break;
+                            case format_kind::any:
+                                ss << arg_delim << "any";
+                                break;
                             default: assert(!"unsupported format_kind");
                         }
                     };
 
-                    dump(md);
-                    if (e.is_binary_with_ternary_op()) dump(eb.user_src2_desc);
+                    dump(src1_md, arg_delim);
+                    if (is_ternary) dump(eb.user_src2_desc, ":");
                 } break;
                 case primitive_kind::prelu: {
                     const auto &ep = e.prelu;

@@ -134,14 +134,28 @@ class Converter(metaclass=ConverterMeta):
         args = self._get_nondefault_args(values, defaults=(0.0, 0.0, 1.0))
         return ":".join([po.alg] + args)
 
+    @staticmethod
+    def _select_tensor_args(mask, tag, strides):
+        args = []
+        if mask is not None:
+            args.append(str(mask))
+        if tag != "any" or strides != "":
+            args.append(tag)
+        if strides != "":
+            args.append(strides)
+        return args
+
     def _convert_select_post_op(self, po: ir.SelectPostOp):
-        src1_arg = f"{po.dt}.{po.mask}"
-        if po.tag != "any":
-            src1_arg = src1_arg + f".{po.tag}"
-        src2_arg = f"{po.src2_mask}"
-        if po.src2_tag != "any":
-            src2_arg = src2_arg + f".{po.tag}"
-        return ":".join([po.alg, src1_arg, src2_arg])
+        src1_arg = ".".join(
+            [po.dt] + self._select_tensor_args(po.mask, po.tag, po.strides)
+        )
+        src2_arg = ".".join(
+            self._select_tensor_args(po.src2_mask, po.src2_tag, po.src2_strides)
+        )
+        args = [po.alg, src1_arg]
+        if src2_arg:
+            args.append(src2_arg)
+        return ":".join(args)
 
     def _convert_binary_post_op(self, po: ir.BinaryPostOp):
         if po.is_inplace():

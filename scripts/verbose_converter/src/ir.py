@@ -303,11 +303,12 @@ class SelectPostOp(PostOp):
         return "binary_select"
 
     dt: str
-    mask: int = 0
+    mask: Optional[int] = None
     tag: str = "any"
-    src2_dt: str = "s8"
-    src2_mask: int = 0
+    strides: str = ""
+    src2_mask: Optional[int] = None
     src2_tag: str = "any"
+    src2_strides: str = ""
 
 
 @dataclass(eq=False)

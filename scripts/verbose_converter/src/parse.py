@@ -61,9 +61,9 @@ class ParseSpec:
         self.offset += n
         return token
 
-    def _find_str(self) -> int:
+    def _find_str(self, stops) -> int:
         buf = ParseSpec(self.buf)
-        while not buf.eof and buf.peek() not in ("+", ":"):
+        while not buf.eof and buf.peek() not in stops:
             buf.seek()
         return buf.offset
 
@@ -107,8 +107,8 @@ class ParseSpec:
             return len(literal)
         return 0
 
-    def read_str(self) -> str:
-        return self._read(self._find_str())
+    def read_str(self, stops=("+", ":")) -> str:
+        return self._read(self._find_str(stops))
 
     def read_literal(self, literal: str) -> Optional[str]:
         offset = self._find_literal(literal)
@@ -367,16 +367,21 @@ class ParserImpl:
     def parse_select_post_op(spec) -> ir.SelectPostOp:
         if not spec.read_literal(":"):
             raise ParseError("Expected src1 data type for select post-op")
-        dt = spec.read_str()
-        post_op = ir.SelectPostOp(dt=dt)
-        spec.read_literal(":")
-        post_op.mask = spec.read_uint()
-        if spec.read_literal(":"):
-            post_op.tag = spec.read_str()
+        stops = ("+", ":", ".")
+        dt = spec.read_str(stops)
+        post_op = ir.SelectPostOp(dt=dt, tag="abx", src2_tag="abx")
+        if spec.read_literal("."):
+            post_op.mask = spec.read_uint()
+        if spec.read_literal("."):
+            post_op.tag = spec.read_str(stops)
+        if spec.read_literal("."):
+            post_op.strides = spec.read_str(stops)
         if spec.read_literal(":"):
             post_op.src2_mask = spec.read_uint()
-        if spec.read_literal(":"):
-            post_op.src2_tag = spec.read_str()
+        if spec.read_literal("."):
+            post_op.src2_tag = spec.read_str(stops)
+        if spec.read_literal("."):
+            post_op.src2_strides = spec.read_str(stops)
         return post_op
 
     @staticmethod

@@ -32,6 +32,7 @@ namespace jit {
 gemmstone::kcatalog::Catalog catalog();
 // The device's LUT (by PCI device id); nullptr: none.
 const gemmstone::kcatalog::Catalog *lut_catalog(uint32_t device_id);
+gemmstone::kcatalog::Catalog gbr_catalog();
 // A row's log id: "TIER:ROW" (ROW = its index in the tier).
 std::string catalog_ref(const gemmstone::kcatalog::Entry *entry);
 

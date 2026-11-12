@@ -69,7 +69,10 @@ SelectionObserver make_entry_observer(int eu_count, int freq_mhz,
             return r.empty() ? std::string("(unresolved)") : r;
         };
         gpu_debug() << "[" << catalog_ref(entry) << "] consider score:" << score
-                    << ms_hint(score, eu_count, freq_mhz) << " " << row();
+                    << (entry->model.id == 'G'
+                                       ? ""
+                                       : ms_hint(score, eu_count, freq_mhz))
+                    << " " << row();
     };
 }
 
@@ -144,6 +147,14 @@ kcatalog::Entry make_bare_entry(char hw) {
     for (auto &l : sel.layouts)
         l = "";
     return e;
+}
+
+// The PCI device id the LUT and GBR tiers dispatch on; GEMM_DEVICE_ID
+// (dev mode, e.g. 0x674f) overrides it.
+uint32_t device_id(const compute::device_info_t &dev_info) {
+    auto s = gpu_utils::dev_getenv("GEMM_DEVICE_ID", std::string());
+    return s.empty() ? dev_info.device_id()
+                     : static_cast<uint32_t>(std::stoul(s, nullptr, 0));
 }
 
 } // anonymous namespace
@@ -720,6 +731,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     eval_params_.alpha = alpha;
     eval_params_.beta = beta;
     eval_params_.product = product_;
+    eval_params_.deviceId = device_id(dev_info);
     eval_params_.postOps = !problem.postOps.empty();
     eval_params_.cConvert = (problem.Tc != problem.Tc_ext);
     eval_params_.euCount = dev_info.eu_count();
@@ -742,15 +754,16 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     Ts_ = problem.Ts;
     beta_ = problem.beta;
 
-    // Entries from both catalogs are concatenated so kernel creation
-    // failures fall back to the next tier.
+    // The tiers' entries are concatenated so kernel creation failures fall
+    // back to the next tier.
     //   GEMM_LUT: try the device's exact-size LUT catalog first (default on).
+    //   GEMM_GBR: try the ranked fixed kernels next (default on).
     int npat = static_cast<int>(match_params.size());
     std::vector<const kcatalog::Entry *> entries;
     auto append = [&](const std::vector<const kcatalog::Entry *> &v) {
         entries.insert(entries.end(), v.begin(), v.end());
     };
-    auto *lut = lut_catalog(dev_info.device_id());
+    auto *lut = lut_catalog(eval_params_.deviceId);
     if (lut && gpu_utils::dev_getenv("GEMM_LUT", true)) {
         // LUT entries require a direct precision match: f32 -> SSS, tf32 -> TTS.
         MatchParams lut_match = base;
@@ -762,6 +775,11 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
         append(select(
                 *lut, 1, &lut_match, eval_params_, aux_params_, &observer));
     }
+
+    if (gbrSupported(problem, eval_params_)
+            && gpu_utils::dev_getenv("GEMM_GBR", true))
+        append(select(gbr_catalog(), npat, match_params.data(), eval_params_,
+                aux_params_, &observer));
 
     append(select(catalog(), npat, match_params.data(), eval_params_,
             aux_params_, &observer));

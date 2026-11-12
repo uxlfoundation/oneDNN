@@ -44,7 +44,11 @@ sum_executable_t::desc_t sum_executable_t::create_desc(
     // create default scales
     std::vector<float> scales(op->num_inputs(), 1.f);
 
-    dnnl::sum::primitive_desc pd(p_engine, dst_desc, scales, src_descs);
+    dnnl::primitive_attr prm_attr;
+    set_graph_attributes(prm_attr, graph_attr);
+
+    dnnl::sum::primitive_desc pd(
+            p_engine, dst_desc, scales, src_descs, prm_attr);
 
     pd_cache.insert({op.get(), pd});
 

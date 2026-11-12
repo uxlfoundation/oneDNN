@@ -33,31 +33,32 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa>
-struct brgemm_convolution_bwd_t : public primitive_t {
+// The implementation is compiled once for all ISAs; `isa` is a runtime
+// argument of `pd_t::init`. `brgemm_convolution_bwd_t` below only provides a
+// distinct type per ISA for implementation lists.
+struct brgemm_convolution_bwd_base_t : public primitive_t {
 
     struct pd_t : public cpu_convolution_bwd_data_pd_t {
         using cpu_convolution_bwd_data_pd_t::cpu_convolution_bwd_data_pd_t;
 
-        DECLARE_COMMON_PD_T(name_.c_str(), brgemm_convolution_bwd_t);
-
-        status_t init(const engine_t *engine);
-
         std::shared_ptr<primitive_desc_t> fwd_pd_;
 
-    private:
+    protected:
+        status_t init(const engine_t *engine, cpu_isa_t isa);
+
         std::string name_;
 
-        void init_name() {
+    private:
+        void init_name(cpu_isa_t isa) {
             name_ = JIT_IMPL_NAME_HELPER("brg_conv_bwd:", isa, "");
             name_.append("+");
             name_.append(fwd_pd_->name());
         }
     };
 
-    brgemm_convolution_bwd_t(const pd_t *apd) : primitive_t(apd) {};
+    brgemm_convolution_bwd_base_t(const pd_t *apd) : primitive_t(apd) {};
 
-    ~brgemm_convolution_bwd_t() override = default;
+    ~brgemm_convolution_bwd_base_t() override = default;
 
     status_t init(engine_t *engine) override;
 
@@ -68,6 +69,23 @@ private:
         return static_cast<const pd_t *>(primitive_t::pd().get());
     }
     std::shared_ptr<primitive_t> fwd_p_;
+};
+
+template <cpu_isa_t isa>
+struct brgemm_convolution_bwd_t : public brgemm_convolution_bwd_base_t {
+    struct pd_t : public brgemm_convolution_bwd_base_t::pd_t {
+        using base_pd_t = brgemm_convolution_bwd_base_t::pd_t;
+        using base_pd_t::base_pd_t;
+
+        DECLARE_COMMON_PD_T(name_.c_str(), brgemm_convolution_bwd_t);
+
+        status_t init(const engine_t *engine) {
+            return base_pd_t::init(engine, isa);
+        }
+    };
+
+    brgemm_convolution_bwd_t(const pd_t *apd)
+        : brgemm_convolution_bwd_base_t(apd) {}
 };
 
 } // namespace x64

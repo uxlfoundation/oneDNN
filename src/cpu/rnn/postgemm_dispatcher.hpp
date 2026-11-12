@@ -48,6 +48,35 @@ namespace cpu {
 float activation(alg_kind_t alg_kind, prop_kind_t prop_kind, float s,
         float alpha, float cliping);
 
+#if DNNL_X64
+// A plain `if` on a constant condition still instantiates the kernel in the
+// discarded branch. Specializing on `enable` keeps kernels of combinations
+// that can't occur out of the build (no `if constexpr` in C++11).
+template <bool enable>
+struct jit_postgemm_creator_t {
+    template <template <x64::cpu_isa_t, impl::data_type_t, impl::data_type_t>
+              class ker_t,
+            impl::data_type_t src_type, impl::data_type_t scratch_type>
+    static x64::jit_uni_rnn_postgemm_t *create(
+            const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd) {
+        if (x64::mayiuse(x64::avx512_core))
+            return new ker_t<x64::avx512_core, src_type, scratch_type>(rnn, pd);
+        return new ker_t<x64::avx2, src_type, scratch_type>(rnn, pd);
+    }
+};
+
+template <>
+struct jit_postgemm_creator_t<false> {
+    template <template <x64::cpu_isa_t, impl::data_type_t, impl::data_type_t>
+              class ker_t,
+            impl::data_type_t src_type, impl::data_type_t scratch_type>
+    static x64::jit_uni_rnn_postgemm_t *create(
+            const rnn_utils::rnn_conf_t &, const rnn_pd_t *) {
+        return nullptr;
+    }
+};
+#endif
+
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t scratch_type, impl::data_type_t acc_type>
 struct rnn_postgemm_dispatcher_t {
@@ -240,10 +269,10 @@ protected:
 
         if (pd_->attr()->rnn_tparams_.test_mode_) return status::success;
 
-        const bool jit_fwd = pd_->is_fwd()
+        constexpr bool jit_fwd = aprop == prop_kind::forward
                 && utils::one_of(src_type, data_type::f32, data_type::u8,
                         data_type::s8, data_type::bf16, data_type::f16);
-        const bool jit_bwd = !pd_->is_fwd()
+        constexpr bool jit_bwd = aprop == prop_kind::backward
                 && utils::one_of(src_type, data_type::f32, data_type::bf16,
                         data_type::f16);
 
@@ -257,18 +286,15 @@ protected:
 //NOLINTBEGIN(bugprone-macro-parentheses)
 // Can't put types into `()`:
 // error: expected type-specifier before ‘)’ token
-#define CREATE_WITH_DIR(k, ker_t) \
+#define CREATE_WITH_DIR(k, ker_t, enable) \
     do { \
-        if (mayiuse(avx512_core)) \
-            (k).reset( \
-                    new ker_t<avx512_core, src_type, scratch_type>(rnn, pd_)); \
-        else \
-            (k).reset(new ker_t<avx2, src_type, scratch_type>(rnn, pd_)); \
+        (k).reset(jit_postgemm_creator_t<enable>::template create<ker_t, \
+                src_type, scratch_type>(rnn, pd_)); \
     } while (0)
 #define CREATE(k, ker_t) \
     do { \
-        if (jit_fwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _fwd)); \
-        if (jit_bwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _bwd)); \
+        if (jit_fwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _fwd), jit_fwd); \
+        if (jit_bwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _bwd), jit_bwd); \
     } while (0)
         //NOLINTEND(bugprone-macro-parentheses)
 

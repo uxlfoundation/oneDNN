@@ -143,15 +143,18 @@ status_t bwd_conv_desc_create(const deconvolution_desc_t *fwd_deconv_d,
 }
 } // namespace
 
+// The base `pd_t` is shared by all ISAs, so the ISA is matched explicitly.
 template <typename implementation_pd>
-status_t check_embedded_impl_init(primitive_desc_iterator_t &it) {
-    const auto pd = dynamic_cast<implementation_pd *>((*it).get());
-    if (pd != nullptr) return status::success; // implementation found
+status_t check_embedded_impl_init(
+        primitive_desc_iterator_t &it, cpu_isa_t isa) {
+    const auto pd = dynamic_cast<const implementation_pd *>((*it).get());
+    if (pd != nullptr && pd->jcp_.isa == isa)
+        return status::success; // implementation found
     return status::unimplemented;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
+status_t brgemm_deconvolution_fwd_base_t::pd_t::init(
+        const engine_t *engine, cpu_isa_t isa) {
     using namespace data_type;
     using namespace utils;
     using namespace format_tag;
@@ -202,8 +205,7 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
         while (++it != it.end()) {
             conv_pd_ = *it;
             if (check_embedded_impl_init<
-                        typename brgemm_convolution_bwd_strided_t<isa>::pd_t>(
-                        it)
+                        brgemm_convolution_bwd_strided_base_t::pd_t>(it, isa)
                     == status::success)
                 break;
         }
@@ -221,12 +223,12 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
             conv_pd_ = *it;
             // try 1x1 fwd convolution
             if (check_embedded_impl_init<
-                        typename brgemm_1x1_convolution_fwd_t<isa>::pd_t>(it)
+                        brgemm_1x1_convolution_fwd_base_t::pd_t>(it, isa)
                     == status::success)
                 break;
             // try non-1x1 fwd convolution with invert weights' spatial indices
-            if (check_embedded_impl_init<
-                        typename brgemm_convolution_fwd_t<isa>::pd_t>(it)
+            if (check_embedded_impl_init<brgemm_convolution_fwd_base_t::pd_t>(
+                        it, isa)
                     == status::success)
                 break;
         }
@@ -267,7 +269,7 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     if (bias_md_.format_kind == format_kind::any)
         CHECK(memory_desc_init_by_tag(bias_md_, x));
 
-    init_name();
+    init_name(isa);
     auto scratchpad = scratchpad_registry().registrar();
     scratchpad.book(memory_tracking::names::key_nested,
             conv_pd_->scratchpad_registry());
@@ -275,13 +277,11 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_deconvolution_fwd_t<isa>::init(engine_t *engine) {
+status_t brgemm_deconvolution_fwd_base_t::init(engine_t *engine) {
     return pd()->conv_pd_->create_primitive(conv_p_, engine);
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_deconvolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t brgemm_deconvolution_fwd_base_t::execute(const exec_ctx_t &ctx) const {
     const auto &args = ctx.args();
     exec_args_t conv_args(args);
     if (pd()->has_strides_) {

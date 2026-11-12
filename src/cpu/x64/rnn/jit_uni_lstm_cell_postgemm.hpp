@@ -20,6 +20,8 @@
 #include "common/utils.hpp"
 #include "cpu/x64/jit_generator.hpp"
 
+#include "cpu/x64/injectors/jit_uni_eltwise_injector.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {

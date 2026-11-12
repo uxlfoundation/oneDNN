@@ -98,18 +98,14 @@ bool use_mmla(const jit_brgemm_conv_conf_t &jcp,
         if (horizontal_pad && !vertical_pad) return false;
     }
 
-    auto want_weights_md = weights_md;
-    if (is_bf16) {
-        const auto wei_tag = n_block == 16 ? OhwI2i16o4i : OhwI2i32o4i;
-        CHECK_BOOL(memory_desc_init_by_tag(want_weights_md, wei_tag));
-    } else {
+    // Explicit weights must match MMLA packing; 'any' permits either path.
+    if (weights_md.format_kind != format_kind::any) {
+        auto want_weights_md = weights_md;
         CHECK_BOOL(
                 brgemm_utils::init_mmla_wei_md(want_weights_md, 1, 0, n_block));
-        want_weights_md.extra = weights_md.extra;
-    }
-    // Apply utilization checks only when weights are 'any'.
-    if (weights_md.format_kind != format_kind::any)
+        if (is_int8) want_weights_md.extra = weights_md.extra;
         return weights_md == want_weights_md;
+    }
 
     const double work = static_cast<double>(jcp.mb) * jcp.os * jcp.oc * jcp.ic
             * jcp.kh * jcp.kw;
@@ -118,13 +114,12 @@ bool use_mmla(const jit_brgemm_conv_conf_t &jcp,
                 work, jcp.nthr, n_block);
     // Prefer DOT for 1x1 with eight input channels; measurements generally
     // favor MMLA at larger input-channel counts.
-    return !is_1x1_path
-            || jcp.ic >= brgemm_utils::mmla_rd_block(jcp.src_dsz);
+    if (is_1x1_path && jcp.ic < brgemm_utils::mmla_rd_block(jcp.src_dsz))
+        return false;
+    return true;
 }
 
-// MMLA convolution requires packed weights, full N tiles and K8-aligned
-// reductions. BRGEMM masks for irregular spatial rows and internally padded
-// input channels are unsupported. The 3x3 path uses virtual padding.
+// Validate the driver's blocking for plain-A MMLA convolution.
 bool native_mmla_blocking_ok(
         const jit_brgemm_conv_conf_t &jcp, bool require_vpad) {
     const int n_block = brgemm_utils::mmla_n_block(jcp.isa);
@@ -245,15 +240,11 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &src_md,
         if (jcp.use_mmla) {
             if (jcp.wei_dt == data_type::bf16) {
                 wei_tag = jcp.oc_block == 16 ? OhwI2i16o4i : OhwI2i32o4i;
-            } else {
-                auto want_weights_md = weights_md;
+            } else if (weights_d.format_kind() == format_kind::any) {
+                const auto extra = weights_md.extra;
                 CHECK(brgemm_utils::init_mmla_wei_md(
-                        want_weights_md, 1, 0, jcp.oc_block));
-                want_weights_md.extra = weights_md.extra;
-                if (weights_d.format_kind() == format_kind::any)
-                    weights_md = want_weights_md;
-                else if (weights_md != want_weights_md)
-                    return status::unimplemented;
+                        weights_md, 1, 0, jcp.oc_block));
+                weights_md.extra = extra;
             }
         } else if (jcp.oc_block == 64) {
             if (is_3d) {

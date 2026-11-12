@@ -73,12 +73,17 @@ Xbyak_aarch64::ZReg jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::accum(
 template <cpu_isa_t isa>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::store_accumulators(
         const int m_block, const int n_block) {
+    // Combine input-channel partial sums before updating the buffers.
+    for (int n = 0; n < n_block; ++n) {
+        auto sum = accum(n_block, 0, n);
+        for (int m = 1; m < m_block; ++m)
+            add(sum.s, sum.s, accum(n_block, m, n).s);
+    }
     if (jcp_.src_zero_point) {
-        for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             str(vmm_zp_shift, ptr(sp, -1, MUL_VL));
 
-            auto vmm = accum(n_block, m, n);
+            auto vmm = accum(n_block, 0, n);
             auto vmm_tmp = vmm_tmp_1();
             auto vmm_zp = vmm_zp_shift;
             ldr(vmm_tmp, ptr(sp, -1, MUL_VL));
@@ -94,11 +99,10 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::store_accumulators(
     }
 
     if (jcp_.s8s8_compensation_required) {
-        for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             str(vmm_cp_shift, ptr(sp, -1, MUL_VL));
 
-            auto vmm = accum(n_block, m, n);
+            auto vmm = accum(n_block, 0, n);
             auto vmm_tmp = vmm_tmp_1();
             auto vmm_zp = vmm_cp_shift;
             ldr(vmm_tmp, ptr(sp, -1, MUL_VL));
@@ -274,11 +278,13 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::generate() {
         dup(zmm_one_words.h, reg32_scratch);
     }
 
-    // MMLA reserves z26-z27 for the two weight-sum vectors.
-    const int max_regs = jcp_.use_mmla ? zmm_int8_temp.getIdx()
-                                       : isa_max_regs
-                    - (is_int8_sve ? 6
-                                   : (jcp_.s8s8_compensation_required ? 4 : 3));
+    int reserved_regs = 3;
+    // MMLA reuses z26-z27 for weight sums, leaving z0-z25 for accumulators.
+    if (jcp_.use_mmla || is_int8_sve)
+        reserved_regs = 6;
+    else if (jcp_.s8s8_compensation_required)
+        reserved_regs = 4;
+    const int max_regs = isa_max_regs - reserved_regs;
     const int nb = div_up(nstl::min(jcp_.oc, jcp_.oc_block), m_block2_);
     const int nb2 = nb / n_max_regs_;
     const int nb2_tail = nb % n_block2_;

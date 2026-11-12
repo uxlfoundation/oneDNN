@@ -452,6 +452,7 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     const bool needs_int8_comp_pads = brg->req_cal_comp_pads
             || (max_vpad > 0 && (brg->req_s8s8_compensation || has_src_zp));
     // MMLA adds back source-ZP compensation for virtual padding on plain A.
+    // TODO: Support source-ZP compensation for virtual padding with packed A.
     if (is_int8_mmla && needs_int8_comp_pads
             && !(has_src_zp && !brg->req_s8s8_compensation
                     && !brg->req_cal_comp_pads && !brgattr.use_mmla_packed_a

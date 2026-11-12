@@ -399,12 +399,8 @@ private:
     int oc_logical_offset(int ld, bool is_tail = false) const noexcept;
 
     int compensations_offset(int ld, bool is_tail = false) const noexcept;
-    int bdb_compensation_offset(int bd_block2) const noexcept;
-    int compensation_vpad_offset(int ld, int bd) const noexcept;
     int scales_offset(int ld, bool is_tail = false) const noexcept;
     int zp_comp_a_offset(int ld, bool is_tail = false) const noexcept;
-    int zp_comp_a_vpad_offset(int ld, int bd) const noexcept;
-    int bdb_zp_comp_a_offset(int bd_block2) const noexcept;
     int zp_comp_b_offset(int bd) const noexcept;
     int bdb_zp_comp_b_offset(int bd_block2) const noexcept;
     int zp_c_values_offset(int ld, bool is_tail = false) const noexcept;
@@ -529,15 +525,6 @@ int jit_brgemm_kernel_t::compensations_offset(
                      : sizeof(int32_t) * ld * brg.ld_block;
 }
 
-int jit_brgemm_kernel_t::bdb_compensation_offset(int bd_block2) const noexcept {
-    return sizeof(int32_t) * bd_block2 * brg.bd_block * brg.LDB;
-}
-
-int jit_brgemm_kernel_t::compensation_vpad_offset(
-        int ld, int bd) const noexcept {
-    return sizeof(int32_t) * (ld * brg.ld_block + bd * brg.LDB);
-}
-
 int jit_brgemm_kernel_t::scales_offset(int ld, bool is_tail) const noexcept {
     return (is_tail) ? brg.is_oc_scale * sizeof(float) * brg.ldb_tail
                      : brg.is_oc_scale * sizeof(float) * ld * brg.ld_block;
@@ -546,14 +533,6 @@ int jit_brgemm_kernel_t::scales_offset(int ld, bool is_tail) const noexcept {
 int jit_brgemm_kernel_t::zp_comp_a_offset(int ld, bool is_tail) const noexcept {
     return (is_tail) ? sizeof(int32_t) * brg.ldb_tail
                      : sizeof(int32_t) * ld * brg.ld_block;
-}
-
-int jit_brgemm_kernel_t::bdb_zp_comp_a_offset(int bd_block2) const noexcept {
-    return sizeof(int32_t) * bd_block2 * brg.bd_block * brg.LDB;
-}
-
-int jit_brgemm_kernel_t::zp_comp_a_vpad_offset(int ld, int bd) const noexcept {
-    return sizeof(int32_t) * (ld * brg.ld_block + bd * brg.LDB);
 }
 
 int jit_brgemm_kernel_t::zp_comp_b_offset(int bd) const noexcept {

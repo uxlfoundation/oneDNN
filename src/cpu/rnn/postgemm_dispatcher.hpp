@@ -35,7 +35,6 @@
 #include "cpu/x64/rnn/jit_uni_gru_lbr_cell_postgemm_fwd.hpp"
 #include "cpu/x64/rnn/jit_uni_lstm_cell_postgemm_bwd.hpp"
 #include "cpu/x64/rnn/jit_uni_lstm_cell_postgemm_fwd.hpp"
-#include "cpu/x64/rnn/jit_uni_lstm_cell_projection_postgemm_fwd.hpp"
 #include "cpu/x64/rnn/jit_uni_rnn_cell_postgemm_bwd.hpp"
 #include "cpu/x64/rnn/jit_uni_rnn_cell_postgemm_fwd.hpp"
 #include "cpu/x64/rnn/jit_uni_rnn_common_postgemm.hpp"

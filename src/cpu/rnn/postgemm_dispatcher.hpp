@@ -293,8 +293,8 @@ protected:
     } while (0)
 #define CREATE(k, ker_t) \
     do { \
-        if (jit_fwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _fwd), jit_fwd); \
-        if (jit_bwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _bwd), jit_bwd); \
+        if (jit_fwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _fwd_t), jit_fwd); \
+        if (jit_bwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _bwd_t), jit_bwd); \
     } while (0)
         //NOLINTEND(bugprone-macro-parentheses)
 

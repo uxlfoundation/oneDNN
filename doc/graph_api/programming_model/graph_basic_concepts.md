@@ -48,6 +48,15 @@ accepts two parameters, the given floating point math mode and a optional boolea
 flag to indicate whether to use floating-point arithmetic for integral
 operations.
 
+You can also enable the graph-level deterministic mode through the setter API
+(@ref dnnl::graph::graph::set_deterministic). When enabled, the mode is applied
+to all the partitions returned from the graph so that their execution is
+run-to-run deterministic. See
+[Deterministic Mode](@ref dev_guide_attributes_deterministic) for the detailed
+semantics and performance implications of deterministic execution. Both the
+floating-point math mode and the deterministic mode must be set before the
+graph is finalized.
+
 Multiple operations can be added (@ref dnnl::graph::graph::add_op) along with
 input and output logical tensors to a graph. After finishing adding the
 operations, finalization API (@ref dnnl::graph::graph::finalize) can be called

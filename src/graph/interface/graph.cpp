@@ -324,8 +324,7 @@ status_t dnnl_graph_graph_destroy(graph_t *graph) {
 
 status_t dnnl_graph_graph_set_fpmath_mode(
         dnnl_graph_graph_t graph, dnnl_fpmath_mode_t mode, int apply_to_int) {
-
-    if (graph == nullptr) { return status::invalid_arguments; }
+    if (!graph) { return status::invalid_arguments; }
 
     if (graph->is_finalized()) { return status::invalid_graph; }
 
@@ -334,9 +333,7 @@ status_t dnnl_graph_graph_set_fpmath_mode(
 
 status_t dnnl_graph_graph_get_fpmath_mode(
         dnnl_graph_graph_t graph, dnnl_fpmath_mode_t *mode, int *apply_to_int) {
-
-    if (graph == nullptr) { return status::invalid_arguments; }
-    if (graph->is_finalized()) { return status::invalid_graph; }
+    if (!graph) { return status::invalid_arguments; }
 
     const auto &fpmath = graph->get_attr().get_fpmath();
     if (mode) *mode = fpmath.mode_;

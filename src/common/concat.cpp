@@ -140,15 +140,20 @@ status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
 
     if (pd) return success;
 
+    // A single implementation reporting an unsupported data type is enough, see
+    // `primitive_desc_iterator_t::no_impl_status()`.
+    status_t no_impl_status = unimplemented;
     concat_pd_t *concat_pd = nullptr;
     for (auto c = engine->get_concat_implementation_list(); *c; ++c) {
-        if ((*c)(&concat_pd, engine, attr, dst_md, n, concat_dim, src_mds)
-                == success) {
+        const status_t st = (*c)(
+                &concat_pd, engine, attr, dst_md, n, concat_dim, src_mds);
+        if (st == success) {
             pd.reset(concat_pd);
             return success;
         }
+        if (st == data_type_not_supported) no_impl_status = st;
     }
-    return unimplemented;
+    return no_impl_status;
 }
 
 status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,

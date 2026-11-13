@@ -252,17 +252,35 @@ struct gemm_t : public primitive_t {
                     return;
                 };
 
-                auto squashed_mask = [&](int mask, int diff_dims) -> int {
-                    return mask >> diff_dims;
+                // Dims [0, diff_dims] are merged into dim 0, so their non-unit
+                // dims must be either all quantized or all broadcast.
+                auto squash_mask
+                        = [&](int &new_mask, const quant_entry_t &entry,
+                                  const dims_t &dims) -> status_t {
+                    int mask = entry.get_mask();
+                    bool masked = false, bcast = false;
+                    for (int i = 0; i <= diff_dims; i++) {
+                        if (dims[i] == 1) continue;
+                        bool is_masked = mask & (1 << i);
+                        masked |= is_masked;
+                        bcast |= !is_masked;
+                    }
+                    if (masked && bcast) return status::unimplemented;
+                    new_mask = (mask >> diff_dims) & ~1;
+                    // Grouped dims stay masked, see (1) above.
+                    bool grouped_dim0
+                            = reshape_2d && !entry.has_default_groups();
+                    if (masked || grouped_dim0) new_mask |= 1;
+                    return status::success;
                 };
 
-                auto reshape_quant = [&](const quant_entry_t &in_entry,
+                auto reshape_quant = [&](quant_entry_t &out_entry,
+                                             const quant_entry_t &in_entry,
+                                             const dims_t &in_dims,
                                              const memory_desc_t &reshaped_md,
-                                             const dims_t &qdims,
-                                             int diff_dims) -> quant_entry_t {
-                    if (in_entry.has_default_values()) return in_entry;
-                    int new_mask
-                            = squashed_mask(in_entry.get_mask(), diff_dims);
+                                             const dims_t &qdims) -> status_t {
+                    int new_mask = 0;
+                    CHECK(squash_mask(new_mask, in_entry, in_dims));
                     data_type_t dt = in_entry.get_data_type();
                     dims_t dims {};
                     int ndims = 0;
@@ -274,85 +292,56 @@ struct gemm_t : public primitive_t {
                         dims[1] = reshaped_md.dims[reshaped_md.ndims - 1]
                                 / qdims[reshaped_md.ndims - 1];
                     }
-                    quant_entry_t out_entry;
-                    UNUSED_STATUS(out_entry.set(new_mask, dt, ndims, dims,
-                            false, in_entry.get_quantization_mode()));
-                    return out_entry;
+                    return out_entry.set(new_mask, dt, ndims, dims, false,
+                            in_entry.get_quantization_mode());
                 };
 
-                auto adjust_quant = [&](quant_entries_t &entries, int arg,
-                                            const memory_desc_t &md,
-                                            const memory_desc_t &reshaped_md,
-                                            int diff_dims) -> status_t {
+                auto adjust_quant =
+                        [&](quant_entries_t &entries, int arg,
+                                const memory_desc_t &md,
+                                const memory_desc_t &reshaped_md) -> status_t {
                     const quant_entry_t &entry = entries.get(arg);
-                    if (entry.is_host_scalar()) return status::success;
+                    if (entry.has_default_values() || entry.is_host_scalar())
+                        return status::success;
                     memory_desc_t qmd;
                     CHECK(entry.get_md(qmd, md));
                     dims_t qdims;
                     squash_quant(qdims, entry, qmd);
-                    quant_entry_t reshaped_entry = reshape_quant(
-                            entry, reshaped_md, qdims, diff_dims);
-                    CHECK(entries.set(arg, reshaped_entry));
-                    return status::success;
+                    quant_entry_t reshaped_entry;
+                    CHECK(reshape_quant(reshaped_entry, entry, md.dims,
+                            reshaped_md, qdims));
+                    return entries.set(arg, reshaped_entry);
                 };
 
-                // Quantization attributes are unsupported in Gemmstone with any
-                // non-trivial (neither broadcast nor full dimension) modification
-                // of groups during reshape.
-                // TODO: Enable arbitrary reshaped grouped quant.
-                auto safe_bcast_quant = [&](const quant_entry_t &entry,
-                                                const dims_t orig_dims,
-                                                dims_t reshape_dims) -> bool {
-                    int full_tensor_mask = ((1 << c_md->ndims) - 1);
-                    int per_oc_mask = (1 << 1);
-                    if (!reshape_2d || entry.has_default_values()
-                            || utils::one_of(entry.get_mask(), 0, per_oc_mask,
-                                    full_tensor_mask))
-                        return true;
-
-                    if (utils::one_of(orig_dims[diff_dims], reshape_dims[0], 1))
-                        return true;
-
-                    return false;
-                };
-
-                bcast_ok = bcast_ok
-                        && safe_bcast_quant(gemm_attr.scales_.get(DNNL_ARG_SRC),
-                                a_md->dims, a_dims);
-                bcast_ok = bcast_ok
-                        && safe_bcast_quant(
-                                gemm_attr.scales_.get(DNNL_ARG_WEIGHTS),
-                                b_md->dims, b_dims);
-                bcast_ok = bcast_ok
-                        && safe_bcast_quant(
-                                gemm_attr.zero_points_.get(DNNL_ARG_SRC),
-                                a_md->dims, a_dims);
-                bcast_ok = bcast_ok
-                        && safe_bcast_quant(
-                                gemm_attr.zero_points_.get(DNNL_ARG_WEIGHTS),
-                                b_md->dims, b_dims);
                 if (!bcast_ok) return status::success;
 
                 scales_t reshaped_scales = gemm_attr.scales_;
                 zero_points_t reshaped_zp = gemm_attr.zero_points_;
                 precomputed_reductions_t reshaped_pr
                         = gemm_attr.precomputed_reductions_;
-                CHECK(adjust_quant(reshaped_scales, DNNL_ARG_SRC, *a_md,
-                        a_md_reshaped, diff_dims));
-                CHECK(adjust_quant(reshaped_scales, DNNL_ARG_WEIGHTS, *b_md,
-                        b_md_reshaped, diff_dims));
-                CHECK(adjust_quant(reshaped_scales, DNNL_ARG_DST, *c_md,
-                        c_md_reshaped, diff_dims));
-                CHECK(adjust_quant(reshaped_zp, DNNL_ARG_SRC, *a_md,
-                        a_md_reshaped, diff_dims));
-                CHECK(adjust_quant(reshaped_zp, DNNL_ARG_WEIGHTS, *b_md,
-                        b_md_reshaped, diff_dims));
-                CHECK(adjust_quant(reshaped_zp, DNNL_ARG_DST, *c_md,
-                        c_md_reshaped, diff_dims));
-                CHECK(adjust_quant(reshaped_pr, DNNL_ARG_SRC, *a_md,
-                        a_md_reshaped, diff_dims));
-                CHECK(adjust_quant(reshaped_pr, DNNL_ARG_WEIGHTS, *b_md,
-                        b_md_reshaped, diff_dims));
+                auto adjust_all_quant = [&]() -> status_t {
+                    CHECK(adjust_quant(reshaped_scales, DNNL_ARG_SRC, *a_md,
+                            a_md_reshaped));
+                    CHECK(adjust_quant(reshaped_scales, DNNL_ARG_WEIGHTS, *b_md,
+                            b_md_reshaped));
+                    CHECK(adjust_quant(reshaped_scales, DNNL_ARG_DST, *c_md,
+                            c_md_reshaped));
+                    CHECK(adjust_quant(
+                            reshaped_zp, DNNL_ARG_SRC, *a_md, a_md_reshaped));
+                    CHECK(adjust_quant(reshaped_zp, DNNL_ARG_WEIGHTS, *b_md,
+                            b_md_reshaped));
+                    CHECK(adjust_quant(
+                            reshaped_zp, DNNL_ARG_DST, *c_md, c_md_reshaped));
+                    CHECK(adjust_quant(
+                            reshaped_pr, DNNL_ARG_SRC, *a_md, a_md_reshaped));
+                    CHECK(adjust_quant(reshaped_pr, DNNL_ARG_WEIGHTS, *b_md,
+                            b_md_reshaped));
+                    return status::success;
+                };
+                // Fall back to the original shapes if quantization cannot be
+                // reshaped.
+                if (adjust_all_quant() != status::success)
+                    return status::success;
 
                 // Reshaping successful - lock in changes
                 a_md = &a_md_reshaped;

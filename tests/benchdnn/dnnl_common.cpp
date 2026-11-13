@@ -1318,9 +1318,12 @@ void add_md_size(const_dnnl_memory_desc_t md,
     const bool is_corr = has_bench_mode_bit(mode_bit_t::corr);
     const bool is_bitwise = has_bench_mode_bit(mode_bit_t::bitwise);
     // Reference memories are always tag::abx fp32, hence need re-creating
-    // memory descriptor and take its size.
-    auto ref_md = dnn_mem_t::init_md(
-            query_md_ndims(md), query_md_dims(md), dnnl_f32, tag::abx);
+    // memory descriptor and take its size. Grouped values are flat.
+    const dnnl_dims_t vals_dims = {query_md_nnz(md)};
+    auto ref_md = has_grouped_encoding(md)
+            ? dnn_mem_t::init_md(1, vals_dims, dnnl_f32, tag::abx)
+            : dnn_mem_t::init_md(query_md_ndims(md), query_md_dims(md),
+                      dnnl_f32, tag::abx);
     const auto ref_md_size = dnnl_memory_desc_get_size(ref_md);
 
     const size_t ref_mem_idx = check_mem_size_args.want_input ? 0 : 1;
@@ -1598,10 +1601,20 @@ float reorder_rescale_factor() {
 dims_t md2dims(const_dnnl_memory_desc_t md, int mask, bool extend_by_ones,
         const std::vector<int64_t> &groups) {
     auto ndims = query_md_ndims(md);
+    dnnl_dims_t md_dims;
+    std::copy(query_md_dims(md), query_md_dims(md) + DNNL_MAX_NDIMS, md_dims);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // A grouped md runs over `total` along its variable dim, and a mask
+    // covering that dim fuses the group dim into it
+    if (has_grouped_encoding(md)) {
+        const int var_dim = get_grouped_dims(md, md_dims);
+        if (mask & (1 << var_dim)) mask &= ~1;
+    }
+#endif
     dims_t dims;
     for (int d = 0; d < ndims; ++d) {
         if (mask & (1 << d)) {
-            dims.push_back(query_md_dims(md)[d]);
+            dims.push_back(md_dims[d]);
             // Note: groups are done for matmul's last two dimensions.
             const auto group_dim = d - (ndims - 2);
             if (!groups.empty() && group_dim >= 0) {

@@ -50,18 +50,19 @@ namespace matmul {
 
 // Helper to create grouped memory descriptor
 //
-// Supported configurations:
+// Problem descriptors stay 2D, grouped operands are 3D with the groups in dim 0
+// and DNNL_VARIABLE_DIM_VAL (`*`) at the variable dim:
 //  2Dx3D:
 //   --grouped=0:G:size_0+...+size_{G-1} total_MxK:GxKxN
-//   src [total_M, K] (dim 0 variable)
-//   wei is dense 3D [G, K, N]
-//   dst [total_M, N] (dim 0 variable)
+//   src {G, *, K}, wei is dense 3D [G, K, N], dst {G, *, N}
 //
 //  2Dx2D:
 //   --grouped=1:G:size_0+...+size_{G-1} Mxtotal_K:total_KxN
-//   src [M, total_K] (dim 1 variable, col-major implicit)
-//   wei [total_K, N] (dim 0 variable, row-major)
-//   dst is dense 3D [G, M, N]
+//   src {G, M, *}, wei {G, *, N}, dst is dense 3D [G, M, N]
+//
+// For a grouped operand, `--stag`, `--wtag`, or `--dtag` set to `ab` or `abc`
+// (`ba` or `acb`) make the last (middle) dim contiguous, other tags give the
+// default layout with the variable dim outermost
 static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
         const prb_t *prb, data_kind_t kind, dnnl_data_type_t dt) {
     dnnl_memory_desc_t md {};
@@ -72,25 +73,33 @@ static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_grouped_md(
     if (arg == DNNL_ARG_UNDEF) return md;
     if (!prb->sparse_options.is_grouped(arg)) return md;
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Variable dim of the [rows, cols] matrix
     const int variable_dim_idx = prb->sparse_options.get_variable_dim_idx(arg);
     const int64_t group_count = prb->sparse_options.get_group_count();
 
-    dnnl_dims_t dims_2d;
     // 2Dx3D: src [m, k], wei dense, dst [m, n]
     // 2Dx2D: src [m, k], wei [k, n], dst dense
-    if (arg == DNNL_ARG_SRC) {
-        dims_2d[0] = prb->m;
-        dims_2d[1] = prb->k;
-    } else if (arg == DNNL_ARG_WEIGHTS) {
-        dims_2d[0] = prb->k;
-        dims_2d[1] = prb->n;
-    } else { // DNNL_ARG_DST
-        dims_2d[0] = prb->m;
-        dims_2d[1] = prb->n;
-    }
+    const int64_t rows = arg == DNNL_ARG_WEIGHTS ? prb->k : prb->m;
+    const int64_t cols = arg == DNNL_ARG_SRC ? prb->k : prb->n;
+    const std::string &tag = arg == DNNL_ARG_SRC ? prb->stag
+            : arg == DNNL_ARG_WEIGHTS            ? prb->wtag
+                                                 : prb->dtag;
 
-    return dnn_mem_t::init_grouped_md(
-            2, dims_2d, dt, variable_dim_idx, group_count, dnnl_s32);
+    dnnl_dims_t dims = {group_count, rows, cols};
+    dims[1 + variable_dim_idx] = DNNL_VARIABLE_DIM_VAL;
+    const int64_t total = variable_dim_idx == 0 ? rows : cols;
+
+    dims_t strides;
+    if (tag == "ab" || tag == "abc")
+        strides = {0, cols, 1};
+    else if (tag == "ba" || tag == "acb")
+        strides = {0, 1, rows};
+
+    return dnn_mem_t::init_grouped_md(3, dims, dt, total, strides, dnnl_s32);
+#else
+    return md;
+#endif
 }
 
 dims_t get_runtime_dims(const dims_t &dims, const dims_mask_t &mask) {
@@ -212,10 +221,10 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
 
         if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
                 && prb->sparse_options.is_grouped(DNNL_ARG_DST)) {
-            // verify_grouped_input() enforces bia_mask=2 (N-only)
+            // Bias is [G, 1, N], verify_grouped_input() enforces bia_mask=2
             const int64_t group_count = prb->sparse_options.get_group_count();
-            const dnnl_dim_t grouped_bias_dims[2] = {group_count, prb->n};
-            bia_d = dnn_mem_t::init_md(2, grouped_bias_dims,
+            const dnnl_dim_t grouped_bias_dims[3] = {group_count, 1, prb->n};
+            bia_d = dnn_mem_t::init_md(3, grouped_bias_dims,
                     force_f32_dt ? dnnl_f32 : prb->bia_dt, tag::abx);
         } else {
             bia_d = dnn_mem_t::init_md(prb->ndims, bia_dims.data(),
@@ -777,6 +786,35 @@ void prb_t::skip_invalid(res_t *res) const {
                     "[INVALID][%s:%d]: Runtime masks for batch dimensions must "
                     "be consistent.\n",
                     __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = reason_t::invalid;
+            return;
+        }
+    }
+
+    // Grouped binary post-op operands are not created by benchdnn yet
+    if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
+            && prb->attr.post_ops.binary_index() != -1) {
+        BENCHDNN_PRINT(2, "[SKIP][%s:%d]: %s\n", __FILE__, __LINE__,
+                "Binary post-ops with grouped memory are not supported yet.");
+        res->state = SKIPPED;
+        res->reason = reason_t::skip_not_supported;
+        return;
+    }
+
+    // var_K K-grouped scales are a grid over total_K, so every group size
+    // must be a multiple of the scales K group
+    if (prb->sparse_options.is_2dby2d()) {
+        const int64_t gK = prb->scales_k_group();
+        const auto &sizes = prb->sparse_options.get_group_sizes(DNNL_ARG_SRC);
+        bool sizes_ok = true;
+        for (const auto size : sizes)
+            sizes_ok = sizes_ok && size % gK == 0;
+        if (!sizes_ok) {
+            BENCHDNN_PRINT(2,
+                    "[INVALID][%s:%d]: var_K group sizes must be multiples of "
+                    "the scales K group (%lld).\n",
+                    __FILE__, __LINE__, (long long)gK);
             res->state = SKIPPED;
             res->reason = reason_t::invalid;
             return;

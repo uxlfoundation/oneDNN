@@ -1203,38 +1203,45 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
 /// Common use case is Mixture-of-Experts (MoE) workloads where each expert
 /// processes different numbers of tokens.
 ///
+/// The descriptor is always 3D: `dims[0]` is the number of groups, and one of the
+/// other two dims is #DNNL_VARIABLE_DIM_VAL, the dim whose size varies per
+/// group. The size of each group comes from the offsets at execution time.
+///
 /// Memory layout consists of two buffers:
 /// - Buffer 0 (values): Concatenated data [group0 | group1 | ... | groupN-1]
 /// - Buffer 1 (offsets): Cumulative indices [size0, size0 + size1, ...]
 ///
 /// Example in the context of MoE:
 /// Below is how to describe 3 experts with token counts [1, 3, 5] and feature dim 256
-/// - Descriptor dims: {9, 256} where 9 is 1 + 3 + 5 (total tokens)
-/// - Variable dimension: 0 (token count varies per expert)
-/// - Group count: 3 (number of experts)
+/// - Descriptor dims: {3, #DNNL_VARIABLE_DIM_VAL, 256}
+/// - Total: 9 (1 + 3 + 5 tokens)
 /// - Values buffer: 9 x 256 elements
 /// - Offsets buffer: [1, 4, 9] (cumulative token counts)
 ///
-/// `variable_dim_idx` may be either 0 or 1:
-/// - `variable_dim_idx == 0` implies row-major storage (`ab`)
-/// - `variable_dim_idx == 1` implies col-major storage (`ba`)
+/// `strides` are in elements and in `dims` order.
+/// @note
+///     `strides[0]` must be 0.
+///     One of the other two strides must be 1 and the other one is the leading
+///     dimension.
+///     NULL strides imply that the variable dim is the outermost one.
 ///
 /// @note
 ///     Only s32 offsets are currently supported.
 ///
 /// @param memory_desc Output memory descriptor.
-/// @param ndims Number of dimensions for the tensor.
-/// @param dims Array of dimensions representing the overall tensor shape.
+/// @param ndims Number of dimensions for the tensor, must be 3.
+/// @param dims Array of dimensions: the number of groups and the two matrix
+///     dimensions, with #DNNL_VARIABLE_DIM_VAL at the variable one.
 /// @param data_type Elements data type.
-/// @param variable_dim_idx Index of the dimension with variable size per sub-tensor.
-/// @param group_count Number of sub-tensors included.
+/// @param total Size of the variable dimension summed over all groups.
+/// @param strides Strides of the values buffer, or NULL.
 /// @param offsets_dt Data type of the offsets array.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_memory_desc_create_with_grouped_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
-        dnnl_data_type_t data_type, int variable_dim_idx,
-        dnnl_dim_t group_count, dnnl_data_type_t offsets_dt);
+        dnnl_data_type_t data_type, dnnl_dim_t total, const dnnl_dims_t strides,
+        dnnl_data_type_t offsets_dt);
 #endif
 
 /// Creates a memory descriptor for a scalar value that resides on the host.
@@ -1393,7 +1400,8 @@ dnnl_status_t DNNL_API dnnl_memory_desc_permute_axes(
 ///
 /// The following queries are applicable only to format kind #dnnl_blocked.
 ///  - Strides (#dnnl_query_strides) between the outermost blocks or in case
-///    of plain (non-blocked) formats the strides between dimensions
+///    of plain (non-blocked) formats the strides between dimensions, also
+///    applicable to memory descriptors with grouped encoding
 ///  - Number of innermost blocks (#dnnl_query_inner_nblks_s32), e.g.
 ///    `{4, 16, 4}` in case of `OIhw_4i16o4i`
 ///  - Size of the innermost blocks (#dnnl_query_inner_blks), e.g. 3 in case
@@ -1445,7 +1453,8 @@ dnnl_status_t DNNL_API dnnl_memory_desc_query(
 ///
 /// The following queries are applicable only to format kind #dnnl_blocked.
 ///  - Strides (#dnnl_query_strides) between the outermost blocks or in case
-///    of plain (non-blocked) formats the strides between dimensions
+///    of plain (non-blocked) formats the strides between dimensions, also
+///    applicable to memory descriptors with grouped encoding
 ///  - Number of innermost blocks (#dnnl_query_inner_nblks_s32), e.g.
 ///    `{4, 16, 4}` in case of `OIhw_4i16o4i`
 ///  - Size of the innermost blocks (#dnnl_query_inner_blks), e.g. 3 in case

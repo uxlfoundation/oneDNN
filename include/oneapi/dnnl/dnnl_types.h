@@ -2341,6 +2341,14 @@ typedef enum {
 /// either of the dimensions or strides equal to #DNNL_RUNTIME_DIM_VAL.
 #define DNNL_RUNTIME_SIZE_VAL ((size_t)DNNL_RUNTIME_DIM_VAL)
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+/// A placeholder for the dimension of a grouped memory descriptor whose size
+/// varies per group.
+/// @note It is never replaced by a number, since the size of each group
+/// comes from the offsets at execution time.
+#define DNNL_VARIABLE_DIM_VAL (INT64_MIN + 1)
+#endif
+
 /// @cond DO_NOT_DOCUMENT_THIS
 /// Hex representation for a **special** quiet NAN (!= NAN from math.h)
 static const union {

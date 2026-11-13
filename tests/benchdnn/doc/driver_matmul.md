@@ -27,8 +27,8 @@ where *matmul-knobs* are:
  - `--bia_mask=INT` -- a bit-mask that indicates which bias dimensions are
             broadcasted. 0-bit means broadcast, 1-bit means full dimension.
             Note: for grouped matmul (`--grouped`) only `bia_mask=2`
-            (N-axis only) is supported. The resulting bias shape is `[G, N]`,
-            i.e. one value per output column per expert.
+            (N-axis only) is supported. The resulting bias shape is
+            `[G, 1, N]`, i.e. one value per output column per expert.
  - `--runtime_dims_masks=[INT][:INT]` -- a bit-mask with values for `src` and
             `weights` that indicates whether a dimension is
             `DNNL_RUNTIME_DIM_VAL` (indicated as 1-bit in the corresponding
@@ -49,6 +49,10 @@ where *matmul-knobs* are:
             where `G` matches `NUM_GROUPS`. When `K` is variable, weights are
             2D `[total_K,N]` and the destination is 3D `[G,M,N]`.
             Multiple configs can be comma-separated to iterate over them.
+            Masks of `--attr-scales` and `--attr-zero-points` are over the 3D
+            operands, src `{G, M, K}` and weights `{G, K, N}`, for variable
+            `M` and `K` alike: e.g., `src:3` gives row-wise and `src:7`
+            K-grouped src scales.
             Example: `--grouped=0:4:32+0+32+96 160x512:4x512x256`
             means `M` dimension is variable, `4` experts are used, `32, 0, ...`
             are sizes of each group with total `32+0+32+96 = 160`.
@@ -69,13 +73,15 @@ where *matmul-knobs* are:
             Optional `PARAM` is attached to `PROFILE` with a `.`.
             Optional `HINT` is the max_variable_dim dispatch hint, if not
             provided, it defaults to the largest generated group.
+            @warning When `K` is variable and scales are grouped along `K`, every group
+            size must be a multiple of the coarsest scales `K` group. For instance,
+            `decode`, that gives one unit per group, would likely produce invalid problem.
             Example: `--grouped=0:64:balanced 512x512:64x512x256`
             Example: `--grouped=0:64:balanced:512 512x512:64x512x256`
             Example: `--grouped=0:32:hot.80 256x512:32x512x256`
             Example: `--grouped=0:16:decode 8x512:16x512x256`
-            Note: a binary post-op with `mask = 0` (e.g.
-            `--attr-post-ops=mul:f32:0`) is applied per group (`[G, 1]`,
-            e.g. NVFP4 global scale), not a whole-tensor.
+            Note: binary post-ops are not supported with `--grouped` yet,
+            such problems are skipped.
  - `--gpu-kernel=STR` -- GPU kernel override, passed via a primitive
             attribute. `N` runs the Nth candidate after sort (rank); `A-B` and
             `all` run ranks `A` through `B` or every rank, clamped to the

@@ -254,21 +254,15 @@ struct sparse_desc_t {
     // Uses format_kind::sparse because grouped layout is a form of multi-buffer
     // representation where values are stored together with metadata
     // describing the variable structure (similar to CSR with rowptr/colind)
+    //
+    // dims are {G, *, X} or {G, X, *}: the number of groups and the two matrix
+    // dims, with DNNL_VARIABLE_DIM_VAL at the variable one
     struct grouped_desc_t {
-        // Number of groups
-        dnnl_dim_t group_count;
-        // Index of the dimension with variable size per group
-        int variable_dim_idx;
-        // Layout of the values buffer (handle 0):
-        // - strides are to describe element-to-element navigation within
-        // concatenated values buffer
-        // - across groups we use the offsets (handle 1)
-        //
-        // Note, that variable dim is always the outer one:
-        //   variable_dim_idx == 0 -> row-major (ab): strides[0]=dims[1],
-        //                            strides[1]=1
-        //   variable_dim_idx == 1 -> col-major (ba): strides[0]=1,
-        //                            strides[1]=dims[0]
+        // Size of the variable dim summed over all groups
+        dnnl_dim_t total;
+        // Layout of the values buffer (handle 0), in elements. strides[0] is
+        // 0: group g starts at offsets[g - 1] * strides[variable dim], with
+        // the offsets in handle 1
         dims_t strides;
     } grouped_desc;
 #endif

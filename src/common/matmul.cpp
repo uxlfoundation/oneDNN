@@ -43,13 +43,11 @@ namespace {
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 // Currently grouped matmul specific validation function is separated
 // as the coverage of grouped gemm is experimental and limited
-// Supported:
-//     2Dx3D (variable M): src 2D grouped [total_M, K] (idx=0, row-major),
-//                         wei dense 3D [G, K, N],
-//                         dst 2D grouped [total_M, N] (idx=0, row-major)
-//     2Dx2D (variable K): src 2D grouped [M, total_K] (idx=1, col-major),
-//                         wei 2D grouped [total_K, N] (idx=0, row-major),
-//                         dst dense 3D [G, M, N]
+// All operands are 3D with the groups in dim 0, `*` is the variable dim:
+//     2Dx3D (variable M): src grouped {G, *, K}, wei dense [G, K, N],
+//                         dst grouped {G, *, N}, optional bias [G, 1, N]
+//     2Dx2D (variable K): src grouped {G, M, *}, wei grouped {G, *, N},
+//                         dst dense [G, M, N]
 status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc) {
@@ -83,71 +81,54 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
     VCHECK_MATMUL_UNIMPL(
             is_2dby3d || is_2dby2d, VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-    const auto &src_grouped = src_d.sparse_desc().grouped_desc;
-    const dim_t group_count = src_grouped.group_count;
+    VCHECK_MATMUL_UNIMPL(
+            wei_d.ndims() == 3, VERBOSE_BAD_NDIMS, "weights", wei_d.ndims());
+    VCHECK_MATMUL_UNIMPL(
+            dst_d.ndims() == 3, VERBOSE_BAD_NDIMS, "dst", dst_d.ndims());
 
-    // Check variable dim indices/group count for consistency
-    const memory_desc_wrapper &variant_d = is_2dby3d ? dst_d : wei_d;
-    const char *variant_name = is_2dby3d ? "dst" : "weights";
-    const auto &variant_grouped = variant_d.sparse_desc().grouped_desc;
+    // The tensor split along with src: dst (2Dx3D) or wei (2Dx2D). The
+    // variable dim is M of src and dst, or K of src and wei
+    const memory_desc_wrapper &partner_d = is_2dby3d ? dst_d : wei_d;
+    const char *partner_name = is_2dby3d ? "dst" : "weights";
 
-    VCHECK_MATMUL_UNIMPL(src_grouped.variable_dim_idx == (is_2dby3d ? 0 : 1)
-                    && variant_grouped.variable_dim_idx == 0,
-            VERBOSE_INCONSISTENT_DIM, "src_variable_dim_idx",
-            (int)src_grouped.variable_dim_idx, variant_name,
-            (int)variant_grouped.variable_dim_idx);
+    VCHECK_MATMUL_UNIMPL(src_d.grouped_variable_dim() == (is_2dby3d ? 1 : 2)
+                    && partner_d.grouped_variable_dim() == 1,
+            VERBOSE_INCONSISTENT_DIM, "src_variable_dim",
+            src_d.grouped_variable_dim(), partner_name,
+            partner_d.grouped_variable_dim());
 
-    VCHECK_MATMUL_UNIMPL(src_grouped.group_count == variant_grouped.group_count,
-            VERBOSE_INCONSISTENT_DIM, "src_group_count",
-            (int)src_grouped.group_count, variant_name,
-            (int)variant_grouped.group_count);
+    VCHECK_MATMUL_UNIMPL(src_d.grouped_total() == partner_d.grouped_total(),
+            VERBOSE_INCONSISTENT_DIM, "src_total", (int)src_d.grouped_total(),
+            partner_name, (int)partner_d.grouped_total());
 
     VCHECK_MATMUL_UNIMPL(
-            src_d.metadata_type(0) == s32 && variant_d.metadata_type(0) == s32,
+            src_d.metadata_type(0) == s32 && partner_d.metadata_type(0) == s32,
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-    // Check number dims for consistency
-    const int ndims_src = src_d.ndims();
-    const int ndims_wei = wei_d.ndims();
-    const int ndims_dst = dst_d.ndims();
-    const int expected_ndims_wei = is_2dby3d ? 3 : 2;
-    const int expected_ndims_dst = is_2dby3d ? 2 : 3;
-    VCHECK_MATMUL_UNIMPL(ndims_src == 2, VERBOSE_BAD_NDIMS, "src", ndims_src);
-    VCHECK_MATMUL_UNIMPL(ndims_wei == expected_ndims_wei, VERBOSE_BAD_NDIMS,
-            "weights", ndims_wei);
-    VCHECK_MATMUL_UNIMPL(ndims_dst == expected_ndims_dst, VERBOSE_BAD_NDIMS,
-            "dst", ndims_dst);
-
-    // Check dims for consistency
-    const dim_t group_dim = is_2dby3d ? wei_d.dims()[0] : dst_d.dims()[0];
-    VCHECK_MATMUL_UNIMPL(group_dim == group_count, VERBOSE_INCONSISTENT_DIM,
-            is_2dby3d ? "weights_dim[0]" : "dst_dim[0]", (int)group_dim,
-            "src_group_count", (int)group_count);
-    VCHECK_MATMUL_UNIMPL(src_d.dims()[0] == dst_d.dims()[dst_d.ndims() - 2],
-            VERBOSE_INCONSISTENT_DIM, "src", 0, "dst", dst_d.ndims() - 2);
-    VCHECK_MATMUL_UNIMPL(src_d.dims()[1] == wei_d.dims()[wei_d.ndims() - 2],
-            VERBOSE_INCONSISTENT_DIM, "src", 1, "weights", wei_d.ndims() - 2);
-    VCHECK_MATMUL_UNIMPL(
-            dst_d.dims()[dst_d.ndims() - 1] == wei_d.dims()[wei_d.ndims() - 1],
-            VERBOSE_INCONSISTENT_DIM, "dst", dst_d.ndims() - 1, "weights",
-            wei_d.ndims() - 1);
+    // Dims agree as in a batched matmul, the variable dims are placeholders
+    VCHECK_MATMUL_UNIMPL(src_d.dims()[0] == wei_d.dims()[0],
+            VERBOSE_INCONSISTENT_DIM, "src", 0, "weights", 0);
+    VCHECK_MATMUL_UNIMPL(src_d.dims()[0] == dst_d.dims()[0],
+            VERBOSE_INCONSISTENT_DIM, "src", 0, "dst", 0);
+    VCHECK_MATMUL_UNIMPL(src_d.dims()[1] == dst_d.dims()[1],
+            VERBOSE_INCONSISTENT_DIM, "src", 1, "dst", 1);
+    VCHECK_MATMUL_UNIMPL(src_d.dims()[2] == wei_d.dims()[1],
+            VERBOSE_INCONSISTENT_DIM, "src", 2, "weights", 1);
+    VCHECK_MATMUL_UNIMPL(dst_d.dims()[2] == wei_d.dims()[2],
+            VERBOSE_INCONSISTENT_DIM, "dst", 2, "weights", 2);
 
     if (is_2dby3d) {
-        // Bias supported with shape [G, N]
+        // Bias is [G, 1, N]
         const bool with_bias = op_d.bias_desc.ndims != 0;
         if (with_bias) {
             const memory_desc_wrapper bia_d(&op_d.bias_desc);
-            const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
-
             VCHECK_MATMUL_UNIMPL(
-                    !bia_d.is_sparse_desc() && !bia_d.is_grouped_desc(),
+                    !bia_d.is_sparse_desc(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+            VCHECK_MATMUL_UNIMPL(bia_d.ndims() == 3
+                            && bia_d.dims()[0] == dst_d.dims()[0]
+                            && bia_d.dims()[1] == 1
+                            && bia_d.dims()[2] == dst_d.dims()[2],
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VCHECK_MATMUL_UNIMPL(
-                    bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VCHECK_MATMUL_UNIMPL(
-                    bia_d.dims()[0] == group_count && bia_d.dims()[1] == N,
-                    VERBOSE_INCONSISTENT_DIM, "bias_dim[0]",
-                    (int)bia_d.dims()[0], "dst_group_count", (int)group_count);
         }
     } else {
         // Bias is not supported for the 2Dx2D
@@ -166,32 +147,40 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
 // Grouped matmul attribute checks.
 // Separated from regular matmul as grouped gemm coverage is experimental
 // and limited
-//
-// Note: 2Dx2D supports only default attribues for now
 status_t grouped_matmul_attr_check(
         const matmul_desc_t &desc, const primitive_attr_t *attr) {
     using smask_t = primitive_attr_t::skip_mask_t;
     using namespace data_type;
 
+    const auto src_dt = desc.src_desc.data_type;
+    const auto wei_dt = desc.weights_desc.data_type;
+
+    // Weight-only quantization (fp src with integer wei) requires wei scales
+    // and fpmath with apply_to_int, also when no attributes are set
+    VCHECK_MATMUL_UNIMPL(
+            IMPLICATION(!types::is_integral_dt(src_dt)
+                            && types::is_integral_dt(wei_dt),
+                    attr && !attr->scales_.has_default_values(DNNL_ARG_WEIGHTS)
+                            && attr->fpmath_.apply_to_int_),
+            VERBOSE_UNSUPPORTED_DT_CFG);
+
     if (attr == nullptr) return status::success;
     if (attr->has_default_values()) return status::success;
 
-    // Reject 2Dx2D as no support so far
     const memory_desc_wrapper src_d(&desc.src_desc);
     const memory_desc_wrapper wei_d(&desc.weights_desc);
     const bool is_2dby2d = src_d.is_grouped_desc() && wei_d.is_grouped_desc();
-    VCHECK_MATMUL_UNIMPL(!is_2dby2d, VERBOSE_UNSUPPORTED_ATTR);
 
-    // Grouped matmul supports scales, zero points, woq, and post-ops
-    auto allowed_mask = smask_t::scales_data_type | smask_t::scales_groups
-            | smask_t::fpmath_mode | smask_t::zero_points_data_type
-            | smask_t::zero_points_groups | smask_t::post_ops;
+    // Grouped matmul 2Dx3D supports scales, zero points, woq, and post-ops
+    // 2Dx2D variant supports scales only
+    auto allowed_mask = smask_t::scales_data_type | smask_t::scales_groups;
+    if (!is_2dby2d)
+        allowed_mask |= smask_t::fpmath_mode | smask_t::zero_points_data_type
+                | smask_t::zero_points_groups | smask_t::post_ops;
     VCHECK_MATMUL_UNIMPL(
             attr->has_default_values(allowed_mask, desc.dst_desc.data_type),
             VERBOSE_UNSUPPORTED_ATTR);
 
-    const auto src_dt = desc.src_desc.data_type;
-    const auto wei_dt = desc.weights_desc.data_type;
     const auto &sc = attr->scales_;
 
     // Dissalow scales on fp src/wei/dst data as real-world applications
@@ -205,47 +194,123 @@ status_t grouped_matmul_attr_check(
     VCHECK_MATMUL_UNIMPL(sc.has_default_values(DNNL_ARG_DST),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-    // Post-ops: only eltwise and binary_mul are supported
+    // Scales and zero points groups are {1, gK} for src and {gK, gN} for wei,
+    // and must divide K (total_K for 2Dx2D) and N. Note, get_group() returns
+    // 1 when no groups were requested
+    const dim_t K = is_2dby2d ? src_d.grouped_total() : src_d.dims()[2];
+    const dim_t N = wei_d.dims()[2];
+    const dim_t src_gK = sc.get_group(DNNL_ARG_SRC, -1);
+    const dim_t wei_gK = sc.get_group(DNNL_ARG_WEIGHTS, -2);
+    VCHECK_MATMUL(K % src_gK == 0 && K % wei_gK == 0
+                    && N % sc.get_group(DNNL_ARG_WEIGHTS, -1) == 0,
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    // src scales are grouped along K only, and src/wei K-groups must be
+    // multiples of each other
+    VCHECK_MATMUL_UNIMPL(sc.get_group(DNNL_ARG_SRC, -2) == 1
+                    && (src_gK % wei_gK == 0 || wei_gK % src_gK == 0),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    // Masks are over src {G, M, K} and wei {G, K, N} in both patterns: src
+    // per row or per K-group, wei per column or per K-group. A mask covering
+    // the variable dim covers G too, groups go with the K-grouped masks only
+    const int src_rowwise = (1 << 0) | (1 << 1);
+    const int src_k_grouped = src_rowwise | (1 << 2);
+    const int wei_colwise = (1 << 0) | (1 << 2);
+    const int wei_k_grouped = wei_colwise | (1 << 1);
+    if (!sc.has_default_values(DNNL_ARG_SRC)) {
+        const int mask = sc.get_mask(DNNL_ARG_SRC);
+        VCHECK_MATMUL_UNIMPL(utils::one_of(mask, src_rowwise, src_k_grouped)
+                        && (mask == src_k_grouped
+                                        ? src_gK > 1
+                                        : sc.has_default_groups(DNNL_ARG_SRC)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+    if (!sc.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const int mask = sc.get_mask(DNNL_ARG_WEIGHTS);
+        VCHECK_MATMUL_UNIMPL(utils::one_of(mask, wei_colwise, wei_k_grouped)
+                        && (mask == wei_k_grouped ? wei_gK > 1
+                                                  : sc.has_default_groups(
+                                                            DNNL_ARG_WEIGHTS)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+
+    if (is_2dby2d) return status::success;
+
+    // Zero points: integer src/wei only, with the masks of the scales or
+    // a common one for u3 wei
+    const auto &zp = attr->zero_points_;
+    const dim_t src_zp_gK = zp.get_group(DNNL_ARG_SRC, -1);
+    const dim_t wei_zp_gK = zp.get_group(DNNL_ARG_WEIGHTS, -2);
+    VCHECK_MATMUL(K % src_zp_gK == 0 && K % wei_zp_gK == 0
+                    && N % zp.get_group(DNNL_ARG_WEIGHTS, -1) == 0,
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+    VCHECK_MATMUL_UNIMPL(zp.has_default_values(DNNL_ARG_DST)
+                    && zp.get_group(DNNL_ARG_SRC, -2) == 1,
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+    if (!zp.has_default_values(DNNL_ARG_SRC)) {
+        const int mask = zp.get_mask(DNNL_ARG_SRC);
+        VCHECK_MATMUL_UNIMPL(types::is_integral_dt(src_dt)
+                        && utils::one_of(mask, src_rowwise, src_k_grouped)
+                        && (mask == src_k_grouped
+                                        ? src_zp_gK > 1
+                                        : zp.has_default_groups(DNNL_ARG_SRC)),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
+    if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const int mask = zp.get_mask(DNNL_ARG_WEIGHTS);
+        VCHECK_MATMUL_UNIMPL(types::is_integral_dt(wei_dt)
+                        && (utils::one_of(mask, wei_colwise, wei_k_grouped)
+                                || (mask == 0 && wei_dt == u3))
+                        && (mask == wei_k_grouped ? wei_zp_gK > 1
+                                                  : zp.has_default_groups(
+                                                            DNNL_ARG_WEIGHTS)),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
+    // Weights scales and zero points K-groups must match
+    VCHECK_MATMUL_UNIMPL(
+            IMPLICATION(!sc.has_default_values(DNNL_ARG_WEIGHTS)
+                            && !zp.has_default_groups(DNNL_ARG_WEIGHTS),
+                    wei_gK == wei_zp_gK),
+            VERBOSE_INCONSISTENT_DIM, "wei_scale_group_k", (int)wei_gK,
+            "wei_zp_group_k", (int)wei_zp_gK);
+
+    // Post-ops: only eltwise and binary_mul are supported. src1 is 3D as dst:
+    // dense when constant along the variable dim, e.g., [G, 1, 1] or
+    // [1, 1, N], otherwise grouped with dst's groups and default layout
     const memory_desc_wrapper dst_d(&desc.dst_desc);
     const auto &po = attr->post_ops_;
     for (int i = 0; i < po.len(); ++i) {
         const auto &e = po.entry_[i];
         VCHECK_MATMUL_UNIMPL(
                 e.is_eltwise() || e.is_binary(), VERBOSE_UNSUPPORTED_POSTOP);
+        if (!e.is_binary()) continue;
 
-        if (e.is_binary()) {
-            VCHECK_MATMUL_UNIMPL(e.binary.alg == alg_kind::binary_mul,
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            const memory_desc_wrapper src1_d(e.binary.src1_desc);
+        VCHECK_MATMUL_UNIMPL(e.binary.alg == alg_kind::binary_mul,
+                VERBOSE_UNSUPPORTED_POSTOP);
+        const memory_desc_wrapper src1_d(e.binary.src1_desc);
+        VCHECK_MATMUL(src1_d.ndims() == dst_d.ndims(),
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "dst", "bin_po src1",
+                dst_d.ndims(), src1_d.ndims());
 
-            VCHECK_MATMUL(src1_d.ndims() == dst_d.ndims(),
-                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "dst", "bin_po src1",
-                    dst_d.ndims(), src1_d.ndims());
-
-            if (src1_d.is_grouped_desc()) {
-                // Validate grouped binary post-op descriptor:
-                // group_count and variable_dim_idx must match dst
-                const auto &bin_g = src1_d.sparse_desc().grouped_desc;
-                const auto &dst_g = dst_d.sparse_desc().grouped_desc;
-                VCHECK_MATMUL_UNIMPL(bin_g.group_count == dst_g.group_count
-                                && bin_g.variable_dim_idx
-                                        == dst_g.variable_dim_idx,
-                        VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
-            } else {
-                // Validate dense binary post-op descriptor:
-                // only per-group (e.g., NVFP4 with [G, 1])
-                // or per-row shapes are allowed
-                const dim_t bin_M = src1_d.dims()[0];
-                const dim_t bin_N = src1_d.dims()[src1_d.ndims() - 1];
-                const dim_t total_M = dst_d.dims()[0];
-                const dim_t gc = dst_d.sparse_desc().grouped_desc.group_count;
-                VCHECK_MATMUL_UNIMPL(
-                        bin_N == 1 || src1_d.matches_one_of_tag(format_tag::ab),
-                        VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "binary post-op");
-                VCHECK_MATMUL_UNIMPL(utils::one_of(bin_M, gc, total_M)
-                                && IMPLICATION(bin_M == gc, bin_N == 1),
-                        VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
-            }
+        const dim_t G = dst_d.dims()[0];
+        const dim_t bin_N = src1_d.dims()[2];
+        VCHECK_MATMUL_UNIMPL(utils::one_of(bin_N, 1, N),
+                VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
+        if (src1_d.is_grouped_desc()) {
+            const dims_t default_strides = {0, bin_N, 1};
+            VCHECK_MATMUL_UNIMPL(src1_d.dims()[0] == G
+                            && src1_d.grouped_variable_dim() == 1
+                            && src1_d.grouped_total() == dst_d.grouped_total(),
+                    VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
+            VCHECK_MATMUL_UNIMPL(
+                    utils::array_cmp(src1_d.strides(), default_strides, 3),
+                    VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "binary post-op");
+        } else {
+            VCHECK_MATMUL_UNIMPL(utils::one_of(src1_d.dims()[0], 1, G)
+                            && src1_d.dims()[1] == 1,
+                    VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
+            VCHECK_MATMUL_UNIMPL(src1_d.format_any() || src1_d.is_plain(),
+                    VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "binary post-op");
         }
     }
 

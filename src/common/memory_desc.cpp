@@ -76,6 +76,17 @@ inline status_t memory_desc_sanity_check(int ndims, const dims_t dims,
 }
 
 status_t memory_desc_sanity_check(const memory_desc_t &md) {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Grouped values are checked as a [total, fixed dim] tensor, as at the
+    // creation, since the variable dim is a placeholder
+    const memory_desc_wrapper mdw(md);
+    if (mdw.is_grouped_desc()) {
+        const int fixed_dim = 3 - mdw.grouped_variable_dim();
+        const dims_t values_dims = {mdw.grouped_total(), md.dims[fixed_dim]};
+        return memory_desc_sanity_check(
+                2, values_dims, md.data_type, md.format_kind);
+    }
+#endif
     return memory_desc_sanity_check(
             md.ndims, md.dims, md.data_type, md.format_kind);
 }
@@ -421,44 +432,65 @@ status_t memory_desc_init_by_packed_encoding(memory_desc_t &memory_desc,
 // the variable dimension.
 //
 // Parameters:
-// - variable_dim_idx: Index of dimension with variable size
-// - group_count: Number of groups
-// - dims: Total dimensions
-//
-// Supported below:
-// - 2D tensors only with variable dim 0 (e.g., [total_M, K]) or dim 1
-//   (e.g., [M, total_K])
-// - The variable dim is the outermost dim of the values
-//   buffer: idx=0 -> row-major (ab), idx=1 -> col-major (ba)
-// - Other dimensions must be uniform across all groups
+// - dims: {G, *, X} or {G, X, *}, where G is the number of groups and `*` is
+//   DNNL_VARIABLE_DIM_VAL, the dim with variable size per group
+// - total: size of the variable dim summed over all groups
+// - strides: layout of the values buffer with strides[0] == 0, or NULL for
+//   the variable dim being the outermost one
 status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
-        int ndims, const dims_t dims, data_type_t data_type,
-        int variable_dim_idx, dim_t group_count, data_type_t offsets_dt) {
+        int ndims, const dims_t dims, data_type_t data_type, dim_t total,
+        const dims_t strides, data_type_t offsets_dt) {
     if (ndims == 0) {
         memory_desc = types::zero_md();
         return success;
     }
 
-    VCHECK_MEMORY(ndims == 2, unimplemented, VERBOSE_BAD_NDIMS, "", ndims);
+    VCHECK_MEMORY(ndims == 3, unimplemented, VERBOSE_BAD_NDIMS, "", ndims);
+    VCHECK_MEMORY(
+            dims != nullptr, invalid_arguments, "%s (dims)", VERBOSE_NULL_ARG);
 
-    CHECK(memory_desc_sanity_check(ndims, dims, data_type, format_kind::undef));
+    // Exactly one matrix dim is variable
+    const int var_dim = dims[1] == DNNL_VARIABLE_DIM_VAL ? 1 : 2;
+    const int fixed_dim = 3 - var_dim;
+    VCHECK_MEMORY(dims[var_dim] == DNNL_VARIABLE_DIM_VAL
+                    && dims[fixed_dim] != DNNL_VARIABLE_DIM_VAL
+                    && dims[0] != DNNL_VARIABLE_DIM_VAL,
+            invalid_arguments, VERBOSE_BAD_PARAM, "dims");
 
-    VCHECK_MEMORY(group_count > 0, invalid_arguments, VERBOSE_BAD_PARAM,
-            "group_count");
-
-    // Validate offsets data type
-    VCHECK_MEMORY(offsets_dt == data_type::s32, invalid_arguments,
-            VERBOSE_INVALID_DATATYPE, "offsets");
-
-    // Validate variable dimension index
-    VCHECK_MEMORY(variable_dim_idx >= 0 && variable_dim_idx < ndims,
-            invalid_arguments, VERBOSE_BAD_PARAM, "variable_dim_idx");
-
-    for (int d = 0; d < ndims; ++d) {
+    for (int d : {0, fixed_dim}) {
         VCHECK_MEMORY(!is_runtime_value(dims[d]), invalid_arguments,
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         VCHECK_MEMORY(
                 dims[d] > 0, invalid_arguments, VERBOSE_BAD_DIM, "dims", d);
+    }
+    VCHECK_MEMORY(!is_runtime_value(total), invalid_arguments,
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_MEMORY(total > 0, invalid_arguments, VERBOSE_BAD_PARAM, "total");
+    // Values are checked as a [total, fixed dim] tensor
+    const dims_t values_dims = {total, dims[fixed_dim]};
+    CHECK(memory_desc_sanity_check(
+            2, values_dims, data_type, format_kind::undef));
+
+    VCHECK_MEMORY(offsets_dt == data_type::s32, invalid_arguments,
+            VERBOSE_INVALID_DATATYPE, "offsets");
+
+    dims_t extents = {dims[0], dims[1], dims[2]};
+    extents[var_dim] = total;
+    dims_t grouped_strides = {0};
+    grouped_strides[var_dim] = dims[fixed_dim];
+    grouped_strides[fixed_dim] = 1;
+    if (strides) {
+        // G has no stride, one matrix dim is contiguous and the other one is
+        // the leading dim, at least the extent of the contiguous dim
+        const int ld_dim = strides[2] == 1 ? 1 : 2;
+        const bool ok = strides[0] == 0 && strides[3 - ld_dim] == 1
+                && strides[ld_dim] >= extents[3 - ld_dim];
+        VCHECK_MEMORY(ok, invalid_arguments, VERBOSE_BAD_PARAM, "strides");
+        VCHECK_MEMORY(strides[ld_dim]
+                        <= std::numeric_limits<dim_t>::max() / extents[ld_dim],
+                invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM, "strides",
+                ld_dim);
+        array_copy(grouped_strides, strides, ndims);
     }
 
     auto md = memory_desc_t();
@@ -473,16 +505,11 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     // describing the variable structure (similar to CSR with rowptr/colind)
     md.format_kind = format_kind::sparse;
     md.format_desc.sparse_desc.encoding = sparse_encoding::grouped;
-    md.format_desc.sparse_desc.nnz = utils::array_product(dims, ndims);
+    md.format_desc.sparse_desc.nnz = total * dims[fixed_dim];
     md.format_desc.sparse_desc.metadata_types[0] = offsets_dt;
     auto &grouped = md.format_desc.sparse_desc.grouped_desc;
-    grouped.group_count = group_count;
-    grouped.variable_dim_idx = variable_dim_idx;
-    // layout is determined by variable_dim_idx + dims:
-    //   idx=0 row-major (ab): {dims[1], 1}
-    //   idx=1 col-major (ba): {1, dims[0]}
-    grouped.strides[variable_dim_idx] = dims[1 - variable_dim_idx];
-    grouped.strides[1 - variable_dim_idx] = 1;
+    grouped.total = total;
+    array_copy(grouped.strides, grouped_strides, ndims);
 
     memory_desc = md;
 
@@ -946,14 +973,14 @@ status_t dnnl_memory_desc_create_with_packed_encoding(
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 status_t dnnl_memory_desc_create_with_grouped_encoding(
         memory_desc_t **memory_desc, int ndims, const dims_t dims,
-        data_type_t data_type, int variable_dim_idx, dim_t group_count,
+        data_type_t data_type, dim_t total, const dims_t strides,
         data_type_t offsets_dt) {
     if (any_null(memory_desc)) return invalid_arguments;
 
     auto md = utils::make_unique<memory_desc_t>();
     if (!md) return out_of_memory;
-    CHECK(memory_desc_init_with_grouped_encoding(*md, ndims, dims, data_type,
-            variable_dim_idx, group_count, offsets_dt));
+    CHECK(memory_desc_init_with_grouped_encoding(
+            *md, ndims, dims, data_type, total, strides, offsets_dt));
     (*memory_desc) = md.release();
     return success;
 }
@@ -1053,6 +1080,13 @@ status_t dnnl_memory_desc_query(
             }
             break;
         case query::strides:
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            if (memory_desc_wrapper(md).is_grouped_desc()) {
+                *(const dims_t **)result
+                        = &md->format_desc.sparse_desc.grouped_desc.strides;
+                break;
+            }
+#endif
             if (!is_blocked) return status::invalid_arguments;
             *(const dims_t **)result = &md->format_desc.blocking.strides;
             break;

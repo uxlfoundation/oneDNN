@@ -133,11 +133,34 @@ struct quant_entry_t {
         int ndims = base_md.ndims;
         utils::copy_dims_with_mask(quant_dims, in_dims, ndims, mask_,
                 /* fill_with_ones = */ true);
+
+        // A mask covering the variable dim of a grouped tensor fuses the group
+        // dim into it: the buffer runs over `total` and, as in the grouped
+        // data, the group dim has a zero stride
+        bool fuse_groups = false;
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        const auto &sparse_desc = base_md.format_desc.sparse_desc;
+        if (base_md.format_kind == format_kind::sparse
+                && sparse_desc.encoding == sparse_encoding::grouped) {
+            const int var_dim = in_dims[1] == DNNL_VARIABLE_DIM_VAL ? 1 : 2;
+            fuse_groups = mask_ & (1 << var_dim);
+            if (fuse_groups) {
+                quant_dims[0] = 1;
+                quant_dims[var_dim] = sparse_desc.grouped_desc.total;
+            }
+        }
+#endif
         if (!has_default_groups()) {
             quant_dims[ndims - 2] /= get_group(0);
             quant_dims[ndims - 1] /= get_group(1);
         }
 
+        if (fuse_groups) {
+            const dims_t strides = {0, quant_dims[2], 1};
+            CHECK(memory_desc_init_by_strides(
+                    out_md, ndims, quant_dims, data_type_, strides));
+            return status::success;
+        }
         CHECK(memory_desc_init_by_tag(
                 out_md, ndims, quant_dims, data_type_, get_abx_tag(ndims)));
         return status::success;

@@ -159,9 +159,10 @@ struct matmul_pd_t : public primitive_desc_t {
     dim_t batch() const {
         return utils::array_product(dst_md_.dims, ndims() - 2);
     }
-    dim_t M() const { return dst_md_.dims[ndims() - 2]; }
+    // For a grouped variable dim, M and K are its size summed over all groups
+    dim_t M() const { return get_dim(dst_md_, ndims() - 2); }
     dim_t N() const { return dst_md_.dims[ndims() - 1]; }
-    dim_t K() const { return src_md_.dims[src_md_.ndims - 1]; }
+    dim_t K() const { return get_dim(src_md_, src_md_.ndims - 1); }
 
     bool is_bias_1xN() const {
         if (!with_bias()) return false;
@@ -392,6 +393,15 @@ protected:
         , bias_md_(desc_.bias_desc)
         , dst_md_(desc_.dst_desc)
         , reduce_md_(desc_.reduce_desc) {}
+
+    static dim_t get_dim(const memory_desc_t &md, int d) {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        const memory_desc_wrapper mdw(md);
+        if (mdw.is_grouped_desc() && d == mdw.grouped_variable_dim())
+            return mdw.grouped_total();
+#endif
+        return md.dims[d];
+    }
 
     // temporary solution to deal with format `any`
     bool set_default_formats() {

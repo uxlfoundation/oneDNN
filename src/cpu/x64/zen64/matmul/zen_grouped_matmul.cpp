@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 Advanced Micro Devices, Inc.
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -71,6 +72,10 @@ status_t zen_grouped_matmul_t::pd_t::init(const engine_t *engine) {
     // Grouped src/dst selects the 2Dx3D pattern.
     VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    // The dims and strides below are still for 2D grouped mds, 3D grouped mds
+    // go to the reference implementation
+    VDISPATCH_MATMUL(
+            src_d.ndims() == 2, VERBOSE_BAD_NDIMS, "src", src_d.ndims());
 
     VDISPATCH_MATMUL(
             !has_runtime_dims_or_strides(), VERBOSE_RUNTIMEDIM_UNSUPPORTED);
@@ -261,8 +266,7 @@ status_t zen_grouped_matmul_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper wei_d(pd()->weights_md(0));
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
-    const auto &src_grouped = src_d.sparse_desc().grouped_desc;
-    const dim_t group_count = src_grouped.group_count;
+    const dim_t group_count = wei_d.dims()[0];
     const dim_t K = wei_d.dims()[wei_d.ndims() - 2];
     const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
     const dim_t total_M = src_d.dims()[0];

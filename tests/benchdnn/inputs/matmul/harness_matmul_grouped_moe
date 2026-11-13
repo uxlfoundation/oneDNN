@@ -23,7 +23,7 @@
 --reset
 --dt=f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:bf16
 --wtag=acb
---attr-scales=src:1:f32+wei:5:f32
+--attr-scales=src:3:f32+wei:5:f32
 --batch=shapes_grouped_moe
 --batch=shapes_grouped_moe_large
 
@@ -36,7 +36,7 @@
 --reset
 --dt=f8_e4m3:f8_e4m3:bf16
 --wtag=acb
---attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--attr-scales=src:7:e8m0:1x32+wei:7:e8m0:32x1
 --batch=shapes_grouped_moe
 --batch=shapes_grouped_moe_large
 
@@ -49,7 +49,7 @@
 --reset
 --dt=f4_e2m1:f4_e2m1:bf16
 --wtag=acb
---attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--attr-scales=src:7:e8m0:1x32+wei:7:e8m0:32x1
 --batch=shapes_grouped_moe
 
 ########################################
@@ -62,9 +62,32 @@
 --reset
 --dt=f4_e2m1:f4_e2m1:bf16
 --wtag=acb
---attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
+--attr-scales=src:7:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
 --attr-post-ops=mul:f32:0
 --batch=shapes_grouped_moe
+
+########################################
+# scaled_grouped_mm 2Dx2D (wgrad):     #
+# MxFP8                                #
+# scale_a: e8m0 block (M, total_K/32)  #
+# scale_b: e8m0 block (total_K/32, N)  #
+########################################
+
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16
+--attr-scales=src:7:e8m0:1x32+wei:7:e8m0:32x1
+--batch=shapes_grouped_moe_k_axis
+
+########################################
+# DeepSeek Wgrad (2Dx2D):              #
+# scale_a: f32 block (M, total_K/128)  #
+# scale_b: f32 block (total_K/128, N)  #
+########################################
+
+--reset
+--dt=f8_e4m3:f8_e4m3:f32
+--attr-scales=src:7:f32:1x128+wei:7:f32:128x1
+--batch=shapes_grouped_moe_k_axis
 
 ########################################
 # WoQ F16/U4/F16                       #

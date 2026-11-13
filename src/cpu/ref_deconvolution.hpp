@@ -32,6 +32,7 @@
 
 #include "cpu/cpu_convolution_pd.hpp"
 #include "cpu/cpu_deconvolution_pd.hpp"
+#include "cpu/platform.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -114,6 +115,7 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             primitive_attr_t conv_attr;
 
             convolution_desc_t cd;
+            status_t no_impl_status = status::unimplemented;
             // When no attributes were requested, try to find a bwd_d conv impl
             // which supports bias update in-place, if requested, in requested
             // dst_dt. If appropriate conv impl was not found, enforce f32
@@ -137,6 +139,7 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                     bool ok = conv_pd_->weights_md()->extra.flags == 0;
                     if (ok) return status::success;
                 }
+                no_impl_status = it.no_impl_status();
             }
 
             // Intermediate f32 buffer is supported only for given condition.
@@ -154,8 +157,9 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                     bool ok = conv_pd_->weights_md()->extra.flags == 0;
                     if (ok) return status::success;
                 }
+                no_impl_status = it.no_impl_status();
             }
-            return status::unimplemented;
+            return no_impl_status;
         }
 
         status_t init(const engine_t *engine) {
@@ -167,6 +171,12 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                 skip_mask |= smask_t::scales | smask_t::zero_points;
 
             VDISPATCH_DECONVOLUTION(is_fwd(), VERBOSE_BAD_PROPKIND);
+            // Only the source is checked: other tensors may use data types
+            // that don't require hardware support, e.g. f16 or bf16 weights
+            // with f32 activations or a bf16 destination for int8.
+            VDISPATCH_DECONVOLUTION_SC(platform::has_data_type_support(
+                                               invariant_src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_DECONVOLUTION(utils::one_of(desc()->alg_kind,
                                             alg_kind::deconvolution_direct,
                                             alg_kind::deconvolution_winograd),
@@ -185,7 +195,8 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_DECONVOLUTION(
                     attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_DECONVOLUTION(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_DECONVOLUTION_SC(
+                    post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_DECONVOLUTION(
                     zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
 
@@ -253,12 +264,13 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             }
         }
 
-        bool post_ops_ok() const {
+        status_t post_ops_ok() const {
             using namespace data_type;
             const bool is_int8 = utils::one_of(src_md()->data_type, s8, u8);
-            return attr()->post_ops_.check_sum_consistency(
-                           dst_md()->data_type, is_int8)
-                    && ref_post_ops_t::post_ops_ok(attr()->post_ops_);
+            if (!attr()->post_ops_.check_sum_consistency(
+                        dst_md()->data_type, is_int8))
+                return status::unimplemented;
+            return ref_post_ops_t::post_ops_ok(attr()->post_ops_);
         }
 
         bool zero_points_ok() const {
@@ -354,7 +366,7 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
                     return status::success;
             }
 
-            return status::unimplemented;
+            return it.no_impl_status();
         }
 
         status_t init(const engine_t *engine) {
@@ -366,6 +378,11 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
             VDISPATCH_DECONVOLUTION(
                     desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
+            // Only the destination gradient is checked, see the forward
+            // implementation.
+            VDISPATCH_DECONVOLUTION_SC(
+                    platform::has_data_type_support(ddst_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_DECONVOLUTION(utils::one_of(wei_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_DECONVOLUTION(IMPLICATION(ddst_type != wei_type,
@@ -473,7 +490,7 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
                     return status::success;
                 }
             }
-            return status::unimplemented;
+            return it.no_impl_status();
         }
 
         status_t init(const engine_t *engine) {
@@ -485,6 +502,15 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
             VDISPATCH_DECONVOLUTION(
                     desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
+            // Weights are not checked, see the forward implementation. The
+            // destination gradient must match the source, so checking it only
+            // affects the status of cases that are rejected anyway.
+            VDISPATCH_DECONVOLUTION_SC(
+                    platform::has_data_type_support(src_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_DECONVOLUTION_SC(
+                    platform::has_data_type_support(dst_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_DECONVOLUTION(utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_DECONVOLUTION(dst_type == src_type,

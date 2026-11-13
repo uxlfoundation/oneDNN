@@ -49,17 +49,17 @@ struct ref_inner_product_fwd_t : public primitive_t {
             const bool allow_all_tags = true; // ref should support all tags
 
             VDISPATCH_INNER_PRODUCT(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(src_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(src_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(wei_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(wei_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(bia_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(bia_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(dst_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(dst_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     utils::one_of(src_type, f32, bf16, f16, f8_e5m2, f8_e4m3),
@@ -82,7 +82,7 @@ struct ref_inner_product_fwd_t : public primitive_t {
                     attr()->post_ops_.check_sum_consistency(dst_type,
                             /* is_int8 */ false),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_INNER_PRODUCT(
+            VDISPATCH_INNER_PRODUCT_SC(
                     ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_INNER_PRODUCT(
@@ -129,16 +129,14 @@ struct ref_inner_product_bwd_data_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
-            VDISPATCH_INNER_PRODUCT(
-                    platform::has_data_type_support(diff_src_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(diff_dst_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(wei_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(diff_src_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(
-                    platform::has_data_type_support(diff_dst_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(wei_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(utils::one_of(diff_src_type, f32, wei_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -185,16 +183,19 @@ struct ref_inner_product_bwd_weights_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
-            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(src_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(src_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(
-                    platform::has_data_type_support(diff_wei_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(diff_wei_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(
-                    platform::has_data_type_support(diff_bia_type)
-                            == status::success,
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(diff_bia_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            // The destination gradient must match the source, so checking it
+            // only affects the status of cases that are rejected anyway.
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(diff_dst_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);

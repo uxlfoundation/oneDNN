@@ -103,7 +103,9 @@ struct riscv_gemm_convolution_fwd_t : public primitive_t {
                 return ok;
             };
 
-            if (!ref_post_ops_t::post_ops_ok(attr()->post_ops_)) return false;
+            if (ref_post_ops_t::post_ops_ok(attr()->post_ops_)
+                    != status::success)
+                return false;
 
             for (int idx = 0; idx < po.len(); idx++) {
                 bool ok = is_sum_ok(idx)

@@ -43,16 +43,24 @@ struct ref_batch_normalization_fwd_t : public primitive_t {
         status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
+            // Check the problem data types before matching `d_type`, so that
+            // the status is reported for data types without an instance.
+            VDISPATCH_BNORM_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BNORM_SC(
+                    platform::has_data_type_support(dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(utils::everyone_is(d_type, src_md()->data_type,
                                     dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BNORM(
-                    platform::has_data_type_support(d_type) == status::success,
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BNORM(IMPLICATION(is_training(),
-                                    platform::has_training_support(d_type)
-                                            == status::success),
-                    VERBOSE_UNSUPPORTED_DT);
+            if (is_training()) {
+                // Training is not implemented for integer data types.
+                VDISPATCH_BNORM(
+                        !types::is_integral_dt(d_type), VERBOSE_UNSUPPORTED_DT);
+                VDISPATCH_BNORM_SC(platform::has_training_support(d_type),
+                        VERBOSE_UNSUPPORTED_DT);
+            }
             VDISPATCH_BNORM(check_scale_shift_data_type(),
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "unsupported scale or shift data type");
@@ -103,15 +111,22 @@ struct ref_batch_normalization_bwd_t : public primitive_t {
             using namespace data_type;
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            // Check the problem data types before matching `d_type`, so that
+            // the status is reported for data types without an instance.
+            VDISPATCH_BNORM_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BNORM_SC(
+                    platform::has_data_type_support(diff_dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BNORM_SC(
+                    platform::has_data_type_support(diff_src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(
                     utils::everyone_is(d_type, src_md()->data_type,
                             diff_dst_md()->data_type, diff_src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BNORM(
-                    platform::has_data_type_support(d_type) == status::success,
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BNORM(
-                    platform::has_training_support(d_type) == status::success,
+            VDISPATCH_BNORM_SC(platform::has_training_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(check_scale_shift_data_type(),
                     VERBOSE_UNSUPPORTED_FEATURE,

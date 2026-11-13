@@ -24,6 +24,10 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_convolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_convolution_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(ref_convolution_bwd_weights_t::pd_t)
+
 status_t ref_convolution_fwd_t::pd_t::init_conf() {
     conf_ = sycl_convolution_fwd_conf_t();
 

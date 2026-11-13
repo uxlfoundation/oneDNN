@@ -24,6 +24,9 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_sycl_softmax_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_sycl_softmax_bwd_t::pd_t)
+
 status_t ref_sycl_softmax_fwd_t::pd_t::init_conf() {
     conf_ = sycl_softmax_conf_t();
     conf_.src_md = xpu::sycl::md_t(src_md());

@@ -30,6 +30,10 @@ namespace intel {
 namespace conv {
 namespace v2 {
 
+DEFINE_PD_CREATE(gen_fwd_t::pd_t)
+DEFINE_PD_CREATE(gen_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(gen_bwd_weights_t::pd_t)
+
 using namespace jit;
 using namespace jit::v2;
 

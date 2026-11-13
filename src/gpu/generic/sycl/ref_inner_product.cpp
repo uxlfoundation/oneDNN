@@ -19,6 +19,10 @@
 
 namespace dnnl::impl::gpu::generic::sycl {
 
+DEFINE_PD_CREATE(ref_inner_product_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_inner_product_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(ref_inner_product_bwd_weights_t::pd_t)
+
 namespace detail {
 
 // TODO: this seems like a function generic enough to go a common utils file.

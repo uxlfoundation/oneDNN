@@ -28,6 +28,15 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
+DEFINE_PD_CREATE(jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
+        dst_type>::pd_t)
+template <data_type_t diff_dst_type, data_type_t wei_type,
+        data_type_t diff_src_type>
+DEFINE_PD_CREATE(jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type,
+        wei_type, diff_src_type>::pd_t)
+DEFINE_PD_CREATE(jit_avx512_common_1x1_convolution_bwd_weights_t::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;

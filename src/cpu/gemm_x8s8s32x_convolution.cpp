@@ -36,6 +36,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(gemm_x8s8s32x_convolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(gemm_x8s8s32x_convolution_bwd_data_t::pd_t)
+
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::memory_tracking::names;
 

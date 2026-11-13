@@ -27,6 +27,9 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_prelu_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_prelu_bwd_t::pd_t)
+
 status_t ref_prelu_fwd_t::pd_t::init_conf() {
     if (has_zero_dim_memory()) return status::success;
 

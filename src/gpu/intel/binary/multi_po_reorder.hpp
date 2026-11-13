@@ -188,6 +188,9 @@ private:
     std::vector<std::shared_ptr<impl::primitive_t>> reorder_primitive_list;
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(multi_po_reorder_t::pd_t)
+
 } // namespace binary
 } // namespace intel
 } // namespace gpu

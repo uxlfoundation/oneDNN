@@ -30,6 +30,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_eltwise_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_eltwise_bwd_t::pd_t)
+
 #define DATA_OFF(f, n, c, d, h, w) \
     (ndims == 1) \
             ? (f).off(n) \

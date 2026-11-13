@@ -32,6 +32,9 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(brdgmm_dw_convolution_fwd_t<isa>::pd_t)
+
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;

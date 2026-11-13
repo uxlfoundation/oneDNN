@@ -28,6 +28,8 @@ namespace impl {
 namespace gpu {
 namespace amd {
 
+DEFINE_PD_CREATE(miopen_reorder_t::pd_t)
+
 status_t miopen_reorder_t::execute(const exec_ctx_t &ctx) const {
     memory_desc_wrapper src_mdw(pd()->src_md());
     if (src_mdw.size() == 0) { return status::success; }

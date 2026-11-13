@@ -22,6 +22,9 @@ namespace gpu {
 namespace intel {
 namespace softmax {
 
+DEFINE_PD_CREATE(simple_fwd_t::pd_t)
+DEFINE_PD_CREATE(simple_bwd_t::pd_t)
+
 status_t simple_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 

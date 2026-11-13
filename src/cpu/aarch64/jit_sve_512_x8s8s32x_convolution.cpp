@@ -29,6 +29,10 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <impl::data_type_t src_type, impl::data_type_t dst_type>
+DEFINE_PD_CREATE(
+        jit_sve_512_x8s8s32x_convolution_fwd_t<src_type, dst_type>::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;

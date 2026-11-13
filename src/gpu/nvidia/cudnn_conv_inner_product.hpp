@@ -224,6 +224,9 @@ struct cudnn_conv_inner_product_fwd_t : public cudnn_inner_product_fwd_t {
     }
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(cudnn_conv_inner_product_fwd_t::pd_t)
+
 struct cudnn_conv_inner_product_bwd_data_t
     : public cudnn_inner_product_bwd_data_t {
     using cudnn_inner_product_bwd_data_t::cudnn_inner_product_bwd_data_t;
@@ -316,6 +319,9 @@ struct cudnn_conv_inner_product_bwd_data_t
         return (const pd_t *)primitive_t::pd().get();
     }
 };
+
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(cudnn_conv_inner_product_bwd_data_t::pd_t)
 
 struct cudnn_conv_inner_product_bwd_weights_t
     : public cudnn_inner_product_bwd_weights_t {
@@ -413,6 +419,9 @@ struct cudnn_conv_inner_product_bwd_weights_t
         return (const pd_t *)primitive_t::pd().get();
     }
 };
+
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(cudnn_conv_inner_product_bwd_weights_t::pd_t)
 
 } // namespace nvidia
 } // namespace gpu

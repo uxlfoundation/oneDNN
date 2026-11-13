@@ -22,6 +22,10 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
+DEFINE_PD_CREATE(matmul_fwd_t::pd_t)
+DEFINE_PD_CREATE(matmul_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(matmul_bwd_weights_t::pd_t)
+
 status_t matmul_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 

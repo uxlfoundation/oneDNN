@@ -25,6 +25,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(simple_reduction_t::pd_t)
+
 status_t simple_reduction_t::pd_t::init_conf() {
     conf_.alg = desc()->alg_kind;
     conf_.src_md = xpu::sycl::md_t(src_md());

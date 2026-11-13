@@ -27,6 +27,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+DEFINE_PD_CREATE(acl_indirect_gemm_convolution_fwd_t::pd_t)
+
 namespace {
 using data_t = typename prec_traits_t<data_type::f32>::type;
 

@@ -29,6 +29,8 @@ namespace cpu {
 namespace aarch64 {
 namespace matmul {
 
+DEFINE_PD_CREATE(acl_lowp_matmul_sq_t::pd_t)
+
 namespace {
 // Keys are anonymous. So deduce the type automagically.
 using lowp_matmul_key_t = decltype(memory_tracking::names::key_gemm_tmp_buffer);

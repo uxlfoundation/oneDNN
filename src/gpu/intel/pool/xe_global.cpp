@@ -22,6 +22,9 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
+DEFINE_PD_CREATE(xe_global_fwd_t::pd_t)
+DEFINE_PD_CREATE(xe_global_bwd_t::pd_t)
+
 dim_t calculate_spatial_chunk(
         const conf_t &conf, const impl::engine_t *engine) {
     const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);

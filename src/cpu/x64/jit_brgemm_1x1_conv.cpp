@@ -818,6 +818,9 @@ status_t brgemm_1x1_convolution_fwd_base_t::execute_forward_all(
     return status::success;
 }
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(brgemm_1x1_convolution_fwd_t<isa>::pd_t)
+
 template struct brgemm_1x1_convolution_fwd_t<avx2>;
 template struct brgemm_1x1_convolution_fwd_t<avx2_vnni>;
 template struct brgemm_1x1_convolution_fwd_t<avx2_vnni_2>;

@@ -28,6 +28,8 @@ namespace gpu {
 namespace intel {
 namespace conv {
 
+DEFINE_PD_CREATE(xe_wino_fwd_t::pd_t)
+
 using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::format_tag;
 

@@ -55,6 +55,8 @@ namespace gpu {
 namespace intel {
 namespace reorder {
 
+DEFINE_PD_CREATE(generic_t::pd_t)
+
 using namespace dnnl::impl::memory_tracking::names;
 
 struct dimension_t {

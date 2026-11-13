@@ -34,6 +34,11 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_pooling_fwd_t<isa>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_pooling_bwd_t<isa>::pd_t)
+
 // ====================== native plain-layout drivers =======================
 // Retained rv64-native drivers for the nspc and ncsp (plain) layouts (vectorize
 // along OW or strided C; no plain<->blocked transpose). Cover forward inference

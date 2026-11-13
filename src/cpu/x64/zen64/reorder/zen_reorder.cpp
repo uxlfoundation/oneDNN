@@ -49,6 +49,8 @@ namespace x64 {
 namespace zen {
 namespace reorder {
 
+DEFINE_PD_CREATE(zen_reorder_t::pd_t)
+
 using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::format_tag;
 using namespace dnnl::impl::status;

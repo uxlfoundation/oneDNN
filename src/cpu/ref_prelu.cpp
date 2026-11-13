@@ -33,6 +33,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_prelu_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_prelu_bwd_t::pd_t)
+
 using namespace math;
 using namespace data_type;
 

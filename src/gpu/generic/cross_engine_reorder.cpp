@@ -27,6 +27,8 @@ namespace impl {
 namespace gpu {
 namespace generic {
 
+DEFINE_PD_CREATE(cross_engine_reorder_t::pd_t)
+
 void cross_engine_reorder_t::pd_t::init_scratchpad(
         const impl::engine_t *gpu_engine) {
     if (do_reorder_) {

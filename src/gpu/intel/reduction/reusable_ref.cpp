@@ -32,6 +32,8 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
+DEFINE_PD_CREATE(reusable_ref_t::pd_t)
+
 using namespace gpu_utils;
 
 namespace { // Use an anonymous namespace to avoid collisions with ocl:atomic

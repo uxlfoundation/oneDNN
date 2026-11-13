@@ -27,6 +27,9 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
+DEFINE_PD_CREATE(ref_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_bwd_t::pd_t)
+
 static void init_calculate_stats_conf(conf_t &conf,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat, const impl::engine_t *engine,

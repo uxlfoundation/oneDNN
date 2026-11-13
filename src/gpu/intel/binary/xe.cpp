@@ -23,6 +23,8 @@ namespace gpu {
 namespace intel {
 namespace binary {
 
+DEFINE_PD_CREATE(xe_t::pd_t)
+
 // For cases with src0 and dst blocked, and s1 in plain layout
 // src1 channels are divisible by 16 and has broadcast on all other dims
 // except n & c

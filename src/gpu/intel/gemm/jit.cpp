@@ -35,6 +35,8 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+DEFINE_PD_CREATE(gen_t::pd_t)
+
 bool check_memory_storage(const memory_storage_t *storage, const char *name) {
     if (storage && *storage) return true;
     VERROR(primitive, gpu, "%s,%s: %s", "jit::gemm", "argument is not set",

@@ -24,6 +24,8 @@ namespace gpu {
 namespace intel {
 namespace softmax {
 
+DEFINE_PD_CREATE(reusable_fwd_t::pd_t)
+
 using namespace compute;
 using namespace gpu_utils;
 

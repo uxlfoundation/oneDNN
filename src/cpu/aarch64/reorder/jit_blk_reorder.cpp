@@ -49,6 +49,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+DEFINE_PD_CREATE(jit_blk_reorder_t::pd_t)
+
 status_t jit_blk_reorder_t::pd_t::init(const engine_t *engine,
         const engine_t *src_engine, const engine_t *dst_engine) {
     VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),

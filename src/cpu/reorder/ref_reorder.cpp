@@ -27,6 +27,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_reorder_t::pd_t)
+
 namespace {
 // Note: offset is always coincide with logical index because quantization
 // entries don't have a notion of physical formats.

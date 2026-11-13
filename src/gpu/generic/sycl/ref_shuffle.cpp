@@ -23,6 +23,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_shuffle_t::pd_t)
+
 using namespace impl::format_tag;
 using namespace impl::utils;
 

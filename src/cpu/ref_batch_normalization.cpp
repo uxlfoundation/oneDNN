@@ -36,6 +36,11 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+template <data_type_t d_type>
+DEFINE_PD_CREATE(ref_batch_normalization_fwd_t<d_type>::pd_t)
+template <data_type_t d_type>
+DEFINE_PD_CREATE(ref_batch_normalization_bwd_t<d_type>::pd_t)
+
 using namespace memory_tracking::names;
 
 namespace {

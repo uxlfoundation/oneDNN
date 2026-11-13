@@ -32,6 +32,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_softmax_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_softmax_bwd_t::pd_t)
+
 static bool is_padding(const memory_desc_wrapper &md) {
     for (int i = 0; i < md.ndims(); i++)
         if (md.dims()[i] != md.padded_dims()[i]) return true;

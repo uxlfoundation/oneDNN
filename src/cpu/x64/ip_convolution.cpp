@@ -26,6 +26,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(ip_convolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(ip_convolution_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(ip_convolution_bwd_weights_t::pd_t)
+
 namespace {
 
 status_t reshape_dst(memory_desc_t *o_md, const memory_desc_t *i_md) {

@@ -36,6 +36,8 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
+DEFINE_PD_CREATE(reusable_vectorized_fwd_t::pd_t)
+
 using namespace dnnl::impl::gpu::intel::compute;
 struct single_subgroup_lws_strategy_t : public lws_strategy_t {
     size_t desired_sg_size = 32;

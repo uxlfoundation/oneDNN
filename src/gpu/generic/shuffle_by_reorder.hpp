@@ -132,6 +132,9 @@ private:
     std::shared_ptr<impl::primitive_t> reorder_;
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(shuffle_by_reorder_t::pd_t)
+
 } // namespace generic
 } // namespace gpu
 } // namespace impl

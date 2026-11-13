@@ -37,6 +37,9 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_layer_normalization_fwd_t<isa>::pd_t)
+
 using namespace data_type;
 using namespace memory_tracking::names;
 using namespace Xbyak_aarch64;

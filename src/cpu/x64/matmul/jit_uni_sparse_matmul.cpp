@@ -33,6 +33,8 @@ namespace cpu {
 namespace x64 {
 namespace matmul {
 
+DEFINE_PD_CREATE(jit_uni_sparse_matmul_t::pd_t)
+
 using namespace dnnl::impl::data_type;
 using namespace Xbyak;
 

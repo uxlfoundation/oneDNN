@@ -30,6 +30,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <cpu_isa_t isa, impl::data_type_t d_type>
+DEFINE_PD_CREATE(jit_uni_pooling_fwd_t<isa, d_type>::pd_t)
+template <cpu_isa_t isa, impl::data_type_t d_type>
+DEFINE_PD_CREATE(jit_uni_pooling_bwd_t<isa, d_type>::pd_t)
+
 namespace jit_uni_pooling_utils {
 
 struct trans_wrapper_t {

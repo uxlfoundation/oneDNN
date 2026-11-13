@@ -32,6 +32,10 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_deconvolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_deconvolution_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(ref_deconvolution_bwd_weights_t::pd_t)
+
 void ref_deconvolution_fwd_t::compute_fwd_bias_common(const exec_ctx_t &ctx,
         void *dst, const float *conv_output, bool non_default_attr) const {
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);

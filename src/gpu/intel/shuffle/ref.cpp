@@ -22,6 +22,8 @@ namespace gpu {
 namespace intel {
 namespace shuffle {
 
+DEFINE_PD_CREATE(ref_t::pd_t)
+
 using namespace format_tag;
 
 status_t ref_t::pd_t::init_conf(const impl::engine_t *engine) {

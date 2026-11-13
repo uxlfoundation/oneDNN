@@ -36,6 +36,8 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
+DEFINE_PD_CREATE(atomic_t::pd_t)
+
 using namespace gpu_utils;
 
 class atomic_lws_strategy_t : public compute::lws_strategy_t {

@@ -24,6 +24,8 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
+DEFINE_PD_CREATE(ref_sparse_t::pd_t)
+
 status_t ref_sparse_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto a_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto b_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());

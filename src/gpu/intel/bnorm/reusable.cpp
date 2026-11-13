@@ -34,6 +34,9 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
+DEFINE_PD_CREATE(reusable_fwd_t::pd_t)
+DEFINE_PD_CREATE(reusable_bwd_t::pd_t)
+
 namespace dims {
 dim_idx_t mb = 0;
 dim_idx_t ic = 1;

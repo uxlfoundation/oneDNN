@@ -36,6 +36,8 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+DEFINE_PD_CREATE(jit_uni_binary_t::pd_t)
+
 // The x64 binary primitive's set. The rv64 injector itself realizes the wider
 // aarch64 set (get_all_strategies_supported_by_injector adds per_mb_spatial/
 // per_mb_w via the per-lane gather), but as on x64 the binary primitive does

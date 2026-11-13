@@ -30,6 +30,9 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
+DEFINE_PD_CREATE(nhwc_reusable_fwd_t::pd_t)
+DEFINE_PD_CREATE(nhwc_reusable_bwd_t::pd_t)
+
 using namespace lookup_table;
 using namespace model;
 using namespace kernel_id;

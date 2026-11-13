@@ -26,6 +26,11 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type,
+        data_type_t bia_type>
+DEFINE_PD_CREATE(acl_gemm_convolution_fwd_t<src_type, wei_type, dst_type,
+        bia_type>::pd_t)
+
 namespace {
 // Keys are anonymous. So deduce the type automagically.
 using conv_key_t = decltype(memory_tracking::names::key_gemm_tmp_buffer);

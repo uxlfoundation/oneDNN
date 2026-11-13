@@ -32,6 +32,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_batch_normalization_s8_fwd_t<isa>::pd_t)
+
 using namespace Xbyak;
 
 using data_t = int8_t;

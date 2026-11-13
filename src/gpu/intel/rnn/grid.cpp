@@ -42,6 +42,9 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
+template <prop_kind_t aprop>
+DEFINE_PD_CREATE(simple_common_t<aprop>::pd_t)
+
 using namespace dnnl::impl::gpu::intel::gpu_utils;
 using namespace prop_kind;
 using namespace alg_kind;

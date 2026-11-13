@@ -32,6 +32,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_uni_ncsp_convolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(jit_uni_ncsp_convolution_bwd_weights_t::pd_t)
+DEFINE_PD_CREATE(jit_uni_ncsp_convolution_bwd_data_t::pd_t)
+
 using namespace dnnl::impl::utils;
 
 status_t reduction_helper_t::reshape_activations(

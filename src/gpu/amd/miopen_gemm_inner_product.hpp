@@ -237,6 +237,9 @@ struct miopen_gemm_inner_product_fwd_t : public miopen_inner_product_fwd_t {
     }
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(miopen_gemm_inner_product_fwd_t::pd_t)
+
 struct miopen_gemm_inner_product_bwd_data_t
     : public miopen_inner_product_bwd_data_t {
     using miopen_inner_product_bwd_data_t::miopen_inner_product_bwd_data_t;
@@ -294,6 +297,9 @@ struct miopen_gemm_inner_product_bwd_data_t
         return (const pd_t *)primitive_t::pd().get();
     }
 };
+
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(miopen_gemm_inner_product_bwd_data_t::pd_t)
 
 struct miopen_gemm_inner_product_bwd_weights_t
     : public miopen_inner_product_bwd_weights_t {
@@ -354,6 +360,9 @@ struct miopen_gemm_inner_product_bwd_weights_t
         return (const pd_t *)primitive_t::pd().get();
     }
 };
+
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(miopen_gemm_inner_product_bwd_weights_t::pd_t)
 
 } // namespace amd
 } // namespace gpu

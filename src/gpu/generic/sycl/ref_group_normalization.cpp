@@ -18,6 +18,9 @@
 #include "gpu/generic/sycl/ref_group_normalization.hpp"
 
 namespace dnnl::impl::gpu::generic::sycl {
+
+DEFINE_PD_CREATE(ref_group_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_group_normalization_bwd_t::pd_t)
 status_t ref_group_normalization_fwd_t::pd_t::init(
         const impl::engine_t *engine) {
     using namespace data_type;

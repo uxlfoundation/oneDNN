@@ -24,6 +24,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+DEFINE_PD_CREATE(acl_inner_product_fwd_t::pd_t)
+
 status_t acl_inner_product_fwd_t::init(engine_t *engine) {
     auto aip = pd()->aip_;
     inner_product_op_ = std::make_unique<

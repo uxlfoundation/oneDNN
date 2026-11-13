@@ -37,6 +37,10 @@ namespace gpu {
 namespace intel {
 namespace conv {
 
+DEFINE_PD_CREATE(gen_fwd_t::pd_t)
+DEFINE_PD_CREATE(gen_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(gen_bwd_weights_t::pd_t)
+
 using namespace jit;
 
 // Nested reorder between the user layout and the scratchpad compute layout.

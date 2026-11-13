@@ -32,6 +32,11 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+template <data_type_t d_type>
+DEFINE_PD_CREATE(nhwc_pooling_fwd_t<d_type>::pd_t)
+template <impl::data_type_t d_type>
+DEFINE_PD_CREATE(nhwc_pooling_bwd_t<d_type>::pd_t)
+
 // Intel's LLVM-based compiler on Windows generates incorrect code with
 // PRAGMA_OMP_SIMD in some particular cases.
 // TODO: The issue above seems to be an additional one to the issue mentioned

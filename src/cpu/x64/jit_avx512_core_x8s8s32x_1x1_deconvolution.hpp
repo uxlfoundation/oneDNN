@@ -170,6 +170,9 @@ private:
     std::shared_ptr<primitive_t> conv_p_;
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(jit_avx512_core_x8s8s32x_1x1_deconvolution_fwd_t::pd_t)
+
 } // namespace x64
 } // namespace cpu
 } // namespace impl

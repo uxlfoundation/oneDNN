@@ -31,6 +31,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_pooling_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_pooling_bwd_t::pd_t)
+
 static inline dim_t get_offset(const memory_desc_wrapper &mdw, dim_t n, dim_t c,
         dim_t d, dim_t h, dim_t w) {
     switch (mdw.ndims()) {

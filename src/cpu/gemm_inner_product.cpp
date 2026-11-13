@@ -26,6 +26,13 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+template <impl::data_type_t data_type>
+DEFINE_PD_CREATE(gemm_inner_product_fwd_t<data_type>::pd_t)
+template <impl::data_type_t data_type>
+DEFINE_PD_CREATE(gemm_inner_product_bwd_data_t<data_type>::pd_t)
+template <impl::data_type_t data_type>
+DEFINE_PD_CREATE(gemm_inner_product_bwd_weights_t<data_type>::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::prop_kind;
 using namespace dnnl::impl::data_type;

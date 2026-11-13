@@ -31,6 +31,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(simple_reorder_t::pd_t)
+
 namespace {
 // Everything past dim 0 is dense when the span of those dimensions equals the
 // number of elements they hold, leaving dim 0 as the only dimension allowed to

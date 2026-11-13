@@ -27,6 +27,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <data_type_t d_type>
+DEFINE_PD_CREATE(jit_avx512_common_lrn_fwd_t<d_type>::pd_t)
+template <data_type_t d_type>
+DEFINE_PD_CREATE(jit_avx512_common_lrn_bwd_t<d_type>::pd_t)
+
 static constexpr int vsize = 16;
 
 using namespace dnnl::impl::status;

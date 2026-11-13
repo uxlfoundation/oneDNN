@@ -24,6 +24,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(brgemm_matmul_copy_reorder_t::pd_t)
+
 using namespace format_tag;
 
 format_tag_t get_blocked_otag(const memory_desc_t &dst_md) {

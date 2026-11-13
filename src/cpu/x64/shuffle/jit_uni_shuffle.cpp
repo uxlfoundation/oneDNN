@@ -30,6 +30,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_shuffle_t<isa>::pd_t)
+
 static bool impl_supports_datatype(cpu_isa_t isa, data_type_t data_type) {
     switch (data_type) {
         case data_type::bf16: return is_superset(isa, avx512_core);

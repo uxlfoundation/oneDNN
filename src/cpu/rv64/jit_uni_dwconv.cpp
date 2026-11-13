@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 SpacemiT Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,6 +29,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
+
+DEFINE_PD_CREATE(jit_uni_dwconv_fwd_t::pd_t)
 
 using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::format_tag;

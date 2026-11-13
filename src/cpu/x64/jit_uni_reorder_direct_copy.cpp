@@ -28,6 +28,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_uni_reorder_direct_copy_t::pd_t)
+
 template <typename Vmm>
 struct direct_copy_kernel_t
     : public jit_uni_reorder_direct_copy_t::kernel_base_t,

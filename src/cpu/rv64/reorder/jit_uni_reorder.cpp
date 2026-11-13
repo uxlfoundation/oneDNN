@@ -52,6 +52,8 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+DEFINE_PD_CREATE(jit_uni_reorder_t::pd_t)
+
 using namespace tr;
 
 namespace {

@@ -22,6 +22,9 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
+DEFINE_PD_CREATE(xe_fwd_t::pd_t)
+DEFINE_PD_CREATE(xe_bwd_t::pd_t)
+
 static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd,
         const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;

@@ -30,6 +30,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_avx512_core_amx_deconvolution_fwd_t::pd_t)
+
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;
 

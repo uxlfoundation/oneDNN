@@ -41,6 +41,9 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
+template <impl::data_type_t dst_type>
+DEFINE_PD_CREATE(gemm_bf16_matmul_t<dst_type>::pd_t)
+
 using namespace data_type;
 
 template <impl::data_type_t dst_type>

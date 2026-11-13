@@ -27,6 +27,9 @@ namespace gpu {
 namespace intel {
 namespace bnorm {
 
+DEFINE_PD_CREATE(simple_fwd_t::pd_t)
+DEFINE_PD_CREATE(simple_bwd_t::pd_t)
+
 static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd) {
 
     const desc_t &bd = *pd->desc();

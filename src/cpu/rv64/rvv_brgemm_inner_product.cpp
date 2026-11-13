@@ -31,6 +31,8 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+DEFINE_PD_CREATE(rvv_brgemm_inner_product_fwd_t::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;
 using namespace data_type;

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 Advanced Micro Devices, Inc.
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,6 +34,8 @@ namespace cpu {
 namespace x64 {
 namespace zen {
 namespace inner_product {
+
+DEFINE_PD_CREATE(zen_inner_product_fwd_t::pd_t)
 
 using namespace data_type;
 

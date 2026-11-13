@@ -29,6 +29,9 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_prelu_fwd_t<isa>::pd_t)
+
 using namespace Xbyak_aarch64;
 
 namespace prelu {

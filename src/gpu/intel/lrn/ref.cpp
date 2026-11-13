@@ -22,6 +22,9 @@ namespace gpu {
 namespace intel {
 namespace lrn {
 
+DEFINE_PD_CREATE(ref_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_bwd_t::pd_t)
+
 status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     auto &src = CTX_IN_STORAGE(DNNL_ARG_SRC);

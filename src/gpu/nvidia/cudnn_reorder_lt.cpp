@@ -27,6 +27,8 @@ namespace impl {
 namespace gpu {
 namespace nvidia {
 
+DEFINE_PD_CREATE(cudnn_reorder_lt_t::pd_t)
+
 status_t cudnn_reorder_lt_t::execute_internal_reorder(const exec_ctx_t &ctx,
         const memory_arg_t &src, const memory_arg_t &dst,
         const memory_arg_t *src_scales, const memory_arg_t *dst_scales) const {

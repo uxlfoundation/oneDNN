@@ -28,6 +28,10 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_inner_product_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_inner_product_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(ref_inner_product_bwd_weights_t::pd_t)
+
 status_t ref_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     status_t status = status::success;
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);

@@ -29,6 +29,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(brdgmm_dw_convolution_fwd_t::pd_t)
+
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;

@@ -450,6 +450,9 @@ private:
     std::vector<std::shared_ptr<primitive_t>> primitives_;
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(ref_fused_convolution_fwd_t::pd_t)
+
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

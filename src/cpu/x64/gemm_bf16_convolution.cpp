@@ -31,6 +31,13 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <data_type_t dst_data_type>
+DEFINE_PD_CREATE(gemm_bf16_convolution_fwd_t<dst_data_type>::pd_t)
+template <data_type_t diff_src_data_type>
+DEFINE_PD_CREATE(gemm_bf16_convolution_bwd_data_t<diff_src_data_type>::pd_t)
+template <data_type_t diff_wei_data_type>
+DEFINE_PD_CREATE(gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;

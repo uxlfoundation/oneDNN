@@ -23,6 +23,9 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_resampling_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_resampling_bwd_t::pd_t)
+
 status_t ref_resampling_fwd_t::pd_t::init_conf() {
     conf_ = sycl_resampling_conf_t();
 

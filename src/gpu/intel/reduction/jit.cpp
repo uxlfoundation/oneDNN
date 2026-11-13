@@ -32,6 +32,8 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
+DEFINE_PD_CREATE(gen_t::pd_t)
+
 using namespace gpu_utils;
 
 status_t gen_t::pd_t::init_conf(const impl::engine_t *engine) {

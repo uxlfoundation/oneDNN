@@ -294,6 +294,12 @@ protected:
     gemm_t gemm_projection_func {};
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+template <prop_kind_t aprop, impl::data_type_t src_type,
+        impl::data_type_t weights_type, impl::data_type_t acc_type>
+DEFINE_PD_CREATE(
+        ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t)
+
 template <impl::data_type_t src_type, impl::data_type_t weights_type,
         impl::data_type_t acc_type>
 struct ref_rnn_fwd_t : public ref_rnn_common_t<prop_kind::forward, src_type,

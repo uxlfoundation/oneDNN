@@ -28,6 +28,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_shuffle_t::pd_t)
+
 using namespace format_tag;
 
 template <int data_type_size>

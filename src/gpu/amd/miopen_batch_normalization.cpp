@@ -22,6 +22,9 @@ namespace impl {
 namespace gpu {
 namespace amd {
 
+DEFINE_PD_CREATE(miopen_batch_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(miopen_batch_normalization_bwd_t::pd_t)
+
 status_t miopen_batch_normalization_fwd_t::execute(
         const exec_ctx_t &ctx) const {
     return miopen_batch_normalization_common_t::execute(

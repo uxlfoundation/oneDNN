@@ -31,6 +31,8 @@ namespace impl {
 namespace gpu {
 namespace amd {
 
+DEFINE_PD_CREATE(miopen_matmul_t::pd_t)
+
 status_t miopen_matmul_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
     const bool with_bias = matmul_impl_->with_bias();

@@ -35,6 +35,8 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+DEFINE_PD_CREATE(jit_uni_group_normalization_fwd_t::pd_t)
+
 using namespace Xbyak_riscv;
 // NB: intentionally no `using namespace data_type;` — it would bring the 4-bit
 // and 8-bit integer data-type names (s4/u4/s8/u8) into scope and shadow the

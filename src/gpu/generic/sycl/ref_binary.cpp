@@ -24,6 +24,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_binary_t::pd_t)
+
 status_t ref_binary_t::pd_t::init_conf() {
     conf_ = sycl_binary_conf_t();
 

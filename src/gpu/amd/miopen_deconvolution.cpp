@@ -28,6 +28,10 @@ namespace impl {
 namespace gpu {
 namespace amd {
 
+DEFINE_PD_CREATE(miopen_deconvolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(miopen_deconvolution_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(miopen_deconvolution_bwd_weights_t::pd_t)
+
 status_t miopen_deconvolution_bwd_weights_t::execute_bias(
         const exec_ctx_t &ctx) const {
     if (memory_desc_wrapper(pd()->diff_dst_md(0)).has_zero_dim())

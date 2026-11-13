@@ -30,6 +30,9 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa, impl::data_type_t d_type>
+DEFINE_PD_CREATE(jit_uni_eltwise_int_fwd_t<isa, d_type>::pd_t)
+
 using namespace Xbyak_aarch64;
 
 struct jit_args_t {

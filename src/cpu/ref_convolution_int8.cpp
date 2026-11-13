@@ -32,6 +32,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_convolution_int8_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_convolution_int8_bwd_data_t::pd_t)
+
 status_t ref_convolution_int8_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     status_t status = status::success;

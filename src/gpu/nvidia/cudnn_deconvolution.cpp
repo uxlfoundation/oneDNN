@@ -26,6 +26,10 @@ namespace impl {
 namespace gpu {
 namespace nvidia {
 
+DEFINE_PD_CREATE(cudnn_deconvolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(cudnn_deconvolution_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(cudnn_deconvolution_bwd_weights_t::pd_t)
+
 status_t cudnn_deconvolution_bwd_weights_t::execute_bias(
         const exec_ctx_t &ctx) const {
     if (memory_desc_wrapper(pd()->diff_dst_md(0)).has_zero_dim())

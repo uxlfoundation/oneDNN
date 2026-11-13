@@ -30,6 +30,19 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <impl::data_type_t src_type, impl::data_type_t wei_type,
+        impl::data_type_t dst_type, cpu_isa_t isa_>
+DEFINE_PD_CREATE(
+        jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type, isa_>::pd_t)
+template <impl::data_type_t diff_dst_type, impl::data_type_t wei_type,
+        impl::data_type_t diff_src_type, cpu_isa_t isa_>
+DEFINE_PD_CREATE(jit_sve_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
+        diff_src_type, isa_>::pd_t)
+template <impl::data_type_t diff_dst_type, impl::data_type_t wei_type,
+        impl::data_type_t diff_src_type, cpu_isa_t isa_>
+DEFINE_PD_CREATE(jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
+        diff_src_type, isa_>::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;

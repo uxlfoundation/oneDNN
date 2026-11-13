@@ -39,6 +39,8 @@ namespace cpu {
 namespace aarch64 {
 namespace matmul {
 
+DEFINE_PD_CREATE(jit_bf16_matmul_t::pd_t)
+
 using namespace Xbyak_aarch64;
 using namespace dnnl::impl::cpu::matmul;
 using namespace dnnl::impl::format_tag;

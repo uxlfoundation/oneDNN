@@ -106,9 +106,11 @@ GitHub. It helps others discover it.
 
 You can download and install the oneDNN library using one of the following options:
 
-- [conda-forge]: If the configuration you need is not available on
-  the conda-forge channel, you can build the library using the
-  Source Distribution.
+- [GitHub releases]: Pre-built packages for Linux and Windows on Intel
+  64/AMD64 architecture. See [Pre-built Packages](#pre-built-packages) for
+  the list of available configurations and their requirements.
+- [conda-forge]: Conda packages for Linux, Windows, and macOS on Intel
+  64/AMD64, AArch64, and PPC64 architectures.
 - Intel oneAPI:
   - [Intel oneAPI Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/oneapi-toolkit-download.html)
   - [Intel oneDNN](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onednn-download.html)
@@ -116,6 +118,7 @@ You can download and install the oneDNN library using one of the following optio
   following the instructions on the [Build from Source] page.
 
 [conda-forge]: https://anaconda.org/conda-forge/onednn
+[GitHub releases]: https://github.com/uxlfoundation/oneDNN/releases
 
 ## Documentation
 
@@ -195,6 +198,37 @@ The library is optimized for the following GPUs:
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html
 [Linking Guide]: https://uxlfoundation.github.io/oneDNN/dev_guide_link.html
+
+### Pre-built Packages
+
+[GitHub releases] include pre-built oneDNN packages for Intel 64/AMD64
+architecture in the following configurations:
+
+| Package            | CPU runtime | GPU runtime | Runtime requirements
+| :----------------- | :---------- | :---------- | :-------------------
+| `omp-linux-x64`    | OpenMP      | none        | GNU C Library 2.28, GNU OpenMP runtime
+| `sycl-linux-x64`   | OpenMP      | SYCL        | GNU C Library 2.28, GNU OpenMP runtime, [Intel oneAPI DPC++/C++ Compiler Runtime] 2026.0
+| `omp-windows-x64`  | OpenMP      | none        | [Microsoft Visual C++ Redistributable] 14.44
+| `sycl-windows-x64` | OpenMP      | SYCL        | Microsoft Visual C++ Redistributable 14.44, Intel oneAPI DPC++/C++ Compiler Runtime 2026.0
+
+To set up the environment for building and running applications with a
+package, set up the Intel oneAPI DPC++/C++ Compiler Runtime first if using a
+SYCL package, then run the script included with the package:
+* On Linux: `source <package>/env/vars.sh`
+* On Windows: `call <package>\env\vars.bat`
+
+Each release also includes a `onednn-<tag>-sha256sums.txt` file with package
+checksums and [build provenance attestations] for the packages. To verify a
+downloaded package, run:
+
+```sh
+sha256sum --check --ignore-missing onednn-<tag>-sha256sums.txt
+gh attestation verify <package file> --repo uxlfoundation/oneDNN
+```
+
+[Microsoft Visual C++ Redistributable]: https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
+[Intel oneAPI DPC++/C++ Compiler Runtime]: https://www.intel.com/content/www/us/en/developer/articles/tool/compilers-redistributable-libraries-by-version.html
+[build provenance attestations]: https://docs.github.com/en/actions/concepts/security/artifact-attestations
 
 ### Requirements for Building from Source
 
@@ -347,16 +381,16 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration      | Compiler                      | Dependency
-| :------------------------- | :---------------------------- | :---------
-| `ONEDNN_CPU_RUNTIME=OMP`   | GCC                           | GNU OpenMP runtime (`libgomp.so`)
-| `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.so`)
-| `ONEDNN_CPU_RUNTIME=OMP`   | Clang                         | Intel OpenMP runtime (`libiomp5.so`)
-| `ONEDNN_CPU_RUNTIME=TBB`   | any                           | TBB (`libtbb.so`)
-| `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), TBB (`libtbb.so`), OpenCL loader (`libOpenCL.so`)
-| `ONEDNN_GPU_RUNTIME=OCL`   | any                           | OpenCL loader (`libOpenCL.so`)
-| `ONEDNN_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`libsycl.so`), OpenCL loader (`libOpenCL.so`), oneAPI Level Zero loader (`libze_loader.so`)
-| `ONEDNN_GPU_RUNTIME=ZE`    | any                           | oneAPI Level Zero loader (`libze_loader.so`)
+| Runtime configuration      | Compiler                        | Dependency
+| :------------------------- | :------------------------------ | :---------
+| `ONEDNN_CPU_RUNTIME=OMP`   | GCC                             | GNU OpenMP runtime (`libgomp.so`)
+| `ONEDNN_CPU_RUNTIME=OMP`   | Intel oneAPI DPC++/C++ Compiler | Intel OpenMP runtime (`libiomp5.so`)
+| `ONEDNN_CPU_RUNTIME=OMP`   | Clang                           | LLVM OpenMP runtime (`libomp.so`)
+| `ONEDNN_CPU_RUNTIME=TBB`   | any                             | TBB (`libtbb.so`)
+| `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++/C++ Compiler | Intel oneAPI DPC++/C++ Compiler Runtime (`libsycl.so`), TBB (`libtbb.so`), OpenCL loader (`libOpenCL.so`)
+| `ONEDNN_GPU_RUNTIME=OCL`   | any                             | OpenCL loader (`libOpenCL.so`)
+| `ONEDNN_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++/C++ Compiler | Intel oneAPI DPC++/C++ Compiler Runtime (`libsycl.so`), OpenCL loader (`libOpenCL.so`), oneAPI Level Zero loader (`libze_loader.so`)
+| `ONEDNN_GPU_RUNTIME=ZE`    | any                             | oneAPI Level Zero loader (`libze_loader.so`)
 
 #### Windows
 
@@ -365,15 +399,15 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration      | Compiler                      | Dependency
-| :------------------------- | :---------------------------- | :---------
-| `ONEDNN_CPU_RUNTIME=OMP`   | Microsoft Visual C++ Compiler | No additional requirements
-| `ONEDNN_CPU_RUNTIME=OMP`   | Intel C/C++ Compiler          | Intel OpenMP runtime (`iomp5.dll`)
-| `ONEDNN_CPU_RUNTIME=TBB`   | any                           | TBB (`tbb.dll`)
-| `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`sycl.dll`), TBB (`tbb.dll`), OpenCL loader (`OpenCL.dll`)
-| `ONEDNN_GPU_RUNTIME=OCL`   | any                           | OpenCL loader (`OpenCL.dll`)
-| `ONEDNN_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++ Compiler   | Intel oneAPI DPC++ Compiler runtime (`sycl.dll`), OpenCL loader (`OpenCL.dll`), oneAPI Level Zero loader (`ze_loader.dll`)
-| `ONEDNN_GPU_RUNTIME=ZE`    | any                           | oneAPI Level Zero loader (`ze_loader.dll`)
+| Runtime configuration      | Compiler                        | Dependency
+| :------------------------- | :------------------------------ | :---------
+| `ONEDNN_CPU_RUNTIME=OMP`   | Microsoft Visual C++ Compiler   | No additional requirements
+| `ONEDNN_CPU_RUNTIME=OMP`   | Intel oneAPI DPC++/C++ Compiler | Intel OpenMP runtime (`iomp5.dll`)
+| `ONEDNN_CPU_RUNTIME=TBB`   | any                             | TBB (`tbb.dll`)
+| `ONEDNN_CPU_RUNTIME=SYCL`  | Intel oneAPI DPC++/C++ Compiler | Intel oneAPI DPC++/C++ Compiler Runtime (`sycl.dll`), TBB (`tbb.dll`), OpenCL loader (`OpenCL.dll`)
+| `ONEDNN_GPU_RUNTIME=OCL`   | any                             | OpenCL loader (`OpenCL.dll`)
+| `ONEDNN_GPU_RUNTIME=SYCL`  | Intel oneAPI DPC++/C++ Compiler | Intel oneAPI DPC++/C++ Compiler Runtime (`sycl.dll`), OpenCL loader (`OpenCL.dll`), oneAPI Level Zero loader (`ze_loader.dll`)
+| `ONEDNN_GPU_RUNTIME=ZE`    | any                             | oneAPI Level Zero loader (`ze_loader.dll`)
 
 #### macOS
 
@@ -382,10 +416,10 @@ Common dependencies:
 
 Runtime-specific dependencies:
 
-| Runtime configuration    | Compiler                      | Dependency
-| :----------------------- | :---------------------------- | :---------
-| `ONEDNN_CPU_RUNTIME=OMP` | Intel C/C++ Compiler          | Intel OpenMP runtime (`libiomp5.dylib`)
-| `ONEDNN_CPU_RUNTIME=TBB` | any                           | TBB (`libtbb.dylib`)
+| Runtime configuration    | Compiler | Dependency
+| :----------------------- | :------- | :---------
+| `ONEDNN_CPU_RUNTIME=OMP` | Clang    | LLVM OpenMP runtime (`libomp.dylib`)
+| `ONEDNN_CPU_RUNTIME=TBB` | any      | TBB (`libtbb.dylib`)
 
 ## Support
 

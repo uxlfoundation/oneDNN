@@ -46,17 +46,17 @@ struct ref_layer_normalization_fwd_t : public primitive_t {
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
             VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_LNORM_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LNORM_SC(
+                    platform::has_data_type_support(dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
                     utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
                     utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(platform::has_data_type_support(src_md()->data_type)
-                            == status::success,
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(platform::has_data_type_support(dst_md()->data_type)
-                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
                     stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
@@ -67,7 +67,7 @@ struct ref_layer_normalization_fwd_t : public primitive_t {
                                     | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_LNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_LNORM_SC(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
 
@@ -77,7 +77,7 @@ struct ref_layer_normalization_fwd_t : public primitive_t {
             return status::success;
         }
 
-        bool post_ops_ok() const {
+        status_t post_ops_ok() const {
             return ref_post_ops_t::post_ops_ok(attr()->post_ops_);
         }
     };
@@ -114,6 +114,15 @@ struct ref_layer_normalization_bwd_t : public primitive_t {
         status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_LNORM_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LNORM_SC(
+                    platform::has_data_type_support(diff_dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LNORM_SC(
+                    platform::has_data_type_support(diff_src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
@@ -121,17 +130,6 @@ struct ref_layer_normalization_bwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
                     utils::one_of(diff_src_md()->data_type, f32, bf16, f16),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(platform::has_data_type_support(src_md()->data_type)
-                            == status::success,
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(
-                    platform::has_data_type_support(diff_dst_md()->data_type)
-                            == status::success,
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LNORM(
-                    platform::has_data_type_support(diff_src_md()->data_type)
-                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
                     stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);

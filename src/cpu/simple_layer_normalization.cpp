@@ -42,15 +42,13 @@ status_t simple_layer_normalization_fwd_t::pd_t::init(const engine_t *engine) {
 
     VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
+    VDISPATCH_LNORM_SC(platform::has_data_type_support(src_md()->data_type),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_LNORM_SC(platform::has_data_type_support(dst_md()->data_type),
+            VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8),
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_LNORM(platform::has_data_type_support(src_md()->data_type)
-                    == status::success,
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_LNORM(platform::has_data_type_support(dst_md()->data_type)
-                    == status::success,
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_FEATURE,
@@ -59,7 +57,7 @@ status_t simple_layer_normalization_fwd_t::pd_t::init(const engine_t *engine) {
                             skip_mask_t::scales | skip_mask_t::post_ops),
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_LNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VDISPATCH_LNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_LNORM_SC(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_LNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_LNORM(src_d.is_blocking_desc(), VERBOSE_BLOCKING_FAIL,
             "blocking descriptor fail");
@@ -258,20 +256,19 @@ status_t simple_layer_normalization_bwd_t::pd_t::init(const engine_t *engine) {
 
     VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
+    VDISPATCH_LNORM_SC(platform::has_data_type_support(src_md()->data_type),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_LNORM_SC(
+            platform::has_data_type_support(diff_dst_md()->data_type),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_LNORM_SC(
+            platform::has_data_type_support(diff_src_md()->data_type),
+            VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(utils::one_of(diff_dst_md()->data_type, f32, bf16, f16),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(utils::one_of(diff_src_md()->data_type, f32, bf16, f16),
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_LNORM(platform::has_data_type_support(src_md()->data_type)
-                    == status::success,
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_LNORM(platform::has_data_type_support(diff_dst_md()->data_type)
-                    == status::success,
-            VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_LNORM(platform::has_data_type_support(diff_src_md()->data_type)
-                    == status::success,
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_FEATURE,

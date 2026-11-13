@@ -337,6 +337,15 @@ struct brgemm_matmul_conf_t {
                 || need_to_calculate_compensation_for_b;
     }
 
+    // Int8 weights in a blocked layout carry the s8s8 and src zero-point
+    // compensations (per-N sums of the weights, memory_extra_flags::
+    // compensation_conv_*) in the extra buffer of the memory descriptor,
+    // filled by the reorder into that layout. The int8 grouped quantization
+    // path applies them per K group via the per-(M, N) tile instead.
+    inline bool wei_md_has_compensation() const {
+        return blocked_B && !with_int8_grouped_quantization;
+    }
+
     // True for a batch-only mask, since brgemm has no batch concept.
     // False when there are no weights scales at all.
     // A method, not a cached field, so it can't go stale vs. the flags below.
@@ -367,6 +376,13 @@ struct brgemm_matmul_conf_utils_t {
     inline bool get_blocked_B() const {
         return blocked_B_layouts_allowed && !bgmmc.is_runtime_N
                 && check_b_layout_blocked_by_n(bgmmc.wei_tag);
+    }
+
+    bool is_int4_blocked_B_supported() const;
+
+    // Blocked int4 weights are stored in int8 VNNI row groups in every path.
+    static dim_t int4_blocked_B_vnni_granularity() {
+        return static_cast<dim_t>(data_type_vnni_granularity(data_type::s8));
     }
 
     inline bool use_buffer_b(bool use_heuristic = true) const {
@@ -431,7 +447,18 @@ struct brgemm_matmul_conf_utils_t {
         return is_prime_num && IMPLICATION(bgmmc.M_blk < 48, maybe_ldb_tail);
     }
 
-    inline bool check_n_blk_fixed() const { return n_blk_fixed; }
+    inline bool check_n_blk_fixed() const {
+        return n_blk_fixed || is_int4_any_blocked_B();
+    }
+
+    // Int4 weights with `any` get one fixed blocked layout, independent of M
+    // and of the ISA, so that every primitive with the same weights shares
+    // one packed copy. Its N block is the inner product `AB16b32a4b` one.
+    static constexpr int int4_any_B_n_blk = 32;
+
+    inline bool is_int4_any_blocked_B() const {
+        return B_any_layout && bgmmc.is_int4_weights && bgmmc.blocked_B;
+    }
 
     inline bool check_is_transposed(format_tag_t tag) const {
         return tag == transposed_tensor_layout_tag;
@@ -553,6 +580,10 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         const brgemm_matmul_conf_t &bgmmc);
 
 int get_n_block_from_tag(format_tag_t matrix_b_tag);
+
+// Returns the K VNNI granularity of a blocked B layout and 0 for non-blocked
+// ones.
+int get_vnni_granularity_from_tag(format_tag_t matrix_b_tag);
 
 void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
 

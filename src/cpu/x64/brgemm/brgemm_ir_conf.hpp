@@ -45,8 +45,9 @@ namespace brgemm_ir {
 //   ld_start     - load-dimension element the block starts at, counted from
 //                  where the B and C pointers stand. B and C convert it with
 //                  their own element size, so one count serves both.
-//   ld_tail_mask - live elements of the last register, `none` when every
-//                  register of the block is full
+//   ld_tail_mask - live columns of the last vector register or tile, `none`
+//                  when every vector register or tile of the block is full.
+//                  Only the last one can be partial.
 //
 // `bd_start` and `ld_start` let a block be addressed without moving the
 // pointers to it. A block that follows a run of one block is addressed
@@ -87,36 +88,46 @@ enum class compute_path_kind_t { vector, tmul };
 //              pointers of the level
 enum class level_form_t { unrolled, looped };
 
+// Which block of the N level holds the partial vector register or tile of
+// `ldb_tail` columns.
+//
+//   separate - a block of its own, after the full ones left over
+//   grouped  - the block of the full ones left over
+enum class tail_grouping_t { separate, grouped };
+
 // Loop nest configuration.
 //
-//   m_form/n_form  - how the M and N levels are emitted
-//   bs_form        - how the batch level is emitted, looped with `var_bs`
-//   k_form         - how the K level is emitted
-//   innermost_loop - which of the M and N levels is inside the other
-//   batch_kind     - how a batch element gives the address of its A and B
-//   max_bs         - maximum batch size known at IR generation time
-//   var_bs         - the batch size can change on each call, up to `max_bs`.
-//                    The kernel reads `BS`.
-//   load_dim       - N, the columns of C
-//   lda/ldb/ldc    - leading dimensions of A, B, and C, in elements
-//   bd_block       - M rows per block
-//   ld_block       - N elements per vector register or tile
-//   ld_block2      - vector registers or tiles of N per block
-//   rd_block       - K elements reduced per K block
-//   bdb            - number of full M blocks
-//   ldb2           - number of full N blocks
-//   rdb            - number of full K blocks
-//   bdb_tail       - M rows left over after the full M blocks
-//   ldb2_tail      - full N registers or tiles left over after the full N
-//                    blocks
-//   ldb_tail       - N columns left over after every full N register
-//   rdb_tail       - K elements left over after the full K blocks
+//   m_form/n_form   - how the M and N levels are emitted
+//   bs_form         - how the batch level is emitted, looped with `var_bs`
+//   k_form          - how the K level is emitted
+//   innermost_loop  - which of the M and N levels is inside the other
+//   n_tail_grouping - which N block holds the partial vector register or tile
+//   batch_kind      - how a batch element gives the address of its A and B
+//   max_bs          - maximum batch size known at IR generation time
+//   var_bs          - the batch size can change on each call, up to `max_bs`.
+//                     The kernel reads `BS`.
+//   load_dim        - N, the columns of C
+//   lda/ldb/ldc     - leading dimensions of A, B, and C, in elements
+//   bd_block        - M rows per block
+//   ld_block        - N elements per vector register or tile
+//   ld_block2       - vector registers or tiles of N per block
+//   rd_block        - K elements reduced per K block
+//   bdb             - number of full M blocks
+//   ldb2            - number of full N blocks
+//   rdb             - number of full K blocks
+//   bdb_tail        - M rows left over after the full M blocks
+//   ldb2_tail       - full N vector registers or tiles left over after the
+//                     full N blocks
+//   ldb_tail        - N columns left over after every full N vector register
+//                     or tile
+//   rdb_tail        - K elements left over after the full K blocks
 struct loop_conf_t {
     level_form_t m_form = level_form_t::looped;
     level_form_t n_form = level_form_t::looped;
     level_form_t bs_form = level_form_t::looped;
     level_form_t k_form = level_form_t::looped;
     brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
+    tail_grouping_t n_tail_grouping = tail_grouping_t::separate;
     brgemm_batch_kind_t batch_kind = brgemm_addr;
     dim_t max_bs = 0;
     bool var_bs = true;
@@ -134,16 +145,25 @@ struct loop_conf_t {
 //   dt_acc                  - accumulation data type
 //   vnni_granularity        - K elements of a column that B stores together,
 //                             1 for a plain B
-//   a_tile/b_tile/c_tile    - shapes of the tiles of A, B, and the accumulators
+//   a_tile                  - shapes of the A tiles, indexed by whether the
+//                             tile holds the M tail
+//   b_tile                  - shapes of the B tiles, indexed by whether the
+//                             tile holds the N tail
+//   c_tile                  - shapes of the accumulator tiles, indexed by
+//                             whether the tile holds the M tail, then the N
+//                             tail
 //   a_load_hint/b_load_hint - hints of the A and B loads. The vector compute
 //                             path sets only `b_load_hint`.
+//
+// When a level has no tail, its tail index holds the full shape. When it has
+// only its tail tile, its full index holds the tail shape.
 struct compute_path_conf_t {
     compute_path_kind_t kind = compute_path_kind_t::vector;
     data_type_t dt_a = data_type::undef;
     data_type_t dt_b = data_type::undef;
     data_type_t dt_acc = data_type::undef;
     int vnni_granularity = 1;
-    ir::tile_shape_t a_tile = {}, b_tile = {}, c_tile = {};
+    ir::tile_shape_t a_tile[2] = {}, b_tile[2] = {}, c_tile[2][2] = {};
     ir::mem_hint_t a_load_hint = ir::mem_hint_t::none;
     ir::mem_hint_t b_load_hint = ir::mem_hint_t::none;
 };

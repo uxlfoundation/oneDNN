@@ -23,6 +23,8 @@ namespace gpu {
 namespace intel {
 namespace reorder {
 
+DEFINE_PD_CREATE(ref_t::pd_t)
+
 using namespace dnnl::impl::memory_tracking::names;
 
 status_t ref_t::pd_t::init_conf(const impl::engine_t *engine) {

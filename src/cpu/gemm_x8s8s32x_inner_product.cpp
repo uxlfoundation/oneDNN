@@ -29,6 +29,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(gemm_x8s8s32x_inner_product_fwd_t::pd_t)
+
 using namespace math;
 using namespace format_tag;
 using namespace memory_tracking::names;

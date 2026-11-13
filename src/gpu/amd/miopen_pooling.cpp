@@ -29,6 +29,9 @@ namespace impl {
 namespace gpu {
 namespace amd {
 
+DEFINE_PD_CREATE(miopen_pooling_fwd_t::pd_t)
+DEFINE_PD_CREATE(miopen_pooling_bwd_t::pd_t)
+
 status_t miopen_pooling_fwd_t::execute(const exec_ctx_t &ctx) const {
     // If dst is empty, do nothing
     memory_desc_wrapper dst_wrap(pd()->dst_md());

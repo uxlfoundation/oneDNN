@@ -29,6 +29,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(simple_resampling_fwd_t::pd_t)
+DEFINE_PD_CREATE(simple_resampling_bwd_t::pd_t)
+
 using namespace format_tag;
 using namespace resampling_utils;
 

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022, 2024, 2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,6 +21,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
+
+DEFINE_PD_CREATE(acl_deconvolution_fwd_t::pd_t)
 
 status_t acl_deconvolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 

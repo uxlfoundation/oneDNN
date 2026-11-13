@@ -36,6 +36,9 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
+DEFINE_PD_CREATE(reusable_fwd_t::pd_t)
+DEFINE_PD_CREATE(reusable_bwd_t::pd_t)
+
 static status_t init_conf_common(const pd_t *pd, reusable_params_t *conf,
         reusable_runtime_params_t *rt_conf, const impl::engine_t *engine,
         const compute::named_buffer_t &src_buf,

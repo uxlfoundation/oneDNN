@@ -307,6 +307,10 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+template <data_type_t type_i, data_type_t type_o>
+DEFINE_PD_CREATE(rnn_data_reorder_t<type_i, type_o>::pd_t)
+
 template <data_type_t type_i>
 struct rnn_weights_reorder_s8_t : public primitive_t {
     struct pd_t : public cpu_reorder_pd_t {
@@ -517,6 +521,10 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+template <data_type_t type_i>
+DEFINE_PD_CREATE(rnn_weights_reorder_s8_t<type_i>::pd_t)
+
 template <data_type_t type_i, data_type_t type_o>
 struct rnn_weights_reorder_t : public primitive_t {
     struct pd_t : public cpu_reorder_pd_t {
@@ -690,6 +698,10 @@ private:
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
+
+// TODO: move to a .cpp file once this implementation gets one.
+template <data_type_t type_i, data_type_t type_o>
+DEFINE_PD_CREATE(rnn_weights_reorder_t<type_i, type_o>::pd_t)
 
 template <data_type_t type_i, data_type_t type_o>
 struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
@@ -914,6 +926,10 @@ private:
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
+
+// TODO: move to a .cpp file once this implementation gets one.
+template <data_type_t type_i, data_type_t type_o>
+DEFINE_PD_CREATE(rnn_brgemm_weights_reorder_s8_t<type_i, type_o>::pd_t)
 
 } // namespace cpu
 } // namespace impl

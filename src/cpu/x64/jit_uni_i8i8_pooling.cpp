@@ -28,6 +28,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_i8i8_pooling_fwd_t<isa>::pd_t)
+
 static bcast_set_t get_supported_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc};
 }

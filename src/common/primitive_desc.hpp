@@ -616,7 +616,21 @@ inline bool is_ref_impl(const primitive_desc_t *pd) {
 } // namespace impl
 } // namespace dnnl
 
+// Implementation lists take the address of `pd_t::create` for every entry.
+// Keeping it body-less here stops `pd_t` construction, its vtable, and the
+// primitive class from being instantiated in each list translation unit; the
+// body is compiled once in the implementation file via `DEFINE_PD_CREATE`.
+// `create_pd_t` lets `impl_list_item_t` reject a `create` inherited from a
+// base `pd_t`, which would construct the base type.
 #define DECLARE_COMMON_PD_t(impl_name, impl_type, use_global_scratchpad) \
+    static dnnl::impl::status_t create(dnnl::impl::primitive_desc_t **pd, \
+            const dnnl::impl::op_desc_t *adesc, \
+            const dnnl::impl::primitive_attr_t *attr, \
+            const dnnl::impl::engine_t *engine, \
+            const dnnl::impl::primitive_desc_t *hint_fwd, \
+            const dnnl::impl::engine_t *src_engine, \
+            const dnnl::impl::engine_t *dst_engine); \
+    using create_pd_t = pd_t; \
     pd_t *clone() const override { \
         auto new_pd = utils::make_unique<pd_t>(*this); \
         if (!new_pd->is_initialized()) return nullptr; \
@@ -647,6 +661,21 @@ inline bool is_ref_impl(const primitive_desc_t *pd) {
 
 #define DECLARE_COMMON_PD_T(impl_name, impl_type, ...) \
     DECLARE_COMMON_PD_T_##__VA_ARGS__(impl_name, impl_type)
+
+// Takes the qualified `pd_t` name, e.g. `impl_t<isa>::pd_t`. For class
+// templates, existing explicit instantiations of `impl_t` emit the body.
+#define DEFINE_PD_CREATE(...) \
+    dnnl::impl::status_t __VA_ARGS__::create( \
+            dnnl::impl::primitive_desc_t **pd, \
+            const dnnl::impl::op_desc_t *adesc, \
+            const dnnl::impl::primitive_attr_t *attr, \
+            const dnnl::impl::engine_t *engine, \
+            const dnnl::impl::primitive_desc_t *hint_fwd, \
+            const dnnl::impl::engine_t *src_engine, \
+            const dnnl::impl::engine_t *dst_engine) { \
+        return dnnl::impl::primitive_desc_t::create<pd_t>( \
+                pd, adesc, attr, engine, hint_fwd, src_engine, dst_engine); \
+    }
 
 #endif
 

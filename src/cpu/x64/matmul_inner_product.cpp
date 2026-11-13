@@ -23,6 +23,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(matmul_inner_product_fwd_t::pd_t)
+DEFINE_PD_CREATE(matmul_inner_product_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(matmul_inner_product_bwd_weights_t::pd_t)
+
 bool is_desired_mm_impl(const std::shared_ptr<primitive_desc_t> &matmul_pd) {
     // Only the brgemm-based matmul is used. Otherwise fall back to the
     // gemm-based inner product.

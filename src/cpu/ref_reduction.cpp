@@ -30,6 +30,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_reduction_t::pd_t)
+
 template <typename T>
 void init_acc(T &acc, alg_kind_t alg, data_type_t src_dt) {
     using namespace alg_kind;

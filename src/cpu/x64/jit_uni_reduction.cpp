@@ -23,6 +23,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_uni_reduction_t::pd_t)
+
 static cpu_isa_t get_supported_isa() {
     if (mayiuse(avx512_core_fp16)) return avx512_core_fp16;
     if (mayiuse(avx512_core_bf16)) return avx512_core_bf16;

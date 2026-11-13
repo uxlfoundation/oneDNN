@@ -24,6 +24,9 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
+DEFINE_PD_CREATE(ref_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_bwd_t::pd_t)
+
 static status_t init_conf_common(
         conf_t &conf, const pd_t *pd, const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;

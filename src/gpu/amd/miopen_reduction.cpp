@@ -28,6 +28,8 @@ namespace impl {
 namespace gpu {
 namespace amd {
 
+DEFINE_PD_CREATE(miopen_reduction_t::pd_t)
+
 status_t miopen_reduction_t::execute(const exec_ctx_t &ctx) const {
     if (memory_desc_wrapper(pd()->src_md()).has_zero_dim())
         return status::success;

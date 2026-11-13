@@ -28,6 +28,9 @@ namespace impl {
 namespace gpu {
 namespace amd {
 
+DEFINE_PD_CREATE(miopen_softmax_fwd_t::pd_t)
+DEFINE_PD_CREATE(miopen_softmax_bwd_t::pd_t)
+
 status_t miopen_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     if (pd()->has_zero_dim_memory()) return status::success;

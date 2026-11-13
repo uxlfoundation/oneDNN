@@ -469,6 +469,9 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(cudnn_matmul_lt_t::pd_t)
+
 } // namespace nvidia
 } // namespace gpu
 } // namespace impl

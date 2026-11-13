@@ -24,6 +24,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_reorder_t::pd_t)
+
 status_t ref_reorder_t::pd_t::init_conf() {
     conf_ = sycl_reorder_conf_t();
 

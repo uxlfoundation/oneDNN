@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2023, 2025 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,6 +21,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
+
+DEFINE_PD_CREATE(acl_wino_convolution_fwd_t::pd_t)
 using data_t = prec_traits_t<data_type::f32>::type;
 
 status_t acl_wino_convolution_fwd_t::execute_forward(

@@ -246,6 +246,9 @@ private:
     std::shared_ptr<impl::primitive_t> conv_p_;
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(convolution_deconvolution_fwd_t::pd_t)
+
 struct convolution_deconvolution_bwd_data_t : public gpu::primitive_t {
     using gpu::primitive_t::primitive_t;
     struct pd_t : public gpu_deconvolution_bwd_data_pd_t {
@@ -361,6 +364,9 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::shared_ptr<impl::primitive_t> conv_p_;
 };
+
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(convolution_deconvolution_bwd_data_t::pd_t)
 
 } // namespace generic
 } // namespace gpu

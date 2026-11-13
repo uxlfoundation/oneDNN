@@ -23,6 +23,8 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+DEFINE_PD_CREATE(with_post_ops_t::pd_t)
+
 status_t with_post_ops_t::pd_t::init(const impl::engine_t *engine) {
     using namespace data_type;
 

@@ -39,6 +39,9 @@ namespace cpu {
 namespace x64 {
 namespace matmul {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(brgemm_matmul_t<isa>::pd_t)
+
 using namespace dnnl::impl::cpu::matmul;
 
 using namespace dnnl::impl::memory_tracking::names;

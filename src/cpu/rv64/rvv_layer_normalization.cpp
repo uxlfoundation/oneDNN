@@ -30,6 +30,9 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+DEFINE_PD_CREATE(rvv_layer_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(jit_uni_layer_normalization_bwd_t::pd_t)
+
 rvv_layer_normalization_fwd_t::rvv_layer_normalization_fwd_t(const pd_t *apd)
     : primitive_t(apd) {
     if (pd()->src_md()->data_type == data_type::f16) {

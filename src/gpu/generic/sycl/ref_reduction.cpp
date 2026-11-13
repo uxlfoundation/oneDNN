@@ -27,6 +27,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_reduction_t::pd_t)
+
 inline int round_up_to_nearest_multiple(int val, int multiplier) {
     const int diff = val % multiplier;
     if (diff > 0) { val += (multiplier - diff); }

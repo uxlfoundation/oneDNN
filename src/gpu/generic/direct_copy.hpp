@@ -157,6 +157,9 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(direct_copy_t::pd_t)
+
 } // namespace generic
 } // namespace gpu
 } // namespace impl

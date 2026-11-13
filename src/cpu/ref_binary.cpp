@@ -35,6 +35,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_binary_t::pd_t)
+
 status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto src0 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_0);
     const auto src1 = CTX_IN_MEM(const void *, DNNL_ARG_SRC_1);

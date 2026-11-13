@@ -24,6 +24,8 @@ namespace gpu {
 namespace intel {
 namespace binary {
 
+DEFINE_PD_CREATE(simple_t::pd_t)
+
 status_t simple_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));

@@ -32,6 +32,8 @@ namespace gpu {
 namespace intel {
 namespace reorder {
 
+DEFINE_PD_CREATE(gen_t::pd_t)
+
 using namespace jit;
 
 status_t gen_t::pd_t::init(const impl::engine_t *engine,

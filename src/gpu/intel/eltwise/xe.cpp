@@ -25,6 +25,9 @@ namespace gpu {
 namespace intel {
 namespace eltwise {
 
+DEFINE_PD_CREATE(xe_fwd_t::pd_t)
+DEFINE_PD_CREATE(xe_bwd_t::pd_t)
+
 status_t xe_jit_params_t::init(const impl::engine_t *engine,
         const memory_desc_wrapper data_d, alg_kind_t alg_kind_) {
     *this = {};

@@ -29,6 +29,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_uni_instance_normalization_fwd_t::pd_t)
+
 using namespace Xbyak;
 using namespace data_type;
 

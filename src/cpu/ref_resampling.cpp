@@ -32,6 +32,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_resampling_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_resampling_bwd_t::pd_t)
+
 using namespace resampling_utils;
 
 using byte = unsigned char;

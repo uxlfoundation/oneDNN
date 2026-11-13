@@ -229,6 +229,9 @@ private:
     std::shared_ptr<impl::primitive_t> conv_;
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(conv_t::pd_t)
+
 } // namespace gemm
 } // namespace intel
 } // namespace gpu

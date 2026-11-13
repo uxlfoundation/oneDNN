@@ -50,6 +50,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+DEFINE_PD_CREATE(jit_uni_reorder_t::pd_t)
+
 // Scale arguments are not present when their type is NONE. Here we check the pointer
 // for null before applying the offset to avoid performing arithmetic on a null pointer.
 static const float *scale_ptr(

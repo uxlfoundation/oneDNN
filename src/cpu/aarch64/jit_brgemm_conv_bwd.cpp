@@ -31,6 +31,9 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(brgemm_convolution_bwd_t<isa>::pd_t)
+
 namespace {
 status_t weights_axes_permutation(
         memory_desc_t *o_md, const memory_desc_t *i_md, bool with_groups) {

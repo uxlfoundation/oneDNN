@@ -178,6 +178,9 @@ status_t brgemm_convolution_bwd_base_t::execute(const exec_ctx_t &ctx) const {
     return fwd_p_->execute(fwd_ctx);
 }
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(brgemm_convolution_bwd_t<isa>::pd_t)
+
 template struct brgemm_convolution_bwd_t<avx2>;
 template struct brgemm_convolution_bwd_t<avx2_vnni_2>;
 template struct brgemm_convolution_bwd_t<avx512_core>;

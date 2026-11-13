@@ -31,6 +31,11 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_pooling_fwd_t<isa>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_pooling_bwd_t<isa>::pd_t)
+
 namespace jit_uni_pooling_utils {
 
 struct trans_wrapper_t {

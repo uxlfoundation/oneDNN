@@ -41,6 +41,8 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
+DEFINE_PD_CREATE(gemm_f32_matmul_t::pd_t)
+
 using namespace data_type;
 
 status_t gemm_f32_matmul_t::pd_t::init(const engine_t *engine) {

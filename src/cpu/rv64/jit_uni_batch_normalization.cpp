@@ -1,6 +1,7 @@
 /******************************************************************************
 * Copyright 2025 ZTE Corporation
 * Copyright 2026 Institute of Software, Chinese Academy of Sciences
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,6 +31,11 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
+
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_batch_normalization_fwd_t<isa>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_batch_normalization_bwd_t<isa>::pd_t)
 
 namespace {
 

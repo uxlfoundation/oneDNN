@@ -23,6 +23,8 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_matmul_t::pd_t)
+
 void ref_matmul_t::pd_t::init_conf() {
     conf_ = sycl_matmul_conf_t();
 

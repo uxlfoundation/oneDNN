@@ -27,6 +27,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <cpu_isa_t isa, data_type_t d_type>
+DEFINE_PD_CREATE(jit_uni_lrn_fwd_t<isa, d_type>::pd_t)
+template <cpu_isa_t isa, data_type_t d_type>
+DEFINE_PD_CREATE(jit_uni_lrn_bwd_t<isa, d_type>::pd_t)
+
 using namespace dnnl::impl::format_tag;
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;

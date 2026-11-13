@@ -33,6 +33,8 @@ namespace impl {
 namespace gpu {
 namespace nvidia {
 
+DEFINE_PD_CREATE(cudnn_matmul_t::pd_t)
+
 status_t cudnn_matmul_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->has_zero_dim_memory()) return status::success;
 

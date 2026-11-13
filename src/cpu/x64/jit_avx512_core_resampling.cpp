@@ -31,6 +31,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_avx512_core_resampling_bwd_t::pd_t)
+
 using namespace Xbyak;
 
 static bool impl_supports_datatype(data_type_t data_type) {

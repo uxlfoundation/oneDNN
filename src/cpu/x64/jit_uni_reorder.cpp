@@ -62,6 +62,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_uni_reorder_t::pd_t)
+DEFINE_PD_CREATE(jit_blk_reorder_t::pd_t)
+
 namespace tr {
 
 static bool prb_has_small_strides(const prb_t &prb) {

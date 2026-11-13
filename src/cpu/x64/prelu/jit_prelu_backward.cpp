@@ -30,6 +30,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_prelu_bwd_t::pd_t)
+
 static constexpr dim_t alignment = platform::get_cache_line_size()
         / sizeof(float); // align to cache line size to avoid false sharing
 

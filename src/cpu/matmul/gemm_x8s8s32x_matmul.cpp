@@ -42,6 +42,8 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
+DEFINE_PD_CREATE(gemm_x8s8s32x_matmul_t::pd_t)
+
 using namespace data_type;
 
 namespace {

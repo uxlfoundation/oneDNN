@@ -38,6 +38,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_tbb_batch_normalization_fwd_t<isa>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_tbb_batch_normalization_bwd_t<isa>::pd_t)
+
 using namespace memory_tracking::names;
 using namespace Xbyak;
 using acc_data_t = float;

@@ -33,6 +33,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ref_group_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_group_normalization_bwd_t::pd_t)
+
 status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     status_t status = status::success;
 

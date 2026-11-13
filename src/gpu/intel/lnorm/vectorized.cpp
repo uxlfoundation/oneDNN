@@ -25,6 +25,9 @@ namespace gpu {
 namespace intel {
 namespace lnorm {
 
+DEFINE_PD_CREATE(vectorized_fwd_t::pd_t)
+DEFINE_PD_CREATE(vectorized_bwd_t::pd_t)
+
 using namespace compute;
 using namespace dnnl::impl::format_tag;
 

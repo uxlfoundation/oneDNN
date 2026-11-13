@@ -25,6 +25,8 @@ namespace impl {
 namespace gpu {
 namespace nvidia {
 
+DEFINE_PD_CREATE(cudnn_reduction_t::pd_t)
+
 status_t cudnn_reduction_t::execute(const exec_ctx_t &ctx) const {
     if (memory_desc_wrapper(pd()->src_md()).has_zero_dim())
         return status::success;

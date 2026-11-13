@@ -1,6 +1,7 @@
 /******************************************************************************
 * Copyright 2025 ZTE Corporation
 * Copyright 2026 SpacemiT Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,6 +30,11 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
+
+DEFINE_PD_CREATE(rvv_softmax_fwd_t::pd_t)
+
+// C++11 requires a definition since `nstl::min` binds it by reference.
+constexpr dim_t rvv_softmax_fwd_t::pd_t::inner_tile_size;
 
 rvv_softmax_fwd_t::rvv_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {
     if (pd()->use_jit_ && !pd()->use_inner_jit_) {

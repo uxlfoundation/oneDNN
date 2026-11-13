@@ -45,6 +45,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_uni_softmax_fwd_t::pd_t)
+DEFINE_PD_CREATE(jit_uni_softmax_bwd_t::pd_t)
+
 namespace softmax_impl {
 using namespace Xbyak;
 using namespace data_type;

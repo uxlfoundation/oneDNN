@@ -28,6 +28,9 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_batch_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_batch_normalization_bwd_t::pd_t)
+
 status_t ref_batch_normalization_fwd_t::pd_t::init_conf() {
     conf_ = sycl_batch_normalization_conf_t();
 

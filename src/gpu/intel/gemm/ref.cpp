@@ -23,6 +23,8 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+DEFINE_PD_CREATE(ref_t::pd_t)
+
 status_t ref_t::execute(const exec_ctx_t &ctx) const {
     const auto &a = GEMM_CTX_ARG_STORAGE(b);
     const auto &b = GEMM_CTX_ARG_STORAGE(a);

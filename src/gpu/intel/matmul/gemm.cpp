@@ -24,6 +24,8 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
+DEFINE_PD_CREATE(gemm_t::pd_t)
+
 status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 

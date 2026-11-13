@@ -31,6 +31,11 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+template <data_type_t d_type>
+DEFINE_PD_CREATE(nchw_pooling_fwd_t<d_type>::pd_t)
+template <data_type_t d_type>
+DEFINE_PD_CREATE(nchw_pooling_bwd_t<d_type>::pd_t)
+
 using namespace nstl;
 
 template <>

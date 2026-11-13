@@ -24,6 +24,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+DEFINE_PD_CREATE(acl_depthwise_convolution_fwd_t::pd_t)
+
 namespace {
 using data_t = prec_traits_t<data_type::f32>::type;
 

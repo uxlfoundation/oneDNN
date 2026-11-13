@@ -28,6 +28,10 @@ namespace impl {
 namespace gpu {
 namespace amd {
 
+DEFINE_PD_CREATE(miopen_convolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(miopen_convolution_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(miopen_convolution_bwd_weights_t::pd_t)
+
 status_t miopen_convolution_fwd_t::execute_convolution(
         const exec_ctx_t &ctx, bool with_bias, bool with_scratchpad) const {
     amd::stream_t *hip_stream = utils::downcast<amd::stream_t *>(ctx.stream());

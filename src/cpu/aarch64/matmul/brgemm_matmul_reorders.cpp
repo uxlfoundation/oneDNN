@@ -27,6 +27,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+DEFINE_PD_CREATE(brgemm_matmul_copy_reorder_t::pd_t)
+
 status_t brgemm_matmul_copy_reorder_t::pd_t::init(const engine_t *engine,
         const engine_t *src_engine, const engine_t *dst_engine) {
     using namespace status;

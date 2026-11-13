@@ -35,6 +35,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_eltwise_fwd_t<isa>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_eltwise_bwd_t<isa>::pd_t)
+
 using namespace Xbyak;
 
 struct jit_args_t {

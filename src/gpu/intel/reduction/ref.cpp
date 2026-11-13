@@ -25,6 +25,8 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
+DEFINE_PD_CREATE(ref_t::pd_t)
+
 status_t ref_t::pd_t::init_conf(const impl::engine_t *engine) {
     const pd_t *pd = this;
 

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 Advanced Micro Devices, Inc.
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,6 +40,8 @@ namespace cpu {
 namespace x64 {
 namespace zen {
 namespace matmul {
+
+DEFINE_PD_CREATE(zen_grouped_matmul_t::pd_t)
 
 using namespace data_type;
 using namespace dnnl::impl::cpu::matmul;

@@ -89,6 +89,9 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
+template <data_type_t d_type>
+DEFINE_PD_CREATE(ref_lrn_fwd_t<d_type>::pd_t)
+
 template <impl::data_type_t d_type>
 struct ref_lrn_bwd_t : public primitive_t {
     struct pd_t : public cpu_lrn_bwd_pd_t {
@@ -146,6 +149,9 @@ private:
     status_t execute_backward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
+
+template <impl::data_type_t d_type>
+DEFINE_PD_CREATE(ref_lrn_bwd_t<d_type>::pd_t)
 
 } // namespace cpu
 } // namespace impl

@@ -31,6 +31,9 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(brgemm_deconvolution_fwd_t<isa>::pd_t)
+
 namespace {
 status_t fwd_conv_desc_create(const deconvolution_desc_t *fwd_deconv_d,
         convolution_desc_t *fwd_conv_d) {

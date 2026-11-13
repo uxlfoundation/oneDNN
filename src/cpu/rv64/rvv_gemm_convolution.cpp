@@ -30,6 +30,8 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+DEFINE_PD_CREATE(riscv_gemm_convolution_fwd_t::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;

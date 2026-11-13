@@ -27,6 +27,8 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
+DEFINE_PD_CREATE(conv_fwd_t::pd_t)
+
 static int adjust_dims(dims_t &dims, const memory_desc_t *dst, int ndims) {
     utils::array_copy(&dims[0], &dst->dims[0], dst->ndims);
     int max_dims = nstl::max(3, nstl::max(ndims, dst->ndims));

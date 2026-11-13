@@ -32,6 +32,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(simple_layer_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(simple_layer_normalization_bwd_t::pd_t)
+
 using namespace memory_tracking::names;
 using namespace data_type;
 

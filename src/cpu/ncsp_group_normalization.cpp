@@ -23,6 +23,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(ncsp_group_normalization_fwd_t::pd_t)
+
 status_t ncsp_group_normalization_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;

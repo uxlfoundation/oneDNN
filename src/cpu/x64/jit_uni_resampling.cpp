@@ -33,6 +33,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
+DEFINE_PD_CREATE(jit_uni_resampling_fwd_t::pd_t)
+
 using namespace resampling_utils;
 
 static cpu_isa_t get_supported_isa(bool is_plain) {

@@ -44,6 +44,9 @@ namespace gpu {
 namespace intel {
 namespace sdpa {
 
+DEFINE_PD_CREATE(micro_fwd_t::pd_t)
+DEFINE_PD_CREATE(micro_bwd_t::pd_t)
+
 namespace {
 
 using namespace gemmstone;

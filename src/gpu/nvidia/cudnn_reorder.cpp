@@ -27,6 +27,8 @@ namespace impl {
 namespace gpu {
 namespace nvidia {
 
+DEFINE_PD_CREATE(cudnn_reorder_t::pd_t)
+
 status_t cudnn_reorder_t::execute(const exec_ctx_t &ctx) const {
     memory_desc_wrapper wrap(pd()->src_md());
     if (wrap.size() == 0) { return status::success; }

@@ -40,6 +40,8 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
+DEFINE_PD_CREATE(grouped_micro_gemm_t::pd_t)
+
 namespace {
 
 // grouped_micro_gemm cross-thread argument bytes, plus headroom.

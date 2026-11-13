@@ -2530,6 +2530,9 @@ void brgemm_convolution_fwd_base_t::ker_vpad(brgemm_thread_ctx_t &btc) const {
 
 #undef BRGEMM_CONV_KER_HEADER
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(brgemm_convolution_fwd_t<isa>::pd_t)
+
 template struct brgemm_convolution_fwd_t<avx2>;
 template struct brgemm_convolution_fwd_t<avx2_vnni>;
 template struct brgemm_convolution_fwd_t<avx2_vnni_2>;

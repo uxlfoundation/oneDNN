@@ -24,6 +24,8 @@ namespace gpu {
 namespace intel {
 namespace zeropad {
 
+DEFINE_PD_CREATE(simple_t::pd_t)
+
 status_t simple_t::execute_simple(const exec_ctx_t &ctx) const {
     compute::kernel_arg_list_t arg_list;
 

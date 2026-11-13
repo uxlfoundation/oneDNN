@@ -123,6 +123,7 @@ StatementMacros:
   - for_
   - PRAGMA_OMP
   - PRAGMA_OMP_SIMD
+  - DEFINE_PD_CREATE
 TabWidth:        4
 UseTab:          Never
 ...

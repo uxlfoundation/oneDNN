@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 openKylin community
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,6 +30,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
+
+DEFINE_PD_CREATE(jit_uni_prelu_fwd_t::pd_t)
 
 using namespace Xbyak_riscv;
 

@@ -248,6 +248,11 @@ private:
     std::shared_ptr<primitive_t> reorder_;
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+template <SIMPLE_SPARSE_REORDER_TEMPL_DECL, typename spec>
+DEFINE_PD_CREATE(
+        simple_sparse_reorder_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL, spec>::pd_t)
+
 #undef SIMPLE_SPARSE_REORDER_TEMPL_DECL
 #undef SIMPLE_SPARSE_REORDER_TEMPL_CALL
 

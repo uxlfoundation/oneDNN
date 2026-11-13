@@ -27,6 +27,8 @@ namespace impl {
 namespace cpu {
 namespace ppc64 {
 
+DEFINE_PD_CREATE(ppc64_matrixA_reorder_t::pd_t)
+
 using namespace dnnl::impl::cpu::q10n;
 
 namespace {

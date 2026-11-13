@@ -24,6 +24,9 @@ namespace gpu {
 namespace intel {
 namespace gnorm {
 
+DEFINE_PD_CREATE(ref_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_bwd_t::pd_t)
+
 // define kernel runtime common environment variables
 static status_t init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const pd_t *pd) {

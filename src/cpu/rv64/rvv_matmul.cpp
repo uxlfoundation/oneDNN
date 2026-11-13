@@ -34,6 +34,8 @@ namespace cpu {
 namespace rv64 {
 namespace matmul {
 
+DEFINE_PD_CREATE(rvv_matmul_t::pd_t)
+
 void rvv_matmul_t::pd_t::init_scratchpad() {
     using namespace memory_tracking::names;
     using gemm_utils::calc_nthr_nocopy_rvv;

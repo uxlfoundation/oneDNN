@@ -264,6 +264,9 @@ private:
     data_type_t accum_data_type = data_type::undef;
 };
 
+// TODO: move to a .cpp file once this implementation gets one.
+inline DEFINE_PD_CREATE(conv_bwd_weights_t::pd_t)
+
 } // namespace deconv
 } // namespace intel
 } // namespace gpu

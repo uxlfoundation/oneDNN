@@ -38,6 +38,11 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_softmax_fwd_t<isa>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_softmax_bwd_t<isa>::pd_t)
+
 using namespace Xbyak_aarch64;
 
 struct jit_softmax_base_t : public jit_generator_t {

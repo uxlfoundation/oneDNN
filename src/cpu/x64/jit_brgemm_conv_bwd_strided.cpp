@@ -1904,6 +1904,9 @@ void brgemm_convolution_bwd_strided_base_t::ker_trans(
     }
 }
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(brgemm_convolution_bwd_strided_t<isa>::pd_t)
+
 template struct brgemm_convolution_bwd_strided_t<avx2>;
 template struct brgemm_convolution_bwd_strided_t<avx2_vnni>;
 template struct brgemm_convolution_bwd_strided_t<avx2_vnni_2>;

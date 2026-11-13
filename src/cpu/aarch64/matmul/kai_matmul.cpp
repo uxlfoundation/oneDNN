@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,6 +39,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 namespace matmul {
+
+DEFINE_PD_CREATE(kai_matmul_t::pd_t)
 
 using namespace data_type;
 using namespace kai_utils;

@@ -22,6 +22,7 @@
 #include "utils.hpp"
 
 #include <string>
+#include <type_traits>
 
 namespace dnnl {
 namespace impl {
@@ -94,8 +95,11 @@ struct impl_list_item_t {
 
     template <typename pd_t>
     constexpr impl_list_item_t(type_deduction_helper_t<pd_t>)
-        : create_pd_func_(&primitive_desc_t::create<
-                          typename type_deduction_helper_t<pd_t>::type>) {}
+        : create_pd_func_(&type_deduction_helper_t<pd_t>::type::create) {
+        // An inherited `create` would construct the base `pd_t` instead.
+        static_assert(std::is_same<typename pd_t::create_pd_t, pd_t>::value,
+                "pd_t must use its own DECLARE_COMMON_PD_T.");
+    }
 
     template <typename pd_t>
     constexpr impl_list_item_t(concat_type_deduction_helper_t<pd_t>)
@@ -118,8 +122,7 @@ struct impl_list_item_t {
     static int find(const impl_list_item_t *list) {
         int idx = 0;
         for (const impl_list_item_t *cur = list; *cur; cur++) {
-            if (cur->create_pd_func_ == &primitive_desc_t::create<pd_t>)
-                return idx;
+            if (cur->create_pd_func_ == &pd_t::create) return idx;
             idx++;
         }
         return -1;

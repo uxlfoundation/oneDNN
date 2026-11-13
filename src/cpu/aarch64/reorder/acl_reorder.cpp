@@ -45,6 +45,8 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+DEFINE_PD_CREATE(acl_reorder_fwd_t::pd_t)
+
 status_t acl_reorder_resource_t::configure(const acl_reorder_conf_t &app) {
     if (!acl_obj_) return status::out_of_memory;
 

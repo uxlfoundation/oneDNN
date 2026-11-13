@@ -37,6 +37,8 @@ namespace cpu {
 namespace rv64 {
 namespace matmul {
 
+DEFINE_PD_CREATE(rvv_brgemm_matmul_t::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;
 using namespace data_type;

@@ -28,6 +28,8 @@ namespace cpu {
 namespace aarch64 {
 namespace matmul {
 
+DEFINE_PD_CREATE(acl_matmul_t::pd_t)
+
 using namespace data_type;
 
 namespace {

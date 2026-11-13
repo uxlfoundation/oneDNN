@@ -50,6 +50,9 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_rnn_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_rnn_bwd_t::pd_t)
+
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::math;
 using namespace prop_kind;

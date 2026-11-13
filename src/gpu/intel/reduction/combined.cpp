@@ -28,6 +28,8 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
+DEFINE_PD_CREATE(combined_t::pd_t)
+
 // Returns the next factor of big_num less than (or equal to) target
 dim_t get_previous_factor(dim_t big_num, dim_t target) {
     for (dim_t i = 0; i < target; i++) {

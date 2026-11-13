@@ -27,6 +27,9 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace bnorm {
+
+DEFINE_PD_CREATE(xe_fwd_t::pd_t)
+DEFINE_PD_CREATE(xe_bwd_t::pd_t)
 using namespace lookup_table;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::gpu::intel::gpu_utils;

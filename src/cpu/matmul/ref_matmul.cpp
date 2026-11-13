@@ -36,6 +36,8 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
+DEFINE_PD_CREATE(ref_matmul_t::pd_t)
+
 void ref_matmul_t::pd_t::init_scratchpad() {
     using namespace memory_tracking::names;
     nthr_ = dnnl_get_max_threads();

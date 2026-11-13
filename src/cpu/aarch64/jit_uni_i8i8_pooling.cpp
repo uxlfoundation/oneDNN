@@ -29,6 +29,9 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_i8i8_pooling_fwd_t<isa>::pd_t)
+
 static inline dim_t get_offset(
         const memory_desc_wrapper &mdw, int n, int c, int d, int h, int w) {
     switch (mdw.ndims()) {

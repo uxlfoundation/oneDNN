@@ -52,6 +52,9 @@ namespace cpu {
 namespace aarch64 {
 namespace matmul {
 
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_int8_matmul_t<isa>::pd_t)
+
 using namespace Xbyak_aarch64;
 using namespace dnnl::impl::cpu::matmul;
 using namespace dnnl::impl::format_tag;

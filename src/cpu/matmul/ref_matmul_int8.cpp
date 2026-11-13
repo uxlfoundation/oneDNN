@@ -37,6 +37,8 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
+DEFINE_PD_CREATE(ref_matmul_int8_t::pd_t)
+
 status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     status_t status = status::success;
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);

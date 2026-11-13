@@ -33,6 +33,8 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
+DEFINE_PD_CREATE(ref_grouped_t::pd_t)
+
 // Two grouped matmul patterns are supported:
 // 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
 // 2D grouped src (variable K) x 2D grouped wei (variable M) -> dense 3D dst

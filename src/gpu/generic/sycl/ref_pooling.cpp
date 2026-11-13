@@ -26,6 +26,9 @@ namespace gpu {
 namespace generic {
 namespace sycl {
 
+DEFINE_PD_CREATE(ref_pooling_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_pooling_bwd_t::pd_t)
+
 status_t ref_pooling_fwd_t::pd_t::init_conf() {
     using namespace primitive_kind;
     conf_ = sycl_pooling_fwd_conf_t();

@@ -31,6 +31,8 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+DEFINE_PD_CREATE(xe_hp_systolic_t::pd_t)
+
 using namespace gemmstone;
 
 status_t xe_hp_systolic_t::pd_t::init(const impl::engine_t *engine) {

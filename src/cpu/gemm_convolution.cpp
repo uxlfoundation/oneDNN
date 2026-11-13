@@ -28,6 +28,10 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+DEFINE_PD_CREATE(gemm_convolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(gemm_convolution_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(gemm_convolution_bwd_weights_t::pd_t)
+
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;

@@ -549,6 +549,12 @@ class ParserImpl:
                 break
         return modes
 
+    @staticmethod
+    def parse_engine(engine: str):
+        # benchdnn reproduces a device-less primitive on the device it
+        # describes.
+        return engine.replace(":deviceless", "")
+
     identity = staticmethod(lambda x: x)
 
     # Additional attributes
@@ -560,7 +566,6 @@ class ParserImpl:
     parse_operation = identity
     parse_prim_kind = identity
     parse_prop_kind = identity
-    parse_engine = identity
     parse_impl = identity
     parse_shapes = identity
     parse_time = staticmethod(float)

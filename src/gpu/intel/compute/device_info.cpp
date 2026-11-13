@@ -14,12 +14,16 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
 #include <cstdint>
 #include <thread>
 #include <type_traits>
 
+#include "common/cache_blob_id.hpp"
+#include "common/engine.hpp"
 #include "common/type_helpers.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 #include "ngen.hpp"
@@ -33,6 +37,31 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace compute {
+
+namespace {
+
+// The version is compared as raw bytes before any field is read because the
+// field layout of a blob from another build is unknown.
+status_t strip_version(const std::vector<uint8_t> &cache_blob,
+        serialization_stream_t &fields) {
+    VERROR_ENGINE(!cache_blob.empty(), status::invalid_arguments,
+            "cache blob is empty");
+
+    serialization_stream_t version;
+    serialize_version(version);
+    const auto &version_data = version.get_data();
+    VERROR_ENGINE(cache_blob.size() >= version_data.size()
+                    && std::equal(version_data.begin(), version_data.end(),
+                            cache_blob.begin()),
+            status::invalid_arguments,
+            "cache blob was created by a different oneDNN version");
+
+    fields = serialization_stream_t::from_data(std::vector<uint8_t>(
+            cache_blob.begin() + version_data.size(), cache_blob.end()));
+    return status::success;
+}
+
+} // namespace
 
 uint64_t get_future_extensions(
         compute::gpu_arch_t gpu_arch, bool mayiuse_systolic) {
@@ -71,6 +100,21 @@ status_t device_info_t::init(
         impl::engine_t *engine, const std::vector<uint8_t> &cache_blob) {
     if (!cache_blob.empty()) {
         CHECK(init_from_cache_blob(cache_blob));
+
+        // Kernel binaries and the primitive blob header depend on the runtime,
+        // so a blob exported by another runtime doesn't describe this engine.
+        VERROR_ENGINE(runtime_kind_ == engine->runtime_kind(),
+                status::invalid_arguments,
+                "cache blob runtime doesn't match the engine runtime");
+
+        // The runtime version gates generated code and workarounds, so a blob
+        // captured under a different driver doesn't describe this device.
+        const auto blob_runtime_version = runtime_version_;
+        CHECK(init_runtime_version(engine));
+        VERROR_ENGINE(runtime_version_ == blob_runtime_version,
+                status::invalid_arguments,
+                "cache blob driver version doesn't match the device");
+
         return init_serialized_device_info(cache_blob);
     }
 
@@ -80,8 +124,11 @@ status_t device_info_t::init(
     CHECK(init_extensions(engine));
     CHECK(init_attributes(engine));
     fixup_l3_cache_size();
+    runtime_kind_ = engine->runtime_kind();
 
     CHECK(init_attributes_common(engine));
+    mayiuse_microkernels_ = probe_microkernels(
+            utils::downcast<const intel::engine_t *>(engine), runtime_version_);
 
     if (engine->is_cache_blob_supported()) {
         CHECK(init_serialized_device_info());
@@ -391,6 +438,8 @@ status_t device_info_t::init_serialized_device_info(
         return status::success;
     }
 
+    serialize_version(serialized_device_info_);
+    serialized_device_info_.append(runtime_kind_);
     serialized_device_info_.append(gpu_arch_);
     serialized_device_info_.append(product_ != nullptr);
     if (product_) serialized_device_info_.append(*product_);
@@ -416,20 +465,31 @@ status_t device_info_t::init_serialized_device_info(
     serialized_device_info_.append(mayiuse_ngen_kernels_);
     serialized_device_info_.append(mayiuse_system_memory_allocators_);
     serialized_device_info_.append(mayiuse_non_uniform_work_groups_);
+    serialized_device_info_.append(mayiuse_microkernels_);
     serialized_device_info_.append(is_efficient_64bit_);
 
     serialized_device_info_.append(name_);
+    serialized_device_info_.append(platform_name_);
 
+    return status::success;
+}
+
+status_t device_info_t::get_runtime_kind(
+        const std::vector<uint8_t> &cache_blob, runtime_kind_t &runtime_kind) {
+    serialization_stream_t s;
+    CHECK(strip_version(cache_blob, s));
+    deserializer_t d(s);
+    d.pop(runtime_kind);
     return status::success;
 }
 
 status_t device_info_t::init_from_cache_blob(
         const std::vector<uint8_t> &cache_blob) {
-    if (cache_blob.empty()) return status::invalid_arguments;
-
-    auto s = serialization_stream_t::from_data(cache_blob);
+    serialization_stream_t s;
+    CHECK(strip_version(cache_blob, s));
     deserializer_t d(s);
 
+    d.pop(runtime_kind_);
     d.pop(gpu_arch_);
     auto hadProduct = d.pop<bool>();
     if (hadProduct) {
@@ -457,9 +517,11 @@ status_t device_info_t::init_from_cache_blob(
     d.pop(mayiuse_ngen_kernels_);
     d.pop(mayiuse_system_memory_allocators_);
     d.pop(mayiuse_non_uniform_work_groups_);
+    d.pop(mayiuse_microkernels_);
     d.pop(is_efficient_64bit_);
 
     d.pop(name_);
+    d.pop(platform_name_);
     assert(d.empty());
 
     return status::success;

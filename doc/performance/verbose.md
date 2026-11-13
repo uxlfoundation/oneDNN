@@ -262,7 +262,8 @@ line from left to right:
 * API kind: `primitive|graph|common` for API information
 * operation: `exec|create:<cache_hit|cache_miss|kernel_cache_hit|persistent_cache_hit|nested_primitive_cache_hit|compiled_partition_cache_hit>` for
   profiling information, `error|check|dispatch` for other information.
-* engine kind: `cpu` or `gpu` (`cpu2gpu` or `gpu2cpu` for cross-engine reorder)
+* engine kind: `cpu` or `gpu` (`cpu2gpu` or `gpu2cpu` for cross-engine reorder).
+  An engine created without a device is reported as `gpu:deviceless`.
 * primitive name: `convolution`, `reorder`, `sum`, etc
 * primitive implementation
 * propagation kind: `forward_training`, `forward_inference`, `backward`, etc

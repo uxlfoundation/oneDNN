@@ -59,6 +59,7 @@ endif()
 
 add_subdirectory(compute)
 add_subdirectory(jit)
+add_subdirectory(deviceless)
 
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")
     add_subdirectory(ocl)

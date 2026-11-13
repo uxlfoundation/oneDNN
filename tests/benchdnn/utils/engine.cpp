@@ -57,6 +57,34 @@ const engine_t &get_cpu_engine() {
 }
 
 namespace {
+dnnl::engine make_deviceless_engine() {
+    const auto &test_engine = get_test_engine();
+    if (!is_opencl_engine(test_engine) && !is_ze_engine(test_engine))
+        return dnnl::engine();
+
+    try {
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+        return dnnl::ocl_interop::make_deviceless_engine(
+                dnnl::ocl_interop::get_engine_cache_blob(test_engine));
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+        return dnnl::ze_interop::make_deviceless_engine(
+                dnnl::ze_interop::get_engine_cache_blob(test_engine));
+#endif
+    } catch (const dnnl::error &e) {
+        // Non-Intel OpenCL devices have no device-less engine.
+        if (e.status == dnnl_unimplemented) return dnnl::engine();
+        DNN_SAFE_V(e.status);
+    }
+    return dnnl::engine();
+}
+} // namespace
+
+const engine_t &get_deviceless_engine() {
+    static const engine_t instance(make_deviceless_engine());
+    return instance;
+}
+
+namespace {
 void maybe_print_cpu_engine_error_message() {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
     fprintf(stderr,

@@ -14,9 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
 #include <string>
 
 #include "c_types_map.hpp"
+#include "cache_blob_id.hpp"
 #include "engine.hpp"
 
 #include "ittnotify.hpp"
@@ -51,6 +53,15 @@ void unpoison_outputs(const exec_args_t &args) {
         size_t s = memory_desc_wrapper(*mem->md()).size();
         msan_unpoison(p, s);
     }
+}
+
+// Kernel binaries are valid only for the build, device, and driver that
+// generated them; the header lets a mismatching blob be rejected instead of
+// loading foreign binaries.
+status_t serialize_cache_blob_header(
+        serialization_stream_t &sstream, const engine_t *engine) {
+    serialize_version(sstream);
+    return engine->serialize_device(sstream);
 }
 } // namespace
 
@@ -227,7 +238,18 @@ status_t dnnl_primitive_create_from_cache_blob(
         return status::unimplemented;
     }
 
-    cache_blob_t cb(const_cast<uint8_t *>(cache_blob), size);
+    serialization_stream_t header;
+    CHECK(serialize_cache_blob_header(header, primitive_desc_iface->engine()));
+    const auto &header_data = header.get_data();
+    VERROR_ENGINE(size >= header_data.size()
+                    && std::equal(
+                            header_data.begin(), header_data.end(), cache_blob),
+            invalid_arguments,
+            "cache blob was created by a different oneDNN version, device, "
+            "or driver");
+
+    cache_blob_t cb(const_cast<uint8_t *>(cache_blob) + header_data.size(),
+            size - header_data.size());
     return dnnl::impl::primitive_create(
             primitive_iface, primitive_desc_iface, cb);
 }
@@ -282,14 +304,21 @@ status_t dnnl_primitive_get_cache_blob(const primitive_iface_t *primitive_iface,
         return status::unimplemented;
     }
 
+    serialization_stream_t header;
+    CHECK(serialize_cache_blob_header(header, primitive_iface->engine()));
+    const auto &header_data = header.get_data();
+
     if (!cache_blob) {
         size_t sz = 0;
         CHECK(primitive_iface->get_cache_blob_size(&sz));
-        (*size) = sz;
+        (*size) = header_data.size() + sz;
         return status::success;
     }
 
     cache_blob_t cb(cache_blob, *size);
+    // The header must be the first write: the consumer side compares it with
+    // the beginning of the blob before any binary is read.
+    CHECK(cb.add_value(header_data.data(), header_data.size()));
     return primitive_iface->get_cache_blob(cb);
 }
 

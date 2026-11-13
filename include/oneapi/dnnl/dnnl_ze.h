@@ -97,6 +97,22 @@ dnnl_status_t DNNL_API dnnl_ze_interop_engine_create_from_cache_blob(
         ze_device_handle_t device, ze_context_handle_t context, size_t size,
         const uint8_t *cache_blob);
 
+/// Creates an engine without a Level Zero driver, device, or context from the
+/// given cache blob.
+///
+/// The engine describes the device that the cache blob was retrieved from
+/// with #dnnl_ze_interop_engine_get_cache_blob() and makes no Level Zero
+/// calls. It supports primitive descriptor creation and cache blob retrieval
+/// only.
+///
+/// @param engine Output engine.
+/// @param size Size of the cache blob in bytes.
+/// @param cache_blob Cache blob of size @p size.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_ze_interop_deviceless_engine_create(
+        dnnl_engine_t *engine, size_t size, const uint8_t *cache_blob);
+
 /// Creates an engine associated with a Level Zero device and a Level Zero
 /// context.
 ///

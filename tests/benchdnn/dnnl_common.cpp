@@ -2171,6 +2171,37 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
     auto pd = query_pd(primw);
     res->impl_name = query_impl_info(pd);
     BENCHDNN_PRINT(5, "oneDNN implementation: %s\n", res->impl_name.c_str());
+
+    // A device-less primitive can't be executed as the engine has no streams
+    // or memory. Checking that it compiles with the same implementation to
+    // verify it's a valid replacement of the tested one.
+    const auto &deviceless_engine = get_deviceless_engine();
+    if (deviceless_engine) {
+        // A copy keeps the device-less creation out of the tested primitive
+        // timers.
+        res_t deviceless_res = *res;
+        benchdnn_dnnl_wrapper_t<dnnl_primitive_t> deviceless_primw;
+        const int status = create_primitive(deviceless_primw, deviceless_engine,
+                init_pd_func, base_prb, &deviceless_res, dir, hint,
+                is_service_prim, /* src_md = */ nullptr,
+                /* force_f32_dt = */ false);
+        res->state = deviceless_res.state;
+        res->reason = deviceless_res.reason;
+        SAFE(status, WARN);
+        if (res->state == SKIPPED) return OK;
+
+        const auto deviceless_impl_name
+                = query_impl_info(query_pd(deviceless_primw));
+        if (deviceless_impl_name != res->impl_name) {
+            BENCHDNN_PRINT(0,
+                    "Error: device-less engine implementation `%s` doesn't "
+                    "match `%s`.\n",
+                    deviceless_impl_name.c_str(), res->impl_name.c_str());
+            res->state = FAILED;
+            // TODO: add reason.
+            return FAIL;
+        }
+    }
     // Collect memory footprint (perf report) for a given primitive descriptor.
     SAFE(get_memory_footprint(pd, res), WARN);
 

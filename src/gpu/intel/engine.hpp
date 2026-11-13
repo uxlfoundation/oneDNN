@@ -178,6 +178,10 @@ public:
 
     virtual gpu_utils::device_id_t device_id() const = 0;
 
+    // Generators and probes that talk to the runtime directly need a device,
+    // so they must take a binary-only path for a device-less engine.
+    virtual bool is_deviceless() const { return false; }
+
 protected:
     virtual status_t init_device_info() = 0;
     virtual status_t init_device_info(const std::vector<uint8_t> &cache_blob) {

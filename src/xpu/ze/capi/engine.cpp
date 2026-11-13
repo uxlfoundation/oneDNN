@@ -16,11 +16,14 @@
 
 #include "oneapi/dnnl/dnnl_ze.h"
 
+#include "common/cache_blob_id.hpp"
 #include "common/utils.hpp"
 
 #include "xpu/ze/engine_factory.hpp"
 #include "xpu/ze/engine_impl.hpp"
 #include "xpu/ze/utils.hpp"
+
+#include "gpu/intel/deviceless/engine.hpp"
 
 using namespace dnnl::impl;
 
@@ -98,6 +101,23 @@ status_t dnnl_ze_interop_engine_create_from_cache_blob(engine_t **engine,
     return f.engine_create(engine, driver, device, context, index, cb);
 }
 
+status_t dnnl_ze_interop_deviceless_engine_create(
+        engine_t **engine, size_t size, const uint8_t *cache_blob) {
+    VERROR_ENGINE(engine, status::invalid_arguments, VERBOSE_NULL_ARG);
+    VERROR_ENGINE(cache_blob, status::invalid_arguments, VERBOSE_NULL_ARG);
+    VERROR_ENGINE(size > 0, status::invalid_arguments, VERBOSE_NULL_ARG);
+
+    const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
+    engine_t *e = nullptr;
+    CHECK(gpu::intel::deviceless::engine_create(&e, cb));
+    std::unique_ptr<engine_t, engine_deleter_t> e_ptr(e);
+    VERROR_ENGINE(e->runtime_kind() == runtime_kind::ze,
+            status::invalid_arguments,
+            "cache blob was exported by a non-Level Zero engine");
+    *engine = e_ptr.release();
+    return status::success;
+}
+
 status_t dnnl_ze_interop_engine_get_cache_blob(
         engine_t *engine, size_t *size, uint8_t *cache_blob) {
     VERROR_ENGINE(engine->kind() == engine_kind::gpu, status::invalid_arguments,
@@ -120,8 +140,8 @@ status_t dnnl_ze_interop_engine_get_cache_blob_id(ze_driver_handle_t driver,
     VERROR_ENGINE(size, status::invalid_arguments, VERBOSE_NULL_ARG);
     size_t &id_size = *size;
 
-    // Get oneDNN version.
-    auto version = dnnl_version();
+    serialization_stream_t version_sstream;
+    serialize_version(version_sstream);
 
     // Get device name.
     ze_device_properties_t device_properties = {};
@@ -144,9 +164,7 @@ status_t dnnl_ze_interop_engine_get_cache_blob_id(ze_driver_handle_t driver,
         // `sstream.append_array` calls which adds the size itself besides
         // the content of the array.
         id_size = device_name.size() + driver_version_len
-                + sizeof(version->major) + sizeof(version->minor)
-                + sizeof(version->patch) + std::strlen(version->hash)
-                + 3 * sizeof(size_t);
+                + version_sstream.get_data().size() + 2 * sizeof(size_t);
         return status::success;
     }
 
@@ -163,13 +181,7 @@ status_t dnnl_ze_interop_engine_get_cache_blob_id(ze_driver_handle_t driver,
     // Serialize driver version.
     sstream.append_array(driver_version.size(), driver_version.data());
 
-    // Serialize oneDNN version.
-    sstream.append(version->major);
-    sstream.append(version->minor);
-    sstream.append(version->patch);
-
-    // Serialize oneDNN hash.
-    sstream.append_array(std::strlen(version->hash), version->hash);
+    serialize_version(sstream);
 
     VERROR_ENGINE(id_size == sstream.get_data().size(),
             status::invalid_arguments,

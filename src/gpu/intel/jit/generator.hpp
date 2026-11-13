@@ -123,6 +123,11 @@ public:
             compute::kernel_t &kernel, const intel::engine_t *engine) override {
         check_kernel_size(kernel_name(),
                 ngen_code_generator_t<hw>::getRootStreamLength(), engine);
+        // nGEN builds the zebin in software, while the runtime generators
+        // below verify it on the device.
+        if (engine->is_deviceless())
+            return engine->create_kernel_from_binary(kernel,
+                    ngen::ELFCodeGenerator<hw>::getBinary(), kernel_name(), {});
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         auto *sycl_engine = utils::downcast<const sycl::engine_t *>(engine);
         auto sycl_kernel = ngen_code_generator_t<hw>::getKernel(

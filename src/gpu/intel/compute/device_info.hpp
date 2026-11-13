@@ -228,14 +228,22 @@ public:
         return runtime_version_;
     }
     const std::string &name() const { return name_; }
+    const std::string &platform_name() const { return platform_name_; }
 
     bool mayiuse_ngen_kernels() const { return mayiuse_ngen_kernels_; }
 
     bool mayiuse_systolic() const { return mayiuse_systolic_; }
 
+    bool mayiuse_microkernels() const { return mayiuse_microkernels_; }
+
     bool mayiuse_non_uniform_work_groups() const {
         return mayiuse_non_uniform_work_groups_;
     }
+
+    // An engine is constructed with its runtime kind, so the runtime of a
+    // blob is needed before the device info can be initialized from it.
+    static status_t get_runtime_kind(const std::vector<uint8_t> &cache_blob,
+            runtime_kind_t &runtime_kind);
 
     /// Returns true if the engine can directly access pointers from system allocators
     bool mayiuse_system_memory_allocators() const {
@@ -282,6 +290,10 @@ protected:
     bool is_efficient_64bit_ = false; // Efficient 64 bit addressing available
 
     std::string name_;
+    // The OpenCL engine identifies its primitive blobs by the platform too,
+    // so a device-less engine needs it to reproduce that identity. Other
+    // runtimes leave it empty.
+    std::string platform_name_;
     xpu::runtime_version_t runtime_version_;
 
     int32_t eu_count_ = 0;
@@ -309,6 +321,10 @@ private:
     void fixup_l3_cache_size();
 
     bool mayiuse_non_uniform_work_groups_ = false;
+    // The microkernels probe needs a device, so its result is stored in the
+    // blob for a device-less engine.
+    bool mayiuse_microkernels_ = false;
+    runtime_kind_t runtime_kind_ = runtime_kind::none;
 
     serialization_stream_t serialized_device_info_;
 };

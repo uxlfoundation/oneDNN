@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -27,14 +28,11 @@
 using namespace testing;
 namespace graph = dnnl::impl::graph;
 
-static std::string find_cmd_option(
-        char **argv_beg, char **argv_end, const std::string &option) {
-    for (auto arg = argv_beg; arg != argv_end; arg++) {
-        std::string s(*arg);
-        auto pos = s.find(option);
-        if (pos != std::string::npos) return s.substr(pos + option.length());
-    }
-    return {};
+// A mistyped option would otherwise silently run the tests on the default CPU
+// engine, and a release build compiles out `assert`.
+[[noreturn]] static void reject_cmd_option(const std::string &arg) {
+    std::cerr << "Unsupported option: " << arg << std::endl;
+    std::exit(EXIT_FAILURE);
 }
 
 inline graph::engine_kind_t to_engine_kind(const std::string &str) {
@@ -42,14 +40,24 @@ inline graph::engine_kind_t to_engine_kind(const std::string &str) {
 
     if (str == "gpu") return graph::engine_kind::gpu;
 
-    assert(!"not expected");
-    return graph::engine_kind::cpu;
+    reject_cmd_option("--engine=" + str);
 }
 
 int main(int argc, char *argv[]) {
     int result;
 
-    auto engine_str = find_cmd_option(argv, argv + argc, "--engine=");
+    (void)(::testing::GTEST_FLAG(death_test_style) = "threadsafe");
+    // Runs first to remove the gtest flags from `argv`.
+    ::testing::InitGoogleTest(&argc, argv);
+
+    const std::string engine_option = "--engine=";
+    std::string engine_str;
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        if (arg.compare(0, engine_option.size(), engine_option) != 0)
+            reject_cmd_option(arg);
+        engine_str = arg.substr(engine_option.size());
+    }
     set_test_engine_kind(to_engine_kind(engine_str));
     const graph::engine_kind_t engine_kind = get_test_engine_kind();
 
@@ -67,8 +75,6 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-    (void)(::testing::GTEST_FLAG(death_test_style) = "threadsafe");
-    ::testing::InitGoogleTest(&argc, argv);
     std::string filter_str = ::testing::GTEST_FLAG(filter);
     if (engine_kind == graph::engine_kind::cpu) {
         // Exclude non-CPU tests

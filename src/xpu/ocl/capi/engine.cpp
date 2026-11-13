@@ -19,11 +19,16 @@
 #include "oneapi/dnnl/dnnl_ocl.h"
 
 #include "common/c_types_map.hpp"
+#include "common/cache_blob_id.hpp"
 #include "common/engine.hpp"
 
 #include "xpu/ocl/engine_factory.hpp"
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/ocl/utils.hpp"
+
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/deviceless/engine.hpp"
+#endif
 
 using namespace dnnl::impl;
 
@@ -81,6 +86,26 @@ status_t dnnl_ocl_interop_engine_create_from_cache_blob(engine_t **engine,
     return f.engine_create(engine, device, context, index, cb);
 }
 
+status_t dnnl_ocl_interop_deviceless_engine_create(
+        engine_t **engine, size_t size, const uint8_t *cache_blob) {
+    bool args_ok = !utils::any_null(engine, cache_blob) && size != 0;
+    VERROR_ENGINE(args_ok, status::invalid_arguments, VERBOSE_NULL_ARG);
+
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
+    engine_t *e = nullptr;
+    CHECK(gpu::intel::deviceless::engine_create(&e, cb));
+    std::unique_ptr<engine_t, engine_deleter_t> e_ptr(e);
+    VERROR_ENGINE(e->runtime_kind() == runtime_kind::ocl,
+            status::invalid_arguments,
+            "cache blob was exported by a non-OpenCL engine");
+    *engine = e_ptr.release();
+    return status::success;
+#else
+    return status::unimplemented;
+#endif
+}
+
 status_t dnnl_ocl_interop_engine_get_cache_blob(
         engine_t *engine, size_t *size, uint8_t *cache_blob) {
     if (engine->kind() != engine_kind::gpu || !size)
@@ -110,8 +135,8 @@ status_t dnnl_ocl_interop_engine_get_cache_blob_id(
 
     cl_int err = CL_SUCCESS;
 
-    // Get oneDNN version.
-    auto version = dnnl_version();
+    serialization_stream_t version_sstream;
+    serialize_version(version_sstream);
 
     // Get platform.
     cl_platform_id platform;
@@ -139,9 +164,7 @@ status_t dnnl_ocl_interop_engine_get_cache_blob_id(
         // `sstream.append_array` calls which adds the size itself besides
         // the content of the array.
         id_size = platform_name_size + device_name_size + driver_version_size
-                + sizeof(version->major) + sizeof(version->minor)
-                + sizeof(version->patch) + std::strlen(version->hash)
-                + 4 * sizeof(size_t);
+                + version_sstream.get_data().size() + 3 * sizeof(size_t);
         return status::success;
     }
 
@@ -169,13 +192,7 @@ status_t dnnl_ocl_interop_engine_get_cache_blob_id(
 
     sstream.append_array(driver_version.size(), driver_version.data());
 
-    // Get oneDNN version.
-    sstream.append(version->major);
-    sstream.append(version->minor);
-    sstream.append(version->patch);
-
-    // Get oneDNN hash.
-    sstream.append_array(std::strlen(version->hash), version->hash);
+    serialize_version(sstream);
 
     // Not enough buffer space for copying cache blob.
     if (id_size != sstream.get_data().size()) return status::invalid_arguments;

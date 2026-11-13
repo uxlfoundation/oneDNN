@@ -289,17 +289,30 @@ struct block_run_t {
 };
 
 // Runs of the M, N, and K levels, in the order `jit_brgemm_kernel_t` walks
-// them: the full blocks, then each tail. N has two tails: the full registers
-// left after the full blocks, then the masked register.
+// them: the full blocks, then each tail. N has two tails: `ldb2_tail` full
+// vector registers or tiles, then the partial one of `ldb_tail` columns.
+// `n_tail_grouping` gives each its own block or puts both in one block.
 std::vector<block_run_t> m_runs(const loop_conf_t &loop) {
     return {{loop.bd_block, loop.bdb},
             {loop.bdb_tail, loop.bdb_tail > 0 ? 1 : 0}};
 }
 
 std::vector<block_run_t> n_runs(const loop_conf_t &loop) {
-    return {{(dim_t)loop.ld_block2 * loop.ld_block, loop.ldb2},
-            {(dim_t)loop.ldb2_tail * loop.ld_block, loop.ldb2_tail > 0 ? 1 : 0},
-            {loop.ldb_tail, loop.ldb_tail > 0 ? 1 : 0}};
+    const dim_t full_size = (dim_t)loop.ld_block2 * loop.ld_block;
+    const dim_t ldb2_tail_size = (dim_t)loop.ldb2_tail * loop.ld_block;
+
+    switch (loop.n_tail_grouping) {
+        case tail_grouping_t::separate:
+            return {{full_size, loop.ldb2},
+                    {ldb2_tail_size, loop.ldb2_tail > 0 ? 1 : 0},
+                    {loop.ldb_tail, loop.ldb_tail > 0 ? 1 : 0}};
+        case tail_grouping_t::grouped: {
+            const dim_t tail_size = ldb2_tail_size + loop.ldb_tail;
+            return {{full_size, loop.ldb2}, {tail_size, tail_size > 0 ? 1 : 0}};
+        }
+    }
+    assert(!"unknown tail grouping");
+    return {};
 }
 
 std::vector<block_run_t> k_runs(const loop_conf_t &loop) {
@@ -723,8 +736,8 @@ void emit_block(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 }
 
 // Returns the block of `bd_block` rows at `bd_start` and `ld_elems` elements of
-// N at `ld_start`. An N block is whole registers, except the N tail of
-// `ldb_tail` elements, which is one masked register.
+// N at `ld_start`. The last vector register or tile is partial when `ld_elems`
+// is not a multiple of `ld_block`, and the block then gets `ld_tail_mask`.
 out_block_t make_out_block(const conf_t &cfg, dim_t bd_block, dim_t bd_start,
         dim_t ld_elems, dim_t ld_start, ir::vreg_t ld_tail_mask) {
 
@@ -765,8 +778,8 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 
     const loop_conf_t &loop = cfg.loop;
 
-    // Every partial N block is the same width, so one mask serves the whole
-    // kernel.
+    // The partial vector register or tile of every block has `ldb_tail`
+    // columns, so one mask serves the whole kernel.
     ir::vreg_t ld_tail_mask = ir::vreg_t::none;
 
     if (loop.ldb_tail > 0) {
@@ -946,7 +959,8 @@ status_t init_compute_path(
 //
 // A tile descriptor counts its blocks differently from a vector one. `bdb` and
 // `ldb` include the tail block, and the uker groups `bd_block2` M blocks and
-// `ld_block2` N blocks into one block of the loop nest (`fill_imap()`).
+// `ld_block2` N blocks into one block of the loop nest, with the tail block in
+// the last group of its level (`fill_imap()`).
 status_t init_loop_conf(
         loop_conf_t &loop, compute_path_kind_t kind, const brgemm_desc_t &brg) {
     using namespace utils;
@@ -1032,21 +1046,31 @@ status_t init_loop_conf(
             loop.ldb2 = brg.ldb2;
             loop.ldb2_tail = brg.ldb2_tail;
             loop.ldb_tail = brg.ldb_tail;
+            // The vector microkernel and the output path treat every vector
+            // register of a block that has `ld_tail_mask` as partial, so the
+            // partial vector register is a block of its own.
+            loop.n_tail_grouping = tail_grouping_t::separate;
             break;
-        case compute_path_kind_t::tmul:
-            VCONDCHECK_BRGEMM_IR(
-                    everyone_is(0, brg.bdb_tail, brg.ldb_tail, brg.rdb_tail),
-                    VERBOSE_UNSUPPORTED_FEATURE, "tile tails");
+        case compute_path_kind_t::tmul: {
+            VCONDCHECK_BRGEMM_IR(brg.rdb_tail == 0, VERBOSE_UNSUPPORTED_FEATURE,
+                    "K tail with tiles");
 
-            // A group with fewer blocks than `bd_block2` or `ld_block2` is the
-            // tail of its level.
+            // The last block of the level holds the full tiles left over and
+            // the tail tile, so `bdb_tail` counts the rows of both.
+            const dim_t full_m_tiles = brg.bdb - (brg.bdb_tail != 0 ? 1 : 0);
+            const dim_t full_n_tiles = brg.ldb - (brg.ldb_tail != 0 ? 1 : 0);
+
             loop.bd_block = brg.bd_block2 * brg.bd_block;
-            loop.bdb = brg.bdb / brg.bd_block2;
-            loop.bdb_tail = (int)(brg.bdb % brg.bd_block2) * brg.bd_block;
-            loop.ldb2 = brg.ldb / brg.ld_block2;
-            loop.ldb2_tail = (int)(brg.ldb % brg.ld_block2);
-            loop.ldb_tail = 0;
+            loop.bdb = full_m_tiles / brg.bd_block2;
+            loop.bdb_tail = (int)(brg.bcast_dim - loop.bdb * loop.bd_block);
+            loop.ldb2 = full_n_tiles / brg.ld_block2;
+            loop.ldb2_tail = (int)(full_n_tiles % brg.ld_block2);
+            loop.ldb_tail = brg.ldb_tail;
+            // A separate block for the partial tile would load the A tiles of
+            // the M block again at every K step.
+            loop.n_tail_grouping = tail_grouping_t::grouped;
             break;
+        }
     }
     return status::success;
 }
@@ -1108,9 +1132,17 @@ status_t init_tmul_conf(compute_path_conf_t &compute_path,
     compute_path.dt_b = brg.dt_b;
     compute_path.dt_acc = f32;
     compute_path.vnni_granularity = brg.rd_step;
-    compute_path.a_tile = shapes[brg.get_A_tensor(0)];
-    compute_path.b_tile = shapes[brg.get_B_tensor(0)];
-    compute_path.c_tile = shapes[brg.get_C_tensor(0, 0)];
+
+    for (const bool is_m_tail : {false, true}) {
+        compute_path.a_tile[is_m_tail] = shapes[brg.get_A_tensor(0, is_m_tail)];
+        for (const bool is_n_tail : {false, true}) {
+            compute_path.c_tile[is_m_tail][is_n_tail]
+                    = shapes[brg.get_C_tensor(0, 0, is_m_tail, is_n_tail)];
+        }
+    }
+    for (const bool is_n_tail : {false, true}) {
+        compute_path.b_tile[is_n_tail] = shapes[brg.get_B_tensor(0, is_n_tail)];
+    }
 
     if (brg.load_nt_A) compute_path.a_load_hint |= ir::mem_hint_t::non_temporal;
     if (brg.load_nt_B) compute_path.b_load_hint |= ir::mem_hint_t::non_temporal;

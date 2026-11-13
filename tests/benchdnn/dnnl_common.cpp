@@ -1321,11 +1321,17 @@ void add_md_size(const_dnnl_memory_desc_t md,
     const bool is_corr = has_bench_mode_bit(mode_bit_t::corr);
     const bool is_bitwise = has_bench_mode_bit(mode_bit_t::bitwise);
     // Reference memories are always tag::abx fp32, hence need re-creating
-    // memory descriptor and take its size. The dims come from an existing
-    // descriptor, so a failure is not expected.
+    // memory descriptor and take its size. Grouped values are flat. The dims
+    // come from an existing descriptor, so a failure is not expected.
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> ref_md;
-    DNN_SAFE_V(dnn_mem_t::init_md(
-            ref_md, query_md_ndims(md), query_md_dims(md), dnnl_f32, tag::abx));
+    if (has_grouped_encoding(md)) {
+        const dnnl_dims_t vals_dims = {query_md_nnz(md)};
+        DNN_SAFE_V(
+                dnn_mem_t::init_md(ref_md, 1, vals_dims, dnnl_f32, tag::abx));
+    } else {
+        DNN_SAFE_V(dnn_mem_t::init_md(ref_md, query_md_ndims(md),
+                query_md_dims(md), dnnl_f32, tag::abx));
+    }
     const auto ref_md_size = dnnl_memory_desc_get_size(ref_md);
 
     const size_t ref_mem_idx = check_mem_size_args.want_input ? 0 : 1;

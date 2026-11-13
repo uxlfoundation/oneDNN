@@ -1,0 +1,60 @@
+# Mixed f16/f32 matmul on NVIDIA (cuDNN).
+#
+# Covers the mixed type combinations accepted by cudnn_matmul_t:
+#   - f16*f16 -> f32 (cuBLAS GemmEx native)
+#   - f32*f32 -> f16 (f32 compute + reorder)
+# Both mixed combinations accept only a f32 bias; a f16 bias falls back to the
+# reference implementation. The f32*f32->f16 reorder path rejects sum+eltwise
+# (the sum post-op would be applied after eltwise); f16*f16->f32 with sum+relu
+# is fine.
+
+--reset
+
+# f16*f16->f32: no bias, f32 bias
+--dt=f16:f16:f32
+--stag=ab --wtag=ab --dtag=ab
+--bia-dt=undef,f32 --bia_mask=2
+--attr-post-ops=
+10x30:30x20
+1x8:8x16
+
+# f32*f32->f16: no bias, f32 bias
+--dt=f32:f32:f16
+--stag=ab --wtag=ab --dtag=ab
+--bia-dt=undef,f32 --bia_mask=2
+--attr-post-ops=
+10x30:30x20
+1x8:8x16
+
+# f16*f16->f32: relu and sum+relu (non-reorder path)
+--dt=f16:f16:f32
+--stag=ab --wtag=ab --dtag=ab
+--bia-dt=f32 --bia_mask=2
+--attr-post-ops=relu
+10x30:30x20
+
+--dt=f16:f16:f32
+--bia-dt=f32 --bia_mask=2
+--attr-post-ops=sum+relu
+10x30:30x20
+
+# f32*f32->f16: relu (sum+eltwise is rejected for the reorder path)
+--dt=f32:f32:f16
+--stag=ab --wtag=ab --dtag=ab
+--bia-dt=f32 --bia_mask=2
+--attr-post-ops=relu
+10x30:30x20
+
+# f32*f32->f16: sum only (reorder path applies sum via the transform beta)
+--dt=f32:f32:f16
+--stag=ab --wtag=ab --dtag=ab
+--bia-dt=f32 --bia_mask=2
+--attr-post-ops=sum
+10x30:30x20
+
+# 3D batched (bias per M and per N)
+--dt=f16:f16:f32,f32:f32:f16
+--stag=abc --wtag=abc --dtag=abc
+--bia-dt=undef,f32 --bia_mask=2,4
+--attr-post-ops=
+2x64x32:2x32x48

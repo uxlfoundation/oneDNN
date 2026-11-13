@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
+* Copyright 2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,6 +67,15 @@ struct cublas_params : cublas_base_params {
         // cuBLAS only supports s8s8f32 configuration.
         // Hence, one final reorder is required if the cfg = s8s8s8
         if (dst_type_ == cudaDataType_t::CUDA_R_8I) {
+            reorder_required_ = true;
+            dst_type_ = cudaDataType_t::CUDA_R_32F;
+        }
+
+        // cuBLAS does not support f32*f32->f16 directly.
+        // Compute in f32 and reorder the output to f16.
+        if (src_type_ == cudaDataType_t::CUDA_R_32F
+                && weights_type_ == cudaDataType_t::CUDA_R_32F
+                && dst_type_ == cudaDataType_t::CUDA_R_16F) {
             reorder_required_ = true;
             dst_type_ = cudaDataType_t::CUDA_R_32F;
         }
@@ -203,15 +213,18 @@ struct cublas_params : cublas_base_params {
             }
         }
 
-        const auto dst_nelems = dst_d.nelems(true);
-        reorder_scratch_size_ = dst_nelems * sizeof(float);
+        // The scratch holds a f32 tensor with the dst dims and strides, so it
+        // must cover the dst span (strided descriptors span more than nelems).
+        // No scratch is needed when the result is written straight to dst.
+        reorder_scratch_size_
+                = reorder_required_ ? dst_d.span() * sizeof(float) : 0;
 
         return status::success;
     }
 
     size_t scratchpad_size(const memory_desc_t *dst_md) const {
-        const auto dst_nelems = memory_desc_wrapper(dst_md).nelems(true);
-        return dst_nelems * sizeof(float);
+        if (!reorder_required_) return 0;
+        return memory_desc_wrapper(dst_md).span() * sizeof(float);
     }
 
     void init_scratchpad(const memory_desc_t *dst_md,

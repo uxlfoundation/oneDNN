@@ -304,13 +304,21 @@ struct gemm_t : public primitive_t {
                                                 const dims_t orig_dims,
                                                 dims_t reshape_dims) -> bool {
                     int full_tensor_mask = ((1 << c_md->ndims) - 1);
-                    int per_oc_mask = (1 << 1);
                     if (!reshape_2d || entry.has_default_values()
-                            || utils::one_of(entry.get_mask(), 0, per_oc_mask,
-                                    full_tensor_mask))
+                            || utils::one_of(
+                                    entry.get_mask(), 0, full_tensor_mask))
                         return true;
 
-                    if (utils::one_of(orig_dims[diff_dims], reshape_dims[0], 1))
+                    // The batch dimensions merge into dimension `diff_dims`
+                    // (M for src, K for weights); a mask on that dimension is
+                    // kept when the merge leaves its size unchanged. Bit 1 is
+                    // not output channels here: on a 3D src it is M.
+                    if (orig_dims[diff_dims] == reshape_dims[0]) return true;
+
+                    // A merged dimension of size 1 is absorbed by regrouping
+                    // in `reshape_quant`, which only grouped entries get.
+                    if (orig_dims[diff_dims] == 1
+                            && !entry.has_default_groups())
                         return true;
 
                     return false;

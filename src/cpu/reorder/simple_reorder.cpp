@@ -63,10 +63,15 @@ status_t simple_reorder_t::pd_t::init(const engine_t *engine,
     // require special handling on a common infrastructure side (loading and
     // storing 64-bit values for int64_t and double properly), which doesn't
     // seem to bring any value to the library at this point, thus, just making
-    // sure they are not expected here.
-    VDISPATCH_REORDER(!utils::one_of(input_d.data_type(), f64, s64),
+    // sure they are not expected here. As no CPU implementation supports them,
+    // they are reported as not supported on the system.
+    VDISPATCH_REORDER_SC(utils::one_of(input_d.data_type(), f64, s64)
+                    ? status::data_type_not_supported
+                    : status::success,
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_REORDER(!utils::one_of(output_d.data_type(), f64, s64),
+    VDISPATCH_REORDER_SC(utils::one_of(output_d.data_type(), f64, s64)
+                    ? status::data_type_not_supported
+                    : status::success,
             VERBOSE_UNSUPPORTED_DT);
 
     // Sub-byte data types require dedicated bit-level handling which is a

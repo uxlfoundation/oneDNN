@@ -594,6 +594,21 @@ private:
     void calculate_mb_oc_cspn_partial(const dim_t *strides, const dim_t offset,
             const Xbyak::Reg64 &tmp_reg, dim_t elem_size_bytes) const;
 
+    void append_shared_axes_offset(
+            const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
+            const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
+            const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val,
+            int vmm_idx, const Xbyak::Reg64 &addr_reg,
+            const Xbyak::Reg64 &tmp_reg, dim_t elem_size_bytes, bool is_first,
+            const memory_desc_wrapper &rhs_d) const;
+    void calculate_shared_axes_base(const memory_desc_wrapper &dst_d,
+            const memory_desc_wrapper &rhs_d, const Xbyak::Reg64 &addr_reg,
+            const Xbyak::Reg64 &tmp_reg, dim_t elem_size_bytes) const;
+    void calculate_shared_axes_partial(const memory_desc_wrapper &dst_d,
+            const memory_desc_wrapper &rhs_d, dim_t dst_offset_bytes,
+            const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
+            dim_t elem_size_bytes) const;
+
     template <typename T>
     void execute_cmp_binary(const Vmm &dst, const Vmm &lhs, const T &rhs,
             const unsigned int cmp_predicate) const;

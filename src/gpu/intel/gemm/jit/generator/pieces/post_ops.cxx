@@ -271,7 +271,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
                                   Subregister base, Subregister ld,
                                   const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    std::vector<GRFRange> CO_addrs;
+    std::vector<RegisterRange> CO_addrs;
     std::vector<MaskAssignment> masks;
     auto globalCM = state.C_layout.colMajor();
 
@@ -304,7 +304,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
 
     RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, false);
 
-    allocAddrRegs(CO_addrs, CO_layout, state);
+    allocAddrRegs(hw, CO_addrs, CO_layout, state);
     setupAddr(CO_addrs, base, CO_layout, ld, strategy, state);
 
     if (!assignMasks(CO_layout, LoopM, LoopN, masks, strategy, state, true)) return false;
@@ -330,11 +330,11 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
             auto repackLayout = RegisterLayout(hw, state.Tacc, cor, coc, !column);
             nreserve += repackLayout.regs();
         }
-        ngen::GRFRange reserve;
+        ngen::RegisterRange reserve;
         reserve = state.ra.alloc_range(nreserve);
 
         constexpr int max_grouped_ops = 16;
-        std::array<ngen::GRFRange, max_grouped_ops> allCORegs;
+        std::array<ngen::RegisterRange, max_grouped_ops> allCORegs;
 
         int grouped_ops = 0;
         for (auto &r : allCORegs) {
@@ -764,9 +764,9 @@ bool Generator<hw>::gemmLoadABOffset(const GEMMProblem &problem, const GEMMStrat
     state.As_regs = state.ra.allocRange(state.As_layout.regs());
     state.Bs_regs = state.ra.allocRange(state.Bs_layout.regs());
 
-    vector<GRFRange> As_addrs, Bs_addrs;
-    allocAddrRegs(As_addrs, state.As_layout, state);
-    allocAddrRegs(Bs_addrs, state.Bs_layout, state);
+    vector<RegisterRange> As_addrs, Bs_addrs;
+    allocAddrRegs(hw, As_addrs, state.As_layout, state);
+    allocAddrRegs(hw, Bs_addrs, state.Bs_layout, state);
 
     if (state.effAs.isInvalid() && state.effBs.isInvalid())
         gemmCalcABOffsetAddrs(problem, strategy, state);
@@ -835,7 +835,7 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
     // scalars which are pre-negated on load.
     bool a_host_scalar = problem.aOffsetHostScalar();
     bool b_host_scalar = problem.bOffsetHostScalar();
-    GRFRange aoData, boData;
+    RegisterRange aoData, boData;
 
     auto temp = [&]() {
         if (!(aOffset && bOffset)) return Subregister{};

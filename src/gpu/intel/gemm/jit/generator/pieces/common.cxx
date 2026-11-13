@@ -171,7 +171,7 @@ FlagRegister Generator<hw>::getPhysicalFlag(VirtualFlag vflag, CommonState &stat
         pflag = vflag;
     }
 
-    return pflag.toPhysical();
+    return pflag.toPhysical(hw);
 }
 
 template <HW hw>
@@ -387,11 +387,11 @@ GRF Generator<hw>::loadScalars(Type T, const std::vector<Subregister> &src, cons
 
 // Load a contiguous vector from memory, with optional remainder handling.
 template <HW hw>
-GRFRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, int n, Subregister rem, const CommonStrategy &strategy, CommonState &state)
+RegisterRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, int n, Subregister rem, const CommonStrategy &strategy, CommonState &state)
 {
     MatrixAddressing atype;
     MatrixAddressingStrategy astrategy;
-    vector<GRFRange> addrs;
+    vector<RegisterRange> addrs;
     vector<MaskAssignment> masks;
     Subregister rems[3] = {rem};
     Subregister remTemp;
@@ -422,7 +422,7 @@ GRFRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, int n,
 
     auto regs = state.ra.alloc_range(layout.regs());
 
-    allocAddrRegs(addrs, layout, state);
+    allocAddrRegs(hw, addrs, layout, state);
     setupAddr(addrs, ptr, layout, Subregister(), strategy, state);
     if (!assignMasks(layout, LoopM, LoopN, masks, strategy, state, true)) stub();
     loadMasks(masks, rems, strategy, state);

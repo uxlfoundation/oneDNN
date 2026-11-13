@@ -2062,11 +2062,11 @@ void RegisterLayout::sort(bool reverse)
     });
 }
 
-void RegisterLayout::assignUniformMask(FlagRegister flag, int idx)
+void RegisterLayout::assignUniformMask(FlagRegister flag, HW hw, int idx)
 {
     for (auto &block: *this) {
         if (block.flag[idx]) stub();     /* Already has a flag? */
-        block.flag[idx] = flag;
+        block.flag[idx] = VirtualFlag(flag, hw);
     }
 }
 
@@ -2206,7 +2206,7 @@ RegisterLayout RegisterLayout::slice(bool column, int x1, int x2, bool overrunOK
     return result;
 }
 
-RegisterLayout RegisterLayout::slice(vector<GRFRange> &subaddrs, const vector<GRFRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
+RegisterLayout RegisterLayout::slice(vector<RegisterRange> &subaddrs, const vector<RegisterRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
 {
     auto result = trySlice(subaddrs, addrs, column, x1, x2, overrunOK);
     if (!result) stub("Could not slice register layout");
@@ -2225,7 +2225,7 @@ RegisterLayout RegisterLayout::trySlice(bool column, int x1, int x2, bool overru
     return trySlice(nullptr, nullptr, nullptr, column, x1, x2, overrunOK, decoalesce);
 }
 
-RegisterLayout RegisterLayout::trySlice(vector<GRFRange> &subaddrs, const vector<GRFRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
+RegisterLayout RegisterLayout::trySlice(vector<RegisterRange> &subaddrs, const vector<RegisterRange> &addrs, bool column, int x1, int x2, bool overrunOK) const
 {
     return trySlice(&subaddrs, nullptr, &addrs, column, x1, x2, overrunOK);
 }
@@ -2235,7 +2235,7 @@ RegisterLayout RegisterLayout::trySlice(vector<int> &indices, bool column, int x
     return trySlice(nullptr, &indices, nullptr, column, x1, x2, overrunOK);
 }
 
-RegisterLayout RegisterLayout::trySlice(vector<GRFRange> *subaddrs, vector<int> *indices, const vector<GRFRange> *addrs,
+RegisterLayout RegisterLayout::trySlice(vector<RegisterRange> *subaddrs, vector<int> *indices, const vector<RegisterRange> *addrs,
                                         bool column, int x1, int x2, bool overrunOK, bool decoalesce) const
 {
     auto RegisterBlock::*nq      = column ? &RegisterBlock::nc      : &RegisterBlock::nr;
@@ -2304,7 +2304,7 @@ RegisterLayout RegisterLayout::tryUpgradeToBlock2D(const MatrixAddressing &atype
 
     int r0 = -1, c0 = -1, b0 = -1;
     int nr = 0, nc = 0;
-    bool ok = true;
+    bool ok = true, lastDense = false;
 
     auto make2DBlock = [&] {
         if (r0 < 0 || c0 < 0) return;
@@ -2317,7 +2317,14 @@ RegisterLayout RegisterLayout::tryUpgradeToBlock2D(const MatrixAddressing &atype
         if ((block.offsetBytes & omask) || (block.bytes & omask))          return RegisterLayout();
         if (!transpose && (block.colMajor ? block.nr : block.nc) * T > 64) return RegisterLayout();    /* avoid lots of small blocks */
 
-        bool consecutive = (block.offsetBytes == (b0 + GRF::bytes(hw)));
+        // 2D block messages pad each row in GRF to the next power of two.
+        int inner = block.colMajor ? block.nr : block.nc;
+        int outer = block.colMajor ? block.nc : block.nr;
+        int ld2D = roundup_pow2(inner);
+        if (block.crosspack != 1 || (outer > 1 && block.ld != ld2D)) return RegisterLayout();
+
+        // Only merge with the previous block if it had no trailing padding.
+        bool consecutive = lastDense && (block.offsetBytes == (b0 + GRF::bytes(hw)));
         if (regCM && block.offsetC == c0 + nc && consecutive && nr == block.nr)
             nc++;
         else if (!regCM && block.offsetR == r0 + nr && consecutive && nc == block.nc)
@@ -2328,9 +2335,11 @@ RegisterLayout RegisterLayout::tryUpgradeToBlock2D(const MatrixAddressing &atype
             nr = block.nr; nc = block.nc;
         }
         b0 = block.offsetBytes;
+        lastDense = (block.bytes == ld2D * outer * T);
     }
 
     make2DBlock();
+    if (!ok) return RegisterLayout();
 
     layout2D.sort();
     layout2D.postprocess();

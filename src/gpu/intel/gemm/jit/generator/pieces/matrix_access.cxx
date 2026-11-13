@@ -36,7 +36,7 @@ static inline GRFDisp getAddress(GRF r, const RegisterBlock &block, const Matrix
 
 // Output code for prefetching a matrix chunk (XeHPG+).
 template <HW hw>
-void Generator<hw>::prefetchMatrix(const RegisterLayout &layout, const vector<GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::prefetchMatrix(const RegisterLayout &layout, const vector<RegisterRange> &addrs, const CommonStrategy &strategy, CommonState &state)
 {
     for (int l = 0; l < layout.blocks(); l++) {
         prepareSeriesRegisterBlockMasking(layout, state, l);
@@ -48,7 +48,7 @@ void Generator<hw>::prefetchMatrix(const RegisterLayout &layout, const vector<GR
 
 // Output code for loading a matrix chunk into registers.
 template <HW hw>
-void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &layout, const vector<GRFRange> &addrs,
+void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &layout, const vector<RegisterRange> &addrs,
                                const CommonStrategy &strategy, CommonState &state, bool readCheck)
 {
     if (layout.empty()) return;
@@ -74,7 +74,7 @@ void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &
 // Output code for loading a single matrix block into registers.
 template <HW hw>
 void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &block, const MatrixAddressing &atype,
-                                    const MatrixAddressingStrategy &astrategy, const GRFRange &addr,
+                                    const MatrixAddressingStrategy &astrategy, const RegisterRange &addr,
                                     const CommonStrategy &strategy, CommonState &state,
                                     bool readCheck, bool series)
 {
@@ -171,7 +171,7 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
 // Output code for storing a matrix chunk from registers.
 template <HW hw>
 void Generator<hw>::storeMatrix(const GRFMultirange &src, const RegisterLayout &layout,
-                                const vector<GRFRange> &addrs, const CommonStrategy &strategy, CommonState &state)
+                                const vector<RegisterRange> &addrs, const CommonStrategy &strategy, CommonState &state)
 {
     for (int l = 0; l < layout.blocks(); l++) {
         auto offsetReg = contiguityCheck(hw, layout[l], src);
@@ -186,7 +186,7 @@ void Generator<hw>::storeMatrix(const GRFMultirange &src, const RegisterLayout &
 template <HW hw>
 void Generator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlock &block,
                                      const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                     const GRFRange &addr, const CommonStrategy &strategy, CommonState &state, bool series)
+                                     const RegisterRange &addr, const CommonStrategy &strategy, CommonState &state, bool series)
 {
     InstructionModifier mod = block.simdSize;;
 
@@ -265,7 +265,7 @@ void Generator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlock &block,
 
 // Atomic addition of a matrix in registers.
 template <HW hw>
-void Generator<hw>::atomicAddMatrix(const GRFMultirange &src, const RegisterLayout &layout, const vector<GRFRange> &addrs,
+void Generator<hw>::atomicAddMatrix(const GRFMultirange &src, const RegisterLayout &layout, const vector<RegisterRange> &addrs,
                                     const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
     if (strategy.readSuppressionWA && (layout.hasFlags() || !getDefaultNoMask()))
@@ -280,7 +280,7 @@ void Generator<hw>::atomicAddMatrix(const GRFMultirange &src, const RegisterLayo
 
 template <HW hw>
 void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterBlock &block, const MatrixAddressing &atype,
-                                         const MatrixAddressingStrategy &astrategy, const GRFRange &addr,
+                                         const MatrixAddressingStrategy &astrategy, const RegisterRange &addr,
                                          const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state, bool series)
 {
     InstructionModifier maskMod;

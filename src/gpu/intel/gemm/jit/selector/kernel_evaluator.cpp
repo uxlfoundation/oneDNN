@@ -27,35 +27,6 @@
 
 GEMMSTONE_NAMESPACE_START
 
-static inline int grfPerEU(ngen::Product product)
-{
-    ngen::HW hw = ngen::getCore(product.family);
-    switch (hw) {
-        case ngen::HW::Gen12LP: return 896;
-        case ngen::HW::XeHPG:
-        case ngen::HW::XeHPC:
-        case ngen::HW::Xe2:
-        case ngen::HW::Xe3:
-        case ngen::HW::Xe3p:
-            return product.family == ngen::ProductFamily::CRI ? 2048 : 1024;
-        default: return 1024;
-    }
-    return 1024;
-}
-
-static inline int threadsPerEU(const ngen::Product &product, int grf_per_thread)
-{
-    // CRI has an exception: 256 GRF/thread is restricted to 4 threads/EU due to lack of accumulators
-    if (product.family == ngen::ProductFamily::CRI && grf_per_thread == 256)
-        return 4;
-
-    if (product.family <= ngen::ProductFamily::GenericXeLP)
-        return 7;
-
-    return grfPerEU(product) / grf_per_thread;
-}
-
-
 template <typename T1, typename T2>
 static inline T1 divUp(T1 x, T2 y)
 {
@@ -568,7 +539,7 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
     dp.threadCount *= threadsPerWG;
     dp.threadCount *= (dp.wgCountK * p.sizes.batch);
 
-    dp.threadsPerEU = threadsPerEU(p.product, e.driverInfo.grfCount);
+    dp.threadsPerEU = p.product.threadsPerEU(e.driverInfo.grfCount);
 
     int ssCount;
     switch (e.selector.hw) {

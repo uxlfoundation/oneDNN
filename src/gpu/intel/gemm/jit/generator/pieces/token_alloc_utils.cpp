@@ -23,7 +23,7 @@ using namespace ngen;
 using std::vector;
 
 
-bool allocateTokens(const RegisterLayout &layout, const GRFMultirange &regs, CommonState &state, const vector<GRFRange> &addrs)
+bool allocateTokens(const RegisterLayout &layout, const GRFMultirange &regs, CommonState &state, const vector<RegisterRange> &addrs)
 {
     bool success = true;
     size_t origSize = state.tokenMap.size();

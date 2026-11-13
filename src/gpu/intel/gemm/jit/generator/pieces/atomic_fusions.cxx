@@ -231,7 +231,10 @@ void Generator<hw>::gemmFusedBetaScale(GEMMProblem problem, GEMMStrategy strateg
     auto lastC = lastCRange[lastCRange.getLen() - 1];
 
     useR0(state, [&](GRF r0_info) {
-        globalMemFence(lastC, r0_info, strategy); /* Zeroing C will synchronize on this */
+        // Zeroing C will synchronize on this but not in efficient 64-bit addressing mode.
+        globalMemFence(lastC, r0_info, strategy);
+        if (getEfficient64Bit())
+            fencewait();
     });
 
     mark(lNoScale);

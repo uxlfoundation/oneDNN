@@ -51,6 +51,8 @@ static inline SystolicParams systolicParams(GEMMProblem problem)
     params.rcountMax = 8;
     params.rcountMin = problem.preferBDPAS() ? 8 : 0;
 
+    if (problem.Tc_compute().real() == Type::f64)
+        params.rcountMax = 4;
     return params;
 }
 

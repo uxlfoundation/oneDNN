@@ -22,8 +22,7 @@ GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
 
-
-FlagRegister VirtualFlag::toPhysical() const
+FlagRegister VirtualFlag::toPhysical(ngen::HW hw) const
 {
     if (n == 2)
         return FlagRegister(idx >> 1);
@@ -59,7 +58,7 @@ FlagRegister VirtualFlagAllocator::tryAlloc(int n)
 
     lock(vflag);
 
-    return vflag.toPhysical();
+    return vflag.toPhysical(hw);
 }
 
 FlagRegister VirtualFlagAllocator::alloc(int n)
@@ -86,12 +85,12 @@ FlagRegister VirtualFlagAllocator::assignPhysical(VirtualFlag vflag)
     // Allocate it temporarily if it's not allocated.
     for (int i = nextPhys; i < nextPhys + nflag; i++) {
         if (i & (vflag.n - 1)) continue;
-        auto idx = i & (nflag - 1);
+        int idx = i % nflag;
         auto msk = mask(idx, vflag.n);
         if ((locked & msk) == 0) {
             vtemps |= (free & msk);
             free &= ~vtemps;
-            nextPhys = (idx + vflag.n) & (nflag - 1);
+            nextPhys = (idx + vflag.n) % nflag;
             pflag = VirtualFlag{idx, vflag.n};
             break;
         }
@@ -100,7 +99,7 @@ FlagRegister VirtualFlagAllocator::assignPhysical(VirtualFlag vflag)
     if (!pflag)
         throw out_of_registers_exception();
 
-    return pflag.toPhysical();
+    return pflag.toPhysical(hw);
 }
 
 bool VirtualFlagAllocator::lock(VirtualFlag vflag, bool allowAlreadyLocked)
@@ -114,7 +113,7 @@ bool VirtualFlagAllocator::lock(VirtualFlag vflag, bool allowAlreadyLocked)
 
 bool VirtualFlagAllocator::canLock(int n) const
 {
-    uint8_t unlocked = ~locked & ((1 << nflag) - 1);
+    uint32_t unlocked = ~locked & ((1 << nflag) - 1);
     if (n == 2)
         unlocked = (unlocked & (unlocked >> 1)) & 0x55;
     return (unlocked != 0);
@@ -122,7 +121,7 @@ bool VirtualFlagAllocator::canLock(int n) const
 
 void VirtualFlagAllocator::freeUnlocked()
 {
-    uint8_t unlocked = ~locked & ((1 << nflag) - 1);
+    uint32_t unlocked = ~locked & ((1 << nflag) - 1);
     free |= unlocked;
 }
 

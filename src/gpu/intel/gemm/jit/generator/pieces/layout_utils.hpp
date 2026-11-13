@@ -66,18 +66,18 @@ bool needsPseudoblock(ngen::HW hw, Type T, int r, int c,
                       bool writable, bool masked);
 
 // Allocate address registers for a layout.
-void allocAddrRegs(std::vector<ngen::GRFRange> &addrRegs, const RegisterLayout &layout,
+void allocAddrRegs(ngen::HW hw, std::vector<ngen::RegisterRange> &addrRegs, const RegisterLayout &layout,
                    CommonState &state, ngen::Bundle hint = ngen::Bundle());
 
 // Attempt to allocate address registers for a layout. Returns true if successful.
-bool tryAllocAddrRegs(std::vector<ngen::GRFRange> &addrRegs, const RegisterLayout &layout,
+bool tryAllocAddrRegs(ngen::HW hw, std::vector<ngen::RegisterRange> &addrRegs, const RegisterLayout &layout,
                       CommonState &state, ngen::Bundle hint = ngen::Bundle());
 
 // Find the subregister offset containing the first address of a header.
 int getAddr0Offset(const RegisterBlock &block, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy);
 
 // Get a subregister containing the (shifted) address of the (0,0) entry of a layout.
-ngen::Subregister getOriginAddr(const RegisterLayout &layout, const std::vector<ngen::GRFRange> &addrRegs,
+ngen::Subregister getOriginAddr(const RegisterLayout &layout, const std::vector<ngen::RegisterRange> &addrRegs,
                                 int *shiftOut = nullptr);
 
 // Check if a block occupies a contiguous portion of registers in the given GRFMultirange.

@@ -360,7 +360,7 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
             setupTeardownLoadStoreDesc(true, C_layoutExt, strategy, state);
 
         // Set up address for the beginning of C.
-        GRFRange C_addr0[2], C_addr0Unmasked[2];
+        RegisterRange C_addr0[2], C_addr0Unmasked[2];
         setupCAddr0(C_addr0, C_addr0Unmasked, C_layoutExt, C_layoutExtUnmasked, C_count, problem, strategy, state);
 
         // Try to load C masks. If that fails, fragment the masked dimension down to the size of current blocks.
@@ -489,7 +489,7 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
         params.rows = state.remainders[LoopM];
         params.cols = state.remainders[LoopN];
 
-        GRFRange C_addr0[2], C_addr0Unmasked[2];
+        RegisterRange C_addr0[2], C_addr0Unmasked[2];
         setupCAddr0(C_addr0, C_addr0Unmasked, C_layoutExt, C_layoutExtUnmasked, C_count, modProblem, modStrategy, modState, &params);
 
         bool columns[2] = {false, true};
@@ -844,7 +844,7 @@ static inline void getDefaultCParams(Address2DParams &params, GEMMState &state)
 
 // Update an entire C layout.
 template <HW hw>
-void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const GRFRange (&C_addr0)[2],
+void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const RegisterRange (&C_addr0)[2],
                                   const RegisterBlock &C_block0, COperation op,
                                   const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
@@ -860,7 +860,7 @@ void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const GRFRang
     int nblocks = layoutExt.blocks();
     bool haveDescs = layoutExt[0].descAssigned;
 
-    vector<GRFRange> (&C_addrs)[2] = state.C_addrs;
+    vector<RegisterRange> (&C_addrs)[2] = state.C_addrs;
     GRFMultirange C_extRange, C_copyRange;
     GRFMultirange &C_accRange = state.C_regs[0];
     auto &C_extRegs = C_extRange.ranges;
@@ -1173,7 +1173,7 @@ void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const GRFRang
 template <HW hw>
 bool Generator<hw>::doStdCRemainder(RegisterLayout &layoutExt, RegisterLayout &layoutExtUnmasked,
                                     bool inside, bool columns[2], StdCRemType remTypes[2], bool fragments[2], bool fragPositives[2], int fragSizes[2],
-                                    const GRFRange (&C_addr0)[2], const GRFRange (&C_addr0Unmasked)[2], COperation op, vector<MaskAssignment> &masks,
+                                    const RegisterRange (&C_addr0)[2], const RegisterRange (&C_addr0Unmasked)[2], COperation op, vector<MaskAssignment> &masks,
                                     const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState state,
                                     RegisterBlock *C_block0, RegisterBlock *C_blockUnmasked0)
 {
@@ -1689,7 +1689,7 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
 
     }
 
-    GRFRange bases;
+    RegisterRange bases;
     bool nonuniformSubs = false;
 
     if (!uniform) {
@@ -1765,7 +1765,7 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
 
     // Update C with scattered accesses.
     // Get mask and set up header.
-    GRFRange header[2];
+    RegisterRange header[2];
     auto hregs = (surface ? 1 : 2) * (qword ? 1 : 2);
     FOR_EACH_C header[q] = state.ra.alloc_range(hregs);
     Subregister temp = state.ra.alloc_sub<uint32_t>();
@@ -1834,9 +1834,9 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
     Subregister cXInc[2], cYInc[2];
     FOR_EACH_C cYInc[q] = state.ra.alloc_sub<int32_t>();
     Label yLoop, xLoop;
-    GRFRange Cacc = state.ra.alloc_range(2);
-    GRFRange CaccSwap{};
-    GRFRange Cload = state.ra.alloc_range(2, getHint(HintType::CLoad, strategy));
+    RegisterRange Cacc = state.ra.alloc_range(2);
+    RegisterRange CaccSwap{};
+    RegisterRange Cload = state.ra.alloc_range(2, getHint(HintType::CLoad, strategy));
 
     if (transpose) FOR_EACH_C {
         cXInc[q] = state.ra.alloc_sub<int32_t>();
@@ -1941,7 +1941,7 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
             if_(16 | mod, labelEndAtomic);
             setDefaultNoMask(false);
         } else
-            block.flag[0] = mod.getFlagReg();
+            block.flag[0] = VirtualFlag(mod.getFlagReg(), hw);
 
         atomicAddMatrixBlock(Tc_ext, Cacc, block, problem.C, strategy.C, header[0], problem, strategy, state);
 
@@ -2212,7 +2212,7 @@ void Generator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, co
 
     auto CO = problem.CO;
     auto CO_strategy = strategy.CO;
-    std::vector<GRFRange> CO_addrs;
+    std::vector<RegisterRange> CO_addrs;
     std::vector<MaskAssignment> masks;
     GRFMultirange CO_regs;
     CO_strategy.accessType = AccessType::Block;
@@ -2236,7 +2236,7 @@ void Generator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, co
     and_(16 | ne | state.flagAP, null.ud(), state.inputs.flags, FlagStoreSums);
     if_(16 | state.flagAP, noAccess);
 
-    allocAddrRegs(CO_addrs, CO_layout, state);
+    allocAddrRegs(hw, CO_addrs, CO_layout, state);
     setupAddr(CO_addrs, state.effCO, CO_layout, Subregister(), strategy, state);
 
     if (!assignMasks(CO_layout, LoopM, LoopN, masks, strategy, state, true)) stub();
@@ -2376,9 +2376,9 @@ void Generator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &
     if (hw >= HW::XeHPG)
         C_slmStrategy.newDP = true;
 
-    vector<GRFRange> C_load;
+    vector<RegisterRange> C_load;
     RegisterLayout C_slmLayout;
-    vector<GRFRange> C_slmAddrs;
+    vector<RegisterRange> C_slmAddrs;
 
     // Find maximum # registers of C we can transfer to/from SLM at once.
     int maxContig = rounddown_pow2(regs);
@@ -2410,7 +2410,7 @@ void Generator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &
 
         C_slmLayout = RegisterLayout(hw, Tc, elementsPerGRF(hw, Tc), sliceRegs, C_slm, C_slmStrategy,
                                      false, false, true, AvoidFragment, 0, maxContig);
-        ok = ok && tryAllocAddrRegs(C_slmAddrs, C_slmLayout, state);
+        ok = ok && tryAllocAddrRegs(hw, C_slmAddrs, C_slmLayout, state);
 
         if (ok) break;
 
@@ -2443,7 +2443,7 @@ void Generator<hw>::gemmKReduce(const GEMMProblem &problem, const GEMMStrategy &
 
         // Trim down SLM layout for final loop.
         if (nreg < sliceRegs) {
-            vector<GRFRange> subaddrs;
+            vector<RegisterRange> subaddrs;
             auto sublayout = C_slmLayout.slice(subaddrs, C_slmAddrs, true, 0, nreg, true);
             std::swap(sublayout, C_slmLayout);
             std::swap(subaddrs, C_slmAddrs);
@@ -2655,7 +2655,7 @@ void Generator<hw>::gemmPrefetchC(const GEMMProblem &problem, GEMMStrategy &stra
             cmp(1 | gt | state.flagAP, state.lidK, 0);
     }
 
-    allocAddrRegs(state.Cp_addrs, state.Cp_layout, state);
+    allocAddrRegs(hw, state.Cp_addrs, state.Cp_layout, state);
     setupAddr(state.Cp_addrs, state.effCp, state.Cp_layout, state.inputs.ldc[0], strategy, state, Cp_params, state.ldcMultiples[0]);
 
     Label lSkipPrefetchC;
@@ -2682,7 +2682,7 @@ void Generator<hw>::gemmPrefetchC(const GEMMProblem &problem, GEMMStrategy &stra
 }
 
 template <HW hw>
-void Generator<hw>::setupCAddr0(GRFRange (&C_addr0)[2], GRFRange (&C_addr0Unmasked)[2],
+void Generator<hw>::setupCAddr0(RegisterRange (&C_addr0)[2], RegisterRange (&C_addr0Unmasked)[2],
                                 const RegisterLayout &C_layout, const RegisterLayout &C_layoutUnmasked, int C_count,
                                 const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, const Address2DParams *params)
 {

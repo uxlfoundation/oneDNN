@@ -21,6 +21,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include "cpu/platform.hpp"
+
 #include "allocator.hpp"
 #include "dnnl_common.hpp"
 #include "graph.hpp"
@@ -512,6 +514,38 @@ int skip_unimplemented_accumulation_mode(
     return OK;
 }
 
+// Unlike primitives, the graph API doesn't report why a partition is
+// unsupported, so check the data types the CPU doesn't support here.
+void skip_unimplemented_cpu_data_type(
+        const std::vector<dnnl_data_type_t> &v_dt, dir_t dir, res_t *res) {
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+    if (!get_graph_engine().is_cpu()) return;
+
+    using namespace dnnl::impl::cpu::platform;
+    for (const auto &i_dt : v_dt) {
+        bool need_skip = false;
+        switch (i_dt) {
+            case dnnl_bf16:
+            case dnnl_f16:
+            case dnnl_f8_e5m2:
+            case dnnl_f8_e4m3:
+                need_skip = has_data_type_support(i_dt) != dnnl_success
+                        || (!(dir & FLAG_INF)
+                                && has_training_support(i_dt) != dnnl_success);
+                break;
+            default: break;
+        }
+        if (need_skip) {
+            BENCHDNN_PRINTF(2, "%s%s%s", "[SKIP]: Data type \'", dt2str(i_dt),
+                    "\' is not supported on this platform.");
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_data_type;
+            return;
+        }
+    }
+#endif
+}
+
 int skip_unimplemented_partitions(const std::vector<partition> &partitions,
         const deserialized_graph_t &dg, const prb_t *prb, res_t *res) {
 
@@ -589,6 +623,8 @@ int skip_unimplemented_partitions(const std::vector<partition> &partitions,
             }
         }
         if (in_out_dt.empty()) continue;
+        skip_unimplemented_cpu_data_type(in_out_dt, dir, res);
+        if (res->state == SKIPPED) return OK;
         skip_unimplemented_data_type(in_out_dt, dir, res);
         if (res->state == SKIPPED) return OK;
     }

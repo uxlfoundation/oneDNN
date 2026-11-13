@@ -469,6 +469,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
                             false /*sum_requires_zp_zero*/,
                             true /*sum_requires_same_params*/,
                             {broadcasting_strategy_t::per_oc,
+                                    broadcasting_strategy_t::per_oc_spatial,
                                     broadcasting_strategy_t::per_oc_d,
                                     broadcasting_strategy_t::scalar,
                                     broadcasting_strategy_t::per_mb,
@@ -478,6 +479,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
                                     broadcasting_strategy_t::per_hw,
                                     broadcasting_strategy_t::batch,
                                     broadcasting_strategy_t::spatial,
+                                    broadcasting_strategy_t::shared_axes,
                                     broadcasting_strategy_t::no_broadcast})))
         return status::unimplemented;
 

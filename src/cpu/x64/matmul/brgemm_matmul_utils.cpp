@@ -142,43 +142,6 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
     using namespace injector;
 
     const auto &post_ops = attr.post_ops_;
-    const auto ndims = dst_d.ndims();
-
-    bool is_binary_po_per_oc_sp_bcast {};
-    bool is_binary_po_per_oc_d_bcast {};
-    bool is_binary_po_channel_bcast {};
-    bool is_binary_po_per_mb_bcast {};
-    bool is_binary_po_per_mb_w_bcast {};
-    bool is_binary_po_per_w_bcast {};
-    bool is_binary_po_per_hw_bcast {};
-    bool is_binary_po_batch_bcast {};
-    std::tie(is_binary_po_per_oc_sp_bcast, is_binary_po_per_oc_d_bcast,
-            is_binary_po_per_mb_bcast, is_binary_po_channel_bcast,
-            is_binary_po_per_mb_w_bcast, is_binary_po_per_hw_bcast,
-            is_binary_po_per_w_bcast, is_binary_po_batch_bcast)
-            = binary_injector_utils::bcast_strategies_present_tup(
-                    post_ops.entry_, dst_d,
-                    broadcasting_strategy_t::per_oc_spatial,
-                    broadcasting_strategy_t::per_oc_d,
-                    broadcasting_strategy_t::per_mb,
-                    broadcasting_strategy_t::per_mb_spatial,
-                    broadcasting_strategy_t::per_mb_w,
-                    broadcasting_strategy_t::per_hw,
-                    broadcasting_strategy_t::per_w,
-                    broadcasting_strategy_t::batch);
-    const bool supported_binary_bcast
-            = IMPLICATION(is_binary_po_per_oc_sp_bcast, ndims < 4)
-            && IMPLICATION(is_binary_po_per_oc_d_bcast, ndims == 4)
-            && IMPLICATION(
-                    is_binary_po_channel_bcast, utils::one_of(ndims, 3, 4, 5))
-            && IMPLICATION(
-                    is_binary_po_per_mb_w_bcast, utils::one_of(ndims, 3, 4, 5))
-            && IMPLICATION(is_binary_po_per_w_bcast, utils::one_of(ndims, 3, 4, 5))
-            && IMPLICATION(
-                    is_binary_po_per_mb_bcast, utils::one_of(ndims, 3, 4, 5))
-            && IMPLICATION(is_binary_po_batch_bcast, utils::one_of(ndims, 3, 4, 5))
-            && IMPLICATION(is_binary_po_per_hw_bcast, ndims == 4);
-
     const bcast_set_t default_bcast_set = {broadcasting_strategy_t::per_oc,
             broadcasting_strategy_t::per_oc_spatial,
             broadcasting_strategy_t::per_oc_d, broadcasting_strategy_t::scalar,
@@ -186,6 +149,8 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
             broadcasting_strategy_t::per_mb_spatial,
             broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_hw,
             broadcasting_strategy_t::per_w, broadcasting_strategy_t::batch,
+            broadcasting_strategy_t::spatial,
+            broadcasting_strategy_t::shared_axes,
             broadcasting_strategy_t::no_broadcast};
     const bcast_set_t limited_bcast_set = {broadcasting_strategy_t::scalar,
             broadcasting_strategy_t::no_broadcast};
@@ -200,13 +165,10 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
     accepted_post_ops.push_back(sum);
     accepted_post_ops.push_back(eltwise);
     if (!bgmmc.is_runtime_N) accepted_post_ops.push_back(binary);
-    return supported_binary_bcast
-            && injector::post_ops_ok(
-                    post_ops_ok_args_t(get_max_cpu_isa(), accepted_post_ops,
-                            post_ops, &dst_d, false /*sum_at_pos_0_only*/,
-                            false /*sum_requires_scale_one*/,
-                            false /*sum_requires_zp_zero*/,
-                            true /*sum_requires_same_params*/, bcast_set));
+    return injector::post_ops_ok(post_ops_ok_args_t(get_max_cpu_isa(),
+            accepted_post_ops, post_ops, &dst_d, false /*sum_at_pos_0_only*/,
+            false /*sum_requires_scale_one*/, false /*sum_requires_zp_zero*/,
+            true /*sum_requires_same_params*/, bcast_set));
 }
 
 // Trivial: The motivation is to compute batch offset for a memory
@@ -612,12 +574,32 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
             return false;
 
         // The kernel vectorizes `y` along M. The binary injector supports rhs
-        // in non-dense layouts only for `per_mb_spatial` broadcast, loading
-        // rhs vectors along the spatial dimensions, so such rhs require M to
-        // be a spatial dimension (ndims > 3) with unit stride.
+        // in non-dense layouts only for `per_mb_spatial` and `shared_axes`
+        // broadcasts. Additionally, strategies that assume vectorization along
+        // N (or scalar broadcast along N when M is not broadcast) cannot be
+        // used when the kernel vectorizes along M > 1.
         const int m = bgmmc.ndims - 2;
+        const memory_desc_wrapper dst_d(C_md);
         const auto rhs_ok = [&](const memory_desc_t &md) {
             const memory_desc_wrapper mdw(md);
+            if (bgmmc.M > 1) {
+                const auto bcast = get_rhs_arg_broadcasting_strategy(md, dst_d,
+                        binary_injector::
+                                get_all_strategies_supported_by_injector());
+                const bool uses_scalar_bcast
+                        = utils::one_of(bcast, broadcasting_strategy_t::scalar,
+                                broadcasting_strategy_t::per_mb,
+                                broadcasting_strategy_t::per_oc_d,
+                                broadcasting_strategy_t::per_oc_spatial,
+                                broadcasting_strategy_t::spatial,
+                                broadcasting_strategy_t::shared_axes);
+                // When M is broadcast (md.dims[m] == 1), the injector must use
+                // a scalar broadcast (`ptr_b`), not a vector load (`ptr`).
+                // When M is not broadcast (md.dims[m] > 1), the injector must
+                // use a vector load (`ptr`), not a scalar broadcast (`ptr_b`).
+                if (md.dims[m] == 1 && !uses_scalar_bcast) return false;
+                if (md.dims[m] > 1 && uses_scalar_bcast) return false;
+            }
             if (mdw.format_any() || mdw.is_dense(true)) return true;
             return bgmmc.ndims > 3 && mdw.is_plain()
                     && (mdw.dims()[m] == 1

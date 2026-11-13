@@ -20,6 +20,7 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <vector>
@@ -84,6 +85,20 @@ HANDLE_EXCEPTIONS_FOR_TEST_P(submemory_test_cpp_t, SubmemoryMemoryInteraction) {
         for (size_t i = 0; i < sizeof(dst_buf) / sizeof(dst_buf[0]); ++i)
             ASSERT_EQ(mapped_dst_ptr[i], dst_buf[i]) << "at position " << i;
     }
+}
+
+TEST(submemory_desc_test_t, TestOffsetOverflow) {
+    const memory::dim max_dim = std::numeric_limits<memory::dim>::max();
+    memory::desc md({4, 4}, memory::data_type::f32, memory::format_tag::ab);
+
+    // `offsets + dims` wraps around and must not pass the bounds check.
+    EXPECT_THROW(md.submemory_desc({1, 4}, {max_dim, 0}), dnnl::error);
+    EXPECT_THROW(md.submemory_desc({max_dim, 4}, {1, 0}), dnnl::error);
+    EXPECT_THROW(md.submemory_desc({2, 4}, {3, 0}), dnnl::error);
+
+    auto sub_md = md.submemory_desc({1, 4}, {3, 0});
+    EXPECT_EQ(sub_md.get_dims(), memory::dims({1, 4}));
+    EXPECT_EQ(sub_md.get_submemory_offset(), 12);
 }
 
 namespace {

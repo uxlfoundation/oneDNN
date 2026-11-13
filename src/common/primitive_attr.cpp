@@ -339,7 +339,11 @@ status_t post_ops_t::set_default_formats(const memory_desc_t *dst_md) {
             // support it here, strides must be computed from `dst_md` format
             // with storage-unit (byte) alignment rather than inherited
             // verbatim, which `memory_desc_init_by_blocking_desc` does not do.
-            if (src1_mdw.count_non_unit_dims(1))
+            if (entry_[idx].is_inplace_binary()) {
+                // Default layout is dense and may not match dst_md
+                assert(src1_md.data_type == dst_md->data_type);
+                src1_md = *dst_md;
+            } else if (src1_mdw.count_non_unit_dims(1))
                 CHECK(memory_desc_init_by_strides(src1_md, nullptr));
             else
                 CHECK(memory_desc_init_by_blocking_desc(

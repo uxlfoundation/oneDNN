@@ -701,7 +701,7 @@ bool match_pattern(op_t *first_op, const std::shared_ptr<pb_graph_t> &pattern,
     if (first_op->has_attr(op_attr::matched)
             && first_op->get_attr<bool>(op_attr::matched))
         return false;
-    DEBUG(DEBUGINFO_PM, "start matching");
+    DEBUG(DEBUGINFO_PM, "start matching \n");
     if (!match_graph(init_bind, &init_ctx, matched_op_map)) {
         DEBUG(DEBUGINFO_PM, "matching failed \n");
         return false;
@@ -709,12 +709,12 @@ bool match_pattern(op_t *first_op, const std::shared_ptr<pb_graph_t> &pattern,
     if (!verify_global_in_map(&init_ctx)) { return false; }
 
     fusion_ops = reorder_matched_list(matched_op_map);
-    DEBUG(DEBUGINFO_PM, "finish matching, matched ops: ");
+    DEBUG(DEBUGINFO_PM, "finish matching, matched ops: \n");
     for (size_t i = 0; i < fusion_ops.size(); i++) {
         if (i < fusion_ops.size() - 1) {
-            DEBUG(DEBUGINFO_PM, "%s ", fusion_ops[i]->get_name().c_str());
+            DEBUG(DEBUGINFO_PM, "%s \n", fusion_ops[i]->get_name().c_str());
         } else {
-            DEBUG(DEBUGINFO_PM, "%s ", fusion_ops[i]->get_name().c_str());
+            DEBUG(DEBUGINFO_PM, "%s \n", fusion_ops[i]->get_name().c_str());
         }
     }
 
@@ -732,7 +732,7 @@ bool verify_global_in_map(match_context_t *ctx) {
         if (inner_cons[i].second.size() != ctx->in_port_map.count(i)) {
             DEBUG(DEBUGINFO_PM,
                     "expected graph input %zu consumers size: %zu, actual "
-                    "consumers size: %zu",
+                    "consumers size: %zu \n",
                     i, inner_cons[i].second.size(), ctx->in_port_map.count(i));
             VPATTERN_MATCHER(
                     "matching failed: number of inputs check failed,%s:%i \n",

@@ -626,16 +626,28 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     CommonStrategy::preflight(hw, problem);
 }
 
+bool GEMMStrategy::supportsCMXScale(const GEMMProblem &problem) const
+{
+    if (!problem.hasCMXScale()) return true;
+    if (problem.cqGroupN > 1) return false;
+    if (needsTempC(problem)) return false;
+    return true;
+}
+
 bool GEMMStrategy::alignUnrollToCQGroups(const GEMMProblem &problem)
 {
     if (!problem.hasCMXScale()) return true;
     const int g = problem.cqGroupM;
     int um = align_up(unroll[LoopM], g);
     if (um == unroll[LoopM]) return true;
+
+    // Validate before modifying: only systolic strategies tolerate rounding.
+    if (!systolic) return false;
+    if (!dpasw && A.tileR && um % A.tileR) return false;
+
     unroll[LoopM] = um;
     if (remHandling[LoopM] == RemainderHandling::Ignore)
         remHandling[LoopM] = RemainderHandling::General;
-    if (!dpasw && A.tileR && um % A.tileR) return false;
     return true;
 }
 

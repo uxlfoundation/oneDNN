@@ -266,6 +266,10 @@ status_t gen_desc_t::finalize(const char *tags) {
                                 int(utils::div_up(k_, aux_params_.k0))));
             }
         }
+        if (!strategy_.supportsCMXScale(problem_)) {
+            gpu_debug() << "MX dst unsupported by entry";
+            return status::unimplemented;
+        }
         if (!strategy_.alignUnrollToCQGroups(problem_)) {
             gpu_debug() << "MX dst unroll rounding incompatible with entry";
             return status::unimplemented;

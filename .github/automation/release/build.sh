@@ -2,6 +2,7 @@
 
 # *******************************************************************************
 # Copyright 2026 Intel Corporation
+# Copyright 2026 Institute of Software, Chinese Academy of Sciences
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +24,7 @@
 # Usage: build.sh <install-dir>
 #
 # Environment:
-#   COMPILER             gcc or icx
+#   COMPILER             gcc, riscv64-gcc, or icx
 #   CPU_RUNTIME          value for ONEDNN_CPU_RUNTIME
 #   GPU_RUNTIME          value for ONEDNN_GPU_RUNTIME
 #   DEVTOOLSET_ROOTPATH  (optional) GCC toolset root, set in manylinux images
@@ -39,11 +40,21 @@ INSTALL_DIR="$1"
 GCC_ROOT="${DEVTOOLSET_ROOTPATH:+$DEVTOOLSET_ROOTPATH/usr}"
 GXX="${GCC_ROOT:+$GCC_ROOT/bin/}g++"
 CMAKE_EXTRA_ARGS=()
+CTEST_ARGS=(-E "gpu|cross-engine")
 
 case "$COMPILER" in
     gcc)
         export CC="${GCC_ROOT:+$GCC_ROOT/bin/}gcc"
         export CXX="$GXX"
+        ;;
+    riscv64-gcc)
+        export CC=riscv64-linux-gnu-gcc-14
+        export CXX=riscv64-linux-gnu-g++-14
+        CMAKE_EXTRA_ARGS+=(
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/toolchains/riscv64.cmake"
+        )
+        # Keep the release smoke test short under QEMU.
+        CTEST_ARGS=(--no-tests=error -R "^cpu-primitives-matmul-cpp$")
         ;;
     icx)
         set +o errexit +o pipefail +o nounset
@@ -80,5 +91,5 @@ cmake --build build --parallel "$(nproc)"
 mkdir -p "$INSTALL_DIR/env"
 cp "$(dirname "$0")/env/vars.sh" "$INSTALL_DIR/env/"
 # Smoke test the CPU engine only, GPU is not expected to be available.
-ctest --test-dir build --output-on-failure -E "gpu|cross-engine"
+ctest --test-dir build --output-on-failure "${CTEST_ARGS[@]}"
 cmake --install build

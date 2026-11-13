@@ -1,5 +1,6 @@
 # *******************************************************************************
 # Copyright 2026 Intel Corporation
+# Copyright 2026 Institute of Software, Chinese Academy of Sciences
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -141,6 +142,58 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  linux-rv64:
+    name: Linux RV64, omp
+    needs: prepare
+    runs-on: ubuntu-24.04
+    env:
+      COMPILER: riscv64-gcc
+      CPU_RUNTIME: OMP
+      GPU_RUNTIME: NONE
+      PKG_NAME: onednn-${{ needs.prepare.outputs.tag }}-omp-linux-rv64
+      QEMU_CPU: rv64,v=true,zvfh=true,zvfbfwma=true,vlen=128,vext_spec=v1.0
+      QEMU_LD_PREFIX: /usr/riscv64-linux-gnu
+    steps:
+      - name: Checkout release automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: ci
+          sparse-checkout: .github/automation/release
+          persist-credentials: false
+
+      - name: Checkout oneDNN
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+          path: oneDNN
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: riscv64
+
+      - name: Install build tools and cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14-riscv64-linux-gnu g++-14-riscv64-linux-gnu
+          pipx install ninja==1.13.2
+
+      - name: Build and test
+        working-directory: oneDNN
+        run: ../ci/.github/automation/release/build.sh "$GITHUB_WORKSPACE/$PKG_NAME"
+
+      - name: Package
+        run: tar -czf "$PKG_NAME.tar.gz" "$PKG_NAME"
+
+      - name: Upload package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-linux-rv64-omp
+          path: ${{ env.PKG_NAME }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
   windows-x64:
     name: Windows x64, ${{ matrix.config.name }}
     needs: prepare
@@ -195,7 +248,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: [prepare, linux-x64, windows-x64]
+    needs: [prepare, linux-x64, linux-rv64, windows-x64]
     if: >-
       (github.event_name == 'release' || inputs.upload) &&
       github.ref == format('refs/tags/{0}', needs.prepare.outputs.tag)

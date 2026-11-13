@@ -17,14 +17,13 @@
 #include <assert.h>
 #include <math.h>
 
-#include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/type_helpers.hpp"
 #include "cpu/ref_batch_normalization.hpp"
-#include "cpu/simple_q10n.hpp"
+#include "cpu/ref_io_helper.hpp"
 
 #define DATA_OFF(f, n, c, d, h, w) \
     (ndims == 2) ? (f).off(n, c) \
@@ -36,10 +35,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
-DEFINE_PD_CREATE(ref_batch_normalization_fwd_t<d_type>::pd_t)
-template <data_type_t d_type>
-DEFINE_PD_CREATE(ref_batch_normalization_bwd_t<d_type>::pd_t)
+DEFINE_PD_CREATE(ref_batch_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_batch_normalization_bwd_t::pd_t)
 
 using namespace memory_tracking::names;
 
@@ -47,22 +44,9 @@ namespace {
 
 using acc_data_t = float;
 
-template <typename T>
-inline float maybe_up_convert(T x) {
-    return x;
-}
-
-template <>
-inline float maybe_up_convert<bfloat16_t>(bfloat16_t x) {
-    return (float)x;
-}
-
 } // namespace
 
-using namespace data_type;
-
-template <impl::data_type_t d_type>
-status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
+status_t ref_batch_normalization_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     /* fast return */
     if (this->pd()->has_zero_dim_memory()) return status::success;
@@ -72,7 +56,8 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
     const memory_desc_wrapper data_d(pd()->src_md());
     const memory_desc_wrapper ss_d(pd()->weights_md());
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
+    const auto src_dt = data_d.data_type();
+    auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SHIFT);
 
@@ -86,7 +71,8 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
             : CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_VARIANCE, status);
     CHECK(status);
 
-    auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
+    const auto dst_dt = pd()->dst_md()->data_type;
+    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
     auto ws = CTX_OUT_CLEAN_MEM(uint8_t *, DNNL_ARG_WORKSPACE, status);
     CHECK(status);
@@ -129,8 +115,8 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
             for_(dim_t d = 0; d < D; ++d)
             for_(dim_t h = 0; h < H; ++h)
             for (dim_t w = 0; w < W; ++w) {
-                v_mean += maybe_up_convert(
-                        src[DATA_OFF(data_d, n, c, d, h, w)]);
+                v_mean += io::load_float_value(
+                        src_dt, src, DATA_OFF(data_d, n, c, d, h, w));
             }
             v_mean /= W * N * H * D;
 
@@ -138,7 +124,9 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
             for_(dim_t d = 0; d < D; ++d)
             for_(dim_t h = 0; h < H; ++h)
             for (dim_t w = 0; w < W; ++w) {
-                acc_data_t m = src[DATA_OFF(data_d, n, c, d, h, w)] - v_mean;
+                acc_data_t m = io::load_float_value(src_dt, src,
+                                       DATA_OFF(data_d, n, c, d, h, w))
+                        - v_mean;
                 v_variance += m * m;
             }
             v_variance /= W * H * N * D;
@@ -154,7 +142,8 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
         for (dim_t w = 0; w < W; ++w) {
             auto d_off = DATA_OFF(data_d, n, c, d, h, w);
             acc_data_t bn_res
-                    = sm * (maybe_up_convert(src[d_off]) - v_mean) + sv;
+                    = sm * (io::load_float_value(src_dt, src, d_off) - v_mean)
+                    + sv;
             if (fuse_norm_relu) {
                 if (bn_res <= 0) {
                     bn_res = 0;
@@ -163,11 +152,7 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
                     if (is_training) ws[d_off] = 1;
                 }
             }
-            if (d_type == s8)
-                dst[d_off] = q10n::qz_a1b0_t<float, data_t>()(
-                        maybe_post_op(bn_res));
-            else
-                dst[d_off] = static_cast<data_t>(maybe_post_op(bn_res));
+            io::store_float_value(dst_dt, maybe_post_op(bn_res), dst, d_off);
         }
 
         if (calculate_stats) {
@@ -180,13 +165,7 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
     return status::success;
 }
 
-template struct ref_batch_normalization_fwd_t<s8>;
-template struct ref_batch_normalization_fwd_t<f32>;
-template struct ref_batch_normalization_fwd_t<bf16>;
-template struct ref_batch_normalization_fwd_t<f16>;
-
-template <impl::data_type_t d_type>
-status_t ref_batch_normalization_bwd_t<d_type>::execute_backward(
+status_t ref_batch_normalization_bwd_t::execute_backward(
         const exec_ctx_t &ctx) const {
     status_t status = status::success;
 
@@ -195,13 +174,15 @@ status_t ref_batch_normalization_bwd_t<d_type>::execute_backward(
     const memory_desc_wrapper ss_d(pd()->weights_md());
     const memory_desc_wrapper diff_ss_d(pd()->diff_weights_md());
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
+    const auto src_dt = data_d.data_type();
+    const auto diff_data_dt = diff_data_d.data_type();
+    auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto mean = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN);
     auto variance = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
+    auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto ws = CTX_IN_MEM(const uint8_t *, DNNL_ARG_WORKSPACE);
 
-    auto diff_src = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DIFF_SRC, status);
+    auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
     CHECK(status);
 
     auto scale = CTX_IN_MEM(acc_data_t *, DNNL_ARG_SCALE);
@@ -256,9 +237,10 @@ status_t ref_batch_normalization_bwd_t<d_type>::execute_backward(
             if (fuse_norm_relu && !ws[s_off])
                 dd = 0;
             else
-                dd = maybe_up_convert(
-                        diff_dst[DATA_OFF(diff_data_d, n, c, d, h, w)]);
-            diff_gamma += (maybe_up_convert(src[s_off]) - v_mean) * dd;
+                dd = io::load_float_value(diff_data_dt, diff_dst,
+                        DATA_OFF(diff_data_d, n, c, d, h, w));
+            diff_gamma
+                    += (io::load_float_value(src_dt, src, s_off) - v_mean) * dd;
             diff_beta += dd;
         }
         diff_gamma *= sqrt_variance;
@@ -276,23 +258,19 @@ status_t ref_batch_normalization_bwd_t<d_type>::execute_backward(
             if (fuse_norm_relu && !ws[s_off])
                 dd = 0;
             else
-                dd = maybe_up_convert(diff_dst[dd_off]);
+                dd = io::load_float_value(diff_data_dt, diff_dst, dd_off);
             acc_data_t v_diff_src = dd;
             if (calculate_diff_stats) {
                 v_diff_src -= diff_beta / (D * W * H * N)
-                        + (maybe_up_convert(src[s_off]) - v_mean) * diff_gamma
-                                * sqrt_variance / (D * W * H * N);
+                        + (io::load_float_value(src_dt, src, s_off) - v_mean)
+                                * diff_gamma * sqrt_variance / (D * W * H * N);
             }
             v_diff_src *= gamma * sqrt_variance;
-            diff_src[dd_off] = v_diff_src;
+            io::store_float_value(diff_data_dt, v_diff_src, diff_src, dd_off);
         }
     });
     return status::success;
 }
-
-template struct ref_batch_normalization_bwd_t<f32>;
-template struct ref_batch_normalization_bwd_t<bf16>;
-template struct ref_batch_normalization_bwd_t<f16>;
 
 } // namespace cpu
 } // namespace impl

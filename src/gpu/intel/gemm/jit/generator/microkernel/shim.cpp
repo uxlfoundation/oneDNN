@@ -662,28 +662,38 @@ std::string generateShim(const Package &package, HostLanguage language,
     for (int i = 0; i < int(vargs.size()); i++)
         if (vargs[i].in) copyArg(i, vargs[i].copy ? Copy : Argument, Null);
 
-    /* Overwrite clobbers to ensure vISA considers their ranges live */
-    for (int i = 0; i < int(clobbers.size()); i++) {
-        if (clobbers[i].preclobbered) continue;
-        auto &cname = clobbers[i].name;
-        auto &range = clobbers[i].location;
-        uint32_t offset = 0;
-        while (offset < range.blen) {
-            int chunk = std::min<int>(range.blen - offset, gwidth * 2);
-            if (chunk & (chunk - 1)) {
-                int chunk2;
-                for (chunk2 = 2; chunk2 <= chunk; chunk2 <<= 1)
-                    ;
-                chunk = chunk2 >> 1;
-            }
+    auto accessClobbers = [&](bool write) {
+        for (auto &clobber : clobbers) {
+            if (write ? clobber.preclobbered : clobber.arg) continue;
+            auto &cname = clobber.name;
+            auto &range = clobber.location;
+            uint32_t offset = 0;
+            while (offset < range.blen) {
+                int chunk = std::min<int>(range.blen - offset, gwidth * 2);
+                if (chunk & (chunk - 1)) {
+                    int chunk2;
+                    for (chunk2 = 2; chunk2 <= chunk; chunk2 <<= 1)
+                        ;
+                    chunk = chunk2 >> 1;
+                }
 
-            int r = offset / gwidth;
-            int c = offset % gwidth;
-            shim << "            \"mov (M1," << (chunk >> 2) << ") " << cname
-                 << '(' << r << ',' << (c >> 2) << ")<1> 0xAAAAAAAA:ud\\n\"\n";
-            offset += chunk;
+                int r = offset / gwidth;
+                int c = offset % gwidth;
+                shim << "            \"mov (M1," << (chunk >> 2) << ") ";
+                if (write)
+                    shim << cname << '(' << r << ',' << (c >> 2)
+                         << ")<1> 0xAAAAAAAA:ud";
+                else
+                    shim << "V0(0,0)<1> " << cname << '(' << r << ','
+                         << (c >> 2) << ")<1;1,0>";
+                shim << "\\n\"\n";
+                offset += chunk;
+            }
         }
-    }
+    };
+
+    /* Overwrite clobbers to ensure vISA considers their ranges live */
+    accessClobbers(true);
 
     /* Add dummy instructions to enable kernel features as needed */
     if (package.systolic) {
@@ -724,6 +734,12 @@ std::string generateShim(const Package &package, HostLanguage language,
          << std::hex << (sigilEnd ^ options.microkernelID) << std::dec
          << ":ud\\n\"\n"
             "            \"fence_sw\\n\"\n";
+
+    /* Keep fixed registers live past the end marker so caller spill reloads
+       cannot reuse them inside the region removed by fusion. */
+    accessClobbers(false);
+    for (int i = 0; i < int(vargs.size()); i++)
+        copyArg(i, vargs[i].copy ? Copy : Argument, Null);
 
     /* Copy output arguments as needed */
     for (int i = 0; i < int(vargs.size()); i++)

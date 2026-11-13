@@ -193,7 +193,7 @@ status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
             return success;
         }
     }
-    return unimplemented;
+    return it.no_impl_status();
 }
 
 status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,

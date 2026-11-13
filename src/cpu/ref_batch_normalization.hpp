@@ -32,7 +32,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
 struct ref_batch_normalization_fwd_t : public primitive_t {
     struct pd_t : public cpu_batch_normalization_fwd_pd_t {
         using cpu_batch_normalization_fwd_pd_t::
@@ -42,10 +41,12 @@ struct ref_batch_normalization_fwd_t : public primitive_t {
 
         status_t init(const engine_t *engine) {
             using namespace data_type;
+            const data_type_t d_type = src_md()->data_type;
             VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_BNORM(utils::everyone_is(d_type, src_md()->data_type,
-                                    dst_md()->data_type),
+            VDISPATCH_BNORM(utils::one_of(d_type, f32, bf16, f16, s8),
                     VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BNORM(
+                    d_type == dst_md()->data_type, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(IMPLICATION(is_training(),
@@ -78,8 +79,6 @@ struct ref_batch_normalization_fwd_t : public primitive_t {
 
     ref_batch_normalization_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    using data_t = typename prec_traits_t<d_type>::type;
-
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
     }
@@ -89,7 +88,6 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
-template <data_type_t d_type>
 struct ref_batch_normalization_bwd_t : public primitive_t {
     struct pd_t : public cpu_batch_normalization_bwd_pd_t {
         using cpu_batch_normalization_bwd_pd_t::
@@ -99,11 +97,13 @@ struct ref_batch_normalization_bwd_t : public primitive_t {
 
         status_t init(const engine_t *engine) {
             using namespace data_type;
+            const data_type_t d_type = src_md()->data_type;
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_BNORM(
-                    utils::everyone_is(d_type, src_md()->data_type,
-                            diff_dst_md()->data_type, diff_src_md()->data_type),
+            VDISPATCH_BNORM(utils::one_of(d_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BNORM(utils::everyone_is(d_type, diff_dst_md()->data_type,
+                                    diff_src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -134,7 +134,6 @@ struct ref_batch_normalization_bwd_t : public primitive_t {
     };
 
     ref_batch_normalization_bwd_t(const pd_t *apd) : primitive_t(apd) {}
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_backward(ctx);

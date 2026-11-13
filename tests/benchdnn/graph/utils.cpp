@@ -45,11 +45,10 @@ bdnn_state_t convert_state(const dnnl_status_t &s) {
         case dnnl_status_t::dnnl_runtime_error:
             return bdnn_state_t {res_state_t::FAILED};
         case dnnl_status_t::dnnl_not_required:
-            return bdnn_state_t {res_state_t::INVALID_ARGUMENTS};
         case dnnl_status_t::dnnl_invalid_graph:
         case dnnl_status_t::dnnl_invalid_graph_op:
         case dnnl_status_t::dnnl_invalid_shape:
-            return bdnn_state_t {res_state_t::SKIPPED, reason_t::invalid};
+            return bdnn_state_t {res_state_t::INVALID_ARGUMENTS};
         case dnnl_status_t::dnnl_invalid_data_type:
             return bdnn_state_t {
                     res_state_t::SKIPPED, reason_t::skip_data_type};

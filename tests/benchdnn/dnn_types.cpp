@@ -912,19 +912,19 @@ struct dump_field_t {
     std::string chunk;
 };
 
-// Assembles the trailing ':'-separated portion of an attribute dump. Fields are
-// listed from the right-most (last parsed) to the left-most; each is emitted
-// when `canonical` requests the fully explicit form, when it is non-default, or
-// when any field already emitted (hence any field to its right) is present.
-// Building right-to-left keeps each condition flat, so a new trailing parser
-// field only needs a new entry at the front of the list.
+// Assembles the trailing `delim`-separated portion of an attribute dump. Fields
+// are listed from the right-most (last parsed) to the left-most; each is
+// emitted when `canonical` requests the fully explicit form, when it is
+// non-default, or when any field already emitted (hence any field to its right)
+// is present. Building right-to-left keeps each condition flat, so a new
+// trailing parser field only needs a new entry at the front of the list.
 static std::string dump_fields_backward(
-        std::initializer_list<dump_field_t> fields) {
+        const std::vector<dump_field_t> &fields, char delim = ':') {
     std::string str;
     for (const auto &f : fields) {
         if (canonical || f.non_default || !str.empty()) {
             str.insert(0, f.chunk);
-            str.insert(0, 1, ':');
+            str.insert(0, 1, delim);
         }
     }
     return str;
@@ -1045,44 +1045,50 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops) {
                 s << ":" << e.eltwise.alpha << ":" << e.eltwise.beta;
             else if (e.eltwise.alpha != 0.f)
                 s << ":" << e.eltwise.alpha;
+        } else if (e.is_binary_kind_inplace()) {
+            s << ":" << e.binary.src1_dt;
         } else if (e.is_binary_kind()) {
             s << ":" << e.binary.src1_dt;
-            const auto src_delim
-                    = e.is_binary_kind_with_ternary_op() ? "." : ":";
+            const bool is_ternary = e.is_binary_kind_with_ternary_op();
+            const auto src_delim = is_ternary ? '.' : ':';
 
-            if (e.binary.mask_input != attr_t::mask_input_t::none
-                    || e.binary.tag != tag::any) {
-                if (e.binary.mask_input == attr_t::mask_input_t::mask) {
-                    s << src_delim << e.binary.mask;
-                } else {
-                    assert(e.binary.mask_input == attr_t::mask_input_t::policy);
-                    s << src_delim << e.binary.policy;
-                }
+            auto mask2str
+                    = [](attr_t::mask_input_t mask_input, int64_t mask,
+                              attr_t::policy_t policy,
+                              attr_t::policy_t def_policy) -> std::string {
+                if (mask_input == attr_t::mask_input_t::mask)
+                    return std::to_string(mask);
+                return attr_t::policy2str(
+                        mask_input == attr_t::mask_input_t::none ? def_policy
+                                                                 : policy);
+            };
+
+            std::vector<dump_field_t> src1;
+            if (e.binary.grouped) {
+                src1.push_back({true, "grouped"});
+            } else {
+                if (!e.binary.strides.empty())
+                    src1.push_back({true, dims2str(e.binary.strides)});
+                src1.push_back({e.binary.tag != tag::any, e.binary.tag});
             }
-            if (e.binary.tag != tag::any) s << src_delim << e.binary.tag;
-            if (!e.binary.strides.empty())
-                s << src_delim << dims2str(e.binary.strides);
-            if (e.binary.grouped) s << src_delim << "grouped";
+            src1.push_back({e.binary.mask_input != attr_t::mask_input_t::none,
+                    mask2str(e.binary.mask_input, e.binary.mask,
+                            e.binary.policy, attr_t::policy_t::COMMON)});
+            s << dump_fields_backward(src1, src_delim);
 
-            if (e.is_binary_kind_with_ternary_op()) {
-                bool delim_added = false;
-
-                if (e.binary.src2_mask_input != attr_t::mask_input_t::none
-                        || e.binary.src2_tag != tag::any) {
-                    s << ":";
-                    delim_added = true;
-                    if (e.binary.src2_mask_input
-                            == attr_t::mask_input_t::mask) {
-                        s << e.binary.src2_mask;
-                    } else {
-                        assert(e.binary.src2_mask_input
-                                == attr_t::mask_input_t::policy);
-                        s << e.binary.src2_policy;
-                    }
-                }
-                if (e.binary.src2_tag != tag::any) {
-                    s << (delim_added ? src_delim : ":") << e.binary.src2_tag;
-                }
+            if (is_ternary) {
+                std::vector<dump_field_t> src2;
+                if (!e.binary.strides2.empty())
+                    src2.push_back({true, dims2str(e.binary.strides2)});
+                src2.push_back(
+                        {e.binary.src2_tag != tag::any, e.binary.src2_tag});
+                src2.push_back({e.binary.src2_mask_input
+                                != attr_t::mask_input_t::none,
+                        mask2str(e.binary.src2_mask_input, e.binary.src2_mask,
+                                e.binary.src2_policy,
+                                attr_t::policy_t::PER_TENSOR)});
+                const auto src2_str = dump_fields_backward(src2, src_delim);
+                if (!src2_str.empty()) s << ':' << src2_str.substr(1);
             }
         } else if (e.is_prelu_kind()) {
             if (e.prelu.mask_input == attr_t::mask_input_t::mask) {
@@ -1517,8 +1523,9 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
                 for (auto d = 0; d < ndims; ++d)
                     src2_tensor_dims[d]
                             = (!(src2_mask & (1 << d))) ? 1 : dims[d];
-                auto rhs_src2_tensor_desc = dnn_mem_t::init_md(
-                        ndims, src2_tensor_dims, e.binary.src2_dt, tag::any);
+                auto rhs_src2_tensor_desc = dnn_mem_t::init_md(ndims,
+                        src2_tensor_dims, e.binary.src2_dt, e.binary.src2_tag,
+                        e.binary.strides2);
                 mds.emplace(
                         (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2),
                         std::move(rhs_src2_tensor_desc));
@@ -2272,6 +2279,12 @@ void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t dst_dt) {
         if (e.is_binary_kind()) {
             e.binary.src1_dt = dnnl_f32;
             e.binary.tag = tag::any;
+            e.binary.strides.clear();
+
+            if (e.is_binary_kind_with_ternary_op()) {
+                e.binary.src2_tag = tag::any;
+                e.binary.strides2.clear();
+            }
         } else if (e.is_sum_kind()) {
             if (dst_dt == dnnl_f32) e.sum.dt = dnnl_data_type_undef;
         }

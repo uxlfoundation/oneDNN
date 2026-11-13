@@ -326,7 +326,8 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
             // For binary algorithms with ternary inputs, specifications can
             // be provided for both binary (src1) and ternary (src2) tensors in
             // the form:
-            // --attr-post-ops=BINARY:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]].
+            // --attr-post-ops=BINARY:DT[.S1_MASK_INPUT[.S1_TAG[.S1_STRIDES]]]
+            //                          [:S2_MASK_INPUT[.S2_TAG[.S2_STRIDES]]].
             // In that case, we check for the ':' delimiter that separates src1
             // and src2 args, split the string for the two tensors and parse
             // them individually.
@@ -336,7 +337,7 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                 auto src2_pos = subs.find_first_of(':', subs_pos);
                 has_src2_specs = (src2_pos != std::string::npos);
                 src1_subs = get_substr(subs, subs_pos, ':');
-                if (has_src2_specs) src2_subs = get_substr(subs, subs_pos, ':');
+                if (has_src2_specs) src2_subs = subs.substr(subs_pos);
             } else {
                 src1_subs = subs.substr(subs_pos);
             }
@@ -429,7 +430,14 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                 // in this case tag is left as default (any)
                 const auto tag_str = get_substr(s, src_subpos, delim);
                 if (tag_str == "grouped") {
-                    e.binary.grouped = true;
+                    if (!is_ternary) {
+                        e.binary.grouped = true;
+                    } else {
+                        BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                                "Error:", tag_str.c_str(),
+                                "is only supported on src1.");
+                        SAFE_V(FAIL);
+                    }
                 } else {
                     if (check_tag(tag_str) != OK) {
                         BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
@@ -437,19 +445,23 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                                 "is not recognized.");
                         SAFE_V(FAIL);
                     }
-                    e.binary.tag = tag_str;
-                }
+                    if (!is_ternary)
+                        e.binary.tag = tag_str;
+                    else
+                        e.binary.src2_tag = tag_str;
 
-                if (src_subpos == std::string::npos) return;
+                    if (src_subpos == std::string::npos) return;
 
-                const auto strides_str = get_substr(s, src_subpos, delim);
-                if (!strides_str.empty()) {
-                    parse_vector_str(e.binary.strides, dims_t(),
-                            utils::stoll_safe, strides_str, 'x');
+                    const auto strides_str = get_substr(s, src_subpos, delim);
+                    if (!strides_str.empty()) {
+                        parse_vector_str(!is_ternary ? e.binary.strides
+                                                     : e.binary.strides2,
+                                dims_t(), utils::stoll_safe, strides_str, 'x');
+                    }
                 }
 
                 if (src_subpos != std::string::npos) {
-                    const auto unknown_str = get_substr(s, src_subpos, delim);
+                    const auto unknown_str = s.substr(src_subpos);
                     BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
                             "Warning: Additional unrecognized arguments",
                             unknown_str.c_str(), "are specified.");
@@ -1145,8 +1157,10 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
             = "POST-OPS\n    Specifies post-ops attribute. `POST-OPS` syntax "
               "is one of those:\n    * SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]\n  "
               "  * ELTWISE[:ALPHA[:BETA[:SCALE]]]\n    * DW:KkSsPp[:DST_DT]\n  "
-              "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    * PRELU[:MASK_INPUT]\n    "
-              "More details at "
+              "  * BINARY:DT[:MASK_INPUT[:TAG[:STRIDES]]]\n    * "
+              "select:DT[.S1_MASK_INPUT[.S1_TAG[.S1_STRIDES]]][:S2_MASK_INPUT[."
+              "S2_TAG[.S2_STRIDES]]]\n    * PRELU[:MASK_INPUT]\n    More "
+              "details at "
             + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
     return parse_vector_option(

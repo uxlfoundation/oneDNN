@@ -167,6 +167,15 @@ for low precision data types may not be available for older
 platforms. The next sections explain limitations that exist for low
 precision data types for Intel 64/AMD64 based processors and Intel Graphpics.
 
+On CPUs, when a data type is not supported on the system, primitive descriptor
+creation fails with #dnnl_data_type_not_supported in the case of the C API or
+throws a corresponding @ref dnnl::error exception in the case of the C++ API.
+This happens when a data type requires instructions that the processor does
+not support, as listed in the table below, and for data types that the library
+does not support on CPUs, such as `f64`. Reorder, concat, and sum primitives
+do not depend on hardware support for data types, so they report this status
+only for data types that the library does not support on CPUs.
+
 ### Intel 64/AMD64 Processors
 
 oneDNN performance optimizations for Intel Architecture Processors are

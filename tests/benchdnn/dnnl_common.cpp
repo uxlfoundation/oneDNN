@@ -2048,6 +2048,10 @@ int check_dnnl_status(
             // If the case is not known to be skipped, it is unimplemented.
             res->state = UNIMPLEMENTED;
         } break;
+        case dnnl_data_type_not_supported:
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_data_type;
+            return OK;
         default: assert(!"unexpected");
     }
     DNN_SAFE(status, WARN);

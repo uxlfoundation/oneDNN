@@ -6,8 +6,8 @@ ConvolutionBackwardData {#dev_guide_op_convolutionbackwarddata}
 ConvolutionBackwardData operation accepts \f$\diffdst\f$, \weights and optional
 dst shape as inputs, and compute the \f$\diffsrc\f$.
 
-If `auto_pad` attribute is specified to one of `valid`, `same_upper` and
-`same_lower`, `pads_begin` and `pads_end` attributes will be ignored. The
+If `auto_pad` attribute is specified to one of `VALID`, `SAME_UPPER` and
+`SAME_LOWER`, `pads_begin` and `pads_end` attributes will be ignored. The
 paddings will be calculated by following the below formula:
 
 Let the parameters be:
@@ -62,7 +62,7 @@ where:
 | [pads_begin](@ref dnnl::graph::op::attr::pads_begin)         | Controls number of zeros to be add to the front/top/left of spatial dimensions                                                                                                            | s64        | A s64 list containing non-negative values                            | Required             |
 | [pads_end](@ref dnnl::graph::op::attr::pads_end)             | Controls number of zeros to be add to the back/bottom/right of spatial dimensions                                                                                                         | s64        | A s64 list containing non-negative values                            | Required             |
 | [dilations](@ref dnnl::graph::op::attr::dilations)           | Controls the amount of stretching the kernel before convolution ([visualization link](https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md#dilated-convolution-animations)) | s64        | A s64 list containing positive values (>1 means dilated convolution) | Required             |
-| [auto_pad](@ref dnnl::graph::op::attr::auto_pad)             | Controls how the padding is calculated                                                                                                                                                    | string     | `none` (default), `same_upper`, `same_lower`, `valid`                | Optional             |
+| [auto_pad](@ref dnnl::graph::op::attr::auto_pad)             | Controls how the padding is calculated                                                                                                                                                    | string     | `None` (default), `SAME_UPPER`, `SAME_LOWER`, `VALID`                | Optional             |
 | [output_padding](@ref dnnl::graph::op::attr::output_padding) | Adds additional amount of padding per each spatial axis in `dst`.                                                                                                                         | s64        | A s64 list containing non-negative values, all zeros by default      | Optional             |
 | [groups](@ref dnnl::graph::op::attr::groups)                 | Controls how input channels and output channels are divided into                                                                                                                          | s64        | A positive s64 value, `1` by default                                 | Optional             |
 | [data_format](@ref dnnl::graph::op::attr::data_format)       | Controls how to interpret the shape of `src` and `dst`.                                                                                                                                   | string     | `NCX`, `NXC` (default)                                               | Optional             |

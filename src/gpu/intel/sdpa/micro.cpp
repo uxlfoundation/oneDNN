@@ -1236,6 +1236,13 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             subgroup_size, host_argument_bytes_fwd, host_live_bytes};
     const auto hw_arch = gpu_arch(hw_info);
 
+    /* f32 FMA host tiles over 1/3 of 128 GRFs stall or spill */
+    const bool large_grf
+            = utils::one_of(hw_arch, compute::gpu_arch_t::xe_hpc,
+                      compute::gpu_arch_t::xe2, compute::gpu_arch_t::xe3)
+            && !use_systolic_ukernel
+            && problem_kq.Ta_ext == gemmstone::Type::f32
+            && 3 * host_live_bytes > 128 * 64;
     micro::Package gemm_kq, gemm_vs;
 
     /* Set up microkernel strategy */
@@ -1259,6 +1266,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
 
     /* Ask microkernel provider for microkernel */
     auto kq_strat_override = [&](gemmstone::GEMMStrategy &strat) {
+        if (large_grf) strat.GRFs = 256;
         std::string newStrat;
         newStrat = gpu_utils::dev_getenv("SDPA_KQ_USTRATEGY", newStrat);
         if (!newStrat.empty()) {
@@ -1288,6 +1296,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
 
     /* Ask microkernel provider for microkernel */
     auto vs_strat_override = [&](gemmstone::GEMMStrategy &strat) {
+        if (large_grf) strat.GRFs = 256;
         std::string newStrat;
         newStrat = gpu_utils::dev_getenv("SDPA_VS_USTRATEGY", newStrat);
         if (!newStrat.empty()) {

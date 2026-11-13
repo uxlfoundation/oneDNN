@@ -44,8 +44,7 @@ using namespace jit_uni_brgemm_conv_comp_pad_kernel;
 #define ndims_pick(v5, v4, v3) \
     ((ndims == 5) ? (v5) : (ndims == 4) ? (v4) : (ndims == 3) ? (v3) : 0)
 
-template <cpu_isa_t isa>
-int brgemm_convolution_fwd_t<isa>::pd_t::get_brg_idx(int m,
+int brgemm_convolution_fwd_base_t::pd_t::get_brg_idx(int m,
         bool do_initialization, bool is_N_tail, bool is_K_tail, int kd_b,
         int kd_e, int kh_b, int kh_e) const {
     const auto brg_idx = jcp_.use_uker
@@ -57,8 +56,7 @@ int brgemm_convolution_fwd_t<isa>::pd_t::get_brg_idx(int m,
     return brg_idx->second;
 }
 
-template <cpu_isa_t isa>
-int brgemm_convolution_fwd_t<isa>::pd_t::get_any_brg_idx(
+int brgemm_convolution_fwd_base_t::pd_t::get_any_brg_idx(
         bool is_N_tail, bool is_K_tail) const {
     // return first defined brgemm_descriptor for specified parameters
     for (const auto &key_value_pair : brg_indices) {
@@ -71,8 +69,7 @@ int brgemm_convolution_fwd_t<isa>::pd_t::get_any_brg_idx(
     return 0;
 }
 
-template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::pd_t::init_batch(dim_t icc,
+void brgemm_convolution_fwd_base_t::pd_t::init_batch(dim_t icc,
         const char *src_base, const char *wei_base, dim_t n_ic_blocks,
         dim_t ic_block_s, dim_t iid_b, dim_t iih_b, dim_t iiw_b,
         const dim_t *const __restrict kw_top_vpads,
@@ -152,8 +149,7 @@ void brgemm_convolution_fwd_t<isa>::pd_t::init_batch(dim_t icc,
     }
 }
 
-template <cpu_isa_t isa>
-inline void brgemm_convolution_fwd_t<isa>::pd_t::get_A_B(dim_t icc,
+inline void brgemm_convolution_fwd_base_t::pd_t::get_A_B(dim_t icc,
         const char *src_base, const char *wei_base, dim_t ic_block_s,
         dim_t iid_b, dim_t iih_b, dim_t iiw_b, dim_t kd_b, dim_t kh_b,
         const void *&ptrA, const void *&ptrB) const {
@@ -181,8 +177,7 @@ inline void brgemm_convolution_fwd_t<isa>::pd_t::get_A_B(dim_t icc,
     ptrB = wei_base_kh + wei_kw * wei_kw_offset;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(dim_t vM,
+status_t brgemm_convolution_fwd_base_t::pd_t::add_brg_descriptor(dim_t vM,
         bool is_N_tail, bool is_K_tail, bool do_init, int kd_b, int kd_e,
         int kh_b, int kh_e) {
 
@@ -190,7 +185,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(dim_t vM,
 
     const auto src_type = src_md(0)->data_type;
     const auto wei_type = weights_md(0)->data_type;
-    const auto is_amx = brgemm_convolution_utils::is_amx(isa);
+    const auto is_amx = brgemm_convolution_utils::is_amx(jcp_.isa);
 
     const float alpha = 1.0f;
     const float beta = 1.0f;
@@ -276,9 +271,9 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(dim_t vM,
     brg.fp8_with_f16_vnni_block = jcp_.is_fp8 && jcp_.vnni_block == 2;
     const auto strides_ptr
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
-    CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type, false,
-            false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB, jcp_.LDC,
-            vbrgM, vN, vK, strides_ptr));
+    CHECK(brgemm_desc_init(&brg, jcp_.isa, jcp_.brg_type, src_type, wei_type,
+            false, false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB,
+            jcp_.LDC, vbrgM, vN, vK, strides_ptr));
     brgattr.use_uker = jcp_.use_uker;
     brgattr.use_interleave_stores = jcp_.use_interleave_stores;
     brgattr.hint_prefetching = jcp_.hint_prefetching;
@@ -342,8 +337,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(dim_t vM,
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
+status_t brgemm_convolution_fwd_base_t::pd_t::init(
+        const engine_t *engine, cpu_isa_t isa) {
     using namespace data_type;
     using namespace utils;
     brgemm_descriptors_
@@ -697,8 +692,42 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-dim_t brgemm_convolution_fwd_t<isa>::get_src_base_offset(
+struct brgemm_convolution_fwd_base_t::brgemm_thread_ctx_t {
+    brgemm_thread_ctx_t(const brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
+            brgemm_batch_element_t *__restrict brg_batch_, char *c_buffer_,
+            char *wsp_tile_, const char *__restrict weights_)
+        : brgemm_ctx(brgemm_ctx_)
+        , ithr(ithr_)
+        , brg_batch(brg_batch_)
+        , c_buffer(c_buffer_)
+        , wsp_tile(wsp_tile_)
+        , weights(weights_) {}
+
+    const brgemm_exec_ctx_t &brgemm_ctx;
+    int ithr {0};
+    brgemm_batch_element_t *__restrict brg_batch {nullptr};
+    char *__restrict c_buffer {nullptr};
+    char *__restrict wsp_tile {nullptr};
+    int cur_brg_idx {-1};
+    dim_t g {-1}, n {-1}, ocb {-1};
+    dim_t od {-1}, odb {-1}, oh {-1}, ohb {-1}, owb {-1};
+    dim_t icc {-1};
+    int32_t src_zp_val {0};
+    int32_t *__restrict src_zp_comp_ptr {nullptr};
+    const int32_t *__restrict dst_zp_vals {nullptr};
+    int32_t *__restrict s8s8_comp_ptr {nullptr};
+    const void *__restrict src_scales {nullptr};
+    const void *__restrict wei_scales {nullptr};
+    const void *__restrict dst_scales {nullptr};
+    char *__restrict inp_buffer {nullptr};
+    const char *__restrict input {nullptr};
+    uint8_t *__restrict inp_buffer_mask {nullptr};
+    const char *const __restrict weights {nullptr};
+    void *__restrict inp_buffer_zero {nullptr};
+    void *__restrict fp8_convert_wsp {nullptr};
+};
+
+dim_t brgemm_convolution_fwd_base_t::get_src_base_offset(
         const brgemm_thread_ctx_t &btc, const dim_t ic) const {
     const auto &jcp = pd()->jcp_;
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -711,12 +740,10 @@ dim_t brgemm_convolution_fwd_t<isa>::get_src_base_offset(
     return src_dsz * (src_d.off_l(0) + batch_offs + group_offs);
 }
 
-template <cpu_isa_t isa>
-brgemm_convolution_fwd_t<isa>::brgemm_convolution_fwd_t(const pd_t *apd)
+brgemm_convolution_fwd_base_t::brgemm_convolution_fwd_base_t(const pd_t *apd)
     : primitive_t(apd), bias_d(pd()->weights_md(1)) {}
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::add_brg_kernel(int brg_idx) {
+status_t brgemm_convolution_fwd_base_t::add_brg_kernel(int brg_idx) {
     const auto _pd = pd();
     const auto &brgs = *(_pd->brgemm_descriptors_);
 
@@ -729,8 +756,7 @@ status_t brgemm_convolution_fwd_t<isa>::add_brg_kernel(int brg_idx) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
+status_t brgemm_convolution_fwd_base_t::add_po_kernel(
         brgemm_desc_t *bcfg, int ker_idx, bool is_init) {
     if (!bcfg) return status::success;
     const auto _pd = pd();
@@ -746,13 +772,12 @@ status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
     // See the comment in `add_po_kernels` why `*_pd->attr()` is needed so far.
     CHECK(safe_ptr_assign(kernels_po_[ker_idx],
             jit_brgemm_kernel_post_ops_base_t::create(
-                    isa, *bcfg, *_pd->attr())));
+                    jcp.isa, *bcfg, *_pd->attr())));
     kernels_po_[ker_idx]->generate_kernel();
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::add_po_kernels(
+status_t brgemm_convolution_fwd_base_t::add_po_kernels(
         int i_N, dim_t init_bcast_dim, dim_t po_bcast_dim) {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -800,8 +825,7 @@ status_t brgemm_convolution_fwd_t<isa>::add_po_kernels(
     return status::success;
 }
 
-template <cpu_isa_t isa>
-dim_t brgemm_convolution_fwd_t<isa>::get_comp_oh(dim_t oh) const {
+dim_t brgemm_convolution_fwd_base_t::get_comp_oh(dim_t oh) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
@@ -826,8 +850,7 @@ dim_t brgemm_convolution_fwd_t<isa>::get_comp_oh(dim_t oh) const {
     return comp_oh_e;
 }
 
-template <cpu_isa_t isa>
-dim_t brgemm_convolution_fwd_t<isa>::get_comp_ker_idx(dim_t kd_b, dim_t kd_e,
+dim_t brgemm_convolution_fwd_base_t::get_comp_ker_idx(dim_t kd_b, dim_t kd_e,
         dim_t kh_b, dim_t kh_e, dim_t kw_b, dim_t kw_e, dim_t oh) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -846,8 +869,7 @@ dim_t brgemm_convolution_fwd_t<isa>::get_comp_ker_idx(dim_t kd_b, dim_t kd_e,
     return -1;
 }
 
-template <cpu_isa_t isa>
-inline dim_t brgemm_convolution_fwd_t<isa>::get_comp_offset(dim_t g, dim_t ocb,
+inline dim_t brgemm_convolution_fwd_base_t::get_comp_offset(dim_t g, dim_t ocb,
         dim_t oh, dim_t ow, dim_t kd_b, dim_t kd_e, dim_t kh_b, dim_t kh_e,
         dim_t kw_b, dim_t kw_e) const {
     const auto _pd = pd();
@@ -868,8 +890,7 @@ inline dim_t brgemm_convolution_fwd_t<isa>::get_comp_offset(dim_t g, dim_t ocb,
                                 : (g * jcp.nb_oc + ocb) * jcp.oc_block;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
+status_t brgemm_convolution_fwd_base_t::init(engine_t *engine) {
 
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -1003,23 +1024,23 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
     if (jcp.req_cal_comp_pad) {
         if (is_relo_with_relo_weights) {
-            if (is_superset(isa, avx512_core))
+            if (is_superset(jcp.isa, avx512_core))
                 CHECK(safe_ptr_assign(comp_vpad_pbuffer_,
                         new jit_uni_brgemm_conv_relo_comp_pad_kernel_t<
                                 Xbyak::Zmm>(jcp)));
             else {
-                assert(one_of(isa, avx2_vnni, avx2_vnni_2));
+                assert(one_of(jcp.isa, avx2_vnni, avx2_vnni_2));
                 CHECK(safe_ptr_assign(comp_vpad_pbuffer_,
                         new jit_uni_brgemm_conv_relo_comp_pad_kernel_t<
                                 Xbyak::Ymm>(jcp)));
             }
         } else {
-            if (is_superset(isa, avx512_core))
+            if (is_superset(jcp.isa, avx512_core))
                 CHECK(safe_ptr_assign(comp_vpad_pbuffer_,
                         new jit_uni_brgemm_conv_comp_pad_kernel_t<Xbyak::Zmm>(
                                 jcp)));
             else {
-                assert(one_of(isa, avx2_vnni, avx2_vnni_2));
+                assert(one_of(jcp.isa, avx2_vnni, avx2_vnni_2));
                 CHECK(safe_ptr_assign(comp_vpad_pbuffer_,
                         new jit_uni_brgemm_conv_comp_pad_kernel_t<Xbyak::Ymm>(
                                 jcp)));
@@ -1028,7 +1049,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         CHECK(comp_vpad_pbuffer_->create_kernel());
     }
 
-    is_amx = brgemm_convolution_utils::is_amx(isa);
+    is_amx = brgemm_convolution_utils::is_amx(jcp.isa);
 
     for (const auto &key_value_pair : _pd->brg_indices) {
         const int brg_idx = key_value_pair.second;
@@ -1308,44 +1329,8 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
     return status::success;
 }
-template <cpu_isa_t isa>
-struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
-    brgemm_thread_ctx_t(const brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
-            brgemm_batch_element_t *__restrict brg_batch_, char *c_buffer_,
-            char *wsp_tile_, const char *__restrict weights_)
-        : brgemm_ctx(brgemm_ctx_)
-        , ithr(ithr_)
-        , brg_batch(brg_batch_)
-        , c_buffer(c_buffer_)
-        , wsp_tile(wsp_tile_)
-        , weights(weights_) {}
 
-    const brgemm_exec_ctx_t &brgemm_ctx;
-    int ithr {0};
-    brgemm_batch_element_t *__restrict brg_batch {nullptr};
-    char *__restrict c_buffer {nullptr};
-    char *__restrict wsp_tile {nullptr};
-    int cur_brg_idx {-1};
-    dim_t g {-1}, n {-1}, ocb {-1};
-    dim_t od {-1}, odb {-1}, oh {-1}, ohb {-1}, owb {-1};
-    dim_t icc {-1};
-    int32_t src_zp_val {0};
-    int32_t *__restrict src_zp_comp_ptr {nullptr};
-    const int32_t *__restrict dst_zp_vals {nullptr};
-    int32_t *__restrict s8s8_comp_ptr {nullptr};
-    const void *__restrict src_scales {nullptr};
-    const void *__restrict wei_scales {nullptr};
-    const void *__restrict dst_scales {nullptr};
-    char *__restrict inp_buffer {nullptr};
-    const char *__restrict input {nullptr};
-    uint8_t *__restrict inp_buffer_mask {nullptr};
-    const char *const __restrict weights {nullptr};
-    void *__restrict inp_buffer_zero {nullptr};
-    void *__restrict fp8_convert_wsp {nullptr};
-};
-
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t brgemm_convolution_fwd_base_t::execute(const exec_ctx_t &ctx) const {
     const auto _pd = pd();
     const auto *jcp_ptr = &pd()->jcp_;
 
@@ -1547,8 +1532,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
+status_t brgemm_convolution_fwd_base_t::cal_compensation(
         const char *__restrict weights, int32_t *src_zp_buffer,
         int32_t *s8s8_comp_buffer) const {
     const auto _pd = pd();
@@ -1664,8 +1648,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
     return status::success;
 }
 
-template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::perform_outwork(
+void brgemm_convolution_fwd_base_t::perform_outwork(
         const brgemm_thread_ctx_t &btc, char *dst_base, const char *bias_w,
         dim_t ow, dim_t g_oc, bool is_oc_tail, dim_t ker_ow_s, dim_t ker_ow_f,
         dim_t kd_l, dim_t kh_l, bool maybe_do_init, bool do_postwork,
@@ -1754,8 +1737,7 @@ void brgemm_convolution_fwd_t<isa>::perform_outwork(
     }
 }
 
-template <cpu_isa_t isa>
-inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
+inline void brgemm_convolution_fwd_base_t::call_brgemm_kernel(
         const brgemm_thread_ctx_t &btc, const brgemm_kernel_t *brg_ker,
         int batch_size, char *ptr_C, char *ptr_D, const char *bias_w,
         dim_t g_oc, bool do_postops, size_t comp_ker_offs,
@@ -1814,8 +1796,7 @@ inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
+void brgemm_convolution_fwd_base_t::maybe_conv_weights(const exec_ctx_t &ctx,
         const char *__restrict input_weights,
         const char *__restrict &wei) const {
     const auto _pd = pd();
@@ -1871,8 +1852,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
     wei = wei_buffer;
 }
 
-template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
+void brgemm_convolution_fwd_base_t::maybe_conv_inp(brgemm_thread_ctx_t &btc,
         const brgemm_thread_ctx_t &last_btc, const char *__restrict src) const {
 
     const auto _pd = pd();
@@ -2146,8 +2126,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
     char *ptr_D; \
     dim_t kd_b(0), kd_e(0), kh_b(0), kh_e(0), k_l(0), iiw_b(0);
 
-template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
+void brgemm_convolution_fwd_base_t::ker_base(brgemm_thread_ctx_t &btc) const {
 
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -2308,8 +2287,7 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
+void brgemm_convolution_fwd_base_t::ker_trans(brgemm_thread_ctx_t &btc) const {
 
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -2449,8 +2427,7 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
     }
 }
 
-template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::ker_vpad(brgemm_thread_ctx_t &btc) const {
+void brgemm_convolution_fwd_base_t::ker_vpad(brgemm_thread_ctx_t &btc) const {
 
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;

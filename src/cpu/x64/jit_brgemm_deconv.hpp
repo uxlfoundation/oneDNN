@@ -34,8 +34,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa>
-struct brgemm_deconvolution_fwd_t : public primitive_t {
+// The implementation is compiled once for all ISAs; `isa` is a runtime
+// argument of `pd_t::init`. `brgemm_deconvolution_fwd_t` below only provides a
+// distinct type per ISA for implementation lists.
+struct brgemm_deconvolution_fwd_base_t : public primitive_t {
 
     struct pd_t : public cpu_deconvolution_fwd_pd_t {
         using cpu_deconvolution_fwd_pd_t::cpu_deconvolution_fwd_pd_t;
@@ -45,10 +47,6 @@ struct brgemm_deconvolution_fwd_t : public primitive_t {
             , conv_pd_(other.conv_pd_->clone())
             , has_strides_(other.has_strides_)
             , name_(other.name_) {}
-
-        DECLARE_COMMON_PD_T(name_.c_str(), brgemm_deconvolution_fwd_t);
-
-        status_t init(const engine_t *engine);
 
         bool post_ops_ok() const {
             return attr()->post_ops_.find(primitive_kind::convolution) == -1;
@@ -85,19 +83,22 @@ struct brgemm_deconvolution_fwd_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> conv_pd_;
         bool has_strides_ = false;
 
-    private:
+    protected:
+        status_t init(const engine_t *engine, cpu_isa_t isa);
+
         std::string name_;
 
-        void init_name() {
+    private:
+        void init_name(cpu_isa_t isa) {
             name_ = JIT_IMPL_NAME_HELPER("brg_deconv:", isa, "");
             name_.append("+");
             name_.append(conv_pd_->name());
         }
     };
 
-    brgemm_deconvolution_fwd_t(const pd_t *apd) : primitive_t(apd) {};
+    brgemm_deconvolution_fwd_base_t(const pd_t *apd) : primitive_t(apd) {};
 
-    ~brgemm_deconvolution_fwd_t() override = default;
+    ~brgemm_deconvolution_fwd_base_t() override = default;
 
     status_t init(engine_t *engine) override;
 
@@ -109,6 +110,23 @@ private:
     }
 
     std::shared_ptr<primitive_t> conv_p_;
+};
+
+template <cpu_isa_t isa>
+struct brgemm_deconvolution_fwd_t : public brgemm_deconvolution_fwd_base_t {
+    struct pd_t : public brgemm_deconvolution_fwd_base_t::pd_t {
+        using base_pd_t = brgemm_deconvolution_fwd_base_t::pd_t;
+        using base_pd_t::base_pd_t;
+
+        DECLARE_COMMON_PD_T(name_.c_str(), brgemm_deconvolution_fwd_t);
+
+        status_t init(const engine_t *engine) {
+            return base_pd_t::init(engine, isa);
+        }
+    };
+
+    brgemm_deconvolution_fwd_t(const pd_t *apd)
+        : brgemm_deconvolution_fwd_base_t(apd) {}
 };
 
 } // namespace x64

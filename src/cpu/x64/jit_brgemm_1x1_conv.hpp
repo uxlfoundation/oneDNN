@@ -42,15 +42,13 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa>
-struct brgemm_1x1_convolution_fwd_t : public primitive_t {
+// The implementation is compiled once for all ISAs; `isa` is a runtime
+// value carried in `jit_brgemm_conv_conf_t::isa`.
+// `brgemm_1x1_convolution_fwd_t` below only provides a distinct type per ISA
+// for implementation lists.
+struct brgemm_1x1_convolution_fwd_base_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
-
-        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgconv_1x1:", isa, ""),
-                brgemm_1x1_convolution_fwd_t);
-
-        status_t init(const engine_t *engine);
 
         struct brgemm_init_params_t {
             brgemm_init_params_t(int k_accum_idx, dim_t m, dim_t n, dim_t k,
@@ -75,14 +73,17 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
 
         jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 
+    protected:
+        status_t init(const engine_t *engine, cpu_isa_t isa);
+
     private:
         status_t init_brgemm_desc();
     };
 
-    brgemm_1x1_convolution_fwd_t(const pd_t *apd)
+    brgemm_1x1_convolution_fwd_base_t(const pd_t *apd)
         : primitive_t(apd), bias_d(pd()->weights_md(1)) {}
 
-    ~brgemm_1x1_convolution_fwd_t() override = default;
+    ~brgemm_1x1_convolution_fwd_base_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         execute_forward_all(ctx);
@@ -198,7 +199,24 @@ private:
     // const variables used for address calculations
     dim_t src_w_sz, src_h_sz, src_d_sz, dst_w_sz, dst_h_sz, dst_d_sz;
     dim_t wei_g_stride, wei_ic_stride, wei_ocb_stride;
-    dim_t wei_kw_stride, wei_kh_stride, wei_kd_stride;
+};
+
+template <cpu_isa_t isa>
+struct brgemm_1x1_convolution_fwd_t : public brgemm_1x1_convolution_fwd_base_t {
+    struct pd_t : public brgemm_1x1_convolution_fwd_base_t::pd_t {
+        using base_pd_t = brgemm_1x1_convolution_fwd_base_t::pd_t;
+        using base_pd_t::base_pd_t;
+
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgconv_1x1:", isa, ""),
+                brgemm_1x1_convolution_fwd_t);
+
+        status_t init(const engine_t *engine) {
+            return base_pd_t::init(engine, isa);
+        }
+    };
+
+    brgemm_1x1_convolution_fwd_t(const pd_t *apd)
+        : brgemm_1x1_convolution_fwd_base_t(apd) {}
 };
 
 } // namespace x64

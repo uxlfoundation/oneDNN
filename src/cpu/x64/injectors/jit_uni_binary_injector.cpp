@@ -31,8 +31,9 @@ namespace cpu {
 namespace x64 {
 namespace binary_injector {
 
-#define VCHECK_BIN_INJ_BOOL(cond, msg) \
-    VCONDCHECK(primitive, create, check, binary_injector, cond, false, msg);
+#define VCHECK_BIN_INJ_BOOL(cond, msg, ...) \
+    VCONDCHECK(primitive, create, check, binary_injector, cond, false, msg, \
+            ##__VA_ARGS__);
 
 bcast_set_t get_all_strategies_supported_by_injector() {
     return bcast_set_t {broadcasting_strategy_t::scalar,
@@ -43,6 +44,7 @@ bcast_set_t get_all_strategies_supported_by_injector() {
             broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_w,
             broadcasting_strategy_t::per_hw, broadcasting_strategy_t::batch,
             broadcasting_strategy_t::spatial,
+            broadcasting_strategy_t::shared_axes,
             broadcasting_strategy_t::no_broadcast};
 }
 
@@ -118,17 +120,51 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
     VCHECK_BIN_INJ_BOOL(is_data_supported(isa, src1_desc.data_type),
             VERBOSE_ISA_DT_MISMATCH);
     const memory_desc_wrapper rhs_d(src1_desc);
+    auto bcast_type = get_rhs_arg_broadcasting_strategy(
+            src1_desc, dst_d, supported_strategy_set);
+    const bool use_shared_axes_fallback
+            = supported_strategy_set.count(broadcasting_strategy_t::shared_axes)
+            && !utils::one_of(bcast_type, broadcasting_strategy_t::unsupported,
+                    broadcasting_strategy_t::scalar,
+                    broadcasting_strategy_t::no_broadcast,
+                    broadcasting_strategy_t::shared_axes)
+            && ((dst_d.ndims() > 5 && dst_d.is_plain())
+                    || (dst_d.is_plain()
+                            && injector_utils::get_layout_type(dst_d)
+                                    == injector_utils::layout_t::unsupported)
+                    || (!rhs_d.format_any() && !rhs_d.is_dense(true)
+                            && bcast_type
+                                    != broadcasting_strategy_t::
+                                            per_mb_spatial));
+    if (use_shared_axes_fallback)
+        bcast_type = broadcasting_strategy_t::shared_axes;
     const bool rhs_nontrivial_strides = !rhs_d.is_dense(true);
     if (rhs_nontrivial_strides) {
         VCHECK_BIN_INJ_BOOL(rhs_d.is_plain(), VERBOSE_NONTRIVIAL_STRIDE);
-        const auto bcast_type = get_rhs_arg_broadcasting_strategy(
-                src1_desc, dst_d, supported_strategy_set);
-        VCHECK_BIN_INJ_BOOL(
-                bcast_type == broadcasting_strategy_t::per_mb_spatial,
+        VCHECK_BIN_INJ_BOOL(utils::one_of(bcast_type,
+                                    broadcasting_strategy_t::per_mb_spatial,
+                                    broadcasting_strategy_t::shared_axes),
                 VERBOSE_NONTRIVIAL_STRIDE);
         VCHECK_BIN_INJ_BOOL(dst_d.is_plain()
-                        && injector_utils::get_layout_type(dst_d)
-                                == injector_utils::layout_t::ncsp,
+                        && IMPLICATION(bcast_type
+                                        == broadcasting_strategy_t::
+                                                per_mb_spatial,
+                                injector_utils::get_layout_type(dst_d)
+                                        == injector_utils::layout_t::ncsp),
+                VERBOSE_NONTRIVIAL_STRIDE);
+    }
+    if (bcast_type == broadcasting_strategy_t::shared_axes) {
+        VCHECK_BIN_INJ_BOOL(
+                dst_d.is_plain() && (rhs_d.format_any() || rhs_d.is_plain()),
+                VERBOSE_UNSUPPORTED_TAG);
+        const int ndims = dst_d.ndims();
+        VCHECK_BIN_INJ_BOOL(ndims >= 1, VERBOSE_BAD_NDIMS, "dst", ndims);
+        VCHECK_BIN_INJ_BOOL(rhs_d.dims()[ndims - 1] == 1
+                        || (dst_d.blocking_desc().strides[ndims - 1] == 1
+                                && (rhs_d.format_any()
+                                        || rhs_d.blocking_desc()
+                                                        .strides[ndims - 1]
+                                                == 1)),
                 VERBOSE_NONTRIVIAL_STRIDE);
     }
     return is_bcast_supported(src1_desc, dst_d, supported_strategy_set);
@@ -593,26 +629,52 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range_impl(
 
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const auto src1_desc = get_src1_desc(post_op, dst_d);
-    const auto rhs_broadcasting_strategy = get_rhs_arg_broadcasting_strategy(
+    const memory_desc_wrapper rhs_d(src1_desc);
+    auto rhs_broadcasting_strategy = get_rhs_arg_broadcasting_strategy(
             src1_desc, rhs_arg_static_params_.dst_d, supported_strategy_set_);
+    if (supported_strategy_set_.count(broadcasting_strategy_t::shared_axes)
+            && !utils::one_of(rhs_broadcasting_strategy,
+                    broadcasting_strategy_t::unsupported,
+                    broadcasting_strategy_t::scalar,
+                    broadcasting_strategy_t::no_broadcast,
+                    broadcasting_strategy_t::shared_axes)
+            && ((dst_d.ndims() > 5 && dst_d.is_plain())
+                    || (dst_d.is_plain()
+                            && injector_utils::get_layout_type(dst_d)
+                                    == injector_utils::layout_t::unsupported)
+                    || (!rhs_d.is_dense(true)
+                            && rhs_broadcasting_strategy
+                                    != broadcasting_strategy_t::
+                                            per_mb_spatial)))
+        rhs_broadcasting_strategy = broadcasting_strategy_t::shared_axes;
     const auto rhs_arg_data_type = src1_desc.data_type;
     const auto needs_ternary_input = post_op.is_binary_with_ternary_op();
     const auto &vmm_tail_idx = rhs_arg_params.vmm_tail_idx_;
     const bool tail_exists_in_range = !vmm_tail_idx.empty();
+    const bool is_shared_axes_bcast_inner
+            = rhs_broadcasting_strategy == broadcasting_strategy_t::shared_axes
+            && dst_d.ndims() >= 1 && src1_desc.dims[dst_d.ndims() - 1] == 1;
+    const bool is_spatial_bcast_ncsp
+            = rhs_broadcasting_strategy == broadcasting_strategy_t::spatial
+            && injector_utils::get_layout_type(dst_d)
+                    == injector_utils::layout_t::ncsp;
     // Strategies that read the right-hand side through a broadcast address,
     // which `inject_binary` loads into the helper vmm on non-avx512.
     const bool bcast_f32_non_avx512 = !has_avx512_core_
-            && utils::one_of(rhs_broadcasting_strategy,
-                    broadcasting_strategy_t::scalar,
-                    broadcasting_strategy_t::per_oc_spatial,
-                    broadcasting_strategy_t::per_oc_d,
-                    broadcasting_strategy_t::per_mb)
+            && (utils::one_of(rhs_broadcasting_strategy,
+                        broadcasting_strategy_t::scalar,
+                        broadcasting_strategy_t::per_oc_spatial,
+                        broadcasting_strategy_t::per_oc_d,
+                        broadcasting_strategy_t::per_mb)
+                    || is_shared_axes_bcast_inner || is_spatial_bcast_ncsp)
             && rhs_arg_data_type == data_type::f32;
     const bool should_preserve_vmm_tail = tail_exists_in_range
             && (!has_avx512_core_
-                    || !utils::one_of(rhs_broadcasting_strategy,
-                            broadcasting_strategy_t::scalar,
-                            broadcasting_strategy_t::per_oc_spatial)
+                    || !(utils::one_of(rhs_broadcasting_strategy,
+                                 broadcasting_strategy_t::scalar,
+                                 broadcasting_strategy_t::per_oc_spatial)
+                            || is_shared_axes_bcast_inner
+                            || is_spatial_bcast_ncsp)
                     || rhs_arg_data_type != data_type::f32);
     // Compare ops and ternary inputs always go through the helper vmm.
     const bool dt_helper_vmm_needed
@@ -665,7 +727,9 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range_impl(
             && rhs_broadcasting_strategy == broadcasting_strategy_t::per_w;
     const bool should_preserve_spatial_offset_conversion_regs
             = use_offset_conversions
-            && rhs_broadcasting_strategy == broadcasting_strategy_t::spatial;
+            && utils::one_of(rhs_broadcasting_strategy,
+                    broadcasting_strategy_t::spatial,
+                    broadcasting_strategy_t::shared_axes);
     const bool should_preserve_w_or_oc_offset_conversion_regs
             = should_preserve_oc_offset_conversion_regs
             || should_preserve_w_offset_conversion_regs
@@ -965,7 +1029,22 @@ Xbyak::Address jit_uni_binary_injector_t<Vmm>::prepare_rhs_arg_addr(int vmm_idx,
                     rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
 
-            return host_->ptr[rhs_addr_reg];
+            return injector_utils::get_layout_type(rhs_arg_static_params_.dst_d)
+                            == injector_utils::layout_t::ncsp
+                    ? host_->ptr_b[rhs_addr_reg]
+                    : host_->ptr[rhs_addr_reg];
+        }
+        case broadcasting_strategy_t::shared_axes: {
+            append_shared_axes_offset(rhs_arg_params.vmm_idx_to_out_addr,
+                    rhs_arg_params.vmm_idx_to_out_reg,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first,
+                    rhs_d);
+
+            const int ndims = rhs_d.ndims();
+            return (ndims >= 1 && rhs_d.dims()[ndims - 1] == 1)
+                    ? host_->ptr_b[rhs_addr_reg]
+                    : host_->ptr[rhs_addr_reg];
         }
         default: assert(false && "Broadcasting type not supported");
     }
@@ -2948,6 +3027,169 @@ void jit_uni_binary_injector_t<Vmm>::calculate_mb_oc_cspn_partial(
     host_->mov(tmp_reg,
             elem_size_bytes > 1 ? offset_adj << math::ilog2q(elem_size_bytes)
                                 : offset_adj);
+}
+
+static dim_t rhs_offset_shared_axes(const memory_desc_wrapper &dst_d,
+        const memory_desc_wrapper &rhs_d, dim_t dst_offset_bytes) {
+    const auto &dst_strides = dst_d.blocking_desc().strides;
+    const auto &rhs_strides = rhs_d.blocking_desc().strides;
+    const auto *dst_dims = dst_d.dims();
+    const auto *rhs_dims = rhs_d.dims();
+    const int ndims = dst_d.ndims();
+    const int dst_dt_shift
+            = math::ilog2q(types::data_type_size(dst_d.data_type()));
+    dim_t rem = dst_offset_bytes >> dst_dt_shift;
+
+    // Decompose linear dst element offset in decreasing order of dst strides
+    // to support any plain dst permutation (e.g., abcd, acbd).
+    int perm[DNNL_MAX_NDIMS];
+    for (int d = 0; d < ndims; ++d)
+        perm[d] = d;
+    std::sort(perm, perm + ndims, [&](int a, int b) {
+        if (dst_strides[a] != dst_strides[b])
+            return dst_strides[a] > dst_strides[b];
+        return a < b;
+    });
+
+    dim_t rhs_offset = 0;
+    for (int i = 0; i < ndims; ++i) {
+        const int d = perm[i];
+        if (dst_dims[d] <= 1 || dst_strides[d] == 0) continue;
+        const dim_t coord = rem / dst_strides[d];
+        rem %= dst_strides[d];
+        if (rhs_dims[d] > 1 && rhs_strides[d] != 0)
+            rhs_offset += coord * rhs_strides[d];
+    }
+    return rhs_offset;
+}
+
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_shared_axes_offset(
+        const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
+        const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes, bool is_first,
+        const memory_desc_wrapper &rhs_d) const {
+
+    const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
+    const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
+
+    const bool is_out_addr = it_out_addr != vmm_idx_to_out_addr.end();
+    const bool is_out_reg = it_out_reg != vmm_idx_to_out_reg.end();
+
+    if (is_out_addr || is_out_reg) {
+        Xbyak::Address out_addr = is_out_addr ? it_out_addr->second
+                                              : host_->ptr[it_out_reg->second];
+        const auto it_off_val = vmm_idx_to_out_elem_off_val.find(vmm_idx);
+        const auto &addr_cache_reg = rhs_arg_static_params_.rhs_addr_cache_reg;
+        const auto dst_d = rhs_arg_static_params_.dst_d;
+
+        if (is_first) {
+            calculate_no_broadcast_base(out_addr, tmp_reg);
+
+            const auto rax = host_->rax;
+            const auto rdx = host_->rdx;
+            const auto r8 = host_->r8;
+
+            const injector_utils::conditional_register_preserve_guard_t
+                    register_guard {is_out_reg
+                                    ? utils::one_of(
+                                              it_out_reg->second, rax, rdx, r8)
+                                    : false,
+                            host_,
+                            {is_out_reg ? it_out_reg->second : Xbyak::Reg64()}};
+
+            calculate_shared_axes_base(
+                    dst_d, rhs_d, addr_reg, tmp_reg, elem_size_bytes);
+            host_->mov(addr_cache_reg, addr_reg);
+        } else {
+            host_->mov(addr_reg, addr_cache_reg);
+        }
+
+        if (it_off_val != vmm_idx_to_out_elem_off_val.end()) {
+            calculate_shared_axes_partial(dst_d, rhs_d, it_off_val->second,
+                    addr_reg, tmp_reg, elem_size_bytes);
+        }
+    }
+}
+
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_shared_axes_base(
+        const memory_desc_wrapper &dst_d, const memory_desc_wrapper &rhs_d,
+        const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
+    const int ndims = dst_d.ndims();
+    const auto &dst_strides = dst_d.blocking_desc().strides;
+    const auto &rhs_strides = rhs_d.blocking_desc().strides;
+    const auto *dst_dims = dst_d.dims();
+    const auto *rhs_dims = rhs_d.dims();
+
+    int perm[DNNL_MAX_NDIMS];
+    for (int d = 0; d < ndims; ++d)
+        perm[d] = d;
+    std::sort(perm, perm + ndims, [&](int a, int b) {
+        if (dst_strides[a] != dst_strides[b])
+            return dst_strides[a] > dst_strides[b];
+        return a < b;
+    });
+
+    const auto rax = host_->rax;
+    const auto rdx = host_->rdx;
+    const auto r8 = host_->r8;
+
+    host_->xor_(r8, r8);
+    host_->mov(rdx, tmp_reg);
+
+    for (int i = 0; i < ndims; ++i) {
+        const int d = perm[i];
+        if (dst_dims[d] <= 1 || dst_strides[d] == 0) continue;
+
+        host_->mov(rax, rdx);
+        if (dst_strides[d] == 1) {
+            host_->xor_(rdx, rdx);
+        } else {
+            host_->mov(tmp_reg, dst_strides[d]);
+            host_->xor_(rdx, rdx);
+            host_->div(tmp_reg);
+        }
+        // rax = coord[d], rdx = remainder
+        if (rhs_dims[d] > 1 && rhs_strides[d] != 0) {
+            if (rhs_strides[d] != 1) {
+                host_->mov(tmp_reg, rhs_strides[d]);
+                host_->imul(rax, tmp_reg);
+            }
+            host_->add(r8, rax);
+        }
+    }
+
+    if (elem_size_bytes == 1) {
+        host_->add(addr_reg, r8);
+    } else {
+        const int shift_val = math::ilog2q(elem_size_bytes);
+        host_->mov(tmp_reg, r8);
+        host_->sal(tmp_reg, shift_val);
+        host_->add(addr_reg, tmp_reg);
+    }
+}
+
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_shared_axes_partial(
+        const memory_desc_wrapper &dst_d, const memory_desc_wrapper &rhs_d,
+        dim_t dst_offset_bytes, const Xbyak::Reg64 &addr_reg,
+        const Xbyak::Reg64 &tmp_reg, dim_t elem_size_bytes) const {
+    const dim_t rhs_offset
+            = rhs_offset_shared_axes(dst_d, rhs_d, dst_offset_bytes);
+    if (rhs_offset == 0) return;
+
+    const int shift_val = math::ilog2q(elem_size_bytes);
+    const dim_t rhs_offset_bytes = rhs_offset << shift_val;
+    if (rhs_offset_bytes <= std::numeric_limits<int32_t>::max()) {
+        host_->add(addr_reg, static_cast<int32_t>(rhs_offset_bytes));
+    } else {
+        host_->mov(tmp_reg, rhs_offset_bytes);
+        host_->add(addr_reg, tmp_reg);
+    }
 }
 
 template <typename Vmm>

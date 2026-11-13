@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "common/c_types_map.hpp"
@@ -37,6 +38,7 @@
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 
+#include "cpu/platform.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
 #include "cpu/x64/brgemm/brgemm_ir.hpp"
 #include "cpu/x64/brgemm/brgemm_ir_compute_path.hpp"
@@ -825,6 +827,108 @@ void build_brgemm(const conf_t &cfg, const compute_path_t &cp, ir::ir_t &ir) {
     emit_nest(ir, cfg, cp, regs);
 }
 
+// Creates the compute path of `cfg` for building `ir`.
+std::unique_ptr<compute_path_t> make_compute_path(
+        ir::ir_t &ir, const conf_t &cfg) {
+    switch (cfg.compute_path.kind) {
+        case compute_path_kind_t::vector: return make_vector_compute_path();
+        case compute_path_kind_t::tmul: return make_tmul_compute_path(ir, cfg);
+    }
+    assert(!"unknown compute path");
+    return nullptr;
+}
+
+// Returns true if `runs` has a run of more than one block, which a looped
+// level emits as a loop.
+bool has_loop(const std::vector<block_run_t> &runs) {
+    for (const block_run_t &run : runs) {
+        if (run.count > 1) return true;
+    }
+    return false;
+}
+
+// Returns the number of levels of `loop` that have a loop.
+int n_levels_with_loop(const loop_conf_t &loop) {
+    int n = 0;
+    for (const std::vector<block_run_t> &runs :
+            {m_runs(loop), n_runs(loop), bs_runs(loop), k_runs(loop)}) {
+        if (has_loop(runs)) n++;
+    }
+    return n;
+}
+
+// Returns the `level_form_t` of a level with `runs` when the next `n_unrolled`
+// levels that have a loop, from this one outward, are unrolled. Decrements
+// `n_unrolled` if the level is one of them. A level without a loop is
+// unrolled. Looped, it would emit the same blocks and could add pointer setup.
+level_form_t next_level_form(
+        const std::vector<block_run_t> &runs, int &n_unrolled) {
+
+    if (!has_loop(runs)) return level_form_t::unrolled;
+    if (n_unrolled == 0) return level_form_t::looped;
+    n_unrolled--;
+    return level_form_t::unrolled;
+}
+
+// Unrolls the `n` innermost levels of `loop` that have a loop and loops the
+// other levels that have one. From the inside, the levels are K, the batch,
+// then N and M if N is inside M (`brgemm_ld_loop_innermost`), M and N
+// otherwise.
+void set_level_forms(loop_conf_t &loop, int n) {
+    loop.k_form = next_level_form(k_runs(loop), n);
+    loop.bs_form = next_level_form(bs_runs(loop), n);
+
+    if (loop.innermost_loop == brgemm_ld_loop_innermost) {
+        loop.n_form = next_level_form(n_runs(loop), n);
+        loop.m_form = next_level_form(m_runs(loop), n);
+    } else {
+        loop.m_form = next_level_form(m_runs(loop), n);
+        loop.n_form = next_level_form(n_runs(loop), n);
+    }
+}
+
+// Builds the IR of `cfg` with as many of its innermost levels unrolled as fit
+// in half of L1i.
+//
+// The IR is built first with no loop unrolled. From it, `ir::n_ops_unrolled()`
+// predicts the op count with the `n` innermost levels that have a loop
+// unrolled, and `n` grows while that count times `code_bytes_per_op()` fits in
+// half of L1i. The IR is built again with `n` levels unrolled, unless `n` is 0.
+// The prediction still counts the pointer steps of the levels it unrolls, so
+// the IR built is never larger than predicted.
+void build_unrolled_ir(conf_t cfg, ir::ir_t &ir) {
+    set_level_forms(cfg.loop, 0);
+
+    ir::ir_t looped_ir;
+    const std::unique_ptr<compute_path_t> looped_cp
+            = make_compute_path(looped_ir, cfg);
+    build_brgemm(cfg, *looped_cp, looped_ir);
+
+    const unsigned l1i_size = platform::get_per_core_cache_size(
+            1, platform::cache_type_t::instruction);
+    // TODO: tune the budget. Half of L1i is a safe starting point.
+    const double budget = l1i_size / 2.0;
+    const double bytes_per_op = looped_cp->code_bytes_per_op();
+    const int n_loop_levels = n_levels_with_loop(cfg.loop);
+
+    int n = 0;
+    while (n < n_loop_levels) {
+        const dim_t n_ops = ir::n_ops_unrolled(looped_ir, n + 1);
+        if ((double)n_ops * bytes_per_op > budget) break;
+        n++;
+    }
+
+    if (n == 0) {
+        ir = std::move(looped_ir);
+        return;
+    }
+
+    set_level_forms(cfg.loop, n);
+    const std::unique_ptr<compute_path_t> cp = make_compute_path(ir, cfg);
+    build_brgemm(cfg, *cp, ir);
+    assert(ir.n_ops() <= ir::n_ops_unrolled(looped_ir, n));
+}
+
 // Picks the compute path the caller chose when it created the descriptor.
 //
 // The finalized descriptor already holds the choice (`is_ace()`, `is_tmm`), so
@@ -1136,7 +1240,9 @@ status_t init_output_conf(output_conf_t &output, compute_path_kind_t kind,
 // the offset at the bounds of all levels covers every displacement and move,
 // including the step of the outer one of the M and N loops, which moves C
 // along M and N with one `add`. The B prefetch is not checked here, see
-// `emit_microkernel()`.
+// `emit_microkernel()`. `build_unrolled_ir()` only loops levels that are
+// unrolled here. A looped level stays within the bounds of an unrolled one, as
+// `max_looped_pos()` is at most `level_size()`.
 status_t check_displacements(const conf_t &conf) {
     auto fits = [](dim_t v) { return jit_generator_t::imm_fits_int32(v); };
 
@@ -1210,17 +1316,17 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
     void generate() override {
         ir::ir_t ir;
 
-        std::unique_ptr<compute_path_t> cp;
-        switch (conf_.compute_path.kind) {
-            case compute_path_kind_t::vector:
-                cp = make_vector_compute_path();
-                break;
-            case compute_path_kind_t::tmul:
-                cp = make_tmul_compute_path(ir, conf_);
-                break;
+        // TMUL kernels pick the `level_form_t` of their levels to fit in L1i.
+        // The others keep the ones that `init_conf()` sets.
+        // TODO: give vector kernels a code size budget too, after measuring
+        // them. Their compute path then needs `code_bytes_per_op()`.
+        if (conf_.compute_path.kind == compute_path_kind_t::tmul) {
+            build_unrolled_ir(conf_, ir);
+        } else {
+            const std::unique_ptr<compute_path_t> cp
+                    = make_compute_path(ir, conf_);
+            build_brgemm(conf_, *cp, ir);
         }
-
-        build_brgemm(conf_, *cp, ir);
 
         ir::codegen_config_t codegen_cfg;
         if (conf_.output.has_stage(output_stage_t::injector_postops)) {

@@ -17,6 +17,8 @@
 #ifndef CPU_X64_PLATFORM_HPP
 #define CPU_X64_PLATFORM_HPP
 
+#include "cpu/platform.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -32,10 +34,11 @@ bool is_hybrid();
 bool has_lpe_core();
 
 // Returns the per-core cache size in bytes for the given level
-// (1=L1d, 2=L2, 3=L3).
+// (1=L1d, 2=L2, 3=L3), or of L1i for level 1 and `cache_type_t::instruction`.
 // On hybrid systems, returns a conservative value based on the smallest
 // per-core cache among present core types.
-unsigned get_per_core_cache_size(int level);
+unsigned get_per_core_cache_size(int level,
+        cpu::platform::cache_type_t type = cpu::platform::cache_type_t::data);
 
 } // namespace platform
 } // namespace x64

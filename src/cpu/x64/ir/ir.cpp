@@ -14,8 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <vector>
 
 #include "common/z_magic.hpp"
 
@@ -540,6 +542,44 @@ void ir_t::def_use(
         case op_kind_t::_else:
         case op_kind_t::if_end: break;
     }
+}
+
+dim_t n_ops_unrolled(const ir_t &ir, int n_levels) {
+    // The code outside every loop, then one entry per open loop, the innermost
+    // last.
+    //   n_ops - operations so far, with each closed inner loop counted unrolled
+    //           or as a loop
+    //   level - highest level of the loops closed inside it, 0 if none
+    struct region_t {
+        dim_t n_ops;
+        int level;
+    };
+    std::vector<region_t> regions = {{0, 0}};
+
+    for (const op_t &op : ir.ops()) {
+        if (op.kind == op_kind_t::loop_begin) {
+            regions.push_back({0, 0});
+            continue;
+        }
+        if (op.kind != op_kind_t::loop_end) {
+            regions.back().n_ops++;
+            continue;
+        }
+
+        const region_t body = regions.back();
+        regions.pop_back();
+        region_t &outer = regions.back();
+
+        const op_t &begin = ir.ops()[op.match];
+        const int level = body.level + 1;
+        const bool is_unrolled = level <= n_levels && !begin.init_is_reg;
+        // A loop that stays adds its `loop_begin` and `loop_end`.
+        outer.n_ops += is_unrolled ? body.n_ops * begin.imm : body.n_ops + 2;
+        outer.level = std::max(outer.level, level);
+    }
+
+    assert(regions.size() == 1 && "n_ops_unrolled: unclosed loop");
+    return regions.back().n_ops;
 }
 
 } // namespace ir

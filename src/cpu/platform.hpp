@@ -173,7 +173,12 @@ bool DNNL_API has_training_support(data_type_t data_type);
 bool DNNL_API has_optimized_gemm();
 float DNNL_API s8s8_weights_scale_factor();
 
-unsigned DNNL_API get_per_core_cache_size(int level);
+// Type of a cache. `data` covers the data and the unified caches. Only level 1
+// has an `instruction` cache.
+enum class cache_type_t { data, instruction };
+
+unsigned DNNL_API get_per_core_cache_size(
+        int level, cache_type_t type = cache_type_t::data);
 uint32_t get_num_ways_in_cache(int level);
 uint32_t get_num_sets_in_cache(int level);
 unsigned DNNL_API get_num_cores();

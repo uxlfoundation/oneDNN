@@ -60,6 +60,7 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(
                     src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
             is_2dby2d_ = wei_d.is_grouped_desc();
+            VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
             const auto &src_grouped = src_d.sparse_desc().grouped_desc;
             group_count_ = src_grouped.group_count;
@@ -100,15 +101,15 @@ struct ref_grouped_t : public primitive_t {
         status_t init_2dby3d(const impl::engine_t *engine) {
             using namespace data_type;
 
-            // Resolve format_any to plain dense
-            if (memory_desc_wrapper(weights_md(0)).format_any())
-                CHECK(memory_desc_init_by_strides(weights_md_, nullptr));
-
             memory_desc_wrapper wei_d(weights_md(0));
 
-            // Supported configurations: abc/acb 3D weights
+            // Supported configurations: abc/acb 3D weights, plain bias
             VDISPATCH_MATMUL(
                     wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
+                    VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_MATMUL(
+                    IMPLICATION(with_bias(),
+                            memory_desc_wrapper(weights_md(1)).is_plain()),
                     VERBOSE_UNSUPPORTED_TAG);
 
             // Supported data types: fp and int for src/wei
@@ -122,12 +123,17 @@ struct ref_grouped_t : public primitive_t {
             const bool is_int_src = utils::one_of(src_type, u8, s8);
             const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4, u3);
 
-            // Supported: fp src + int wei (WOQ), int src + int wei, fp src + fp wei
+            // Supported: f32/bf16/f16 src + int wei (WOQ), int src + int wei but
+            // u3, fp src + fp wei
             VDISPATCH_MATMUL(is_fp_src || is_int_src, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(is_fp_wei || is_int_wei, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(utils::one_of(dst_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(IMPLICATION(is_int_src, is_int_wei),
+            VDISPATCH_MATMUL(
+                    IMPLICATION(is_int_src, is_int_wei && wei_type != u3),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
+                                     utils::one_of(src_type, f32, bf16, f16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             if (attr_.post_ops_.len() > 0) CHECK(setup_post_ops(engine));
@@ -178,10 +184,6 @@ struct ref_grouped_t : public primitive_t {
             using namespace data_type;
 
             memory_desc_wrapper dst_d(dst_md());
-
-            // Resolve format_any to plain dense
-            if (dst_d.format_any())
-                CHECK(memory_desc_init_by_strides(dst_md_, nullptr));
 
             // Only plain dst is supported
             VDISPATCH_MATMUL(dst_d.is_plain(), VERBOSE_UNSUPPORTED_TAG);

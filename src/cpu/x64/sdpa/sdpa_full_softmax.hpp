@@ -253,6 +253,11 @@ struct sdpa_full_softmax_conf_t {
     // together, so q_block == 1 and m_block == query_heads_per_item.
     dim_t q_block = 0, q_tail = 0;
     dim_t m_block = 0;
+    // per_head and kv_head_group: deal work items to threads round-robin, so
+    // threads running at the same time work on neighboring query blocks of the
+    // same KV head and read its K/V from the shared L3. Otherwise each thread
+    // gets one contiguous range of work items.
+    bool interleave_items = false;
     // BRGEMM row strides: mm1_lda for Q and mm2_ldc for mm2's C. The user
     // output uses out_ld when mm2 writes to it directly or scatters.
     dim_t mm1_lda = 0, mm2_ldc = 0;

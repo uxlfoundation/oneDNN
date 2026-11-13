@@ -36,6 +36,7 @@
 #include "cpu/x64/cpu_reducer.hpp"
 #include "cpu/x64/jit_avx512_core_amx_conv_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_comp_pad_kernel.hpp"
+#include "cpu/x64/jit_brgemm_conv_fp8_cvt_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_relo_copy_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_trans_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_utils.hpp"
@@ -162,8 +163,8 @@ private:
             , dst(CTX_OUT_MEM(char *, DNNL_ARG_DST))
             , post_ops_binary_rhs_arg_vec(binary_injector::prepare_binary_args(
                       pd->attr()->post_ops_, ctx)) {}
-        const char *const __restrict src;
-        const char *const __restrict weights;
+        const char *__restrict src;
+        const char *__restrict weights;
         const char *const __restrict bias;
         char *const __restrict dst;
         const std::vector<const void *> post_ops_binary_rhs_arg_vec;
@@ -213,6 +214,9 @@ private:
             const char *__restrict input_weights,
             const char *__restrict &wei) const;
 
+    void maybe_precvt_fp8(const exec_ctx_t &ctx, const char *__restrict &src,
+            const char *__restrict &wei) const;
+
     status_t add_po_kernel(brgemm_desc_t *bcfg, int ker_idx, bool is_init);
     status_t add_po_kernels(int i_N, dim_t init_bcast_dim, dim_t po_bcast_dim);
     status_t add_brg_kernel(int brg_idx);
@@ -238,6 +242,8 @@ private:
     std::unique_ptr<jit_avx512_core_amx_copy_to_pbuffer_t>
             copy_to_relo_pbuffer_;
     std::unique_ptr<jit_brgemm_relo_copy_to_wbuffer_t> copy_to_relo_wbuffer_;
+    std::unique_ptr<jit_brgemm_conv_fp8_cvt_kernel_t> fp8_src_cvt_;
+    std::unique_ptr<jit_brgemm_conv_fp8_cvt_kernel_t> fp8_weights_cvt_;
 
     std::unique_ptr<jit_generator_t> comp_vpad_pbuffer_;
 

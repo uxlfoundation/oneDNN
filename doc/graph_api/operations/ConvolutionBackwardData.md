@@ -6,68 +6,27 @@ ConvolutionBackwardData {#dev_guide_op_convolutionbackwarddata}
 ConvolutionBackwardData operation accepts \f$\diffdst\f$, \weights and optional
 dst shape as inputs, and compute the \f$\diffsrc\f$.
 
-If `auto_pad` attribute is specified to one of `VALID`, `SAME_UPPER` and
-`SAME_LOWER`, `pads_begin` and `pads_end` attributes will be ignored. The
-paddings will be calculated by following the below formula:
-
-Let the parameters be:
-
-| Parameter                        | Depth      | Height     | Width      | Comment                                                                                |
-|:---------------------------------|:-----------|:-----------|:-----------|:---------------------------------------------------------------------------------------|
-| Paddings: Front, top, and left   | \f$PD_L\f$ | \f$PH_L\f$ | \f$PW_L\f$ | In the attributes we use `pads_begin` to indicate the corresponding vector of paddings |
-| Padding: Back, bottom, and right | \f$PD_R\f$ | \f$PH_R\f$ | \f$PW_R\f$ | In the attributes we use `pads_end` to indicate the corresponding vector of paddings   |
-| Stride                           | \f$SD\f$   | \f$SH\f$   | \f$SW\f$   | In the attributes we use `strides` to indicate the corresponding vector of strides     |
-| Dilation                         | \f$DD\f$   | \f$DH\f$   | \f$DW\f$   | In the attributes we use `dilations` to indicate the corresponding vector of dilations |
-
-Firstly, \f$total\_padding\f$ is calculated according to \f$src\_shape\f$ and \f$dst\_shape\f$.
-Let \f$src\_h\f$ be height dimension of \f$src\_shape\f$ and \f$dst\_h\f$ be
-height dimension of \f$dst\_shape\f$.
-
-\f[
-    total\_padding_h = SH \times (src\_h - 1) + ((KH -1 ) \times DH + 1) - dst\_h + output\_padding_h
-\f]
-
-If `auto_pad` attribute is specified as `valid`:
-
-\f[
-  PD_L = 0 \\
-  PD_R = 0
-\f]
-
-If `auto_pad` attribute is specified as `same_lower`:
-
-\f[
-  PD_L = floor(total\_padding / 2) \\
-  PD_R = total\_padding - PD_L
-\f]
-
-If `auto_pad` attribute is specified as `same_upper`:
-
-\f[
-  PD_L = total\_padding - PD_R \\
-  PD_R = floor(total\_padding / 2)
-\f]
-
-where:
-
-- \f$dst\_shape\f$ is either an attribute or an input tensor,
-
-- \f$output\_padding\f$ is an optional attribute.
-
 ## Operation attributes
 
-| Attribute Name                                               | Description                                                                                                                                                                               | Value Type | Supported Values                                                     | Required or Optional |
-|:-------------------------------------------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------|:---------------------------------------------------------------------|:---------------------|
-| [strides](@ref dnnl::graph::op::attr::strides)               | Controls the strides the weights tensor is moved when computing convolution                                                                                                               | s64        | A s64 list containing positive values                                | Required             |
-| [pads_begin](@ref dnnl::graph::op::attr::pads_begin)         | Controls number of zeros to be add to the front/top/left of spatial dimensions                                                                                                            | s64        | A s64 list containing non-negative values                            | Required             |
-| [pads_end](@ref dnnl::graph::op::attr::pads_end)             | Controls number of zeros to be add to the back/bottom/right of spatial dimensions                                                                                                         | s64        | A s64 list containing non-negative values                            | Required             |
-| [dilations](@ref dnnl::graph::op::attr::dilations)           | Controls the amount of stretching the kernel before convolution ([visualization link](https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md#dilated-convolution-animations)) | s64        | A s64 list containing positive values (>1 means dilated convolution) | Required             |
-| [auto_pad](@ref dnnl::graph::op::attr::auto_pad)             | Controls how the padding is calculated                                                                                                                                                    | string     | `None` (default), `SAME_UPPER`, `SAME_LOWER`, `VALID`                | Optional             |
-| [output_padding](@ref dnnl::graph::op::attr::output_padding) | Adds additional amount of padding per each spatial axis in `dst`.                                                                                                                         | s64        | A s64 list containing non-negative values, all zeros by default      | Optional             |
-| [groups](@ref dnnl::graph::op::attr::groups)                 | Controls how input channels and output channels are divided into                                                                                                                          | s64        | A positive s64 value, `1` by default                                 | Optional             |
-| [data_format](@ref dnnl::graph::op::attr::data_format)       | Controls how to interpret the shape of `src` and `dst`.                                                                                                                                   | string     | `NCX`, `NXC` (default)                                               | Optional             |
-| [weights_format](@ref dnnl::graph::op::attr::weights_format) | Controls how to interpret the shape of `weights`.                                                                                                                                         | string     | `OIX`, `XIO` (default)                                               | Optional             |
-| [dst_shape](@ref dnnl::graph::op::attr::dst_shape)           | Denotes the shape of the `dst` tensor.                                                                                                                                                    | s64        | A s64 list containing positive values                                | Optional             |
+| Attribute Name                                               | Description                                                                       | Value Type | Supported Values                                                     | Required or Optional |
+|:-------------------------------------------------------------|:----------------------------------------------------------------------------------|:-----------|:---------------------------------------------------------------------|:---------------------|
+| [strides](@ref dnnl::graph::op::attr::strides)               | Controls the strides the weights tensor is moved when computing convolution       | s64        | A s64 list containing positive values                                | Required             |
+| [pads_begin](@ref dnnl::graph::op::attr::pads_begin)         | Controls number of zeros to be add to the front/top/left of spatial dimensions    | s64        | A s64 list containing non-negative values                            | Required             |
+| [pads_end](@ref dnnl::graph::op::attr::pads_end)             | Controls number of zeros to be add to the back/bottom/right of spatial dimensions | s64        | A s64 list containing non-negative values                            | Required             |
+| [dilations](@ref dnnl::graph::op::attr::dilations)           | Controls the amount of stretching the kernel before convolution                   | s64        | A s64 list containing positive values (>1 means dilated convolution) | Required             |
+| [auto_pad](@ref dnnl::graph::op::attr::auto_pad)             | Controls how the padding is calculated                                            | string     | `None` (default), `SAME_UPPER`, `SAME_LOWER`, `VALID`                | Optional             |
+| [output_padding](@ref dnnl::graph::op::attr::output_padding) | Adds additional amount of padding per each spatial axis in `dst`.                 | s64        | A s64 list containing non-negative values, all zeros by default      | Optional             |
+| [groups](@ref dnnl::graph::op::attr::groups)                 | Controls how input channels and output channels are divided into                  | s64        | A positive s64 value, `1` by default                                 | Optional             |
+| [data_format](@ref dnnl::graph::op::attr::data_format)       | Controls how to interpret the shape of `src` and `dst`.                           | string     | `NCX`, `NXC` (default)                                               | Optional             |
+| [weights_format](@ref dnnl::graph::op::attr::weights_format) | Controls how to interpret the shape of `weights`.                                 | string     | `OIX`, `XIO` (default)                                               | Optional             |
+| [dst_shape](@ref dnnl::graph::op::attr::dst_shape)           | Denotes the shape of the `dst` tensor.                                            | s64        | A s64 list containing positive values                                | Optional             |
+
+@note If `auto_pad` is set to `VALID`, `SAME_UPPER`, or `SAME_LOWER`, the
+attributes `pads_begin` and `pads_end` are ignored. The paddings are calculated
+as described in [Auto Padding](@ref dev_guide_op_convolution_auto_pad) of
+Convolution, with the input spatial sizes taken from `dst_shape`. Hence they are
+the same as the paddings of the forward Convolution whose `src` has the shape
+`dst_shape`.
 
 ## Execution arguments
 

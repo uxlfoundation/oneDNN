@@ -23,16 +23,22 @@ where,
 
 ## Operation attributes
 
-| Attribute Name                                             | Description                                                                                                                                                                                       | Value Type | Supported Values                                      | Required or Optional |
-|:-----------------------------------------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------|:------------------------------------------------------|:---------------------|
-| [strides](@ref dnnl::graph::op::attr::strides)             | Controls the strides the window is moved.                                                                                                                                                         | s64        | A s64 list containing positive values.                | Required             |
-| [pads_begin](@ref dnnl::graph::op::attr::pads_begin)       | Controls number of zeros to be add to the front/top/left of spatial dimensions, the attribute will be ignored when `auto_pad` attribute is specified to `SAME_UPPER`, `SAME_LOWER` or `VALID`.    | s64        | A s64 list containing non-negative values.            | Required             |
-| [pads_end](@ref dnnl::graph::op::attr::pads_end)           | Controls number of zeros to be add to the back/bottom/right of spatial dimensions, the attribute will be ignored when `auto_pad` attribute is specified to `SAME_UPPER`, `SAME_LOWER` or `VALID`. | s64        | A s64 list containing non-negative values.            | Required             |
-| [kernel](@ref dnnl::graph::op::attr::kernel)               | Size of pooling window.                                                                                                                                                                           | s64        | A s64 list containing positive values.                | Required             |
-| [exclude_pad](@ref dnnl::graph::op::attr::exclude_pad)     | Controls whether the padded values are counted.                                                                                                                                                   | bool       | True, False                                           | Required             |
-| [rounding_type](@ref dnnl::graph::op::attr::rounding_type) | Controls how to do rounding.                                                                                                                                                                      | string     | `floor` (default), `ceil`                             | Optional             |
-| [auto_pad](@ref dnnl::graph::op::attr::auto_pad)           | Controls how the paddings are calculated.                                                                                                                                                         | string     | `None` (default), `SAME_UPPER`, `SAME_LOWER`, `VALID` | Optional             |
-| [data_format](@ref dnnl::graph::op::attr::data_format)     | Controls how to interpret the shape of `src` and `dst`.                                                                                                                                           | string     | `NCX`, `NXC` (default)                                | Optional             |
+| Attribute Name                                             | Description                                                                       | Value Type | Supported Values                                      | Required or Optional |
+|:-----------------------------------------------------------|:----------------------------------------------------------------------------------|:-----------|:------------------------------------------------------|:---------------------|
+| [strides](@ref dnnl::graph::op::attr::strides)             | Controls the strides the window is moved.                                         | s64        | A s64 list containing positive values.                | Required             |
+| [pads_begin](@ref dnnl::graph::op::attr::pads_begin)       | Controls number of zeros to be add to the front/top/left of spatial dimensions    | s64        | A s64 list containing non-negative values.            | Required             |
+| [pads_end](@ref dnnl::graph::op::attr::pads_end)           | Controls number of zeros to be add to the back/bottom/right of spatial dimensions | s64        | A s64 list containing non-negative values.            | Required             |
+| [kernel](@ref dnnl::graph::op::attr::kernel)               | Size of pooling window.                                                           | s64        | A s64 list containing positive values.                | Required             |
+| [exclude_pad](@ref dnnl::graph::op::attr::exclude_pad)     | Controls whether the padded values are counted.                                   | bool       | True, False                                           | Required             |
+| [rounding_type](@ref dnnl::graph::op::attr::rounding_type) | Controls how to do rounding.                                                      | string     | `floor` (default), `ceil`                             | Optional             |
+| [auto_pad](@ref dnnl::graph::op::attr::auto_pad)           | Controls how the paddings are calculated.                                         | string     | `None` (default), `SAME_UPPER`, `SAME_LOWER`, `VALID` | Optional             |
+| [data_format](@ref dnnl::graph::op::attr::data_format)     | Controls how to interpret the shape of `src` and `dst`.                           | string     | `NCX`, `NXC` (default)                                | Optional             |
+
+@note If `auto_pad` is set to `VALID`, `SAME_UPPER`, or `SAME_LOWER`, the
+attributes `pads_begin` and `pads_end` are ignored. The paddings are calculated
+as described in [Auto Padding](@ref dev_guide_op_convolution_auto_pad) of
+Convolution, where the kernel size is given by the `kernel` attribute and no
+dilation is applied.
 
 ## Execution arguments
 

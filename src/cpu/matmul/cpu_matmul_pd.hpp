@@ -42,6 +42,17 @@ struct cpu_matmul_pd_t : public matmul_pd_t {
         return status::success;
     }
     // NOLINTEND(google-default-arguments)
+
+    // For implementations that apply weight scales to the product, one per
+    // output channel: a weight mask over K cannot be applied there.
+    status_t wei_scales_not_over_k(const engine_t *engine) const {
+        const auto &scales = attr()->scales_;
+        VDISPATCH_MATMUL(
+                IMPLICATION(!scales.has_default_values(DNNL_ARG_WEIGHTS),
+                        !(scales.get_mask(DNNL_ARG_WEIGHTS) & wei_qmask_K())),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+        return status::success;
+    }
 };
 
 } // namespace matmul

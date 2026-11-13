@@ -86,3 +86,6 @@
 
 # BF16 destination with bias, sum, and eltwise.
 --reset --impl=brg:sve_ --dt=bf16:bf16:bf16 --bia-dt=bf16 --stag=ab --wtag=any --dtag=ab --attr-post-ops=sum:1+relu 31x72:72x128_n"bf16_epilogue"
+# Per-K weight scales without groups (CPU gemm-based matmuls applied them per N).
+--reset --dt=f32,s8:s8:f32 --attr-scales=wei:1 2x64:64x6_n"wei_scales_per_k"
+--reset --dt=f32 --attr-scales=wei:2 6x2x64:1x64x6_n"wei_scales_per_k_3d"

@@ -198,6 +198,13 @@ status_t grouped_matmul_attr_check(
             attr->has_default_values(allowed_mask, desc.dst_desc.data_type),
             VERBOSE_UNSUPPORTED_ATTR);
 
+    // The skip mask doesn't cover quantization modes, only the default one
+    // is supported
+    VCHECK_MATMUL_UNIMPL(
+            attr->scales_.has_default_qmode(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCHECK_MATMUL_UNIMPL(
+            attr->zero_points_.has_default_qmode(), VERBOSE_UNSUPPORTED_ZP_CFG);
+
     const auto &sc = attr->scales_;
 
     // Dissalow scales on fp src/wei/dst data as real-world applications

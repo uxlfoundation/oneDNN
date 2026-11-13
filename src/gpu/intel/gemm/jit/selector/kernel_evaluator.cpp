@@ -582,11 +582,10 @@ EvaluateAuxOutput evaluateFixed(const kcatalog::Entry &e, const DerivedEvaluateP
     evaluateECore(e, dp, aux);
 
     // Plain kr: even k split, no minimum slice.
-    if (di.kParallelLocal() && !aux.kParallel && !aux.kParallelVariable) {
+    if (di.kParallelLocal() && !aux.kParallel && !aux.kParallelVariable
+            && !di.shrinkWGK()) {
         aux.k0 = alignUp(divUp(dp.sizes.k, di.wg[LoopK]), di.unroll[LoopK]);
-        if (!di.fixedWGK())
-            aux.wgK = std::max(1,
-                    std::min(di.wg[LoopK], int(divUp(dp.sizes.k, aux.k0))));
+        aux.wgK = di.wg[LoopK];
     }
     return aux;
 }

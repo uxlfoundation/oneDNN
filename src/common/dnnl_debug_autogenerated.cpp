@@ -40,6 +40,7 @@ const char *dnnl_status2str(dnnl_status_t v) {
     if (v == dnnl_invalid_graph_op) return "invalid_graph_op";
     if (v == dnnl_invalid_shape) return "invalid_shape";
     if (v == dnnl_invalid_data_type) return "invalid_data_type";
+    if (v == dnnl_data_type_not_supported) return "data_type_not_supported";
     assert(!"unknown status");
     return "unknown status";
 }

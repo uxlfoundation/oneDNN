@@ -14115,6 +14115,8 @@ enum class status {
     runtime_error = dnnl_runtime_error,
     /// @copydoc dnnl_not_required
     not_required = dnnl_not_required,
+    /// @copydoc dnnl_data_type_not_supported
+    data_type_not_supported = dnnl_data_type_not_supported,
 };
 
 /// @copydoc dnnl_set_verbose()

@@ -15,6 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/intel/sdpa/micro.hpp"
+
+#include <cstring>
 #include "gpu/intel/sdpa/configs.hpp"
 
 #include "common/c_types_map.hpp"
@@ -1119,11 +1121,6 @@ status_t micro_bwd_t::pd_t::init_scratchpad(const impl::engine_t *engine) {
     scratchpad.book(memory_tracking::names::key_sdpa_Di, Di_size, sizeof(float),
             gpu_align);
 
-    // buffer for stride/offset parameters passed to backwards kernel
-    // through global pointer to reduce kernel arguments size
-    scratchpad.book(memory_tracking::names::key_sdpa_bwd_strides, 32,
-            sizeof(int64_t), gpu_align);
-
     return status::success;
 }
 
@@ -1738,6 +1735,125 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
+namespace {
+// Memory offsets of every tensor the backward kernels read or write. They
+// depend only on the primitive descriptor, so execute_backward and
+// init_res_storage compute them the same way from here.
+struct bwd_offsets_t {
+    using offset_t = decltype(offsets_t().src_off);
+    offset_t qry, key, val, dst, msk, da;
+    offset_t diff_qry, diff_key, diff_val;
+    // where the kernel writes dQ/dK/dV: the f32 scratch buffers when an
+    // intermediate reduction is needed, the user's tensors otherwise
+    offset_t dq, dk, dv;
+    bool needs_intermediate_dQ = false, needs_intermediate_dKV = false;
+};
+
+bwd_offsets_t bwd_offsets(const micro_bwd_t::pd_t *pd) {
+    bwd_offsets_t o;
+    const auto *d = pd->desc();
+    const dim_t Q = d->queries(), K = d->keys(), D = d->head_size();
+    const data_type_t data_t = pd->dst_md()->data_type;
+    o.needs_intermediate_dQ = (data_t != data_type::f32) && !pd->conf.direct_dQ;
+    o.needs_intermediate_dKV
+            = (pd->conf.kv_group_size > 1 && data_t != data_type::f32);
+
+    set_offsets(memory_desc_wrapper(d->qry_md()), o.qry);
+    set_offsets(memory_desc_wrapper(d->key_md()), o.key);
+    set_offsets(memory_desc_wrapper(d->val_md()), o.val);
+    set_offsets(memory_desc_wrapper(pd->dst_md()), o.dst);
+    set_offsets(memory_desc_wrapper(d->attn_mask_md()), o.msk);
+    set_offsets(memory_desc_wrapper(pd->diff_dst_md()), o.da);
+    set_offsets(memory_desc_wrapper(d->diff_qry_md()), o.diff_qry);
+    set_offsets(memory_desc_wrapper(d->diff_key_md()), o.diff_key);
+    set_offsets(memory_desc_wrapper(d->diff_val_md()), o.diff_val);
+
+    // scratch buffers are allocated as flat B*H*S*D element buffers
+    auto set_contiguous_offsets = [](bwd_offsets_t::offset_t &offs, dim_t B,
+                                          dim_t H, dim_t S, dim_t D) {
+        offs[3][0] = B;
+        offs[3][1] = H;
+        offs[3][2] = S;
+        offs[3][3] = D;
+
+        offs[1][0] = H * S * D;
+        offs[1][1] = S * D;
+        offs[1][2] = D;
+        offs[1][3] = 1;
+    };
+
+    if (o.needs_intermediate_dQ)
+        set_contiguous_offsets(o.dq, d->batch(), d->num_q_heads(), Q, D);
+    else
+        set_offsets(memory_desc_wrapper(d->diff_qry_md()), o.dq);
+    if (!o.needs_intermediate_dKV) {
+        set_offsets(memory_desc_wrapper(d->diff_key_md()), o.dk);
+        set_offsets(memory_desc_wrapper(d->diff_val_md()), o.dv);
+    } else {
+        // match the tile orientation used by the kernel in dK write
+        if (pd->conf.transpose_k) {
+            set_contiguous_offsets(o.dk, d->batch(), d->num_kv_heads(), K, D);
+        } else {
+            set_contiguous_offsets(o.dk, d->batch(), d->num_kv_heads(), D, K);
+        }
+        set_contiguous_offsets(o.dv, d->batch(), d->num_kv_heads(), K, D);
+    }
+    return o;
+}
+} // namespace
+
+status_t micro_bwd_t::init_res_storage(
+        impl::engine_t *engine, gpu_resource_t *r) const {
+    // replaces 27-32 int64 kernel arguments with one pointer
+    constexpr int n_strides = 32;
+    const bwd_offsets_t o = bwd_offsets(pd());
+    int64_t buf[n_strides] = {};
+    buf[0] = o.key[1][0]; // KEY_S0
+    buf[1] = o.key[1][1]; // KEY_S1
+    buf[2] = o.key[1][2]; // KEY_S2
+    buf[3] = o.key[1][3]; // KEY_S3
+    buf[4] = o.qry[1][0]; // QRY_S0
+    buf[5] = o.qry[1][1]; // QRY_S1
+    buf[6] = o.qry[1][2]; // QRY_S2
+    buf[7] = o.val[1][0]; // VAL_S0
+    buf[8] = o.val[1][1]; // VAL_S1
+    buf[9] = o.val[1][2]; // VAL_S2
+    buf[10] = o.dst[1][0]; // DST_S0
+    buf[11] = o.dst[1][1]; // DST_S1
+    buf[12] = o.dst[1][2]; // DST_S2
+    buf[13] = o.dst[3][1]; // DST_D1
+    buf[14] = o.da[1][0]; // DA_S0
+    buf[15] = o.da[1][1]; // DA_S1
+    buf[16] = o.da[1][2]; // DA_S2
+    buf[17] = o.dk[1][0]; // DK_S0
+    buf[18] = o.dk[1][1]; // DK_S1
+    buf[19] = o.dk[1][2]; // DK_S2
+    buf[20] = o.dk[1][3]; // DK_S3
+    buf[21] = o.dq[1][0]; // DQ_S0
+    buf[22] = o.dq[1][1]; // DQ_S1
+    buf[23] = o.dq[1][2]; // DQ_S2
+    buf[24] = o.dv[1][0]; // DV_S0
+    buf[25] = o.dv[1][1]; // DV_S1
+    buf[26] = o.dv[1][2]; // DV_S2
+    if (pd()->with_attn_mask()) {
+        buf[27] = o.msk[1][0]; // MSK_S0
+        buf[28] = o.msk[1][1]; // MSK_S1
+        buf[29] = o.msk[1][2]; // MSK_S2
+        buf[30] = o.msk[3][0]; // MSK_D0
+        buf[31] = o.msk[3][1]; // MSK_D1
+    }
+
+    memory_storage_t *storage_ptr = nullptr;
+    CHECK(engine->create_memory_storage(&storage_ptr, sizeof(buf)));
+    std::unique_ptr<memory_storage_t> storage(storage_ptr);
+    void *mapped = nullptr;
+    CHECK(storage->map_data(&mapped, nullptr, sizeof(buf)));
+    std::memcpy(mapped, buf, sizeof(buf));
+    CHECK(storage->unmap_data(mapped, nullptr));
+    r->add_memory_storage(BWD_STRIDES_, std::move(storage));
+    return status::success;
+}
+
 status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
@@ -1758,8 +1874,6 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             memory_tracking::names::key_sdpa_dK_reduction);
     auto diff_v_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_sdpa_dV_reduction);
-    auto strides_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
-            memory_tracking::names::key_sdpa_bwd_strides);
 
     const bool with_dS = pd()->with_dS();
 
@@ -1768,11 +1882,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     const dim_t K = pd()->desc()->keys();
     const dim_t D = pd()->desc()->head_size();
 
-    const data_type_t data_t = pd()->dst_md()->data_type;
     const bool direct_dQ = pd()->conf.direct_dQ;
-    const bool needs_intermediate_dQ = (data_t != data_type::f32) && !direct_dQ;
-    const bool needs_intermediate_dKV
-            = (kv_group_size > 1 && data_t != data_type::f32);
     const bool needs_zero_dKV = (kv_group_size > 1);
 
     const bool all_q_visited
@@ -1800,57 +1910,17 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     auto sg_per_wg
             = std::max(std::max(sg_per_wg_BcBr, sg_per_wg_DBc), sg_per_wg_DBr);
 
-    const memory_desc_wrapper qry_mdw(pd()->desc()->qry_md());
-    const memory_desc_wrapper key_mdw(pd()->desc()->key_md());
-    const memory_desc_wrapper val_mdw(pd()->desc()->val_md());
-    const memory_desc_wrapper dst_mdw(pd()->dst_md());
-    const memory_desc_wrapper msk_mdw(pd()->desc()->attn_mask_md());
-    const memory_desc_wrapper diff_dst_mdw(pd()->diff_dst_md());
     const memory_desc_wrapper diff_qry_mdw(pd()->desc()->diff_qry_md());
     const memory_desc_wrapper diff_key_mdw(pd()->desc()->diff_key_md());
     const memory_desc_wrapper diff_val_mdw(pd()->desc()->diff_val_md());
-    using offset_t = decltype(offsets_t().src_off);
-
-    offset_t qry_off, key_off, val_off, dst_off, msk_off, da_off;
-    offset_t dq_off, dk_off, dv_off;
-
-    set_offsets(qry_mdw, qry_off);
-    set_offsets(key_mdw, key_off);
-    set_offsets(val_mdw, val_off);
-    set_offsets(dst_mdw, dst_off);
-    set_offsets(msk_mdw, msk_off);
-    set_offsets(diff_dst_mdw, da_off);
-
-    // scratch buffers are allocated as flat B*H*S*D element buffers
-    auto set_contiguous_offsets
-            = [](offset_t &offs, dim_t B, dim_t H, dim_t S, dim_t D) {
-        offs[3][0] = B;
-        offs[3][1] = H;
-        offs[3][2] = S;
-        offs[3][3] = D;
-
-        offs[1][0] = H * S * D;
-        offs[1][1] = S * D;
-        offs[1][2] = D;
-        offs[1][3] = 1;
-    };
-
-    if (needs_intermediate_dQ) {
-        set_contiguous_offsets(dq_off, pd()->desc()->batch(),
-                pd()->desc()->num_q_heads(), Q, D);
-    }
-    if (needs_intermediate_dKV) {
-        // match the tile orientation used by the kernel in dK write
-        if (conf.transpose_k) {
-            set_contiguous_offsets(dk_off, pd()->desc()->batch(),
-                    pd()->desc()->num_kv_heads(), K, D);
-        } else {
-            set_contiguous_offsets(dk_off, pd()->desc()->batch(),
-                    pd()->desc()->num_kv_heads(), D, K);
-        }
-        set_contiguous_offsets(dv_off, pd()->desc()->batch(),
-                pd()->desc()->num_kv_heads(), K, D);
-    }
+    const bwd_offsets_t offs = bwd_offsets(pd());
+    using offset_t = bwd_offsets_t::offset_t;
+    const bool needs_intermediate_dQ = offs.needs_intermediate_dQ;
+    const bool needs_intermediate_dKV = offs.needs_intermediate_dKV;
+    const offset_t &qry_off = offs.qry, &dst_off = offs.dst, &da_off = offs.da;
+    const offset_t &dq_off = offs.dq, &dk_off = offs.dk, &dv_off = offs.dv;
+    const offset_t &diff_qry_off = offs.diff_qry, &diff_key_off = offs.diff_key,
+                   &diff_val_off = offs.diff_val;
 
     auto append_qry_offs
             = [](compute::kernel_arg_list_t &arg_list, const offset_t &offs) {
@@ -1982,58 +2052,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.append(mask_type);
     if (pd()->with_attn_mask()) arg_list.append(attn_mask);
 
-    // pack all stride/offset parameters into a global buffer to reduce
-    // kernel argument pressure (replaces 27-32 int64 args with 1 pointer).
-    offset_t diff_key_off, diff_qry_off, diff_val_off;
-    set_offsets(diff_key_mdw, diff_key_off);
-    set_offsets(diff_qry_mdw, diff_qry_off);
-    set_offsets(diff_val_mdw, diff_val_off);
-
-    const auto &dk_off_ref = needs_intermediate_dKV ? dk_off : diff_key_off;
-    const auto &dq_off_ref = needs_intermediate_dQ ? dq_off : diff_qry_off;
-    const auto &dv_off_ref = needs_intermediate_dKV ? dv_off : diff_val_off;
-    {
-        void *mapped = nullptr;
-        CHECK(strides_scratch->map_data(
-                &mapped, ctx.stream(), 32 * sizeof(int64_t)));
-        auto *buf = static_cast<int64_t *>(mapped);
-        buf[0] = key_off[1][0]; // KEY_S0
-        buf[1] = key_off[1][1]; // KEY_S1
-        buf[2] = key_off[1][2]; // KEY_S2
-        buf[3] = key_off[1][3]; // KEY_S3
-        buf[4] = qry_off[1][0]; // QRY_S0
-        buf[5] = qry_off[1][1]; // QRY_S1
-        buf[6] = qry_off[1][2]; // QRY_S2
-        buf[7] = val_off[1][0]; // VAL_S0
-        buf[8] = val_off[1][1]; // VAL_S1
-        buf[9] = val_off[1][2]; // VAL_S2
-        buf[10] = dst_off[1][0]; // DST_S0
-        buf[11] = dst_off[1][1]; // DST_S1
-        buf[12] = dst_off[1][2]; // DST_S2
-        buf[13] = dst_off[3][1]; // DST_D1
-        buf[14] = da_off[1][0]; // DA_S0
-        buf[15] = da_off[1][1]; // DA_S1
-        buf[16] = da_off[1][2]; // DA_S2
-        buf[17] = dk_off_ref[1][0]; // DK_S0
-        buf[18] = dk_off_ref[1][1]; // DK_S1
-        buf[19] = dk_off_ref[1][2]; // DK_S2
-        buf[20] = dk_off_ref[1][3]; // DK_S3
-        buf[21] = dq_off_ref[1][0]; // DQ_S0
-        buf[22] = dq_off_ref[1][1]; // DQ_S1
-        buf[23] = dq_off_ref[1][2]; // DQ_S2
-        buf[24] = dv_off_ref[1][0]; // DV_S0
-        buf[25] = dv_off_ref[1][1]; // DV_S1
-        buf[26] = dv_off_ref[1][2]; // DV_S2
-        if (pd()->with_attn_mask()) {
-            buf[27] = msk_off[1][0]; // MSK_S0
-            buf[28] = msk_off[1][1]; // MSK_S1
-            buf[29] = msk_off[1][2]; // MSK_S2
-            buf[30] = msk_off[3][0]; // MSK_D0
-            buf[31] = msk_off[3][1]; // MSK_D1
-        }
-        CHECK(strides_scratch->unmap_data(mapped, ctx.stream()));
-    }
-    arg_list.append(*strides_scratch);
+    // stride/offset parameters, packed once in init_res_storage
+    arg_list.append(CTX_GPU_RES_STORAGE(BWD_STRIDES_));
 
     const int remainder_k = (K % wg_tile_k) != 0;
 

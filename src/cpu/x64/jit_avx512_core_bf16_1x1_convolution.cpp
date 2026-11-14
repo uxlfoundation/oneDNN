@@ -24,19 +24,16 @@
 
 #include "cpu/x64/jit_generator.hpp"
 
+#include <cstring>
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <data_type_t dst_type>
-DEFINE_PD_CREATE(jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::pd_t)
-template <data_type_t diff_src_type>
-DEFINE_PD_CREATE(
-        jit_avx512_core_bf16_1x1_convolution_bwd_data_t<diff_src_type>::pd_t)
-template <data_type_t diff_weights_type>
-DEFINE_PD_CREATE(jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<
-        diff_weights_type>::pd_t)
+DEFINE_PD_CREATE(jit_avx512_core_bf16_1x1_convolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(jit_avx512_core_bf16_1x1_convolution_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(jit_avx512_core_bf16_1x1_convolution_bwd_weights_t::pd_t)
 
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
@@ -73,8 +70,7 @@ void balance2D(U nthr, U ithr, T ny, T &ny_start, T &ny_end, T nx, T &nx_start,
 } // namespace
 
 /* convolution forward */
-template <data_type_t dst_type>
-void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward(
+void jit_avx512_core_bf16_1x1_convolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
@@ -131,8 +127,7 @@ void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward(
     if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
 }
 
-template <data_type_t dst_type>
-void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward_thr(
+void jit_avx512_core_bf16_1x1_convolution_fwd_t::execute_forward_thr(
         const int ithr, const int nthr, const src_data_t *src,
         const wei_data_t *weights, const char *bias,
         const dw_wei_data_t *weights_dw, const float *bias_dw, const char *dst,
@@ -180,7 +175,7 @@ void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward_thr(
             : jcp.nb_load_blocking_max;
 
     // Begin: declare Variables needed for dw conv.
-    dst_data_t *pbuf; //bf16->bf16 fusion
+    dw_buf_data_t *pbuf; //bf16->bf16 fusion
     size_t row_offset;
     const auto jcp_dw = pd()->jcp_dw_;
     const dim_t nb_buffer = jcp.nb_load_blocking;
@@ -410,7 +405,7 @@ void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward_thr(
         memory_tracking::grantor_t dw_scratchpad(
                 scratchpad, memory_tracking::names::prefix_fusion);
         const auto dw_conv_buffer
-                = dw_scratchpad.get<dst_data_t>(key_fusion_inout_buffer);
+                = dw_scratchpad.get<dw_buf_data_t>(key_fusion_inout_buffer);
 
         const auto dw_conv_buffer_size_
                 = jcp_dw->kh * jcp.ow * nb_buffer * jcp.oc_block;
@@ -470,17 +465,11 @@ void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward_thr(
     }
 }
 
-REG_AVX512_ISA(template struct jit_avx512_core_bf16_1x1_convolution_fwd_t<
-        data_type::f32>);
-REG_AVX512_ISA(template struct jit_avx512_core_bf16_1x1_convolution_fwd_t<
-        data_type::bf16>);
-
-template <data_type_t diff_src_type>
-void jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
-        diff_src_type>::execute_backward_data(const exec_ctx_t &ctx) const {
+void jit_avx512_core_bf16_1x1_convolution_bwd_data_t::execute_backward_data(
+        const exec_ctx_t &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
+    auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
     const auto &scratchpad = ctx.get_scratchpad_grantor();
     const auto &jcp = kernel_->jcp;
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
@@ -490,11 +479,9 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
     });
 }
 
-template <data_type_t diff_src_type>
-void jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
-        diff_src_type>::execute_backward_data_thr(const int ithr,
-        const int nthr, const diff_dst_data_t *diff_dst,
-        const wei_data_t *weights, diff_src_data_t *diff_src,
+void jit_avx512_core_bf16_1x1_convolution_bwd_data_t::execute_backward_data_thr(
+        const int ithr, const int nthr, const diff_dst_data_t *diff_dst,
+        const wei_data_t *weights, char *diff_src,
         const memory_tracking::grantor_t &scratchpad) const {
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
@@ -503,8 +490,9 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
 
     const auto &jcp = kernel_->jcp;
 
+    const size_t diff_src_dt_size = diff_src_d.data_type_size();
     auto rtus_space = pd()->rtus_.reduce_src_
-            ? scratchpad.template get<diff_src_data_t>(key_conv_rtus_space)
+            ? scratchpad.template get<char>(key_conv_rtus_space)
             : nullptr;
     float *store_buffer = scratchpad.template get<float>(key_conv_store_wsp);
     const int ndims = diff_src_d.ndims();
@@ -583,9 +571,10 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
         const dim_t diff_src_off
                 = data_blk_off(diff_src_d, n, ic_off_idx, id, ih, iw);
 
-        rp.src = diff_src + diff_src_off;
+        rp.src = diff_src + diff_src_off * diff_src_dt_size;
         if (pd()->rtus_.reduce_src_) {
-            rp.ws = rtus_space + ithr * pd()->rtus_.space_per_thread_;
+            rp.ws = rtus_space
+                    + ithr * pd()->rtus_.space_per_thread_ * diff_src_dt_size;
             p.output_data = rp.ws;
         } else
             p.output_data = rp.src;
@@ -636,20 +625,13 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
     }
 }
 
-REG_AVX512_ISA(template struct jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
-        data_type::f32>);
-REG_AVX512_ISA(template struct jit_avx512_core_bf16_1x1_convolution_bwd_data_t<
-        data_type::bf16>);
-
 /* convolution backward wtr weights */
 
 #define wht_blk_off(d, g, ...) \
     (pd()->with_groups() ? (d).blk_off((g), __VA_ARGS__) \
                          : (d).blk_off(__VA_ARGS__))
 
-template <data_type_t diff_weights_type>
-status_t
-jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::init(
+status_t jit_avx512_core_bf16_1x1_convolution_bwd_weights_t::init(
         engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_,
             new jit_avx512_core_bf16_1x1_conv_kernel_t(
@@ -688,12 +670,11 @@ jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::init(
     return status::success;
 }
 
-template <data_type_t diff_weights_type>
-void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
+void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t::
         execute_backward_weights(const exec_ctx_t &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-    auto diff_weights = CTX_OUT_MEM(diff_wei_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+    auto diff_weights = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_WEIGHTS);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
     const auto &jcp = pd()->jcp_;
@@ -707,6 +688,8 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper diff_weights_d(pd()->diff_weights_md(0));
+    const size_t diff_wei_dt_size = diff_weights_d.data_type_size();
+    const bool is_bf16_out = diff_weights_d.data_type() == data_type::bf16;
 
     auto rtus_space = scratchpad.template get<src_data_t>(key_conv_rtus_space);
     auto wei_reduction = scratchpad.template get<float>(key_conv_wei_reduction);
@@ -764,14 +747,12 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
                 const dim_t z_icb = jcp.nb_bcast - 1;
                 const dim_t off = wht_blk_off(diff_weights_d, g, z_ocb, z_icb)
                         + ic_tail * jcp.oc_block;
-                diff_wei_data_t *z_wei = diff_weights + off;
                 const dim_t zero_work
                         = (jcp.nb_bcast * jcp.ic_block - jcp.ic_without_padding)
                         * jcp.oc_block;
-                PRAGMA_OMP_SIMD()
-                for (dim_t o = 0; o < zero_work; ++o) {
-                    z_wei[o] = 0;
-                }
+                // Zero is all-zero bits for both f32 and bf16.
+                std::memset(diff_weights + off * diff_wei_dt_size, 0,
+                        zero_work * diff_wei_dt_size);
             }
         }
     };
@@ -801,7 +782,7 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
                 jcp.nb_bcast, jcp.nthr_ic_b, ithr_ic_b, ic_b_start, ic_b_end);
 
         float *diff_wei;
-        if (diff_weights_type == data_type::bf16) {
+        if (is_bf16_out) {
             diff_wei = wei_reduction + (ithr_mb)*wei_size;
         } else {
             diff_wei = ithr_mb == 0
@@ -1018,7 +999,6 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
         const dim_t ic_b_work = ic_b_end - ic_b_start;
 
         const int _start_nthr_mb = 1;
-        const bool is_bf16_out = diff_weights_type == data_type::bf16;
         const bool is_bf16_bias
                 = jcp.with_bias && jcp.bia_dt == data_type::bf16;
         /* diff_weights[:] += sum(ws_reduction_[thr_mb][:]) */
@@ -1061,7 +1041,7 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
                         // the last iteration for bfloat16 requires conversion
                         // and store to diff_weights array
                         add_floats_and_cvt_to_bfloat16(
-                                (bfloat16_t *)(diff_weights + off), wei_reduced,
+                                (bfloat16_t *)diff_weights + off, wei_reduced,
                                 wei_to_reduce, acc_size);
                     else
                         acc_ker_->accumulate(
@@ -1119,7 +1099,7 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
                     const size_t off
                             = wht_blk_off(diff_weights_d, g, oc_b, ic_b_start);
 
-                    cvt_float_to_bfloat16((bfloat16_t *)(diff_weights + off),
+                    cvt_float_to_bfloat16((bfloat16_t *)diff_weights + off,
                             (const float *)(wei_reduction + off), acc_size);
                 }
             }
@@ -1169,13 +1149,6 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
         }
     });
 }
-
-REG_AVX512_ISA(
-        template struct jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<
-                data_type::f32>);
-REG_AVX512_ISA(
-        template struct jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<
-                data_type::bf16>);
 
 } // namespace x64
 } // namespace cpu

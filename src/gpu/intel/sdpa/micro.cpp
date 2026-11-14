@@ -1212,6 +1212,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
     kernel_ctx.define_int("DROPOUT_HOST_SCALARS", dropout_host_scalars);
     kernel_ctx.define_int("DROPOUT_OUTPUT_MASK", dropout_output_mask);
+    kernel_ctx.define_int("DROPOUT_USE_OFFSET", dropout_offset);
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;

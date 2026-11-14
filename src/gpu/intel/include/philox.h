@@ -65,6 +65,28 @@ uint4 philox_4x32_vec4_ctr_w_keys(uint4 ctr, uint16 key0, uint4 key1) {
     return ctr;
 }
 
+/* Two independent vec4 chains per call, for ILP. */
+uint8 philox_4x32_vec4x2_ctr_w_keys(
+        uint4 ctrA, uint4 ctrB, uint16 key0, uint4 key1) {
+    const uint2 PHILOX_M4x32 = (uint2)(0xD2511F53u, 0xCD9E8D57u);
+
+#define PHILOX_4UINT_ROUND_X2(key) \
+    do { \
+        ctrA = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctrA, (key)); \
+        ctrB = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctrB, (key)); \
+    } while (0)
+
+    PHILOX_4UINT_ROUND_X2(key0.s01);
+    PHILOX_4UINT_ROUND_X2(key0.s23);
+    PHILOX_4UINT_ROUND_X2(key0.s45);
+    PHILOX_4UINT_ROUND_X2(key0.s67);
+    PHILOX_4UINT_ROUND_X2(key0.s89);
+    PHILOX_4UINT_ROUND_X2(key0.sAB);
+    PHILOX_4UINT_ROUND_X2(key0.sCD);
+#undef PHILOX_4UINT_ROUND_X2
+    return (uint8)(ctrA, ctrB);
+}
+
 uint4 philox_4x32_ctr_w_offset(ulong idx, ulong offset) {
     ulong x = (idx & ~3L);
     return (uint4)((uint)offset, (uint)(offset >> 32), (uint)x,
@@ -80,6 +102,56 @@ uint4 philox_4x32_vec4_w_keys(
 uint4 philox_4x32_vec4_w_offset(ulong idx, ulong seed, ulong offset) {
     philox_key_schedule_t ks = philox_4x32_key_schedule(seed);
     return philox_4x32_vec4_w_keys(idx, offset, ks.key0, ks.key1);
+}
+
+uint8 philox_4x32_vec4x2_w_keys(
+        ulong idx, ulong offset, uint16 key0, uint4 key1) {
+    ulong x0 = (idx & ~3L);
+    return philox_4x32_vec4x2_ctr_w_keys(philox_4x32_ctr_w_offset(x0, offset),
+            philox_4x32_ctr_w_offset(x0 + 4, offset), key0, key1);
+}
+
+/* Legacy (no offset) generator, as in philox_4x32(): the counter comes from a
+   32-bit idx alone and every index of a group of four gets word 2. */
+ulong philox_4x32_legacy_seed(long seed) {
+    return ((ulong)(uint)seed << 32) + (uint)seed;
+}
+
+uint4 philox_4x32_ctr_legacy(uint idx) {
+    uint x = idx & ~3u;
+    return (uint4)(x, x + 1, x, x + 3);
+}
+
+/* Group of four for either generator, selected by use_offset (uniform). */
+uint4 philox_4x32_vec4_dropout(
+        ulong idx, ulong offset, int use_offset, uint16 key0, uint4 key1) {
+    uint4 ctr = use_offset ? philox_4x32_ctr_w_offset(idx, offset)
+                           : philox_4x32_ctr_legacy((uint)idx);
+    uint4 r = philox_4x32_vec4_ctr_w_keys(ctr, key0, key1);
+    return use_offset ? r : (uint4)(r.s2);
+}
+
+uint8 philox_4x32_vec4x2_dropout(
+        ulong idx, ulong offset, int use_offset, uint16 key0, uint4 key1) {
+    uint4 cA = use_offset ? philox_4x32_ctr_w_offset(idx, offset)
+                          : philox_4x32_ctr_legacy((uint)idx);
+    uint4 cB = use_offset ? philox_4x32_ctr_w_offset(idx + 4, offset)
+                          : philox_4x32_ctr_legacy((uint)idx + 4);
+    uint8 r = philox_4x32_vec4x2_ctr_w_keys(cA, cB, key0, key1);
+    return use_offset ? r : (uint8)((uint4)(r.s2), (uint4)(r.s6));
+}
+
+/* Words [a, a + 4) of the 8-word window (lo, hi), for a in [0, 3]. */
+uint4 philox_window4(uint4 lo, uint4 hi, int a) {
+    return a == 0    ? lo
+            : a == 1 ? (uint4)(lo.s123, hi.s0)
+            : a == 2 ? (uint4)(lo.s23, hi.s01)
+                     : (uint4)(lo.s3, hi.s012);
+}
+
+uint8 philox_4x32_vec4x2_w_offset(ulong idx, ulong seed, ulong offset) {
+    philox_key_schedule_t ks = philox_4x32_key_schedule(seed);
+    return philox_4x32_vec4x2_w_keys(idx, offset, ks.key0, ks.key1);
 }
 
 uint philox_4x32_w_offset(long idx, long seed, long offset) {

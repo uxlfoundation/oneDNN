@@ -55,7 +55,11 @@ typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
 
 #if WITH_DROPOUT
-
+#define blk_r ugemm_kq_c_type_block0
+#define blk_c ugemm_kq_c_type_block1
+#define nblk_r ugemm_kq_c_type_nblock0
+#define nblk_c ugemm_kq_c_type_nblock1
+#define tile_len (blk_c * nblk_c)
 inline void apply_dropout_s_tile(
         s_tile_type *tile, int tile_offset_r, int tile_offset_c, int max_r,
         int max_c, ulong batch_head_base, int k_stride, int use_dropout_offset,
@@ -83,47 +87,79 @@ inline void apply_dropout_s_tile(
     /* Build float scale tile: inv_q if keep, 0.f if drop -- same type as s_tile */
     volatile s_tile_type scale_tile;
 
-    const int blk_r = ugemm_kq_c_type_block0;
-    const int blk_c = ugemm_kq_c_type_block1;
-    const int nblk_r = ugemm_kq_c_type_nblock0;
-    const int nblk_c = ugemm_kq_c_type_nblock1;
-    const int tile_len = blk_c * nblk_c;
-
-    /* Grouped path needs use_dropout_offset, k_stride % 4 == 0, a 4-aligned
-       tile start (runtime) and tile_len % 4 == 0 (JIT constant). */
+    /* Grouped path needs tile_len % 4 == 0 (JIT constant). */
 #define DROPOUT_GROUPED_SHAPE_OK \
     (((ugemm_kq_c_type_block1 * ugemm_kq_c_type_nblock1) & 3) == 0)
-#define DROPOUT_GROUPED_RT_OK \
-    (use_dropout_offset && (k_stride & 3) == 0 \
-            && (((batch_head_base + (ulong)tile_offset_r) & 3UL) == 0))
 #if DROPOUT_GROUPED_SHAPE_OK
-    if (DROPOUT_GROUPED_RT_OK) {
-        for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
-            const int i = i0 + get_sub_group_local_id();
-            const int offset_c = tile_offset_c + i;
-            const ulong cbase = batch_head_base
-                    + (ulong)offset_c * (ulong)k_stride + (ulong)tile_offset_r;
-            for (int j = 0; j < tile_len; j += 4) {
-                const uint4 v4 = philox_4x32_vec4_w_offset(
-                        cbase + (ulong)j, seed, offset);
-                for (int w = 0; w < 4; w++) {
-                    tile_access(scale_tile, i0, j + w, SUBGROUP_SIZE, blk_r,
-                            blk_c, nblk_r)
-                            = dropout_keep(
-                                    v4[w], tile_offset_r + j + w, offset_c);
-                }
+    /* Fill keep/drop values for keys j0..j0+3 of this lane's column. */
+#define dropout_store4(v, j0) \
+    { \
+        const uint4 _v = (v); \
+        for (int w = 0; w < 4; w++) { \
+            tile_access(scale_tile, i0, (j0) + w, SUBGROUP_SIZE, blk_r, blk_c, \
+                    nblk_r) \
+                    = dropout_keep(_v[w], tile_offset_r + (j0) + w, offset_c); \
+        } \
+    }
+
+    /* Key schedule is loop-invariant. */
+    const philox_key_schedule_t ks = philox_4x32_key_schedule(
+            DROPOUT_USE_OFFSET ? (ulong)seed : philox_4x32_legacy_seed(seed));
+    /* Uniform: every lane's first key starts on a Philox block boundary. */
+    const bool aligned = (k_stride & 3) == 0
+            && ((batch_head_base + (ulong)tile_offset_r) & 3UL) == 0;
+    /* Each lane owns one column of the tile per i0 step. */
+#pragma unroll
+    for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
+        const int offset_c = tile_offset_c + i0 + get_sub_group_local_id();
+        const ulong s = batch_head_base + (ulong)offset_c * (ulong)k_stride
+                + (ulong)tile_offset_r;
+        int j = 0;
+        if (aligned) {
+            /* Eight keys per step from two independent Philox chains, for ILP. */
+            for (; j + 8 <= tile_len; j += 8) {
+                const uint8 v = philox_4x32_vec4x2_dropout(s + (ulong)j, offset,
+                        DROPOUT_USE_OFFSET, ks.key0, ks.key1);
+                dropout_store4(v.lo, j);
+                dropout_store4(v.hi, j + 4);
+            }
+            /* tile_len % 4 == 0, so at most one group of four keys is left. */
+            if (j < tile_len) {
+                dropout_store4(philox_4x32_vec4_dropout(s + (ulong)j, offset,
+                                       DROPOUT_USE_OFFSET, ks.key0, ks.key1),
+                        j);
+            }
+        } else {
+            /* Start at the block below s and shift the words by a = s & 3. */
+            const int a = (int)(s & 3UL);
+            const ulong x0 = s - (ulong)a;
+            uint4 cur = philox_4x32_vec4_dropout(
+                    x0, offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
+            /* Eight keys per step; each window spans two consecutive blocks. */
+            for (; j + 8 <= tile_len; j += 8) {
+                const uint8 nxt = philox_4x32_vec4x2_dropout(x0 + (ulong)j + 4,
+                        offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
+                dropout_store4(philox_window4(cur, nxt.lo, a), j);
+                dropout_store4(philox_window4(nxt.lo, nxt.hi, a), j + 4);
+                cur = nxt.hi;
+            }
+            /* tile_len % 4 == 0, so at most one group of four keys is left. */
+            if (j < tile_len) {
+                const uint4 nxt = philox_4x32_vec4_dropout(x0 + (ulong)j + 4,
+                        offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
+                dropout_store4(philox_window4(cur, nxt, a), j);
             }
         }
-    } else
-#endif
+    }
+#undef dropout_store4
+#else
     {
         tile_predicated_select_t(scale_tile, tile_offset_r, tile_offset_c,
-                dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
-                ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
-                ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1);
+                dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE, blk_r, blk_c,
+                nblk_r, nblk_c);
     }
+#endif
 #undef DROPOUT_GROUPED_SHAPE_OK
-#undef DROPOUT_GROUPED_RT_OK
 #undef dropout_keep
 
     /* Multiply S_tile element-wise by scale tile (both float, no conversion) */
@@ -138,14 +174,17 @@ inline void apply_dropout_s_tile(
 #define dropout_scale_to_mask(x) ((uchar)((x) != 0.f))
     tile_store_global_bounds_cvt(scale_tile, mask_buf + batch_head_base,
             (ulong)k_stride, tile_offset_r, tile_offset_c, max_r, max_c,
-            dropout_scale_to_mask, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
-            ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
-            ugemm_kq_c_type_nblock1);
+            dropout_scale_to_mask, SUBGROUP_SIZE, blk_r, blk_c, nblk_r, nblk_c);
 #undef dropout_scale_to_mask
 #endif
 
 #undef dropout_predicate
 }
+#undef blk_r
+#undef blk_c
+#undef nblk_r
+#undef nblk_c
+#undef tile_len
 #endif
 
 // Tile debugging example for s_tile

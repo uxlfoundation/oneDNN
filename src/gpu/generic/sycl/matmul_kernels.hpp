@@ -293,8 +293,8 @@ struct matmul_kernel_fwd_t {
                     for (int vec_el = 0; vec_el < vec_len; vec_el++) {
                         int dst_off = offset + row * row_stride + col * vec_len
                                 + vec_el;
-                        uint random
-                                = ::dnnl::impl::math::philox4x32(dst_off, seed);
+                        uint random = ::dnnl::impl::math::philox4x32_dropout(
+                                dst_off, seed);
                         char dropout = random > threshold;
                         data[row][col][vec_el]
                                 = dropout ? data[row][col][vec_el] * inv_q : 0;

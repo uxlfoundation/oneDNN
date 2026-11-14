@@ -122,8 +122,8 @@ inline void apply_dropout_s_tile(
         ulong _goff = batch_head_base + (ulong)offset_c * (ulong)k_stride \
                 + (ulong)offset_r; \
         uint _philox = use_dropout_offset \
-                ? philox_4x32_w_offset(_goff, seed, offset) \
-                : philox_4x32(_goff, seed); \
+                ? philox_4x32_dropout_w_offset(_goff, seed, offset) \
+                : philox_4x32_dropout(_goff, seed); \
         (offset_r < max_r && offset_c < max_c) && (_philox > threshold); \
     })
 

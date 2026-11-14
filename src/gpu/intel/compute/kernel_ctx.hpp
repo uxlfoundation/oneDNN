@@ -26,6 +26,7 @@
 #include <unordered_map>
 
 #include "common/bit_cast.hpp"
+#include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "gpu/intel/primitive_attr.hpp"
 #include "gpu/intel/utils.hpp"
@@ -200,6 +201,8 @@ private:
     }
     void set_default_macros(const primitive_attr_t *attr) {
         if (attr) { define_int("DETERMINISTIC", attr->deterministic_); }
+        // Checked against the rounds implemented in gpu/intel/include/philox.h.
+        define_int("PHILOX_DROPOUT_ROUNDS", math::philox_dropout_rounds);
     }
 
     template <typename T>

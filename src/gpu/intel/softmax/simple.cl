@@ -190,9 +190,10 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
         float dropout_inv_q
                 = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
 #if USE_OFFSET
-        uint res = philox_4x32_w_offset(data_off, dropout_seed, dropout_offset);
+        uint res = philox_4x32_dropout_w_offset(
+                data_off, dropout_seed, dropout_offset);
 #else
-        uint res = philox_4x32(data_off, dropout_seed);
+        uint res = philox_4x32_dropout(data_off, dropout_seed);
 #endif
         uchar dropout = res > dropout_threshold;
         tmp = (dropout) ? tmp * dropout_inv_q : 0;

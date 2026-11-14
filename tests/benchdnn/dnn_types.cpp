@@ -2203,8 +2203,9 @@ void maybe_dropout(const attr_t &attr, float &val, int64_t idx,
         // TODO: keeping int32_t path until all impl migrate to 64 bit
         // generation.
         uint32_t r = (offset == 0)
-                ? dnnl::impl::math::philox4x32(uint32_t(idx), uint32_t(seed))
-                : dnnl::impl::math::philox4x32(idx, seed, offset);
+                ? dnnl::impl::math::philox4x32_dropout(
+                          uint32_t(idx), uint32_t(seed))
+                : dnnl::impl::math::philox4x32_dropout(idx, seed, offset);
         return (r > double(std::numeric_limits<uint32_t>::max()) * p);
     };
 

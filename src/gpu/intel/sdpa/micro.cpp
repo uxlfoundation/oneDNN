@@ -1034,6 +1034,8 @@ status_t micro_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
 
     conf.require_stateless_addressing = has_large_buffers();
     conf.with_dS = with_dS();
+    /* With k % 4 == 0 every dropout lane quad starts on a Philox block. */
+    conf.dropout_k_aligned = (desc()->keys() % 4 == 0);
 
     const memory_desc_wrapper key_mdw(desc()->key_md());
     const memory_desc_wrapper val_mdw(desc()->val_md());
@@ -1390,7 +1392,14 @@ status_t micro_bwd_params_t::get_kernel_ctx(
 
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
+    kernel_ctx.define_int("DROPOUT_USE_OFFSET", dropout_offset);
+    kernel_ctx.define_int("DROPOUT_K_ALIGNED", dropout_k_aligned);
+    kernel_ctx.define_int("DROPOUT_PER_ELEMENT",
+            gpu_utils::dev_getenv("SDPA_DROPOUT_PER_ELEMENT", false));
     kernel_ctx.define_int("DROPOUT_HOST_SCALARS", dropout_host_scalars);
+
+    // Preserve the Xe-HPG dropout scale-mask workaround.
+    kernel_ctx.define_int("DROPOUT_VOLATILE_SCALE_WORKAROUND", !arch_gte_hpc);
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;

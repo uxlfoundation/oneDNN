@@ -274,7 +274,6 @@ private:
     std::size_t ncsp_offset_multiplier_;
 };
 
-template <typename wsp_data_t>
 class transpose_facade_base_t {
 public:
     transpose_facade_base_t(const jit_pool_conf_t &jpp,
@@ -301,13 +300,13 @@ public:
         const auto &scratchpad = ctx.get_scratchpad_grantor();
 
         if (transpose_src_)
-            cvt_slice_src_wsp_ = scratchpad.template get<wsp_data_t>(
+            cvt_slice_src_wsp_ = scratchpad.get<float>(
                     memory_tracking::names::key_pool_src_plain2blocked_cvt);
 
         if (transpose_dst_) {
-            cvt_slice_dst_wsp_ = scratchpad.template get<wsp_data_t>(
+            cvt_slice_dst_wsp_ = scratchpad.get<float>(
                     memory_tracking::names::key_pool_dst_plain2blocked_cvt);
-            cvt_slice_ind_wsp_ = scratchpad.template get<char>(
+            cvt_slice_ind_wsp_ = scratchpad.get<char>(
                     memory_tracking::names::key_pool_ind_plain2blocked_cvt);
         }
     }
@@ -317,13 +316,13 @@ public:
 
     const void *get_src_addr(
             std::size_t ithr, dim_t ih, const jit_pool_conf_t &jpp) const {
-        const wsp_data_t *const wsp = cvt_slice_src_wsp_ + ithr * src_slice_;
+        const float *const wsp = cvt_slice_src_wsp_ + ithr * src_slice_;
         return static_cast<const void *>(&wsp[ih * jpp.iw * jpp.c_block]);
     }
 
     const void *get_dst_addr(
             std::size_t ithr, dim_t oh, const jit_pool_conf_t &jpp) const {
-        const wsp_data_t *const wsp = cvt_slice_dst_wsp_ + ithr * dst_slice_;
+        const float *const wsp = cvt_slice_dst_wsp_ + ithr * dst_slice_;
         return static_cast<const void *>(&wsp[oh * jpp.ow * jpp.c_block]);
     }
 
@@ -337,14 +336,14 @@ public:
 
     const void *get_src_addr_3d(std::size_t ithr, dim_t id, dim_t ih,
             const jit_pool_conf_t &jpp) const {
-        const wsp_data_t *const wsp = cvt_slice_src_wsp_ + ithr * src_slice_;
+        const float *const wsp = cvt_slice_src_wsp_ + ithr * src_slice_;
         return static_cast<const void *>(&wsp[ih * jpp.iw * jpp.c_block
                 + id * jpp.ih * jpp.iw * jpp.c_block]);
     }
 
     const void *get_dst_addr_3d(std::size_t ithr, dim_t od, dim_t oh,
             const jit_pool_conf_t &jpp) const {
-        const wsp_data_t *const wsp = cvt_slice_dst_wsp_ + ithr * dst_slice_;
+        const float *const wsp = cvt_slice_dst_wsp_ + ithr * dst_slice_;
         return static_cast<const void *>(&wsp[oh * jpp.ow * jpp.c_block
                 + od * jpp.oh * jpp.ow * jpp.c_block]);
     }
@@ -380,39 +379,37 @@ protected:
     memory_desc_wrapper indices_d_;
     const size_t ind_dt_size_;
 
-    wsp_data_t *__restrict cvt_slice_src_wsp_;
-    wsp_data_t *__restrict cvt_slice_dst_wsp_;
+    float *__restrict cvt_slice_src_wsp_;
+    float *__restrict cvt_slice_dst_wsp_;
     char *__restrict cvt_slice_ind_wsp_;
 
     std::function<void(std::size_t, dim_t, dim_t)> execute_transpose_input_;
     std::function<void(std::size_t, dim_t, dim_t)> execute_transpose_output_;
 };
 
-template <typename wsp_data_t>
-class fwd_pooling_transpose_facade_t
-    : public transpose_facade_base_t<wsp_data_t> {
+class fwd_pooling_transpose_facade_t : public transpose_facade_base_t {
 public:
     fwd_pooling_transpose_facade_t(const jit_pool_conf_t &jpp,
             trans_context_t *trans_ctx, const memory_desc_wrapper &src_d,
             const memory_desc_wrapper &dst_d,
             const memory_desc_wrapper &indices_d, const data_type_t wsp_dt,
             const char *src, char *dst, char *indices, const exec_ctx_t &ctx)
-        : transpose_facade_base_t<wsp_data_t>(
+        : transpose_facade_base_t(
                   jpp, src_d, dst_d, indices_d, indices, wsp_dt, ctx) {
 
-        if (this->should_transpose_src()) {
-            this->execute_transpose_input_
-                    = transpose_ncsp_to_block_fmt_t<char, wsp_data_t>(
+        if (should_transpose_src()) {
+            execute_transpose_input_
+                    = transpose_ncsp_to_block_fmt_t<char, float>(
                             trans_ctx->src_trans_.get(),
-                            trans_ctx->src_tail_trans_.get(), src, this->src_d_,
-                            this->cvt_slice_src_wsp_, this->src_slice_, jpp,
-                            this->src_d_.data_type_size(), 1u);
+                            trans_ctx->src_tail_trans_.get(), src, src_d_,
+                            cvt_slice_src_wsp_, src_slice_, jpp,
+                            src_d_.data_type_size(), 1u);
         }
 
-        if (this->should_transpose_dst()) {
+        if (should_transpose_dst()) {
             using namespace std::placeholders;
-            this->execute_transpose_output_ = std::bind(
-                    [=](const transpose_block_fmt_to_ncsp_t<wsp_data_t, char>
+            execute_transpose_output_ = std::bind(
+                    [=](const transpose_block_fmt_to_ncsp_t<float, char>
                                     &trans_dst,
                             transpose_block_fmt_to_ncsp_t<char, char>
                                     &trans_indices,
@@ -420,26 +417,22 @@ public:
                 trans_dst(ithr, n, b_c);
                 if (indices) trans_indices(ithr, n, b_c);
             },
-                    transpose_block_fmt_to_ncsp_t<wsp_data_t, char>(
+                    transpose_block_fmt_to_ncsp_t<float, char>(
                             trans_ctx->dst_trans_.get(),
                             trans_ctx->dst_tail_trans_.get(),
-                            this->cvt_slice_dst_wsp_, this->dst_slice_, dst,
-                            this->dst_d_, jpp, 1u,
-                            this->dst_d_.data_type_size()),
+                            cvt_slice_dst_wsp_, dst_slice_, dst, dst_d_, jpp,
+                            1u, dst_d_.data_type_size()),
                     transpose_block_fmt_to_ncsp_t<char, char>(
                             trans_ctx->ind_trans_.get(),
                             trans_ctx->ind_tail_trans_.get(),
-                            this->cvt_slice_ind_wsp_, this->dst_slice_, indices,
-                            this->indices_d_, jpp, this->ind_dt_size_,
-                            this->ind_dt_size_),
+                            cvt_slice_ind_wsp_, dst_slice_, indices, indices_d_,
+                            jpp, ind_dt_size_, ind_dt_size_),
                     _1, _2, _3);
         }
     }
 };
 
-template <typename wsp_data_t>
-class bwd_pooling_transpose_facade_t
-    : public transpose_facade_base_t<wsp_data_t> {
+class bwd_pooling_transpose_facade_t : public transpose_facade_base_t {
 public:
     bwd_pooling_transpose_facade_t(const jit_pool_conf_t &jpp,
             trans_context_t *trans_ctx, const memory_desc_wrapper &src_d,
@@ -447,24 +440,23 @@ public:
             const memory_desc_wrapper &indices_d, const data_type_t wsp_dt,
             char *src, const char *dst, const char *indices,
             const exec_ctx_t &ctx)
-        : transpose_facade_base_t<wsp_data_t>(
+        : transpose_facade_base_t(
                   jpp, src_d, dst_d, indices_d, indices, wsp_dt, ctx)
         , c_tail_(jpp.c_without_padding % jpp.c_block) {
 
-        if (this->should_transpose_src())
-            this->execute_transpose_output_
-                    = transpose_block_fmt_to_ncsp_t<wsp_data_t, char>(
+        if (should_transpose_src())
+            execute_transpose_output_
+                    = transpose_block_fmt_to_ncsp_t<float, char>(
                             trans_ctx->src_trans_.get(),
                             trans_ctx->src_tail_trans_.get(),
-                            this->cvt_slice_src_wsp_, this->src_slice_, src,
-                            this->src_d_, jpp, 1u,
-                            this->src_d_.data_type_size());
+                            cvt_slice_src_wsp_, src_slice_, src, src_d_, jpp,
+                            1u, src_d_.data_type_size());
 
-        if (this->should_transpose_dst()) {
+        if (should_transpose_dst()) {
             using namespace std::placeholders;
 
-            this->execute_transpose_input_ = std::bind(
-                    [=](const transpose_ncsp_to_block_fmt_t<char, wsp_data_t>
+            execute_transpose_input_ = std::bind(
+                    [=](const transpose_ncsp_to_block_fmt_t<char, float>
                                     &trans_dst,
                             transpose_ncsp_to_block_fmt_t<char, char>
                                     &trans_indices,
@@ -472,40 +464,38 @@ public:
                 trans_dst(ithr, n, b_c);
                 if (indices) trans_indices(ithr, n, b_c);
             },
-                    transpose_ncsp_to_block_fmt_t<char, wsp_data_t>(
+                    transpose_ncsp_to_block_fmt_t<char, float>(
                             trans_ctx->dst_trans_.get(),
-                            trans_ctx->dst_tail_trans_.get(), dst, this->dst_d_,
-                            this->cvt_slice_dst_wsp_, this->dst_slice_, jpp,
-                            this->dst_d_.data_type_size(), 1u),
+                            trans_ctx->dst_tail_trans_.get(), dst, dst_d_,
+                            cvt_slice_dst_wsp_, dst_slice_, jpp,
+                            dst_d_.data_type_size(), 1u),
                     transpose_ncsp_to_block_fmt_t<char, char>(
                             trans_ctx->ind_trans_.get(),
                             trans_ctx->ind_tail_trans_.get(), indices,
-                            this->indices_d_, this->cvt_slice_ind_wsp_,
-                            this->dst_slice_, jpp, this->ind_dt_size_,
-                            this->ind_dt_size_),
+                            indices_d_, cvt_slice_ind_wsp_, dst_slice_, jpp,
+                            ind_dt_size_, ind_dt_size_),
                     _1, _2, _3);
         }
     }
 
     inline bool should_fill_input_c_tail_with_zeros() const noexcept {
-        return this->should_transpose_dst() && c_tail_ != 0;
+        return should_transpose_dst() && c_tail_ != 0;
     }
 
     void fill_input_c_tail_with_zeros(
             std::size_t ithr, const jit_pool_conf_t &jpp) const {
 
-        wsp_data_t *__restrict wsp_ptr
-                = this->cvt_slice_dst_wsp_ + ithr * this->dst_slice_;
-        for_(dim_t s = 0; s < this->dst_sp_; s++)
+        float *__restrict wsp_ptr = cvt_slice_dst_wsp_ + ithr * dst_slice_;
+        for_(dim_t s = 0; s < dst_sp_; s++)
         for (dim_t c = c_tail_; c < jpp.c_block; c++)
             wsp_ptr[s * jpp.c_block + c] = 0.f;
 
-        char *__restrict ind_ptr = this->cvt_slice_ind_wsp_
-                + ithr * this->dst_slice_ * this->ind_dt_size_;
-        for_(dim_t s = 0; s < this->dst_sp_; s++)
+        char *__restrict ind_ptr
+                = cvt_slice_ind_wsp_ + ithr * dst_slice_ * ind_dt_size_;
+        for_(dim_t s = 0; s < dst_sp_; s++)
         for_(dim_t c = c_tail_; c < jpp.c_block; c++)
-        for (size_t i = 0; i < this->ind_dt_size_; i++)
-            ind_ptr[(s * jpp.c_block + c) * this->ind_dt_size_ + i] = 0;
+        for (size_t i = 0; i < ind_dt_size_; i++)
+            ind_ptr[(s * jpp.c_block + c) * ind_dt_size_ + i] = 0;
     }
 
 private:
@@ -737,10 +727,9 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward(const exec_ctx_t &ctx) const {
 
     using namespace jit_uni_pooling_utils;
 
-    auto transpose_facade
-            = std::make_shared<fwd_pooling_transpose_facade_t<float>>(jpp,
-                    trans_ctx_.get(), src_d, dst_d, indices_d, data_type::f32,
-                    src, dst, indices, ctx);
+    auto transpose_facade = std::make_shared<fwd_pooling_transpose_facade_t>(
+            jpp, trans_ctx_.get(), src_d, dst_d, indices_d, data_type::f32, src,
+            dst, indices, ctx);
 
     const auto trans_src = transpose_facade->should_transpose_src();
     const auto trans_dst = transpose_facade->should_transpose_dst();
@@ -870,10 +859,9 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_3d(
     using namespace jit_uni_pooling_utils;
     static constexpr int first_ithr = 0;
 
-    auto transpose_facade
-            = std::make_shared<fwd_pooling_transpose_facade_t<float>>(jpp,
-                    trans_ctx_.get(), src_d, dst_d, indices_d, data_type::f32,
-                    src, dst, indices, ctx);
+    auto transpose_facade = std::make_shared<fwd_pooling_transpose_facade_t>(
+            jpp, trans_ctx_.get(), src_d, dst_d, indices_d, data_type::f32, src,
+            dst, indices, ctx);
 
     const auto trans_src = transpose_facade->should_transpose_src();
     const auto trans_dst = transpose_facade->should_transpose_dst();
@@ -1083,10 +1071,9 @@ void jit_uni_pooling_bwd_t<isa>::execute_backward(const char *diff_dst,
             = indices ? types::data_type_size(indices_d.data_type()) : 0;
     const auto dt_size = diff_src_d.data_type_size();
     const auto &jpp = pd()->jpp_;
-    auto transpose_facade
-            = std::make_shared<bwd_pooling_transpose_facade_t<float>>(jpp,
-                    trans_ctx_.get(), diff_src_d, diff_dst_d, indices_d,
-                    data_type::f32, diff_src, diff_dst, indices, ctx);
+    auto transpose_facade = std::make_shared<bwd_pooling_transpose_facade_t>(
+            jpp, trans_ctx_.get(), diff_src_d, diff_dst_d, indices_d,
+            data_type::f32, diff_src, diff_dst, indices, ctx);
 
     auto f32_accum = std::make_shared<bwd_f32_accum_for_bf16_t>(jpp, ctx);
 
@@ -1226,10 +1213,9 @@ void jit_uni_pooling_bwd_t<isa>::execute_backward_3d(const char *diff_dst,
     using namespace jit_uni_pooling_utils;
     static constexpr int first_ithr = 0;
 
-    auto transpose_facade
-            = std::make_shared<bwd_pooling_transpose_facade_t<float>>(jpp,
-                    trans_ctx_.get(), diff_src_d, diff_dst_d, indices_d,
-                    data_type::f32, diff_src, diff_dst, indices, ctx);
+    auto transpose_facade = std::make_shared<bwd_pooling_transpose_facade_t>(
+            jpp, trans_ctx_.get(), diff_src_d, diff_dst_d, indices_d,
+            data_type::f32, diff_src, diff_dst, indices, ctx);
 
     const auto trans_src = transpose_facade->should_transpose_src();
     const auto trans_dst = transpose_facade->should_transpose_dst();

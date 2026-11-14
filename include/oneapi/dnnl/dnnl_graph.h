@@ -658,25 +658,51 @@ dnnl_status_t DNNL_API dnnl_graph_graph_destroy(dnnl_graph_graph_t graph);
 
 /// Set the floating point math mode for a graph.
 ///
-/// @param graph The target graph.
-/// @param mode The floating-point math mode.
-/// @param apply_to_int The flag that controls whether to use floating-point
-///     arithmetic for integral operations.
-/// @returns #dnnl_success on success or a status describing the error
-///     otherwise.
-dnnl_status_t DNNL_API dnnl_graph_graph_set_fpmath_mode(
-        dnnl_graph_graph_t graph, dnnl_fpmath_mode_t mode, int apply_to_int);
-
-/// Get the floating point math mode for a graph.
+/// The mode must be set before the graph is finalized.
 ///
 /// @param graph The target graph.
 /// @param mode The floating-point math mode.
 /// @param apply_to_int The flag that controls whether to use floating-point
 ///     arithmetic for integral operations.
-/// @returns #dnnl_success on success or a status describing the error
-///     otherwise.
+/// @returns #dnnl_success on success, #dnnl_invalid_arguments if @p graph is
+///     NULL, or #dnnl_invalid_graph if the graph is already finalized.
+dnnl_status_t DNNL_API dnnl_graph_graph_set_fpmath_mode(
+        dnnl_graph_graph_t graph, dnnl_fpmath_mode_t mode, int apply_to_int);
+
+/// Get the floating point math mode of a graph.
+///
+/// @param graph The target graph.
+/// @param mode The floating-point math mode.
+/// @param apply_to_int The flag that controls whether to use floating-point
+///     arithmetic for integral operations.
+/// @returns #dnnl_success on success or #dnnl_invalid_arguments if @p graph
+///     is NULL.
 dnnl_status_t DNNL_API dnnl_graph_graph_get_fpmath_mode(
         dnnl_graph_graph_t graph, dnnl_fpmath_mode_t *mode, int *apply_to_int);
+
+/// Sets the deterministic mode for a graph. When enabled, the mode is applied
+/// to all partitions of the graph so that their execution is run-to-run
+/// deterministic.
+///
+/// The mode must be set before the graph is finalized.
+///
+/// @param graph The target graph.
+/// @param deterministic Deterministic mode. Any non-zero value enables the
+///     mode; zero (default) disables it.
+/// @returns #dnnl_success on success, #dnnl_invalid_arguments if @p graph is
+///     NULL, or #dnnl_invalid_graph if the graph is already finalized.
+dnnl_status_t DNNL_API dnnl_graph_graph_set_deterministic(
+        dnnl_graph_graph_t graph, int deterministic);
+
+/// Gets the deterministic mode of a graph.
+///
+/// @param graph The target graph.
+/// @param deterministic Output deterministic mode: 1 if enabled, 0
+///     otherwise.
+/// @returns #dnnl_success on success or #dnnl_invalid_arguments if @p graph
+///     or @p deterministic is NULL.
+dnnl_status_t DNNL_API dnnl_graph_graph_get_deterministic(
+        dnnl_graph_graph_t graph, int *deterministic);
 
 /// Adds an operation into a graph. The API will return failure if the operator
 /// has already been added to the graph or the operation cannot pass the schema

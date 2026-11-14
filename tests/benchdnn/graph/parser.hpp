@@ -37,6 +37,9 @@ bool parse_graph_expected_n_partitions(
 bool parse_graph_fpmath_mode(
         std::vector<graph_fpmath_mode_t> &fpmath_mode_vec, const char *str);
 
+bool parse_graph_deterministic(
+        std::vector<std::string> &deterministic_vec, const char *str);
+
 bool parse_input_file(std::string &json_file, const char *str);
 
 bool parse_dt(std::vector<dnnl_data_type_t> &dt,

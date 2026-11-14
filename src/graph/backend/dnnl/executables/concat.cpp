@@ -59,6 +59,7 @@ concat_executable_t::desc_t concat_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
 
     std::vector<memory::desc> src_mds;
     src_mds.reserve(op->num_inputs());

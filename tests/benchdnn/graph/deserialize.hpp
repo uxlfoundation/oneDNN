@@ -118,7 +118,8 @@ using op_ref_list_t = std::list<op_ref_t>;
 struct deserialized_graph_t {
     void load(const std::string &pass_config_json);
 
-    dnnl::graph::graph to_graph(const graph_fpmath_mode_t &fpmath_mode) const;
+    dnnl::graph::graph to_graph(
+            const graph_fpmath_mode_t &fpmath_mode, bool deterministic) const;
     const std::vector<size_t> &get_input_ports() const { return input_ports_; }
     const std::vector<size_t> &get_output_ports() const {
         return output_ports_;
@@ -165,6 +166,9 @@ struct deserialized_graph_t {
         fpmath_mode_apply_to_int_ = bool2str(fpmath_mode.apply_to_int_);
     }
 
+    // Returns `true` if the JSON file requests deterministic mode.
+    bool get_deterministic() const { return deterministic_ == "true"; }
+
     graph_recognized_pattern_t get_recognized_pattern() const {
         return recognized_pattern_;
     }
@@ -177,6 +181,7 @@ private:
     std::string version_;
     std::string fpmath_mode_;
     std::string fpmath_mode_apply_to_int_;
+    std::string deterministic_;
     std::vector<size_t> input_ports_;
     std::vector<size_t> output_ports_;
 

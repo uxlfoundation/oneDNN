@@ -1117,19 +1117,25 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     const int max_n_block2 = max_n_block2_vmms / n_block1_num_steps;
     n_block2 = static_cast<int>(nstl::min<dim_t>(max_n_block2, nb_n_block1));
 
-    const int aux_vregs
-            = jit_brdgmm_kernel_t<Xbyak::Zmm>::get_aux_vmm_count(*brg);
-    const int compute_vregs
-            = jit_brdgmm_kernel_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
     const int bf16_emu_vregs = brg->is_bf16_emu * 4;
     const int postops_regs = brg->attr()
             ? injector::aux_vec_count(
                       brg->attr()->post_ops_, brg->isa_impl, true)
             : 0;
 
-    const int max_acc_vmms = max_vregs
-            - nstl::max(postops_regs,
-                    nstl::max(compute_vregs + aux_vregs, bf16_emu_vregs));
+    // The number of vmms available for accumulators depends on whether bs
+    // grouping is used, so it has to be recomputed if grouping gets disabled.
+    auto get_max_acc_vmms = [&]() {
+        const int aux_vregs
+                = jit_brdgmm_kernel_t<Xbyak::Zmm>::get_aux_vmm_count(*brg);
+        const int compute_vregs
+                = jit_brdgmm_kernel_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
+        return max_vregs
+                - nstl::max(postops_regs,
+                        nstl::max(compute_vregs + aux_vregs, bf16_emu_vregs));
+    };
+
+    int max_acc_vmms = get_max_acc_vmms();
 
     if (brg->brgattr.hint_bs_group > 1) {
         // Check if we can actually apply bs grouping
@@ -1137,7 +1143,10 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
                 = (max_acc_vmms / (2 * n_block1_num_steps)
                           - brg->brgattr.hint_bs_group + 1)
                 / 2;
-        if (min_possible_m_block2 < 1) brg->bs_group = 1;
+        if (min_possible_m_block2 < 1) {
+            brg->bs_group = 1;
+            max_acc_vmms = get_max_acc_vmms();
+        }
     }
 
     if (brg->bs_group > 1) n_block2 = n_block2 % 2 == 0 ? 2 : 1;

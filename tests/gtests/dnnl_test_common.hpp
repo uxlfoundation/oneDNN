@@ -163,7 +163,8 @@ inline bool unsupported_data_type(
     dnnl::engine::kind kind = eng.get_kind();
     if (kind == dnnl::engine::kind::cpu)
         supported = dnnl::impl::cpu::platform::has_data_type_support(
-                memory::convert_to_c(dt));
+                            memory::convert_to_c(dt))
+                == dnnl_success;
 #endif
 
 #if defined(DNNL_SYCL_CUDA) || defined(DNNL_SYCL_HIP)
@@ -202,7 +203,8 @@ inline bool unsupported_prop_kind(
     if (supported && kind == dnnl::engine::kind::cpu)
         supported = IMPLICATION(pk != dnnl::prop_kind::forward_inference,
                 dnnl::impl::cpu::platform::has_training_support(
-                        memory::convert_to_c(dt)));
+                        memory::convert_to_c(dt))
+                        == dnnl_success);
 #endif
     return !supported;
 }

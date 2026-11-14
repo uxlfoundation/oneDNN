@@ -44,17 +44,21 @@ struct ref_binary_t : public primitive_t {
             using sm = primitive_attr_t::skip_mask_t;
 
             VDISPATCH_BINARY(
-                    platform::has_data_type_support(src_md(0)->data_type),
+                    platform::has_data_type_support(src_md(0)->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
-                    platform::has_data_type_support(src_md(1)->data_type),
+                    platform::has_data_type_support(src_md(1)->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(IMPLICATION(is_ternary_op(),
                                      platform::has_data_type_support(
-                                             src_md(2)->data_type)),
+                                             src_md(2)->data_type)
+                                             == status::success),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
-                    platform::has_data_type_support(dst_md()->data_type),
+                    platform::has_data_type_support(dst_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);

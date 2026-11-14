@@ -118,7 +118,8 @@ struct rvv_softmax_fwd_t : public primitive_t {
 #endif
             }
             VDISPATCH_SOFTMAX(
-                    platform::has_data_type_support(src_md()->data_type),
+                    platform::has_data_type_support(src_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(
                     check_layouts(src_d, dst_d), VERBOSE_UNSUPPORTED_TAG);

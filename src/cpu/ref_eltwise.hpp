@@ -54,7 +54,8 @@ struct ref_eltwise_fwd_t : public primitive_t {
             VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
             VDISPATCH_ELTWISE(
-                    platform::has_data_type_support(src_md()->data_type),
+                    platform::has_data_type_support(src_md()->data_type)
+                            == status::success,
                     VERBOSE_ISA_DT_MISMATCH);
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(sm::post_ops | sm::dropout),
@@ -152,7 +153,8 @@ struct ref_eltwise_bwd_t : public primitive_t {
                             diff_src_md()->data_type, diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
-                    platform::has_data_type_support(data_md()->data_type),
+                    platform::has_data_type_support(data_md()->data_type)
+                            == status::success,
                     VERBOSE_ISA_DT_MISMATCH);
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

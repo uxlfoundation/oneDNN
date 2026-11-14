@@ -87,7 +87,8 @@ bool get_dtype_support_status(engine_kind_t eng, data_type_t dtype, dir_t dir) {
 
 bool has_cpu_data_type_support(data_type_t data_type) {
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    return dnnl::impl::cpu::platform::has_data_type_support(data_type);
+    return dnnl::impl::cpu::platform::has_data_type_support(data_type)
+            == status::success;
 #else
     return false;
 #endif
@@ -95,7 +96,8 @@ bool has_cpu_data_type_support(data_type_t data_type) {
 
 bool has_cpu_training_support(data_type_t data_type) {
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    return dnnl::impl::cpu::platform::has_training_support(data_type);
+    return dnnl::impl::cpu::platform::has_training_support(data_type)
+            == status::success;
 #else
     return false;
 #endif

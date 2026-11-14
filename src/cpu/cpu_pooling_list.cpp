@@ -48,14 +48,10 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
     static const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> the_map = REG_POOLING_P({
         {{forward}, {
             /* fp */
-            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx512_core_fp16, f16>)
-            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx512_core_fp16, f8_e5m2>)
-            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx512_core_fp16, f8_e4m3>)
-            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx512_core, bf16>)
-            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx512_core, f32>)
-            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx2_vnni_2, bf16>)
-            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx2_vnni_2, f16>)
-            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx2, f32>)
+            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx512_core_fp16>)
+            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx512_core>)
+            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx2_vnni_2>)
+            CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx2>)
             CPU_INSTANCE_AARCH64(jit_uni_pooling_fwd_t<sve>)
             CPU_INSTANCE_AARCH64(jit_uni_pooling_fwd_t<asimd>)
             CPU_INSTANCE_RV64(jit_uni_pooling_fwd_t<v>)
@@ -79,10 +75,9 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             nullptr,
         }},
         {{backward}, REG_BWD_PK({
-            CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx512_core_fp16, f16>)
-            CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx512_core, bf16>)
-            CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx512_core, f32>)
-            CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx2, f32>)
+            CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx512_core_fp16>)
+            CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx512_core>)
+            CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx2>)
             CPU_INSTANCE_AARCH64(jit_uni_pooling_bwd_t<sve>)
             CPU_INSTANCE_AARCH64(jit_uni_pooling_bwd_t<asimd>)
             CPU_INSTANCE_RV64(jit_uni_pooling_bwd_t<v>)

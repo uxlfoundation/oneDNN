@@ -38,9 +38,11 @@ namespace x64 {
 namespace jit_uni_pooling_utils {
 struct trans_wrapper_t;
 struct trans_context_t;
+
+bool is_supported_dt(cpu_isa_t isa, data_type_t dt, bool is_fwd);
 } // namespace jit_uni_pooling_utils
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_pooling_fwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
@@ -49,19 +51,15 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
                 jit_uni_pooling_fwd_t);
 
         status_t init(const engine_t *engine) {
-            using namespace utils;
-
             VDISPATCH_POOLING(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_POOLING(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
 
-            // Disabling verbose dispatch messages for unsupported dt for better
-            // readability.
-            // TODO: restore once `d_type` template argument is removed.
-            if (!everyone_is(
-                        d_type, src_md()->data_type, dst_md()->data_type)) {
-                return status::unimplemented;
-            }
+            const auto d_type = src_md()->data_type;
+            VDISPATCH_POOLING(d_type == dst_md()->data_type
+                            && jit_uni_pooling_utils::is_supported_dt(
+                                    isa, d_type, /* is_fwd = */ true),
+                    VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_POOLING(
                     attr()->has_default_values(
@@ -93,8 +91,6 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
     jit_uni_pooling_fwd_t &operator=(jit_uni_pooling_fwd_t &&) = default;
     ~jit_uni_pooling_fwd_t() override;
 
-    using data_t = typename prec_traits_t<d_type>::type;
-
     status_t init(engine_t *engine) override;
 
     status_t execute(const exec_ctx_t &ctx) const override {
@@ -116,7 +112,7 @@ private:
     std::unique_ptr<jit_uni_pooling_utils::trans_context_t> trans_ctx_;
 };
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_pooling_bwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_bwd_pd_t {
         using cpu_pooling_bwd_pd_t::cpu_pooling_bwd_pd_t;
@@ -125,15 +121,15 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
                 jit_uni_pooling_bwd_t);
 
         status_t init(const engine_t *engine) {
-            using namespace utils;
-
             VDISPATCH_POOLING(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_POOLING(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
-            VDISPATCH_POOLING(everyone_is(d_type, diff_src_md()->data_type,
-                                      diff_dst_md()->data_type),
+            const auto d_type = diff_src_md()->data_type;
+            VDISPATCH_POOLING(d_type == diff_dst_md()->data_type
+                            && jit_uni_pooling_utils::is_supported_dt(
+                                    isa, d_type, /* is_fwd = */ false),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -163,14 +159,12 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
     jit_uni_pooling_bwd_t &operator=(jit_uni_pooling_bwd_t &&) = default;
     ~jit_uni_pooling_bwd_t() override;
 
-    using data_t = typename prec_traits_t<d_type>::type;
-
     status_t init(engine_t *engine) override;
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
+        auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
         auto ws = CTX_IN_MEM(const char *, DNNL_ARG_WORKSPACE);
-        auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
+        auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
 
         if (pd()->ndims() == 5)
             execute_backward_3d(diff_dst, ws, diff_src, ctx);
@@ -181,10 +175,10 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
     }
 
 private:
-    void execute_backward(const data_t *diff_dst, const char *indices,
-            data_t *diff_src, const exec_ctx_t &ctx) const;
-    void execute_backward_3d(const data_t *diff_dst, const char *indices,
-            data_t *diff_src, const exec_ctx_t &ctx) const;
+    void execute_backward(const char *diff_dst, const char *indices,
+            char *diff_src, const exec_ctx_t &ctx) const;
+    void execute_backward_3d(const char *diff_dst, const char *indices,
+            char *diff_src, const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t init_ncsp_trans_ctx();
 

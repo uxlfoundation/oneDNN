@@ -173,8 +173,16 @@ status_t grouped_matmul_attr_check(
     using smask_t = primitive_attr_t::skip_mask_t;
     using namespace data_type;
 
-    if (attr == nullptr) return status::success;
-    if (attr->has_default_values()) return status::success;
+    const auto src_dt = desc.src_desc.data_type;
+    const auto wei_dt = desc.weights_desc.data_type;
+    const bool is_woq
+            = !types::is_integral_dt(src_dt) && types::is_integral_dt(wei_dt);
+
+    if (attr == nullptr || attr->has_default_values()) {
+        // Weight-only quantization requires attributes
+        VCHECK_MATMUL_UNIMPL(!is_woq, VERBOSE_UNSUPPORTED_DT_CFG);
+        return status::success;
+    }
 
     // Reject 2Dx2D as no support so far
     const memory_desc_wrapper src_d(&desc.src_desc);
@@ -190,8 +198,13 @@ status_t grouped_matmul_attr_check(
             attr->has_default_values(allowed_mask, desc.dst_desc.data_type),
             VERBOSE_UNSUPPORTED_ATTR);
 
-    const auto src_dt = desc.src_desc.data_type;
-    const auto wei_dt = desc.weights_desc.data_type;
+    // The skip mask doesn't cover quantization modes, only the default one
+    // is supported
+    VCHECK_MATMUL_UNIMPL(
+            attr->scales_.has_default_qmode(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCHECK_MATMUL_UNIMPL(
+            attr->zero_points_.has_default_qmode(), VERBOSE_UNSUPPORTED_ZP_CFG);
+
     const auto &sc = attr->scales_;
 
     // Dissalow scales on fp src/wei/dst data as real-world applications
@@ -204,6 +217,88 @@ status_t grouped_matmul_attr_check(
             VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCHECK_MATMUL_UNIMPL(sc.has_default_values(DNNL_ARG_DST),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    // Weight-only quantization (fp src with integer wei) requires wei scales
+    // and fpmath with apply_to_int
+    VCHECK_MATMUL_UNIMPL(IMPLICATION(is_woq,
+                                 !sc.has_default_values(DNNL_ARG_WEIGHTS)
+                                         && attr->fpmath_.apply_to_int_),
+            VERBOSE_UNSUPPORTED_DT_CFG);
+
+    // Scales and zero points groups are {1, gK} for src and {gK, gN} for wei,
+    // and must divide K and N
+    const dim_t K = src_d.dims()[1];
+    const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
+    const dim_t src_gK = sc.get_group(DNNL_ARG_SRC, -1);
+    const dim_t wei_gK = sc.get_group(DNNL_ARG_WEIGHTS, -2);
+    VCHECK_MATMUL(K % src_gK == 0 && K % wei_gK == 0
+                    && N % sc.get_group(DNNL_ARG_WEIGHTS, -1) == 0,
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    // src scales are grouped along K only, and src/wei K-groups must be
+    // multiples of each other
+    VCHECK_MATMUL_UNIMPL(sc.get_group(DNNL_ARG_SRC, -2) == 1
+                    && (src_gK % wei_gK == 0 || wei_gK % src_gK == 0),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    // src per token [total_M] or [total_M, K / gK], wei per expert [G, N] or
+    // [G, K / gK, N / gN], groups go with the K-grouped masks only
+    const int src_rowwise = 1 << 0, src_k_grouped = (1 << 0) | (1 << 1);
+    const int wei_colwise = (1 << 0) | (1 << 2);
+    const int wei_k_grouped = (1 << 0) | (1 << 1) | (1 << 2);
+    if (!sc.has_default_values(DNNL_ARG_SRC)) {
+        const int mask = sc.get_mask(DNNL_ARG_SRC);
+        VCHECK_MATMUL_UNIMPL(utils::one_of(mask, src_rowwise, src_k_grouped)
+                        && (mask == src_k_grouped
+                                        ? src_gK > 1
+                                        : sc.has_default_groups(DNNL_ARG_SRC)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+    if (!sc.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const int mask = sc.get_mask(DNNL_ARG_WEIGHTS);
+        VCHECK_MATMUL_UNIMPL(utils::one_of(mask, wei_colwise, wei_k_grouped)
+                        && (mask == wei_k_grouped ? wei_gK > 1
+                                                  : sc.has_default_groups(
+                                                            DNNL_ARG_WEIGHTS)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+
+    // Zero points: integer src/wei only, with the masks of the scales or a
+    // common one for u3 wei
+    const auto &zp = attr->zero_points_;
+    const dim_t src_zp_gK = zp.get_group(DNNL_ARG_SRC, -1);
+    const dim_t wei_zp_gK = zp.get_group(DNNL_ARG_WEIGHTS, -2);
+    VCHECK_MATMUL(K % src_zp_gK == 0 && K % wei_zp_gK == 0
+                    && N % zp.get_group(DNNL_ARG_WEIGHTS, -1) == 0,
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+    VCHECK_MATMUL_UNIMPL(zp.has_default_values(DNNL_ARG_DST)
+                    && zp.get_group(DNNL_ARG_SRC, -2) == 1,
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+    if (!zp.has_default_values(DNNL_ARG_SRC)) {
+        const int mask = zp.get_mask(DNNL_ARG_SRC);
+        VCHECK_MATMUL_UNIMPL(types::is_integral_dt(src_dt)
+                        && utils::one_of(mask, src_rowwise, src_k_grouped)
+                        && (mask == src_k_grouped
+                                        ? src_zp_gK > 1
+                                        : zp.has_default_groups(DNNL_ARG_SRC)),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
+    if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const int mask = zp.get_mask(DNNL_ARG_WEIGHTS);
+        VCHECK_MATMUL_UNIMPL(types::is_integral_dt(wei_dt)
+                        && (utils::one_of(mask, wei_colwise, wei_k_grouped)
+                                || (mask == 0 && wei_dt == u3))
+                        && (mask == wei_k_grouped ? wei_zp_gK > 1
+                                                  : zp.has_default_groups(
+                                                            DNNL_ARG_WEIGHTS)),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
+    // Weights scales and zero points K-groups must match
+    VCHECK_MATMUL_UNIMPL(
+            IMPLICATION(!sc.has_default_values(DNNL_ARG_WEIGHTS)
+                            && !zp.has_default_groups(DNNL_ARG_WEIGHTS),
+                    wei_gK == wei_zp_gK),
+            VERBOSE_INCONSISTENT_DIM, "wei_scale_group_k", (int)wei_gK,
+            "wei_zp_group_k", (int)wei_zp_gK);
 
     // Post-ops: only eltwise and binary_mul are supported
     const memory_desc_wrapper dst_d(&desc.dst_desc);

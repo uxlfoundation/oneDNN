@@ -168,8 +168,10 @@ bool DNNL_API prefer_ymm_requested();
 // This call is limited to performing checks on plain C-code implementations
 // (e.g. 'ref' and 'simple_primitive') and should avoid any x64 JIT
 // implementations since these require specific code-path updates.
-bool DNNL_API has_data_type_support(data_type_t data_type);
-bool DNNL_API has_training_support(data_type_t data_type);
+// Return `success` if the data type is supported and
+// `data_type_not_supported` otherwise.
+status_t DNNL_API has_data_type_support(data_type_t data_type);
+status_t DNNL_API has_training_support(data_type_t data_type);
 bool DNNL_API has_optimized_gemm();
 float DNNL_API s8s8_weights_scale_factor();
 

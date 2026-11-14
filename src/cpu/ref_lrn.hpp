@@ -47,10 +47,16 @@ struct ref_lrn_fwd_t : public primitive_t {
             const memory_desc_wrapper dst_d(dst_md());
 
             VDISPATCH_LRN(is_fwd(), VERBOSE_BAD_PROPKIND);
+            // Check the problem data types before matching `d_type`, so that
+            // the status is reported for data types without an instance.
+            VDISPATCH_LRN_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LRN_SC(
+                    platform::has_data_type_support(dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LRN(utils::everyone_is(d_type, src_md()->data_type,
                                   dst_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LRN(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LRN(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -104,11 +110,20 @@ struct ref_lrn_bwd_t : public primitive_t {
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
 
             VDISPATCH_LRN(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            // Check the problem data types before matching `d_type`, so that
+            // the status is reported for data types without an instance.
+            VDISPATCH_LRN_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LRN_SC(
+                    platform::has_data_type_support(diff_src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LRN_SC(
+                    platform::has_data_type_support(diff_dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LRN(
                     utils::everyone_is(d_type, src_md()->data_type,
                             diff_src_md()->data_type, diff_dst_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_LRN(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LRN(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

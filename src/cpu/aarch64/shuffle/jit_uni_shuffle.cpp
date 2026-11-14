@@ -54,6 +54,7 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(const engine_t *engine) {
             && utils::one_of(conf_.data_type, f32, s32, bf16)
             && src_d.data_type() == dst_d.data_type()
             && platform::has_data_type_support(conf_.data_type)
+                    == status::success
             && attr()->has_default_values() && axis() == 1
             && set_default_formats_common() && src_d == dst_d;
 

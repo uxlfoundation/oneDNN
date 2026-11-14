@@ -84,6 +84,13 @@ struct ref_grouped_t : public primitive_t {
                     wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
                     VERBOSE_UNSUPPORTED_TAG);
 
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(src_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(wei_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(dst_type),
+                    VERBOSE_UNSUPPORTED_DT);
+
             // Supported data types: fp and int for src/wei
             const bool is_fp_src = utils::one_of(
                     src_type, f32, bf16, f16, f8_e5m2, f8_e4m3, f4_e2m1);
@@ -108,12 +115,6 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
                                      attr()->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
-                    VERBOSE_UNSUPPORTED_DT);
 
             // Check for supported quantization schemes
             const auto &attr_scales = attr()->scales_;
@@ -274,15 +275,15 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(dst_d.ndims() == 3, VERBOSE_BAD_NDIMS, "dst",
                     dst_d.ndims());
 
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(src_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(wei_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(dst_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
                             && utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
-                    VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_MATMUL(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

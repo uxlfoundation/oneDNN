@@ -48,11 +48,13 @@ struct ref_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
-            VDISPATCH_CONV(platform::has_data_type_support(src_type),
+            // Weights are not checked as f16 and bf16 weights with f32
+            // activations don't require hardware support.
+            VDISPATCH_CONV_SC(platform::has_data_type_support(src_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(platform::has_data_type_support(bia_type),
+            VDISPATCH_CONV_SC(platform::has_data_type_support(bia_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(platform::has_data_type_support(dst_type),
+            VDISPATCH_CONV_SC(platform::has_data_type_support(dst_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(
                     utils::one_of(src_type, f32, bf16, f16, f8_e5m2, f8_e4m3),
@@ -75,7 +77,7 @@ struct ref_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(attr()->post_ops_.check_sum_consistency(
                                    dst_type, /* is_int8 */ false),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_CONV(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_CONV_SC(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_CONV(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -93,7 +95,7 @@ struct ref_convolution_fwd_t : public primitive_t {
             return set_default_formats_common(dat_tag, wei_tag, dat_tag);
         }
 
-        bool post_ops_ok() const {
+        status_t post_ops_ok() const {
             return ref_post_ops_t::post_ops_ok(attr()->post_ops_);
         }
     };
@@ -134,9 +136,11 @@ struct ref_convolution_bwd_data_t : public primitive_t {
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
-            VDISPATCH_CONV(platform::has_data_type_support(diff_src_type),
+            // Weights are not checked as f16 and bf16 weights with f32
+            // activations don't require hardware support.
+            VDISPATCH_CONV_SC(platform::has_data_type_support(diff_dst_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(platform::has_data_type_support(diff_dst_type),
+            VDISPATCH_CONV_SC(platform::has_data_type_support(diff_src_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(utils::one_of(diff_dst_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
@@ -194,9 +198,15 @@ struct ref_convolution_bwd_weights_t : public primitive_t {
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
-            VDISPATCH_CONV(platform::has_data_type_support(src_type),
+            VDISPATCH_CONV_SC(platform::has_data_type_support(src_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_CONV(platform::has_data_type_support(diff_wei_type),
+            VDISPATCH_CONV_SC(platform::has_data_type_support(diff_wei_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV_SC(platform::has_data_type_support(diff_bia_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            // The destination gradient must match the source, so checking it
+            // only affects the status of cases that are rejected anyway.
+            VDISPATCH_CONV_SC(platform::has_data_type_support(diff_dst_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);

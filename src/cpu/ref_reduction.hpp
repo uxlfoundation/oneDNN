@@ -40,15 +40,16 @@ struct ref_reduction_t : public primitive_t {
             const auto src_type = src_md(0)->data_type;
             const auto dst_type = dst_md(0)->data_type;
 
-            VDISPATCH_REDUCTION(platform::has_data_type_support(src_type),
+            VDISPATCH_REDUCTION_SC(platform::has_data_type_support(src_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_REDUCTION(platform::has_data_type_support(dst_type),
+            VDISPATCH_REDUCTION_SC(platform::has_data_type_support(dst_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REDUCTION(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_REDUCTION(attr()->has_default_values(sm::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_REDUCTION(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
+            VDISPATCH_REDUCTION_SC(
+                    ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_REDUCTION(
                     attr_.set_default_formats(dst_md(0)) == status::success,

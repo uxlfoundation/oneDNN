@@ -832,57 +832,25 @@ bool check_md_consistency_with_tag(
     return dnnl_memory_desc_equal(md_new_tag, md);
 }
 
-// Note: CPU support can be simplified if prop_kind is passed, however, this
-// prop kind must come from prb directly, not queried, as if not implemented,
-// pd will come empty and there's nothing to query. prop_kind is not available
-// in prb as of now and it will require dir_t -> prop_kind_t replacement
-// refactor across the stack.
 void skip_unimplemented_data_type(
         const std::vector<dnnl_data_type_t> &v_dt, dir_t dir, res_t *res) {
+    // CPU reports data types it doesn't support with
+    // `dnnl_data_type_not_supported`, which `check_dnnl_status()` handles.
+    if (is_cpu()) return;
+
     const bool has_f64_support = is_f64_supported();
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    using namespace dnnl::impl::cpu::platform;
-    // bf16 is supported on AVX512-CORE+
-    const bool has_bf16_support = is_gpu()
-            || (is_cpu() && has_data_type_support(dnnl_bf16)
-                    && IMPLICATION(!(dir & FLAG_INF),
-                            has_training_support(dnnl_bf16)));
-    const bool has_f16_support = is_gpu()
-            || (is_cpu() && has_data_type_support(dnnl_f16)
-                    && IMPLICATION(
-                            !(dir & FLAG_INF), has_training_support(dnnl_f16)));
-    const bool has_e8m0_support
-            = is_gpu() || (is_cpu() && has_data_type_support(dnnl_e8m0));
-    const bool has_f4_e2m1_support
-            = is_gpu() || (is_cpu() && has_data_type_support(dnnl_f4_e2m1));
-    const bool has_f8_e5m2_support = is_gpu()
-            || (is_cpu() && has_data_type_support(dnnl_f8_e5m2)
-                    && IMPLICATION(!(dir & FLAG_INF),
-                            has_training_support(dnnl_f8_e5m2)));
-    const bool has_f8_e4m3_support = is_gpu()
-            || (is_cpu() && has_data_type_support(dnnl_f8_e4m3)
-                    && IMPLICATION(!(dir & FLAG_INF),
-                            has_training_support(dnnl_f8_e4m3)));
+    const bool has_f16_support = true;
 #else
-    const bool has_bf16_support = is_gpu();
     // f16 is supported on GPU for inference only.
-    const bool has_f16_support = is_gpu() && (dir & FLAG_FWD);
-    const bool has_f4_e2m1_support = is_gpu();
-    const bool has_e8m0_support = is_gpu();
-    const bool has_f8_e5m2_support = is_gpu();
-    const bool has_f8_e4m3_support = is_gpu();
+    const bool has_f16_support = (dir & FLAG_FWD);
 #endif
 
     for (const auto &i_dt : v_dt) {
         bool need_skip = false;
         switch (i_dt) {
-            case dnnl_bf16: need_skip = !has_bf16_support; break;
             case dnnl_f16: need_skip = !has_f16_support; break;
             case dnnl_f64: need_skip = !has_f64_support; break;
-            case dnnl_e8m0: need_skip = !has_e8m0_support; break;
-            case dnnl_f4_e2m1: need_skip = !has_f4_e2m1_support; break;
-            case dnnl_f8_e5m2: need_skip = !has_f8_e5m2_support; break;
-            case dnnl_f8_e4m3: need_skip = !has_f8_e4m3_support; break;
             default: break;
         }
         if (need_skip) {
@@ -2053,6 +2021,10 @@ int check_dnnl_status(
             // If the case is not known to be skipped, it is unimplemented.
             res->state = UNIMPLEMENTED;
         } break;
+        case dnnl_data_type_not_supported:
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_data_type;
+            return OK;
         default: assert(!"unexpected");
     }
     DNN_SAFE(status, WARN);

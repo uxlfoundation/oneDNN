@@ -1247,7 +1247,9 @@ status_t init_conf(conv_gemm_conf_t &jcp,
             || (is_bwd_w
                     && utils::everyone_is(
                             bf16, src_d.data_type(), dst_d.data_type()));
-    VDISPATCH_CONV_IC(!(is_bf16_conv && !platform::has_data_type_support(bf16)),
+    VDISPATCH_CONV_IC(!(is_bf16_conv
+                              && platform::has_data_type_support(bf16)
+                                      != status::success),
             VERBOSE_UNSUPPORTED_DT);
 
     const int vlen = std::max(platform::get_vector_register_size(), 4);

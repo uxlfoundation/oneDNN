@@ -93,6 +93,19 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     VDISPATCH_RNN(this->set_default_params() == status::success,
             VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+    // `init_conf()` below only reports a boolean, so check data type support
+    // explicitly to return the specific status.
+    VDISPATCH_RNN_SC(platform::has_data_type_support(src_layer_dt),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_RNN_SC(platform::has_data_type_support(weights_layer_dt),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_RNN_SC(platform::has_data_type_support(
+                             this->desc()->dst_layer_desc.data_type),
+            VERBOSE_UNSUPPORTED_DT);
+    if (aprop == prop_kind::backward) {
+        VDISPATCH_RNN_SC(platform::has_training_support(src_layer_dt),
+                VERBOSE_UNSUPPORTED_DT);
+    }
 
     rnn_ = utils::zero<decltype(rnn_)>();
     rnn_.is_brgemm = false;
@@ -231,7 +244,7 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
             const bool ok = mpd->weights_md()->extra.flags == 0;
             if (ok) return status::success;
         }
-        return status::unimplemented;
+        return it.no_impl_status();
     };
 
     if (rnn_.use_matmul) {
@@ -370,6 +383,19 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     VDISPATCH_RNN(this->set_default_params() == status::success,
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+    // `init_conf()` below only reports a boolean, so check data type support
+    // explicitly to return the specific status.
+    VDISPATCH_RNN_SC(platform::has_data_type_support(src_layer_dt),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_RNN_SC(platform::has_data_type_support(weights_layer_dt),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_RNN_SC(platform::has_data_type_support(
+                             this->desc()->dst_layer_desc.data_type),
+            VERBOSE_UNSUPPORTED_DT);
+    if (aprop == prop_kind::backward) {
+        VDISPATCH_RNN_SC(platform::has_training_support(src_layer_dt),
+                VERBOSE_UNSUPPORTED_DT);
+    }
 
     VDISPATCH_RNN(
             rnn_utils::init_conf<class_name>(rnn_, *this->desc(), *this->attr(),

@@ -1343,7 +1343,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(const engine_t *engine) {
 
     const bool problem_dt_correct = (is_s8 || is_u8 || is_u8_s8)
             && utils::one_of(dst_type, f32, s32, f16, bf16, s8, u8)
-            && platform::has_data_type_support(dst_type);
+            && platform::has_data_type_support(dst_type) == status::success;
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_MATMUL(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);

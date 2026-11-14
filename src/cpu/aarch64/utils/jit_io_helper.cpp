@@ -123,7 +123,8 @@ bool jit_io_helper_t<isa>::is_supported_dt(data_type_t dt) {
                     data_type::bf16, data_type::s8, data_type::u8);
 
     // TODO: emulate bf16 on unsupported platforms?
-    return dt_is_implemented && platform::has_data_type_support(dt);
+    return dt_is_implemented
+            && platform::has_data_type_support(dt) == status::success;
 }
 
 template <cpu_isa_t isa>

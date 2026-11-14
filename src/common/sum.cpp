@@ -102,15 +102,20 @@ status_t sum_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
 
     if (pd) return success;
 
+    // A single implementation reporting an unsupported data type is enough, see
+    // `primitive_desc_iterator_t::no_impl_status()`.
+    status_t no_impl_status = unimplemented;
     for (auto s = engine->get_sum_implementation_list(); *s; ++s) {
         sum_pd_t *sum_pd = nullptr;
-        if ((*s)(&sum_pd, engine, attr, dst_md, n, scales, src_mds)
-                == success) {
+        const status_t st
+                = (*s)(&sum_pd, engine, attr, dst_md, n, scales, src_mds);
+        if (st == success) {
             pd.reset(sum_pd);
             return status::success;
         }
+        if (st == data_type_not_supported) no_impl_status = st;
     }
-    return unimplemented;
+    return no_impl_status;
 }
 
 } // namespace impl

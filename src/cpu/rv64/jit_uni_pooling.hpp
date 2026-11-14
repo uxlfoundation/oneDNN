@@ -69,7 +69,8 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
                                       dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
-                    platform::has_data_type_support(src_md()->data_type),
+                    platform::has_data_type_support(src_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             // Both 16-bit float types accumulate at f32 (common/pooling.cpp
             // derives accum_data_type = f32 for them).
@@ -183,7 +184,8 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
                                       diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
-                    platform::has_data_type_support(diff_src_md()->data_type),
+                    platform::has_data_type_support(diff_src_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             constexpr bool is_xf16
                     = one_of(d_type, data_type::f16, data_type::bf16);

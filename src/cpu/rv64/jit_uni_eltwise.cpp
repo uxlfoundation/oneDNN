@@ -378,7 +378,8 @@ status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
             VERBOSE_INCONSISTENT_DT, "src", "dst");
     VDISPATCH_ELTWISE(
-            platform::has_data_type_support(d_type), VERBOSE_UNSUPPORTED_DT);
+            platform::has_data_type_support(d_type) == status::success,
+            VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(src_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     // The integer dtypes keep the x64/aarch64 jit_uni_eltwise_int contract --
@@ -471,7 +472,8 @@ status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(const engine_t *engine) {
                               diff_dst_md()->data_type),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_ELTWISE(
-            platform::has_data_type_support(d_type), VERBOSE_UNSUPPORTED_DT);
+            platform::has_data_type_support(d_type) == status::success,
+            VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_ELTWISE(data_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);

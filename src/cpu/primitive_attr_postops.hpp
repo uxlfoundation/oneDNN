@@ -38,7 +38,7 @@ struct ref_binary_scalar_t {
 
     float compute_scalar(float src0, float src1, bool src2) const;
 
-    static bool data_type_ok(const post_ops_t::entry_t &entry);
+    static status_t data_type_ok(const post_ops_t::entry_t &entry);
 
 private:
     const alg_kind_t alg_;
@@ -63,7 +63,7 @@ struct ref_sum_scalar_t {
     void execute(
             float &res, float dst_val, float scale, int32_t zero_point) const;
 
-    static bool data_type_ok(const post_ops_t::entry_t &entry);
+    static status_t data_type_ok(const post_ops_t::entry_t &entry);
 
 private:
     // some primitives for example gemm are able to perform sum postop itself,
@@ -94,7 +94,9 @@ struct ref_post_ops_t {
         return po.has_default_values({binary, eltwise, prelu, sum});
     }
 
-    static bool post_ops_ok(const post_ops_t &po);
+    // Returns `data_type_not_supported` when a post-op data type is not
+    // supported on the system, see `platform::has_data_type_support()`.
+    static status_t post_ops_ok(const post_ops_t &po);
 
 private:
     const post_ops_t &po_;

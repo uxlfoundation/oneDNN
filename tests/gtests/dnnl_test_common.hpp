@@ -163,7 +163,8 @@ inline bool unsupported_data_type(
     dnnl::engine::kind kind = eng.get_kind();
     if (kind == dnnl::engine::kind::cpu)
         supported = dnnl::impl::cpu::platform::has_data_type_support(
-                memory::convert_to_c(dt));
+                            memory::convert_to_c(dt))
+                == dnnl_success;
 #endif
 
 #if defined(DNNL_SYCL_CUDA) || defined(DNNL_SYCL_HIP)
@@ -202,7 +203,8 @@ inline bool unsupported_prop_kind(
     if (supported && kind == dnnl::engine::kind::cpu)
         supported = IMPLICATION(pk != dnnl::prop_kind::forward_inference,
                 dnnl::impl::cpu::platform::has_training_support(
-                        memory::convert_to_c(dt)));
+                        memory::convert_to_c(dt))
+                        == dnnl_success);
 #endif
     return !supported;
 }
@@ -738,12 +740,19 @@ bool catch_expected_failures(const F &f, bool expect_to_fail,
         // Rethrow the exception if it is not expected or the error status did
         // not match.
         if (!(expect_to_fail) || e.status != (expected_status)) {
-            // Ignore unimplemented
-            if (ignore_unimplemented && (e.status == dnnl_unimplemented)) {
-                // Print unimplemented but do not treat as error
-                std::cout << "(" << filename << ":" << line_num << ") "
-                          << "[  UNIMPL  ] " << "Implementation not found"
-                          << std::endl;
+            // Ignore unimplemented and unsupported data type
+            if (ignore_unimplemented
+                    && (e.status == dnnl_unimplemented
+                            || e.status == dnnl_data_type_not_supported)) {
+                // Print the reason but do not treat as error
+                std::cout
+                        << "(" << filename << ":" << line_num << ") "
+                        << "[  UNIMPL  ] "
+                        << (e.status == dnnl_data_type_not_supported
+                                           ? "Data type not supported on this "
+                                             "platform"
+                                           : "Implementation not found")
+                        << std::endl;
                 reset_failed_malloc_counter();
                 return true;
             } else if (test_out_of_memory()

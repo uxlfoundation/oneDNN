@@ -426,8 +426,31 @@ const impl_list_item_t *get_convolution_impl_list(
     pk_dt_impl_key_t key(prop_kind, src_dt, wei_dt, dst_dt);
 
     const auto impl_list_it = impl_list_map().find(key);
-    return impl_list_it != impl_list_map().cend() ? impl_list_it->second.data()
-                                                  : empty_list;
+    if (impl_list_it != impl_list_map().cend())
+        return impl_list_it->second.data();
+
+    // No list matches the data types. Let the reference implementations check
+    // them, so that data types not supported on the system are reported.
+    // clang-format off
+    static const impl_list_item_t ref_fwd_list[] = {
+        CPU_INSTANCE(ref_convolution_fwd_t)
+        nullptr,
+    };
+    static const impl_list_item_t ref_bwd_d_list[] = REG_BWD_D_PK({
+        CPU_INSTANCE(ref_convolution_bwd_data_t)
+        nullptr,
+    });
+    static const impl_list_item_t ref_bwd_w_list[] = REG_BWD_PK({
+        CPU_INSTANCE(ref_convolution_bwd_weights_t)
+        nullptr,
+    });
+    // clang-format on
+    switch (prop_kind) {
+        case forward: return ref_fwd_list;
+        case backward_data: return ref_bwd_d_list;
+        case backward_weights: return ref_bwd_w_list;
+        default: return empty_list;
+    }
 }
 
 } // namespace cpu

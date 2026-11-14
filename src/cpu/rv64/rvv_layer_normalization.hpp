@@ -68,7 +68,8 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
             isa_ = (src_md()->data_type == f16) ? zvfh : v;
 
             if (src_md()->data_type == f16) {
-                VDISPATCH_LNORM(platform::has_data_type_support(f16),
+                VDISPATCH_LNORM(
+                        platform::has_data_type_support(f16) == status::success,
                         VERBOSE_UNSUPPORTED_DT);
                 // f16 path computes statistics in a single fused pass; it does
                 // not support externally provided (global) mean/variance.

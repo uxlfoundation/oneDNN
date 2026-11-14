@@ -76,6 +76,30 @@ uint4 philox_4x32_vec4_ctr_w_keys(uint4 ctr, uint16 key0, uint4 key1) {
     return ctr;
 }
 
+/* Two independent vec4 chains per call. Their instructions interleave, so
+   the GPU overlaps one chain's round latency with the other chain's work
+   (ILP, instruction-level parallelism). */
+uint8 philox_4x32_vec4x2_ctr_w_keys(
+        uint4 ctrA, uint4 ctrB, uint16 key0, uint4 key1) {
+    const uint2 PHILOX_M4x32 = (uint2)(0xD2511F53u, 0xCD9E8D57u);
+
+#define PHILOX_4UINT_ROUND_X2(key) \
+    do { \
+        ctrA = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctrA, (key)); \
+        ctrB = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctrB, (key)); \
+    } while (0)
+
+    PHILOX_4UINT_ROUND_X2(key0.s01);
+    PHILOX_4UINT_ROUND_X2(key0.s23);
+    PHILOX_4UINT_ROUND_X2(key0.s45);
+    PHILOX_4UINT_ROUND_X2(key0.s67);
+    PHILOX_4UINT_ROUND_X2(key0.s89);
+    PHILOX_4UINT_ROUND_X2(key0.sAB);
+    PHILOX_4UINT_ROUND_X2(key0.sCD);
+#undef PHILOX_4UINT_ROUND_X2
+    return (uint8)(ctrA, ctrB);
+}
+
 uint4 philox_4x32_ctr_w_offset(ulong idx, ulong offset) {
     ulong x = (idx & ~3L);
     return (uint4)((uint)offset, (uint)(offset >> 32), (uint)x,
@@ -102,6 +126,31 @@ uint4 philox_4x32_vec4_w_offset(ulong idx, ulong seed, ulong offset) {
     philox_key_schedule_t ks = philox_4x32_key_schedule(seed);
     return philox_4x32_vec4_ctr_10_w_keys(
             philox_4x32_ctr_w_offset(idx, offset), ks.key0, ks.key1);
+}
+
+/* Legacy (no offset) generator, as in philox_4x32(): the counter comes from a
+   32-bit idx alone and every index of a group of four gets word 2. */
+ulong philox_4x32_legacy_seed(long seed) {
+    return ((ulong)(uint)seed << 32) + (uint)seed;
+}
+
+uint4 philox_4x32_ctr_legacy(uint idx) {
+    uint x = idx & ~3u;
+    return (uint4)(x, x + 1, x, x + 3);
+}
+
+/* Indices idx & ~3 .. (idx & ~3) + 3 all get word 2 of the block. */
+uint4 philox_4x32_legacy4_w_keys(ulong idx, uint16 key0, uint4 key1) {
+    const uint4 r = philox_4x32_vec4_ctr_w_keys(
+            philox_4x32_ctr_legacy((uint)idx), key0, key1);
+    return (uint4)(r.s2);
+}
+
+uint8 philox_4x32_legacy4x2_w_keys(ulong idx, uint16 key0, uint4 key1) {
+    const uint8 r
+            = philox_4x32_vec4x2_ctr_w_keys(philox_4x32_ctr_legacy((uint)idx),
+                    philox_4x32_ctr_legacy((uint)idx + 4), key0, key1);
+    return (uint8)((uint4)(r.s2), (uint4)(r.s6));
 }
 
 uint philox_4x32_w_offset(long idx, long seed, long offset) {

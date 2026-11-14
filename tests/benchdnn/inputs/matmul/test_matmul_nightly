@@ -1,0 +1,8 @@
+--batch=test_matmul_ci
+
+--batch=harness_matmul_generated_nightly
+
+--batch=harness_matmul_precomp_reductions
+
+# Note: post any manually added test cases below this point.
+# When a generator support must be expanded, leave a TODO note.

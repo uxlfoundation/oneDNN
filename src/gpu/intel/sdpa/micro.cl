@@ -100,11 +100,10 @@ inline void apply_dropout_s_tile(
     ((k_stride & 3) == 0 \
             && (((batch_head_base + (ulong)tile_offset_r) & 3UL) == 0))
 #if DROPOUT_GROUPED_SHAPE_OK
+    /* Key schedule is loop-invariant. */
+    const philox_key_schedule_t ks = philox_4x32_key_schedule(
+            DROPOUT_USE_OFFSET ? (ulong)seed : philox_4x32_legacy_seed(seed));
     if (DROPOUT_GROUPED_RT_OK) {
-        /* Key schedule is loop-invariant. */
-        const philox_key_schedule_t ks = philox_4x32_key_schedule(
-                DROPOUT_USE_OFFSET ? (ulong)seed
-                                   : philox_4x32_legacy_seed(seed));
         for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
             const int i = i0 + get_sub_group_local_id();
             const int offset_c = tile_offset_c + i;
@@ -133,13 +132,57 @@ inline void apply_dropout_s_tile(
                 }
             }
         }
-    } else
-#endif
+    } else {
+        /* Unaligned start: generate from the 4-aligned base below it and
+           shift the word stream by the misalignment `a` (0..3) of the lane. */
+        for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
+            const int i = i0 + get_sub_group_local_id();
+            const int offset_c = tile_offset_c + i;
+            const ulong s = batch_head_base + (ulong)offset_c * (ulong)k_stride
+                    + (ulong)tile_offset_r;
+            const int a = (int)(s & 3UL);
+            const ulong x0 = s - (ulong)a;
+            uint4 cur = philox_4x32_vec4_dropout(
+                    x0, offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
+            int j = 0;
+            for (; j + 8 <= tile_len; j += 8) {
+                const uint8 nxt = philox_4x32_vec4x2_dropout(x0 + (ulong)j + 4,
+                        offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
+                const uint4 v_lo = philox_window4(cur, nxt.lo, a);
+                const uint4 v_hi = philox_window4(nxt.lo, nxt.hi, a);
+                for (int w = 0; w < 4; w++) {
+                    tile_access(scale_tile, i0, j + w, SUBGROUP_SIZE, blk_r,
+                            blk_c, nblk_r)
+                            = dropout_keep(
+                                    v_lo[w], tile_offset_r + j + w, offset_c);
+                    tile_access(scale_tile, i0, j + 4 + w, SUBGROUP_SIZE, blk_r,
+                            blk_c, nblk_r)
+                            = dropout_keep(v_hi[w], tile_offset_r + j + 4 + w,
+                                    offset_c);
+                }
+                cur = nxt.hi;
+            }
+            for (; j < tile_len; j += 4) {
+                const uint4 nxt = philox_4x32_vec4_dropout(x0 + (ulong)j + 4,
+                        offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
+                const uint4 v4 = philox_window4(cur, nxt, a);
+                for (int w = 0; w < 4; w++) {
+                    tile_access(scale_tile, i0, j + w, SUBGROUP_SIZE, blk_r,
+                            blk_c, nblk_r)
+                            = dropout_keep(
+                                    v4[w], tile_offset_r + j + w, offset_c);
+                }
+                cur = nxt;
+            }
+        }
+    }
+#else
     {
         tile_predicated_select_t(scale_tile, tile_offset_r, tile_offset_c,
                 dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE, blk_r, blk_c,
                 nblk_r, nblk_c);
     }
+#endif
 #undef DROPOUT_GROUPED_SHAPE_OK
 #undef DROPOUT_GROUPED_RT_OK
 #undef dropout_keep

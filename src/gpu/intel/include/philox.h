@@ -141,6 +141,14 @@ uint8 philox_4x32_vec4x2_dropout(
     return use_offset ? r : (uint8)((uint4)(r.s2), (uint4)(r.s6));
 }
 
+/* Words [a, a + 4) of the 8-word window (lo, hi), for a in [0, 3]. */
+uint4 philox_window4(uint4 lo, uint4 hi, int a) {
+    return a == 0    ? lo
+            : a == 1 ? (uint4)(lo.s123, hi.s0)
+            : a == 2 ? (uint4)(lo.s23, hi.s01)
+                     : (uint4)(lo.s3, hi.s012);
+}
+
 uint8 philox_4x32_vec4x2_w_offset(ulong idx, ulong seed, ulong offset) {
     philox_key_schedule_t ks = philox_4x32_key_schedule(seed);
     return philox_4x32_vec4x2_w_keys(idx, offset, ks.key0, ks.key1);

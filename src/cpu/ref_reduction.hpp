@@ -40,9 +40,11 @@ struct ref_reduction_t : public primitive_t {
             const auto src_type = src_md(0)->data_type;
             const auto dst_type = dst_md(0)->data_type;
 
-            VDISPATCH_REDUCTION(platform::has_data_type_support(src_type),
+            VDISPATCH_REDUCTION(platform::has_data_type_support(src_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_REDUCTION(platform::has_data_type_support(dst_type),
+            VDISPATCH_REDUCTION(platform::has_data_type_support(dst_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REDUCTION(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);

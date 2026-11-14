@@ -56,10 +56,12 @@ struct ref_prelu_fwd_t : public primitive_t {
             VDISPATCH_PRELU(src_md(0)->data_type == dst_md(0)->data_type,
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
             VDISPATCH_PRELU(
-                    platform::has_data_type_support(src_md(0)->data_type),
+                    platform::has_data_type_support(src_md(0)->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(
-                    platform::has_data_type_support(weights_md(0)->data_type),
+                    platform::has_data_type_support(weights_md(0)->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -101,10 +103,12 @@ struct ref_prelu_bwd_t : public primitive_t {
                     diff_dst_md(0)->data_type == diff_src_md(0)->data_type,
                     VERBOSE_INCONSISTENT_DT, "diff_src", "diff_dst");
             VDISPATCH_PRELU(
-                    platform::has_data_type_support(src_md(0)->data_type),
+                    platform::has_data_type_support(src_md(0)->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(
-                    platform::has_data_type_support(weights_md(0)->data_type),
+                    platform::has_data_type_support(weights_md(0)->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

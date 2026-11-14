@@ -45,10 +45,12 @@ struct ref_resampling_fwd_t : public primitive_t {
 
             VDISPATCH_RESAMPLING(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
-                    platform::has_data_type_support(src_md()->data_type),
+                    platform::has_data_type_support(src_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
-                    platform::has_data_type_support(dst_md()->data_type),
+                    platform::has_data_type_support(dst_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(set_default_params() == status::success,
                     VERBOSE_BAD_PARAM, "cannot set default parameters");
@@ -99,10 +101,12 @@ struct ref_resampling_bwd_t : public primitive_t {
             using namespace data_type;
             VDISPATCH_RESAMPLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
-                    platform::has_data_type_support(diff_src_md()->data_type),
+                    platform::has_data_type_support(diff_src_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(
-                    platform::has_data_type_support(diff_dst_md()->data_type),
+                    platform::has_data_type_support(diff_dst_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(set_default_params() == status::success,
                     VERBOSE_BAD_PARAM, "cannot set default parameters");

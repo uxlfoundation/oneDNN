@@ -107,47 +107,50 @@ bool prefer_ymm_requested() {
 #endif
 }
 
-bool has_data_type_support(data_type_t data_type) {
-    switch (data_type) {
-        case data_type::f64: return false;
-        case data_type::s64: return false;
-        case data_type::bf16:
+status_t has_data_type_support(data_type_t data_type) {
+    const bool is_supported = [&]() {
+        switch (data_type) {
+            case data_type::f64: return false;
+            case data_type::s64: return false;
+            case data_type::bf16:
 #if DNNL_X64
-            return x64::mayiuse(x64::avx512_core)
-                    || x64::mayiuse(x64::avx2_vnni_2);
+                return x64::mayiuse(x64::avx512_core)
+                        || x64::mayiuse(x64::avx2_vnni_2);
 #elif DNNL_PPC64
 #if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
-            return true;
+                return true;
 #endif
 #elif DNNL_AARCH64
-            return aarch64::mayiuse_bf16();
+                return aarch64::mayiuse_bf16();
 #elif DNNL_RV64
-            return rv64::mayiuse(rv64::zvfbfwma);
+                return rv64::mayiuse(rv64::zvfbfwma);
 #else
-            return false;
+                return false;
 #endif
-        case data_type::f16:
+            case data_type::f16:
 #if DNNL_X64
-            return x64::mayiuse(x64::avx512_core_fp16)
-                    || x64::mayiuse(x64::avx2_vnni_2);
+                return x64::mayiuse(x64::avx512_core_fp16)
+                        || x64::mayiuse(x64::avx2_vnni_2);
 #elif DNNL_AARCH64
-            return aarch64::mayiuse_f16();
+                return aarch64::mayiuse_f16();
 #elif DNNL_RV64
-            return rv64::mayiuse(rv64::zvfh);
+                return rv64::mayiuse(rv64::zvfh);
 #else
-            return false;
+                return false;
 #endif
-        case data_type::f8_e5m2:
-        case data_type::f8_e4m3:
-        case data_type::e8m0:
+            case data_type::f8_e5m2:
+            case data_type::f8_e4m3:
+            case data_type::e8m0:
 #if DNNL_X64
-            return x64::mayiuse(x64::avx512_core_fp16);
+                return x64::mayiuse(x64::avx512_core_fp16);
 #else
-            return false;
+                return false;
 #endif
-        case data_type::f4_e2m1: return false;
-        default: return true;
-    }
+            case data_type::f4_e2m1: return false;
+            default: return true;
+        }
+    }();
+    return is_supported ? status::success : status::data_type_not_supported;
 }
 
 bool has_optimized_gemm() {
@@ -158,44 +161,47 @@ bool has_optimized_gemm() {
 #endif
 }
 
-bool has_training_support(data_type_t data_type) {
-    // TODO: maybe return false for int8, but some primitives like prelu
-    // have training support
-    switch (data_type) {
-        case data_type::f32: return true;
-        case data_type::bf16:
+status_t has_training_support(data_type_t data_type) {
+    const bool is_supported = [&]() {
+        // TODO: maybe return false for int8, but some primitives like prelu
+        // have training support
+        switch (data_type) {
+            case data_type::f32: return true;
+            case data_type::bf16:
 #if DNNL_X64
-            return x64::mayiuse(x64::avx512_core);
+                return x64::mayiuse(x64::avx512_core);
 #elif DNNL_PPC64
 #if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
-            return true;
+                return true;
 #endif
 #elif DNNL_AARCH64
-            return aarch64::mayiuse_bf16();
+                return aarch64::mayiuse_bf16();
 #elif DNNL_RV64
-            return rv64::mayiuse(rv64::zvfbfwma);
+                return rv64::mayiuse(rv64::zvfbfwma);
 #else
-            return false;
+                return false;
 #endif
-        case data_type::f16:
+            case data_type::f16:
 #if DNNL_X64
-            return x64::mayiuse(x64::avx512_core_fp16);
+                return x64::mayiuse(x64::avx512_core_fp16);
 #elif DNNL_AARCH64
-            return aarch64::mayiuse_f16();
+                return aarch64::mayiuse_f16();
 #elif DNNL_RV64
-            return rv64::mayiuse(rv64::zvfh);
+                return rv64::mayiuse(rv64::zvfh);
 #else
-            return false;
+                return false;
 #endif
-        case data_type::f8_e5m2:
-        case data_type::f8_e4m3:
+            case data_type::f8_e5m2:
+            case data_type::f8_e4m3:
 #if DNNL_X64
-            return x64::mayiuse(x64::avx512_core_fp16);
+                return x64::mayiuse(x64::avx512_core_fp16);
 #else
-            return false;
+                return false;
 #endif
-        default: return false;
-    }
+            default: return false;
+        }
+    }();
+    return is_supported ? status::success : status::data_type_not_supported;
 }
 
 float s8s8_weights_scale_factor() {

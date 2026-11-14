@@ -154,11 +154,13 @@ float ref_binary_scalar_t::compute_scalar(
 
 bool ref_binary_scalar_t::data_type_ok(const post_ops_t::entry_t &entry) {
     const auto &binary = entry.binary;
-    bool src1_ok = platform::has_data_type_support(binary.src1_desc.data_type);
+    bool src1_ok = platform::has_data_type_support(binary.src1_desc.data_type)
+            == status::success;
 
     if (entry.is_binary_with_ternary_op()) {
         bool src2_ok
-                = platform::has_data_type_support(binary.src2_desc.data_type);
+                = platform::has_data_type_support(binary.src2_desc.data_type)
+                == status::success;
         return src1_ok && src2_ok;
     }
 
@@ -201,7 +203,7 @@ void ref_sum_scalar_t::execute(
 bool ref_sum_scalar_t::data_type_ok(const post_ops_t::entry_t &entry) {
     const auto &sum = entry.sum;
     return sum.dt == data_type::undef
-            || platform::has_data_type_support(sum.dt);
+            || platform::has_data_type_support(sum.dt) == status::success;
 }
 
 ref_post_ops_t::ref_post_ops_t(const post_ops_t &po, bool skip_sum)

@@ -76,20 +76,24 @@ status_t acl_matmul_t::pd_t::init(const engine_t *engine) {
             = utils::everyone_is(data_type::f32, src_md()->data_type,
                       weights_md()->data_type, dst_md()->data_type,
                       desc()->accum_data_type)
-            && platform::has_data_type_support(data_type::f32);
+            && platform::has_data_type_support(data_type::f32)
+                    == status::success;
     const bool is_fp16_ok
             = utils::everyone_is(data_type::f16, src_md()->data_type,
                       weights_md()->data_type, dst_md()->data_type)
-            && platform::has_data_type_support(data_type::f16);
+            && platform::has_data_type_support(data_type::f16)
+                    == status::success;
     const bool is_bf16_ok
             = utils::everyone_is(data_type::bf16, src_md()->data_type,
                       weights_md()->data_type, dst_md()->data_type)
-            && platform::has_data_type_support(data_type::bf16);
+            && platform::has_data_type_support(data_type::bf16)
+                    == status::success;
     const bool is_bf16f32_ok
             = utils::everyone_is(data_type::bf16, src_md()->data_type,
                       weights_md()->data_type)
             && utils::everyone_is(data_type::f32, dst_md()->data_type)
-            && platform::has_data_type_support(data_type::bf16);
+            && platform::has_data_type_support(data_type::bf16)
+                    == status::success;
     const bool is_gemv = utils::everyone_is(2, src_md()->ndims, dst_md()->ndims)
             && (src_md()->dims[0] == 1 || weights_md()->dims[1] == 1);
 

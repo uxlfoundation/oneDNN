@@ -39,7 +39,8 @@ struct simple_concat_t : public primitive_t {
 
         status_t init(const engine_t *engine) {
             const memory_desc_wrapper dst_d(dst_md());
-            VDISPATCH_CONCAT(platform::has_data_type_support(data_type),
+            VDISPATCH_CONCAT(platform::has_data_type_support(data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONCAT(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

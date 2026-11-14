@@ -59,9 +59,10 @@ struct jit_uni_batch_normalization_fwd_t : public primitive_t {
                     : isa == zvfbfwma                   ? bf16
                                                         : f32;
             const bool types_ok = dtsrc == expected_dt && dtdst == dtsrc
-                    && platform::has_data_type_support(dtsrc)
+                    && platform::has_data_type_support(dtsrc) == status::success
                     && IMPLICATION(is_training(),
-                            platform::has_training_support(dtsrc));
+                            platform::has_training_support(dtsrc)
+                                    == status::success);
             VDISPATCH_BNORM(types_ok, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(check_scale_shift_data_type(),
                     VERBOSE_UNSUPPORTED_FEATURE,
@@ -196,7 +197,9 @@ struct jit_uni_batch_normalization_bwd_t : public primitive_t {
                             && utils::everyone_is(dt, diff_dst_md()->data_type,
                                     diff_src_md()->data_type)
                             && platform::has_data_type_support(dt)
-                            && platform::has_training_support(dt),
+                                    == status::success
+                            && platform::has_training_support(dt)
+                                    == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(check_scale_shift_data_type(),
                     VERBOSE_UNSUPPORTED_FEATURE,

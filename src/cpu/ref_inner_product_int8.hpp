@@ -60,9 +60,11 @@ struct ref_inner_product_int8_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     IMPLICATION(with_bias(),
-                            platform::has_data_type_support(bia_type)),
+                            platform::has_data_type_support(bia_type)
+                                    == status::success),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(dst_type),
+            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(dst_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     set_default_params(allow_all_tags) == status::success,

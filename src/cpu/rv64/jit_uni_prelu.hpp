@@ -82,9 +82,11 @@ struct jit_uni_prelu_fwd_t : public primitive_t {
                     utils::one_of(dt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(
                     utils::one_of(wdt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_PRELU(platform::has_data_type_support(dt),
+            VDISPATCH_PRELU(
+                    platform::has_data_type_support(dt) == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_PRELU(platform::has_data_type_support(wdt),
+            VDISPATCH_PRELU(
+                    platform::has_data_type_support(wdt) == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(dst_md(0)->data_type == dt, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");

@@ -531,8 +531,8 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(const engine_t *engine) {
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_GNORM(IMPLICATION(sdt == data_type::f16, mayiuse(zvfh)),
             VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_GNORM(
-            platform::has_data_type_support(sdt), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_GNORM(platform::has_data_type_support(sdt) == status::success,
+            VERBOSE_UNSUPPORTED_DT);
     isa_ = (sdt == data_type::f16) ? zvfh : v; // selects kernels + impl name
     VDISPATCH_GNORM(check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_FEATURE,
             "unsupported scale or shift data type");

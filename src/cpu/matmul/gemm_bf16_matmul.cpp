@@ -60,7 +60,8 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::init(const engine_t *engine) {
             && weights_md()->data_type == weights_type
             && desc()->accum_data_type == acc_type
             && dst_md()->data_type == dst_type
-            && platform::has_data_type_support(data_type::bf16);
+            && platform::has_data_type_support(data_type::bf16)
+                    == status::success;
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);

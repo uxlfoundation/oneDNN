@@ -88,14 +88,18 @@ struct ref_matmul_t : public primitive_t {
                             // data type for fp8?
                             ),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(src_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(IMPLICATION(with_bias(),
-                                     platform::has_data_type_support(bia_type)),
+                                     platform::has_data_type_support(bia_type)
+                                             == status::success),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(
                     attr()->has_default_values(smask_t::scales_data_type

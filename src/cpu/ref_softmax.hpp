@@ -46,10 +46,12 @@ struct ref_softmax_fwd_t : public primitive_t {
 
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_SOFTMAX(
-                    platform::has_data_type_support(src_md()->data_type),
+                    platform::has_data_type_support(src_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(
-                    platform::has_data_type_support(dst_md()->data_type),
+                    platform::has_data_type_support(dst_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(utils::one_of(src_md()->data_type, f32, bf16, f16,
                                       f8_e5m2, f8_e4m3, s8, u8),
@@ -205,13 +207,16 @@ struct ref_softmax_bwd_t : public primitive_t {
                     utils::one_of(diff_src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(
-                    platform::has_data_type_support(dst_md()->data_type),
+                    platform::has_data_type_support(dst_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(
-                    platform::has_data_type_support(diff_dst_md()->data_type),
+                    platform::has_data_type_support(diff_dst_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(
-                    platform::has_data_type_support(diff_src_md()->data_type),
+                    platform::has_data_type_support(diff_src_md()->data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(dst_md()->data_type == diff_dst_md()->data_type,
                     VERBOSE_INCONSISTENT_DT, "dst", "diff_dst");

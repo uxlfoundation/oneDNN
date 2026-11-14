@@ -86,7 +86,7 @@ using namespace data_type;
 
 static bool data_type_supported(const data_type_t dtype) {
     return utils::one_of(dtype, f32, s32, f16, bf16, s8, u8)
-            && platform::has_data_type_support(dtype);
+            && platform::has_data_type_support(dtype) == status::success;
 }
 
 static bool data_format_supported(

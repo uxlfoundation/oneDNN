@@ -108,11 +108,14 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
                                      attr()->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(src_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
 
             // Check for supported quantization schemes
@@ -277,11 +280,14 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
                             && utils::one_of(src_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(src_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
+            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_MATMUL(

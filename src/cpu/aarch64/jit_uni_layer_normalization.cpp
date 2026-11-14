@@ -447,9 +447,11 @@ status_t jit_uni_layer_normalization_fwd_t<isa>::pd_t::init(
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(utils::one_of(dst_md()->data_type, f32, f16, bf16, s8, u8),
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_LNORM(platform::has_data_type_support(src_md()->data_type),
+    VDISPATCH_LNORM(platform::has_data_type_support(src_md()->data_type)
+                    == status::success,
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_LNORM(platform::has_data_type_support(dst_md()->data_type),
+    VDISPATCH_LNORM(platform::has_data_type_support(dst_md()->data_type)
+                    == status::success,
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(check_scale_shift_data_type(), VERBOSE_UNSUPPORTED_FEATURE,

@@ -87,9 +87,11 @@ inline void apply_dropout_s_tile(
     /* Build float scale tile: inv_q if keep, 0.f if drop -- same type as s_tile */
     volatile s_tile_type scale_tile;
 
-    /* Grouped path needs tile_len % 4 == 0 (JIT constant). */
+    /* Grouped path needs tile_len % 4 == 0 (JIT constant). The per-element
+       path is kept as a reference; SDPA_DROPOUT_PER_ELEMENT=1 forces it. */
 #define DROPOUT_GROUPED_SHAPE_OK \
-    (((ugemm_kq_c_type_block1 * ugemm_kq_c_type_nblock1) & 3) == 0)
+    (!DROPOUT_PER_ELEMENT \
+            && ((ugemm_kq_c_type_block1 * ugemm_kq_c_type_nblock1) & 3) == 0)
 #if DROPOUT_GROUPED_SHAPE_OK
     /* Fill keep/drop values for keys j0..j0+3 of this lane's column. */
 #define dropout_store4(v, j0) \

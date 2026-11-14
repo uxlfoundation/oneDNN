@@ -1869,8 +1869,6 @@ template struct jit_sve_convolution_bwd_weights_t<data_type::f32,
         data_type::f32, data_type::f32, sve_512>;
 template struct jit_sve_convolution_bwd_weights_t<data_type::f32,
         data_type::f32, data_type::f32, sve_256>;
-// SVE128 BWD_W is currently not selected due to observed 1x1
-// low-spatial regressions at 64/96 threads.
 template struct jit_sve_convolution_bwd_weights_t<data_type::f32,
         data_type::f32, data_type::f32, sve_128>;
 } // namespace aarch64

@@ -1264,6 +1264,14 @@ status_t jit_sve_1x1_conv_kernel_t<isa>::init_conf(jit_1x1_conv_conf_t &jcp,
         jcp.load_loop_iter_step = jcp.oc_block;
 
         /* --- */
+        // Parallelization overhead dominates small SVE128 BWD_W problems.
+        // The channel and MAC limits are empirical; larger weight tensors
+        // can benefit from threading even with a short reduction dimension.
+        if (isa == sve_128 && jcp.mb == 1 && jcp.ic <= 64 && jcp.oc <= 64) {
+            const dim_t macs = static_cast<dim_t>(jcp.mb) * jcp.ic * jcp.oc
+                    * jcp.od * jcp.oh * jcp.ow;
+            if (macs <= 64 * 1024) jcp.nthr = 1;
+        }
         balance(jcp);
 
         load_blocking = div_up(jcp.load_dim, jcp.load_block);

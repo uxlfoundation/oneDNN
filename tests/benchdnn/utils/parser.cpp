@@ -641,9 +641,10 @@ summary_t str2summary(const std::string &s) {
 fill_input_t str2fill_input(const std::string &s) {
     if (s == "random") return fill_input_t::random;
     if (s == "zero") return fill_input_t::zero;
+    if (s == "normal") return fill_input_t::normal;
     BENCHDNN_PRINT(0,
-            "Error: unsupported fill '%s'. Supported values are 'random' "
-            "and 'zero'.\n",
+            "Error: unsupported fill '%s'. Supported values are 'random', "
+            "'zero', and 'normal'.\n",
             s.c_str());
     SAFE_V(FAIL);
     return fill_input_t::random;
@@ -1581,9 +1582,10 @@ static bool parse_cold_cache(
 static bool parse_fill(
         const char *str, const std::string &option_name = "fill") {
     static const std::string help
-            = "random|zero    (Default: `random`)\n    Instructs the driver "
-              "how to fill data without reference memory. `zero` fills every "
-              "element with zero.\n";
+            = "random|zero|normal    (Default: `random`)\n    Instructs the "
+              "driver how to fill data without reference memory. `zero` fills "
+              "every element with zero. `normal` fills N(0, 1) samples "
+              "(Intel GPU only).\n";
     return parse_single_value_option(fill_input, fill_input_t::random,
             parsers::str2fill_input, str, option_name, help);
 }

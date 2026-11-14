@@ -101,7 +101,7 @@ int fill_random_real(dnn_mem_t &mem_ref,
 
 extern std::string buffer_prefix;
 
-enum class fill_input_t { random, zero };
+enum class fill_input_t { random, zero, normal };
 std::ostream &operator<<(std::ostream &s, fill_input_t fill);
 
 extern fill_input_t fill_input;

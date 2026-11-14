@@ -282,6 +282,11 @@ cannot be used with `--mode=C`. `VALUE` can be:
   - `random` (the default): pseudo-random data on Intel GPU to avoid memory
     compression, a constant byte on other engines.
   - `zero`: every element is set to zero. Allows memory compression.
+  - `normal`: standard normal N(0, 1) samples converted to the data type.
+    Integer types hold the samples scaled so that +/-4 sigma spans the type
+    range (for example, `s8` uses sigma 32, `u8` uses mean 127.5 and sigma 32).
+    `e8m0` holds the absolute value. Intel GPU only; other engines keep the
+    default fill.
 
 ### --fix-times-per-prb
 `--fix-times-per-prb=N` specifies the `N` number of rounds per problem to run,

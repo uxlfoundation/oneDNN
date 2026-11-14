@@ -493,7 +493,11 @@ fill_input_t fill_input = fill_input_t::random;
 bool fill_input_applied = false;
 
 std::ostream &operator<<(std::ostream &s, fill_input_t fill) {
-    return s << (fill == fill_input_t::zero ? "zero" : "random");
+    switch (fill) {
+        case fill_input_t::zero: return s << "zero";
+        case fill_input_t::normal: return s << "normal";
+        default: return s << "random";
+    }
 }
 
 int fill_by_input(const dnn_mem_t &mem, fill_input_t fill, size_t size,
@@ -504,7 +508,9 @@ int fill_by_input(const dnn_mem_t &mem, fill_input_t fill, size_t size,
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
     } else if (!is_cpu(mem.engine())) {
-        SAFE(mem.gpu_fill_random(size, buffer_index), WARN);
+        const bool normal = fill == fill_input_t::normal;
+        if (normal) fill_input_applied = true;
+        SAFE(mem.gpu_fill_random(size, buffer_index, normal), WARN);
 #endif
     } else {
         // Fill memory directly with 0x3F3F3F3F (0.747059f).

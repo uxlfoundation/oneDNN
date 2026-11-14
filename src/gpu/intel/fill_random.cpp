@@ -58,12 +58,13 @@ static uint32_t nan_safe_mask(data_type_t dt) {
         case data_type::f8_e4m3: return 0xF7F7F7F7u;
         case data_type::e8m0: return 0xFEFEFEFEu;
         case data_type::f64: return 0xFFEFFFFFu;
+        case data_type::boolean: return 0x01010101u;
         default: return 0xFFFFFFFFu;
     }
 }
 
 status_t fill_random(impl::stream_t *stream, size_t size,
-        impl::memory_t *memory, int buffer_index, uint32_t seed) {
+        impl::memory_t *memory, int buffer_index, uint32_t seed, bool normal) {
     if (size == 0) return status::success;
 
     auto *intel_stream = utils::downcast<intel::stream_t *>(stream);
@@ -71,15 +72,20 @@ status_t fill_random(impl::stream_t *stream, size_t size,
     compute::kernel_t kernel;
     CHECK(get_cached_kernel(intel_engine, kernel));
 
-    // Each work-item writes 16 bytes (4 × uint32) via vstore4.
-    static constexpr size_t bytes_per_item = 16;
+    const data_type_t dt = memory->md()->data_type;
+    // f4_e3m0 has no kernel conversion and falls back to uniform bits.
+    const data_type_t normal_dt
+            = normal && dt != dnnl_f4_e3m0 ? dt : data_type::undef;
+    // Each work-item writes 16 bytes, 12 bytes for normal u3 data.
+    const size_t bytes_per_item = normal_dt == data_type::u3 ? 12 : 16;
     compute::nd_range_t nd_range(
             compute::range_t(utils::div_up(size, bytes_per_item), 1, 1));
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, *memory->memory_storage(buffer_index));
     arg_list.set(1, seed);
     arg_list.set(2, static_cast<uint64_t>(size));
-    arg_list.set(3, nan_safe_mask(memory->md()->data_type));
+    arg_list.set(3, nan_safe_mask(dt));
+    arg_list.set(4, static_cast<int>(normal_dt));
 
     CHECK(kernel.parallel_for(*stream, nd_range, arg_list,
             intel_stream->ctx().get_deps(), intel_stream->ctx().get_deps()));
@@ -93,7 +99,7 @@ status_t fill_random(impl::stream_t *stream, size_t size,
 
 extern "C" dnnl::impl::status_t DNNL_API dnnl_impl_gpu_fill_random(
         dnnl::impl::stream_t *stream, size_t size, dnnl::impl::memory_t *memory,
-        int buffer_index, uint32_t seed) {
+        int buffer_index, uint32_t seed, int normal) {
     return dnnl::impl::gpu::intel::fill_random(
-            stream, size, memory, buffer_index, seed);
+            stream, size, memory, buffer_index, seed, normal != 0);
 }

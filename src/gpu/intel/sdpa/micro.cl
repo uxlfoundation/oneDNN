@@ -55,11 +55,11 @@ typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
 
 #if WITH_DROPOUT
-const int blk_r = ugemm_kq_c_type_block0;
-const int blk_c = ugemm_kq_c_type_block1;
-const int nblk_r = ugemm_kq_c_type_nblock0;
-const int nblk_c = ugemm_kq_c_type_nblock1;
-const int tile_len = blk_c * nblk_c;
+#define blk_r ugemm_kq_c_type_block0
+#define blk_c ugemm_kq_c_type_block1
+#define nblk_r ugemm_kq_c_type_nblock0
+#define nblk_c ugemm_kq_c_type_nblock1
+#define tile_len (blk_c * nblk_c)
 inline void apply_dropout_s_tile(
         s_tile_type *tile, int tile_offset_r, int tile_offset_c, int max_r,
         int max_c, ulong batch_head_base, int k_stride, int use_dropout_offset,
@@ -162,6 +162,11 @@ inline void apply_dropout_s_tile(
 
 #undef dropout_predicate
 }
+#undef blk_r
+#undef blk_c
+#undef nblk_r
+#undef nblk_c
+#undef tile_len
 #endif
 
 // Tile debugging example for s_tile

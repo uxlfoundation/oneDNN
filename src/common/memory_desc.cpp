@@ -503,8 +503,9 @@ status_t memory_desc_init_submemory(memory_desc_t &memory_desc,
         VCHECK_MEMORY(!any_runtime_value(dims[d], offsets[d]), unimplemented,
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
+        // `offsets[d] + dims[d]` may overflow, compare against the remainder.
         const bool dim_offsets_oob = (dims[d] < 0 || offsets[d] < 0
-                || (offsets[d] + dims[d] > src_d.dims()[d]));
+                || (offsets[d] > src_d.dims()[d] - dims[d]));
         VCHECK_MEMORY(
                 !dim_offsets_oob, invalid_arguments, VERBOSE_BAD_DIM, "src", d);
     }

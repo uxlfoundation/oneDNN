@@ -81,8 +81,9 @@ Performance profiling options supported:
 | Syntax     | Primitives | Description
 | :--        | :--        | :--
 | %@time%    | All        | Execution time in milliseconds
-| %@clocks%  | All        | Execution time in clocks
-| %@freq%    | All        | Effective CPU frequency computed as `clocks / time`
+| %@clocks%  | All        | Execution time in clocks. On GPU, `time * %0freq%`. See `GPU Frequency Notes`.
+| %@freq%    | All        | Effective CPU frequency computed as `clocks / time`. On GPU, the sampled actual frequency. See `GPU Frequency Notes`.
+| %@maxfreq% | All        | Maximum (RP0) GPU frequency of the device
 | %@ibytes%  | All        | Number of input memories bytes of a problem
 | %@obytes%  | All        | Number of output memories bytes of a problem
 | %@iobytes% | All        | Number of input and output memories bytes of a problem
@@ -115,6 +116,14 @@ primitive cache was not hit can be obtained through the empty or `max` modifier
 (the default). A case when primitive cache was hit can be obtained through the
 `min` modifier. The average modifier for create times is not recommended since
 this time doesn't represent any specific scenario.
+
+### GPU Frequency Notes
+
+On GPU, benchdnn samples the actual frequency with Level Zero Sysman every
+millisecond while a problem is measured. Samples from the share of the run
+dropped by outlier filtering (warm-up) are excluded. `%@clocks%` is computed as
+`time * %0freq%`. Without Sysman, `%@freq%`, `%@clocks%`, and `%@maxfreq%`
+report `0` on GPU. Use `-v2` to print sampling statistics.
 
 ## Examples
 

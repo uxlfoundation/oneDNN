@@ -52,6 +52,8 @@ void timer_t::reset() {
     for (int i = 0; i < n_modes; ++i)
         ms_[i] = 0;
     ms_start_ = 0;
+    freq_ = {};
+    kept_share_ = 1;
     samples_.clear();
 
     start();
@@ -104,6 +106,12 @@ void timer_t::filter_collection() {
     // First, drop the first half of all measurements. The motivation is second
     // half operates with stabilized frequency.
     size_t midpoint = samples_.size() / 2;
+    double total_ms = 0, dropped_ms = 0;
+    for (size_t i = 0; i < samples_.size(); i++) {
+        total_ms += samples_[i].ms;
+        if (i < midpoint) dropped_ms += samples_[i].ms;
+    }
+    if (total_ms > 0) kept_share_ = 1 - dropped_ms / total_ms;
     samples_.erase(samples_.begin(), samples_.begin() + midpoint);
     if (samples_.size() <= 1) return;
 

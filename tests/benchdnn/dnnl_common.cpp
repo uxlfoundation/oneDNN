@@ -53,6 +53,7 @@
 #include "utils/dnnl_query.hpp"
 #include "utils/execution_mode.hpp"
 #include "utils/fill.hpp"
+#include "utils/gpu_freq.hpp"
 #include "utils/parallel.hpp"
 #include "utils/stream_kind.hpp"
 #include "utils/system.hpp"
@@ -639,6 +640,20 @@ int update_timer_with_profiling_info(timer::timer_t &t, bool use_profiling,
     return OK;
 }
 
+// Uses samples from the post-filter share of the window.
+static void set_gpu_freq(
+        timer::timer_t &t, const std::vector<gpu_freq::sample_t> &samples) {
+    if (samples.empty()) return;
+    const double kept = t.kept_share();
+    const auto st = gpu_freq::tail_stats(samples, kept);
+    t.set_freq(st);
+    BENCHDNN_PRINT(3,
+            "[GPU_FREQ]: samples: %zu; window: %.3f ms; tail: %.3f; used: %zu; "
+            "avg: %.0f MHz; min: %.0f MHz; max: %.0f MHz;\n",
+            samples.size(), samples.back().ms, kept, st.n, st.avg, st.min,
+            st.max);
+}
+
 inline int measure_perf_individual(timer::timer_t &t, dnnl_stream_t stream,
         perf_function_t &perf_func, std::vector<dnnl_exec_arg_t> &dnnl_args) {
     // Warm-up run, this is not measured due to possibility the associated
@@ -707,6 +722,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
             4, "%s%d%s\n", "[PERF]: submissions: ", num_submissions, ";");
     // Measuring loop. A single synchronization point, called once, the number
     // of submissions determined above based on n_times or plain time criterion.
+    gpu_freq::session_t freq_session;
     t.reset();
     // Keep a separate variable due to a `break` inside the loop.
     int execute_count = 0;
@@ -721,6 +737,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     for (size_t j = 0; j < v_stream.size(); j++) {
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
     }
+    // Stop right after the executions to exclude the profiling readback.
+    const auto freq_samples = freq_session.stop();
 
     SAFE(update_timer_with_profiling_info(
                  t, use_profiling, v_stream, execute_count),
@@ -733,6 +751,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
         t.filter_collection();
     }
+
+    set_gpu_freq(t, freq_samples);
 
     return OK;
 }

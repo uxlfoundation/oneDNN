@@ -92,90 +92,71 @@ inline void apply_dropout_s_tile(
     s_tile_type scale_tile;
 #endif
 
-    /* Grouped path needs k_stride % 4 == 0, a 4-aligned
-       tile start (runtime) and tile_len % 4 == 0 (JIT constant). */
+    /* Grouped path needs tile_len % 4 == 0 (JIT constant). */
 #define DROPOUT_GROUPED_SHAPE_OK \
     (((ugemm_kq_c_type_block1 * ugemm_kq_c_type_nblock1) & 3) == 0)
-#define DROPOUT_GROUPED_RT_OK \
-    ((k_stride & 3) == 0 \
-            && (((batch_head_base + (ulong)tile_offset_r) & 3UL) == 0))
 #if DROPOUT_GROUPED_SHAPE_OK
+    /* Fill keep/drop values for keys j0..j0+3 of this lane's column. */
+#define dropout_store4(v, j0) \
+    { \
+        const uint4 _v = (v); \
+        for (int w = 0; w < 4; w++) { \
+            tile_access(scale_tile, i0, (j0) + w, SUBGROUP_SIZE, blk_r, blk_c, \
+                    nblk_r) \
+                    = dropout_keep(_v[w], tile_offset_r + (j0) + w, offset_c); \
+        } \
+    }
+
     /* Key schedule is loop-invariant. */
     const philox_key_schedule_t ks = philox_4x32_key_schedule(
             DROPOUT_USE_OFFSET ? (ulong)seed : philox_4x32_legacy_seed(seed));
-    if (DROPOUT_GROUPED_RT_OK) {
-        for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
-            const int i = i0 + get_sub_group_local_id();
-            const int offset_c = tile_offset_c + i;
-            const ulong cbase = batch_head_base
-                    + (ulong)offset_c * (ulong)k_stride + (ulong)tile_offset_r;
-            int j = 0;
-            /* Two independent Philox chains per call, for ILP. */
+    /* Uniform: every lane's first key starts on a Philox block boundary. */
+    const bool aligned = (k_stride & 3) == 0
+            && ((batch_head_base + (ulong)tile_offset_r) & 3UL) == 0;
+    /* Each lane owns one column of the tile per i0 step. */
+#pragma unroll
+    for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
+        const int offset_c = tile_offset_c + i0 + get_sub_group_local_id();
+        const ulong s = batch_head_base + (ulong)offset_c * (ulong)k_stride
+                + (ulong)tile_offset_r;
+        int j = 0;
+        if (aligned) {
+            /* Eight keys per step from two independent Philox chains, for ILP. */
             for (; j + 8 <= tile_len; j += 8) {
-                const uint8 v8 = philox_4x32_vec4x2_dropout(cbase + (ulong)j,
-                        offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
-                for (int w = 0; w < 8; w++) {
-                    tile_access(scale_tile, i0, j + w, SUBGROUP_SIZE, blk_r,
-                            blk_c, nblk_r)
-                            = dropout_keep(
-                                    v8[w], tile_offset_r + j + w, offset_c);
-                }
+                const uint8 v = philox_4x32_vec4x2_dropout(s + (ulong)j, offset,
+                        DROPOUT_USE_OFFSET, ks.key0, ks.key1);
+                dropout_store4(v.lo, j);
+                dropout_store4(v.hi, j + 4);
             }
-            for (; j < tile_len; j += 4) {
-                const uint4 v4 = philox_4x32_vec4_dropout(cbase + (ulong)j,
-                        offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
-                for (int w = 0; w < 4; w++) {
-                    tile_access(scale_tile, i0, j + w, SUBGROUP_SIZE, blk_r,
-                            blk_c, nblk_r)
-                            = dropout_keep(
-                                    v4[w], tile_offset_r + j + w, offset_c);
-                }
+            /* tile_len % 4 == 0, so at most one group of four keys is left. */
+            if (j < tile_len) {
+                dropout_store4(philox_4x32_vec4_dropout(s + (ulong)j, offset,
+                                       DROPOUT_USE_OFFSET, ks.key0, ks.key1),
+                        j);
             }
-        }
-    } else {
-        /* Unaligned start: generate from the 4-aligned base below it and
-           shift the word stream by the misalignment `a` (0..3) of the lane. */
-        for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
-            const int i = i0 + get_sub_group_local_id();
-            const int offset_c = tile_offset_c + i;
-            const ulong s = batch_head_base + (ulong)offset_c * (ulong)k_stride
-                    + (ulong)tile_offset_r;
+        } else {
+            /* Start at the block below s and shift the words by a = s & 3. */
             const int a = (int)(s & 3UL);
             const ulong x0 = s - (ulong)a;
             uint4 cur = philox_4x32_vec4_dropout(
                     x0, offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
-            int j = 0;
+            /* Eight keys per step; each window spans two consecutive blocks. */
             for (; j + 8 <= tile_len; j += 8) {
                 const uint8 nxt = philox_4x32_vec4x2_dropout(x0 + (ulong)j + 4,
                         offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
-                const uint4 v_lo = philox_window4(cur, nxt.lo, a);
-                const uint4 v_hi = philox_window4(nxt.lo, nxt.hi, a);
-                for (int w = 0; w < 4; w++) {
-                    tile_access(scale_tile, i0, j + w, SUBGROUP_SIZE, blk_r,
-                            blk_c, nblk_r)
-                            = dropout_keep(
-                                    v_lo[w], tile_offset_r + j + w, offset_c);
-                    tile_access(scale_tile, i0, j + 4 + w, SUBGROUP_SIZE, blk_r,
-                            blk_c, nblk_r)
-                            = dropout_keep(v_hi[w], tile_offset_r + j + 4 + w,
-                                    offset_c);
-                }
+                dropout_store4(philox_window4(cur, nxt.lo, a), j);
+                dropout_store4(philox_window4(nxt.lo, nxt.hi, a), j + 4);
                 cur = nxt.hi;
             }
-            for (; j < tile_len; j += 4) {
+            /* tile_len % 4 == 0, so at most one group of four keys is left. */
+            if (j < tile_len) {
                 const uint4 nxt = philox_4x32_vec4_dropout(x0 + (ulong)j + 4,
                         offset, DROPOUT_USE_OFFSET, ks.key0, ks.key1);
-                const uint4 v4 = philox_window4(cur, nxt, a);
-                for (int w = 0; w < 4; w++) {
-                    tile_access(scale_tile, i0, j + w, SUBGROUP_SIZE, blk_r,
-                            blk_c, nblk_r)
-                            = dropout_keep(
-                                    v4[w], tile_offset_r + j + w, offset_c);
-                }
-                cur = nxt;
+                dropout_store4(philox_window4(cur, nxt, a), j);
             }
         }
     }
+#undef dropout_store4
 #else
     {
         tile_predicated_select_t(scale_tile, tile_offset_r, tile_offset_c,
@@ -184,7 +165,6 @@ inline void apply_dropout_s_tile(
     }
 #endif
 #undef DROPOUT_GROUPED_SHAPE_OK
-#undef DROPOUT_GROUPED_RT_OK
 #undef dropout_keep
 
     /* Multiply S_tile element-wise by scale tile (both float, no conversion) */

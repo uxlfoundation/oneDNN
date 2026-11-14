@@ -624,11 +624,18 @@ struct micro_bwd_t : public primitive_t {
 
     status_t init(impl::engine_t *engine) override;
 
+    // The backward kernel's stride and offset parameters depend only on the
+    // primitive descriptor, so they are packed into a device buffer once here
+    // rather than mapped and written on every execution.
+    status_t init_res_storage(
+            impl::engine_t *engine, gpu_resource_t *r) const override;
+
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_backward(ctx);
     }
 
 private:
+    enum { BWD_STRIDES_ = 0 };
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t execute_backward(const exec_ctx_t &ctx) const;
 

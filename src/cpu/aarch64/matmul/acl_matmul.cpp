@@ -177,6 +177,7 @@ status_t acl_matmul_t::pd_t::init(const engine_t *engine) {
             "with f16 dst");
 
     amp_.gemm_info.set_activation_info(act_info);
+    CHECK(attr_.set_default_formats(&dst_md_));
     CHECK(post_ops.init(engine, attr_.post_ops_, dst_md_, post_op_start_index));
 
     if (act_info.enabled()

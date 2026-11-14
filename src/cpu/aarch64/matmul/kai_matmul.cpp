@@ -279,6 +279,7 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(
             !post_ops_fusion.has_fallback(attr_.post_ops_) || ddt == f32,
             "post ops must be fused into KAI unless dst is f32");
+    CHECK(attr_.set_default_formats(dst_md()));
     CHECK(post_ops_fallback_.init(engine, attr_.post_ops_, *dst_md(),
             post_ops_fusion.fallback_start_index));
 

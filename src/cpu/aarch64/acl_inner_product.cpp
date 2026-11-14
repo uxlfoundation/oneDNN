@@ -190,6 +190,7 @@ status_t acl_inner_product_fwd_t::pd_t::init_conf_ip(
     CHECK(acl_utils::try_fuse_first_acl_post_op(attr_.post_ops_,
             dst_md_.data_type, post_op_start_index,
             aip_.fc_info.activation_info, post_op_start_index));
+    CHECK(attr_.set_default_formats(&dst_md_));
     CHECK(post_ops.init(engine, attr_.post_ops_, dst_md_, post_op_start_index));
     aip_.use_dst_acc_for_sum = post_ops.has_sum();
 

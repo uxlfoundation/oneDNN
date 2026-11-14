@@ -231,6 +231,7 @@ status_t acl_lowp_matmul_sq_t::pd_t::init_scratchpad(const engine_t *engine,
             post_op_start_index, act_info, post_op_start_index));
     ACL_CHECK_SUPPORT(post_op_start_index != attr_post_ops.len(),
             "lowp sq matmul only supports post ops fused by ACL");
+    CHECK(attr_post_ops.set_default_formats(&dst_md));
     CHECK(post_ops.init(engine, attr_post_ops, dst_md, post_op_start_index));
 
     // Book temp mem.

@@ -474,12 +474,8 @@ void eltwise_injector_f32_t<ngen_generator_t>::philox_4x32(
         h->mov(4, key.ud(1)(4, 4, 2), uint32_t(0xBB67AE85u));
     }
 
+    // 7 rounds use key words 0..13 only; keep in sync with philox.h.
     if (hw() < gpu_xe3p) {
-        h->template mov<uint16_t>(4, offs.uw(16)(1), Immediate::uv(0x00009988));
-        h->template mul<uint32_t>(
-                4, offs.ud(8)(1), key.ud(0)(4, 4, 1), offs.uw(16)(4, 4, 1));
-        h->add(4, offs.ud(8)(1), offs.ud(8)(4, 4, 1), sround_seed);
-
         h->template mov<uint16_t>(8, offs.uw(8)(1), Immediate::uv(0x77665544));
         h->template mov<uint16_t>(8, offs.uw(0)(1), Immediate::uv(0x33221100));
         h->template mul<uint32_t>(
@@ -488,9 +484,6 @@ void eltwise_injector_f32_t<ngen_generator_t>::philox_4x32(
                 8, key.ud(0)(1), key.ud(0)(8, 8, 1), offs.uw(0)(8, 8, 1));
         h->add(16, key, key, sround_seed);
     } else {
-        h->template mov<uint16_t>(4, offs.ud(0)(1), Immediate::uv(0x00009988));
-        h->template mul<uint32_t>(
-                4, offs.ud(0)(1), key.ud(0)(4, 4, 1), offs.ud(0)(4, 4, 1));
         h->template mov<uint16_t>(8, offs.ud(8)(1), Immediate::uv(0x77665544));
         h->template mov<uint16_t>(8, key.ud(8)(8, 8, 1), key.ud(0)(8, 8, 1));
         h->template mul<uint32_t>(
@@ -574,9 +567,6 @@ void eltwise_injector_f32_t<ngen_generator_t>::philox_4x32(
     philox_round(ctr, ctr_mul, key, 8);
     philox_round(ctr, ctr_mul, key, 10);
     philox_round(ctr, ctr_mul, key, 12);
-    philox_round(ctr, ctr_mul, key, 14);
-    philox_round(ctr, ctr_mul, offs, 8);
-    philox_round(ctr, ctr_mul, offs, 10);
 }
 
 template <typename ngen_generator_t>

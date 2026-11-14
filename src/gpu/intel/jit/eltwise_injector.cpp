@@ -404,10 +404,11 @@ void eltwise_injector_f32_t<ngen_generator_t>::sround_compute_fwd(int simd,
     auto u_r = r[0].ud()(8, 8, 1);
     auto u_f = r[0].f()(8, 8, 1);
 
-    // Initialize indices in counter.
+    // Initialize counters as math::philox4x32(idx, seed): each group of four
+    // uses (x, x + 1, x, x + 3).
     int base_idx = off * simd;
-    h->template mov<uint16_t>(8, bias.uw(0)(1), Immediate::uv(0x76543210));
-    h->template mov<uint16_t>(8, bias.uw(8)(1), Immediate::uv(0xfedcba98));
+    h->template mov<uint16_t>(8, bias.uw(0)(1), Immediate::uv(0x74543010));
+    h->template mov<uint16_t>(8, bias.uw(8)(1), Immediate::uv(0xfcdcb898));
     auto imm = Immediate::ud(base_idx);
     if (hw() >= gpu_xe_hpc)
         h->add(16, bias.ud(), bias.uw(), imm);
@@ -567,6 +568,15 @@ void eltwise_injector_f32_t<ngen_generator_t>::philox_4x32(
     philox_round(ctr, ctr_mul, key, 8);
     philox_round(ctr, ctr_mul, key, 10);
     philox_round(ctr, ctr_mul, key, 12);
+
+    // Every index of a group of four gets word 2, which the rounds leave in
+    // word 1 (reverse order).
+    h->template mov<uint16_t>(8, off_inc.uw(0)(1), Immediate::uv(0x55551111));
+    h->template mul<uint16_t>(8, off_inc.uw(0)(1), off_inc.uw(0)(8, 8, 1), 4);
+    h->add(8, h->a0, ctr_base_sub, off_inc);
+    h->template movi<uint32_t>(8, ctr.ud(0)(1), addr);
+    h->add(8, h->a0, h->a0, 32);
+    h->template movi<uint32_t>(8, ctr.ud(8)(1), addr);
 }
 
 template <typename ngen_generator_t>

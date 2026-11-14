@@ -17,6 +17,7 @@
 *******************************************************************************/
 
 #include <cassert>
+#include <cstring>
 
 #include "common/c_types_map.hpp"
 #include "common/compiler_workarounds.hpp"
@@ -726,9 +727,9 @@ int brgemm_convolution_fwd_t<isa>::get_comp_ker_idx(const int kd_b,
 }
 
 template <cpu_isa_t isa>
-inline int brgemm_convolution_fwd_t<isa>::get_comp_offset(const int g,
-        const int ocb, const int ow, const int kd_b, const int kd_e,
-        const int kh_b, const int kh_e, const int kw_b, const int kw_e) const {
+inline dim_t brgemm_convolution_fwd_t<isa>::get_comp_offset(const int g,
+        const int ocb, const int kd_b, const int kd_e, const int kh_b,
+        const int kh_e, const int kw_b, const int kw_e) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
@@ -737,9 +738,10 @@ inline int brgemm_convolution_fwd_t<isa>::get_comp_offset(const int g,
     const auto comp_idx = get_comp_ker_idx(kd_b, kd_e, kh_b, kh_e, kw_b, kw_e);
     assert(IMPLICATION(jcp.req_cal_comp_pad, comp_idx >= 0));
 
-    return jcp.req_cal_comp_pad
-            ? g * comp_ocb_sz + ocb * comp_ker_sz + comp_idx * comp_kw_sz
-            : (g * jcp.nb_oc + ocb) * jcp.oc_block;
+    if (!jcp.req_cal_comp_pad) return (g * jcp.nb_oc + ocb) * jcp.oc_block;
+
+    return g * comp_group_stride + ocb * comp_ocb_stride
+            + comp_idx * comp_range_stride;
 }
 
 template <cpu_isa_t isa>
@@ -799,9 +801,9 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
     dst_h_sz = OH * dst_w_sz;
     dst_d_sz = OD * dst_h_sz;
 
-    comp_kw_sz = static_cast<dim_t>(jcp.oc_block);
-    comp_ker_sz = jcp.ker_ranges_size * comp_kw_sz;
-    comp_ocb_sz = jcp.nb_oc * comp_ker_sz;
+    comp_range_stride = static_cast<dim_t>(jcp.oc_block);
+    comp_ocb_stride = jcp.ker_ranges_size * comp_range_stride;
+    comp_group_stride = jcp.nb_oc * comp_ocb_stride;
 
     need_compensation = (jcp.src_zero_point || jcp.s8s8_compensation_required)
             && !jcp.req_brg_comp_pad;
@@ -1339,14 +1341,13 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
             const auto kw_b = maybe_invert_range(kw_bb, kw_ee, KW);
             const auto kw_e = maybe_invert_range(kw_ee, kw_bb, KW);
 
-            const auto buffer_offs
-                    = g * comp_ocb_sz + ocb * comp_ker_sz + k * comp_kw_sz;
+            const auto buffer_offs = g * comp_group_stride
+                    + ocb * comp_ocb_stride + k * comp_range_stride;
             const auto wei_offs = g * _pd->wei_g_stride
                     + ocb * _pd->wei_ocb_stride + kd_b * _pd->wei_kd_stride
                     + kh_b * _pd->wei_kh_stride + kw_b * _pd->wei_kw_stride;
 
-            jit_brgemm_conv_comp_pad_args_t p;
-
+            jit_brgemm_conv_comp_pad_args_t p {};
             p.kd_l = kd_e - kd_b;
             p.kh_l = kh_e - kh_b;
             p.kw_l = kw_e - kw_b;
@@ -1453,7 +1454,7 @@ template <cpu_isa_t isa>
 inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
         const brgemm_thread_ctx_t &btc, const brgemm_kernel_t *brg_ker,
         int batch_size, char *ptr_C, char *ptr_D, const char *bias_w, int g_oc,
-        bool do_postops, int comp_ker_offs, bool do_only_comp) const {
+        bool do_postops, dim_t comp_ker_offs, bool do_only_comp) const {
 
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -1703,7 +1704,7 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
 
     const auto call_brgemm
             = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
-                      int comp_ker_offs, bool do_postops, bool do_only_comp) {
+                      dim_t comp_ker_offs, bool do_postops, bool do_only_comp) {
         assert(k_l > 0 && "invalid batch range");
         const auto brg_ker = brgemm_kernels_[brg_idx];
 
@@ -1746,7 +1747,7 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
 
         if (ow_l > 0 && k_l > 0) {
             const auto comp_ker_offs = get_comp_offset(
-                    btc.g, btc.ocb, ow_b, kd_s, kd_f, kh_s, kh_f, kw_b, kw_e);
+                    btc.g, btc.ocb, kd_s, kd_f, kh_s, kh_f, kw_b, kw_e);
 
             const auto ker_i = ow_l - 1;
             int kernel_idx[2][2];
@@ -1990,7 +1991,7 @@ void brgemm_convolution_fwd_t<isa>::ker_vpad(brgemm_thread_ctx_t &btc) const {
             = owb_kw_bottom_vpads.data() + btc.owb * KW;
 
     const auto call_brgemm = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
-                                     int comp_ker_offs, bool do_postops) {
+                                     dim_t comp_ker_offs, bool do_postops) {
         assert(k_l > 0 && "invalid batch range");
         const auto brg_ker = brgemm_kernels_[brg_idx];
 
@@ -2023,7 +2024,7 @@ void brgemm_convolution_fwd_t<isa>::ker_vpad(brgemm_thread_ctx_t &btc) const {
                 ker_i, true, is_oc_tail, true, kd_s, kd_f, kh_s, kh_f);
 
         const auto comp_offs = get_comp_offset(
-                btc.g, btc.ocb, ow, kd_b, kd_e, kh_b, kh_e, 0, KW);
+                btc.g, btc.ocb, kd_b, kd_e, kh_b, kh_e, 0, KW);
 
         if (nb_ic_b > 0) {
             const auto brg_idx = kernel_idx[do_init][false];

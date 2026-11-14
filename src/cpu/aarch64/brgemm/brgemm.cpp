@@ -426,8 +426,11 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
         const int compute_ld_blocks = brg->ld_block2;
         const int acc_regs = rnd_up(brg->bd_block, brgemm_utils::mmla_bd_blk())
                 * compute_ld_blocks;
-        if (brg->rd_block != brgemm_utils::mmla_rd_block()
+        if (brg->rd_block != brgemm_utils::mmla_rd_block(brg->typesize_A)
                 || brg->bd_block > max_mmla_bd_block
+                || (brgattr.use_mmla_packed_a
+                        && brg->bd_block % brgemm_utils::mmla_bd_blk()
+                        && brg->bcast_dim > brg->bd_block)
                 || !is_mmla_ld_blocks_supported(compute_ld_blocks)
                 || acc_regs > max_mmla_acc_regs)
             return status::unimplemented;
@@ -443,6 +446,19 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
 
     if (!IMPLICATION(brg->is_blocked, brg->layout == brgemm_row_major))
         return status::invalid_arguments;
+
+    const bool is_int8_mmla = brgattr.use_mmla && brg->is_int8;
+    const bool has_src_zp = brg->zp_type_a != brgemm_broadcast_t::none;
+    const bool needs_int8_comp_pads = brg->req_cal_comp_pads
+            || (max_vpad > 0 && (brg->req_s8s8_compensation || has_src_zp));
+    // MMLA adds back source-ZP compensation for virtual padding on plain A.
+    // TODO: Support source-ZP compensation for virtual padding with packed A.
+    if (is_int8_mmla && needs_int8_comp_pads
+            && !(has_src_zp && !brg->req_s8s8_compensation
+                    && !brg->req_cal_comp_pads && !brgattr.use_mmla_packed_a
+                    && brg->reduce_dim % brgemm_utils::mmla_wei_k_block() == 0
+                    && max_vpad <= 1))
+        return status::unimplemented;
 
     return status::success;
 }

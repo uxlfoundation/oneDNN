@@ -147,7 +147,9 @@ jobs:
     needs: prepare
     runs-on: ubuntu-24.04
     env:
-      COMPILER: riscv64-gcc
+      COMPILER: gcc
+      CMAKE_TOOLCHAIN_FILE: ${{ github.workspace }}/ci/cmake/toolchains/riscv64.cmake
+      CTEST_INCLUDE_REGEX: '^cpu-primitives-matmul-cpp$'
       CPU_RUNTIME: OMP
       GPU_RUNTIME: NONE
       PKG_NAME: onednn-${{ needs.prepare.outputs.tag }}-omp-linux-rv64
@@ -158,7 +160,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ci
-          sparse-checkout: .github/automation/release
+          sparse-checkout: |
+            .github/automation/release
+            cmake/toolchains
           persist-credentials: false
 
       - name: Checkout oneDNN
@@ -171,6 +175,7 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         with:
+          image: tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
           platforms: riscv64
 
       - name: Install build tools and cross compiler

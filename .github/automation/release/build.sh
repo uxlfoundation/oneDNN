@@ -24,10 +24,12 @@
 # Usage: build.sh <install-dir>
 #
 # Environment:
-#   COMPILER             gcc, riscv64-gcc, or icx
+#   COMPILER             gcc or icx
 #   CPU_RUNTIME          value for ONEDNN_CPU_RUNTIME
 #   GPU_RUNTIME          value for ONEDNN_GPU_RUNTIME
 #   DEVTOOLSET_ROOTPATH  (optional) GCC toolset root, set in manylinux images
+#   CMAKE_TOOLCHAIN_FILE (optional) CMake toolchain file
+#   CTEST_INCLUDE_REGEX  (optional) include only matching smoke tests
 
 set -o errexit -o pipefail -o nounset
 
@@ -41,20 +43,17 @@ GCC_ROOT="${DEVTOOLSET_ROOTPATH:+$DEVTOOLSET_ROOTPATH/usr}"
 GXX="${GCC_ROOT:+$GCC_ROOT/bin/}g++"
 CMAKE_EXTRA_ARGS=()
 CTEST_ARGS=(-E "gpu|cross-engine")
+if [ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]; then
+    CMAKE_EXTRA_ARGS+=(-DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE")
+fi
+if [ -n "${CTEST_INCLUDE_REGEX:-}" ]; then
+    CTEST_ARGS+=(--no-tests=error -R "$CTEST_INCLUDE_REGEX")
+fi
 
 case "$COMPILER" in
     gcc)
         export CC="${GCC_ROOT:+$GCC_ROOT/bin/}gcc"
         export CXX="$GXX"
-        ;;
-    riscv64-gcc)
-        export CC=riscv64-linux-gnu-gcc-14
-        export CXX=riscv64-linux-gnu-g++-14
-        CMAKE_EXTRA_ARGS+=(
-            -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/toolchains/riscv64.cmake"
-        )
-        # Keep the release smoke test short under QEMU.
-        CTEST_ARGS=(--no-tests=error -R "^cpu-primitives-matmul-cpp$")
         ;;
     icx)
         set +o errexit +o pipefail +o nounset

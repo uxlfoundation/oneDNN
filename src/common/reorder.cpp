@@ -165,6 +165,18 @@ status_t reorder_desc_init(reorder_desc_t *reorder_desc,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
+    // RNN weights reorders quantize with the RNN weights scales indexed by
+    // the masked source dimensions, so the count must match the mask.
+    if (d_mdw.format_kind() == format_kind::rnn_packed
+            || (dst_md->extra.flags
+                    & memory_extra_flags::rnn_u8s8_compensation)) {
+        const auto &sc = s_mdw.ndims() == 4
+                ? attr->rnn_weights_projection_qparams_
+                : attr->rnn_weights_qparams_;
+        VCHECK_REORDER(sc.is_consistent_with(*src_md),
+                "rnn weights scales count is inconsistent with mask");
+    }
+
     *reorder_desc = desc;
     return status::success;
 }

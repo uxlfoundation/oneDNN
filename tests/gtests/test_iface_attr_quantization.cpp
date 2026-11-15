@@ -892,6 +892,62 @@ TEST_F(attr_quantization_test_t, TestRNN) {
     }
 }
 
+TEST_F(attr_quantization_test_t, TestRNNWeightsScalesCount) {
+    SKIP_IF_CUDA(true, "RNN primitive not supported for CUDA");
+    SKIP_IF_HIP(true, "RNN primitive not supported for HIP");
+    SKIP_IF_GENERIC(true, "RNN primitive not supported for Generic");
+    // Int8 RNN relies on packed API solely which is available only for X64.
+#if !DNNL_X64
+    return;
+#endif
+    SKIP_IF(DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL,
+            "Threadpool does not have working packed API");
+
+    memory::dim n = 1, t = 1, l = 1, c = 8, g = 4, d = 1;
+    memory::desc src_layer_md {{t, n, c}, data_type::u8, tag::tnc};
+    memory::desc src_iter_md {{l, d, n, c}, data_type::u8, tag::ldnc};
+    memory::desc src_iter_c_md {{l, d, n, c}, data_type::f32, tag::ldnc};
+    memory::desc wei_layer_md {{l, d, c, g, c}, data_type::s8, tag::any};
+    memory::desc wei_iter_md {{l, d, c, g, c}, data_type::s8, tag::any};
+    memory::desc bia_md {{l, d, g, c}, data_type::f32, tag::ldgo};
+    memory::desc dst_layer_md {{t, n, c}, data_type::u8, tag::tnc};
+    memory::desc dst_iter_md {{l, d, n, c}, data_type::u8, tag::ldnc};
+    memory::desc dst_iter_c_md {{l, d, n, c}, data_type::f32, tag::ldnc};
+
+    // Per-output-channel scales (mask over g and o) need g * c values.
+    const int mask = (1 << 3) | (1 << 4);
+    auto gen_attr = [&](memory::dim count) {
+        primitive_attr attr;
+        attr.set_rnn_data_qparams(2.f, 2.f);
+        attr.set_rnn_weights_qparams(
+                mask, std::vector<float>((size_t)count, 2.f));
+        return attr;
+    };
+
+    auto create_lstm_pd = [&](const primitive_attr &attr) {
+        return lstm_forward::primitive_desc(eng, prop_kind::forward_inference,
+                rnn_direction::unidirectional_left2right, src_layer_md,
+                src_iter_md, src_iter_c_md, wei_layer_md, wei_iter_md, bia_md,
+                dst_layer_md, dst_iter_md, dst_iter_c_md, attr);
+    };
+
+    for (memory::dim count : {(memory::dim)2, g * c - 1, g * c + 1}) {
+        CHECK_INVALID(create_lstm_pd(gen_attr(count)));
+    }
+
+    lstm_forward::primitive_desc pd;
+    ASSERT_NO_THROW(pd = create_lstm_pd(gen_attr(g * c)));
+
+    // The weights reorder into the layout requested by the RNN primitive
+    // quantizes with the same scales and has to validate them as well.
+    memory::desc wei_f32_md {{l, d, c, g, c}, data_type::f32, tag::ldigo};
+    const memory::desc &wei_dst_md = pd.weights_layer_desc();
+    CHECK_INVALID(reorder::primitive_desc(
+            eng, wei_f32_md, eng, wei_dst_md, gen_attr(2)));
+    CHECK_OK(reorder::primitive_desc(
+            eng, wei_f32_md, eng, wei_dst_md, gen_attr(g * c)));
+}
+
 TEST_F(attr_quantization_test_t, TestShuffle) {
     SKIP_IF_CUDA(true, "Shuffle primitive not supported for CUDA");
     SKIP_IF_HIP(true, "Shuffle primitive not supported for HIP");

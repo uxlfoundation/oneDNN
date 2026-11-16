@@ -35,15 +35,50 @@ namespace cpu {
 namespace x64 {
 namespace brgemm_ir {
 
+// What the last K step of a block stores, with
+// `loop_conf_t::interleave_acc_stores`. The other K steps get `none`. A K step
+// is one call of `emit_microkernel()`.
+//
+//   none       - nothing
+//   block      - every accumulator of the block
+//   next_block - some accumulators of the block. The first K step of the next
+//                block stores the rest.
+enum class acc_stores_t { none, block, next_block };
+
+// The previous block and its accumulators, when the first K step of the
+// current block stores some of them. `acc` is empty otherwise.
+struct prev_block_t {
+    out_block_t blk;
+    std::vector<ir::vreg_t> acc;
+};
+
+// The stores a K step emits between the operations of its microkernel, with
+// `loop_conf_t::interleave_acc_stores`.
+//
+//   prev       - the previous block, for the first K step of a block only.
+//                That K step stores the rest of the accumulators of `prev`,
+//                then loads or zeroes some accumulators of the current block.
+//   acc_stores - what the K step stores, see `acc_stores_t`
+//   c_ptr      - where the K step loads accumulators from C, `none` when it
+//                zeroes them
+//   store_ptr  - where the accumulators are stored, C or D
+struct k_step_stores_t {
+    prev_block_t prev;
+    acc_stores_t acc_stores = acc_stores_t::none;
+    ir::vreg_t c_ptr = ir::vreg_t::none;
+    ir::vreg_t store_ptr = ir::vreg_t::none;
+};
+
 // One compute path of the builder: the accumulators of an output block and
 // the microkernel that reduces into them.
 //
 // For each output block the builder calls `init_accumulators()` before the
-// batch loop, then `emit_microkernel()` for each K run of each batch element.
+// batch loop, then `emit_microkernel()` for each K block of each batch element.
 // It calls `load_accumulators()` instead of `init_accumulators()` when beta is
-// 1 and `loads_accumulators()` is true, and `store_accumulators()` at the end
-// of the block when `stores_accumulators()` is true. The compute path chooses
-// the layout of the accumulators.
+// 1 and `loads_accumulators()` is true. When `stores_accumulators()` is true,
+// it calls `store_accumulators()` at the end of the block, unless the
+// accumulators are stored in the K steps (`k_step_stores_t`). The compute path
+// chooses the layout of the accumulators.
 struct compute_path_t {
     virtual ~compute_path_t() = default;
 
@@ -62,14 +97,20 @@ struct compute_path_t {
         return 0;
     }
 
-    // Creates the accumulators of `blk` and zeroes them.
-    virtual std::vector<ir::vreg_t> init_accumulators(
-            ir::ir_t &ir, const conf_t &cfg, const out_block_t &blk) const
+    // Creates the accumulators of `blk` and zeroes them. A compute path may
+    // zero some of them in the first K step instead, after the stores of
+    // `prev`.
+    virtual std::vector<ir::vreg_t> init_accumulators(ir::ir_t &ir,
+            const conf_t &cfg, const out_block_t &blk,
+            const prev_block_t &prev) const
             = 0;
 
-    // Creates the accumulators of `blk` and loads them from C at `c_ptr`.
+    // Creates the accumulators of `blk` and loads them from C at `c_ptr`. A
+    // compute path may load some of them in the first K step instead, after
+    // the stores of `prev`.
     virtual std::vector<ir::vreg_t> load_accumulators(ir::ir_t &ir,
-            const conf_t &cfg, const out_block_t &blk, ir::vreg_t c_ptr) const {
+            const conf_t &cfg, const out_block_t &blk, ir::vreg_t c_ptr,
+            const prev_block_t &prev) const {
         assert(!"load_accumulators: not supported by the compute path");
         return {};
     }
@@ -82,11 +123,12 @@ struct compute_path_t {
     }
 
     // Reduces `rd_loop` elements of K into `acc`, starting at K index
-    // `rd_start`, counted from where `a_ptr` and `b_ptr` stand.
+    // `rd_start`, counted from where `a_ptr` and `b_ptr` stand. It also emits
+    // the stores in `stores` between its operations.
     virtual void emit_microkernel(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
-            ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start,
-            int rd_loop) const
+            ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start, int rd_loop,
+            const k_step_stores_t &stores) const
             = 0;
 };
 

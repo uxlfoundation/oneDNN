@@ -460,11 +460,27 @@ void emit_level(ir::ir_t &ir, const std::vector<block_run_t> &runs,
             [&](dim_t n, dim_t) { step(n); });
 }
 
+// Returns the stores of the batch element or K block that starts at `pos` and
+// has `size` elements, in a level of `level_size` elements. The first one
+// keeps `prev` and the last one keeps `acc_stores`.
+//
+// `pos` counts from the first element of the level. `block_acc_stores()` gives
+// stores only to unrolled batch and K levels, which count it that way.
+k_step_stores_t k_step_stores_at(const k_step_stores_t &stores, dim_t pos,
+        dim_t size, dim_t level_size) {
+
+    k_step_stores_t part = stores;
+    if (pos != 0) part.prev = {};
+    if (pos + size != level_size) part.acc_stores = acc_stores_t::none;
+    return part;
+}
+
 // The K level of one batch element. Reduces K into `acc` from `a_ptr` and
-// `b_ptr`, which a looped K level moves.
+// `b_ptr`, which a looped K level moves. The first K step gets `stores.prev`
+// and the last one gets `stores.acc_stores`.
 void emit_k_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
         const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
-        ir::vreg_t a_ptr, ir::vreg_t b_ptr) {
+        ir::vreg_t a_ptr, ir::vreg_t b_ptr, const k_step_stores_t &stores) {
 
     // Advance the A and B pointers by `rd` elements of K.
     auto step = [&](dim_t rd) {
@@ -472,30 +488,37 @@ void emit_k_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
         ir.add_imm(b_ptr, cfg.b_off(rd, 0));
     };
 
+    const std::vector<block_run_t> runs = k_runs(cfg.loop);
+    const dim_t k_size = level_size(runs);
+
     // K tail needs no mask. A reduction step reads a full B vector along N
     // and one element of A, so a short tail is just fewer steps.
     dim_t k_pos = 0;
-    emit_level(ir, k_runs(cfg.loop), cfg.loop.k_form, k_pos,
+    emit_level(ir, runs, cfg.loop.k_form, k_pos,
             [&](dim_t rd_loop, dim_t rd_start) {
-        cp.emit_microkernel(
-                ir, cfg, blk, acc, a_ptr, b_ptr, rd_start, (int)rd_loop);
+        const k_step_stores_t step_stores
+                = k_step_stores_at(stores, rd_start, rd_loop, k_size);
+        cp.emit_microkernel(ir, cfg, blk, acc, a_ptr, b_ptr, rd_start,
+                (int)rd_loop, step_stores);
     }, step);
 }
 
-// The batch level of one block. Reduces every batch element into `acc`.
+// The batch level of one block. Reduces every batch element into `acc`. The
+// first K step of the block gets `stores.prev` and the last one gets
+// `stores.acc_stores`.
 //
 // With `var_bs` it is a runtime loop over `BS` elements. Otherwise it is the
 // `max_bs` elements of `bs_runs()` in `bs_form`.
 void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
         const m_loop_input_regs_t &regs, const out_block_t &blk,
-        const std::vector<ir::vreg_t> &acc) {
+        const std::vector<ir::vreg_t> &acc, const k_step_stores_t &stores) {
 
     const loop_conf_t &loop = cfg.loop;
 
     // The only batch element, whose A and B pointers are set for the kernel.
     if (regs.invariant.a_ptr != ir::vreg_t::none) {
         emit_k_level(ir, cfg, cp, blk, acc, regs.invariant.a_ptr,
-                regs.invariant.b_ptr);
+                regs.invariant.b_ptr, stores);
         return;
     }
 
@@ -522,7 +545,7 @@ void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
                 if (loop.batch_kind == brgemm_addr) ir.prefetch(batch_ptr, 0);
             }
 
-            emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr);
+            emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr, stores);
         };
 
         if (loop.max_bs > 1)
@@ -550,7 +573,8 @@ void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 
         emit_batch_element_ptrs(
                 ir, cfg, regs, batch_ptr, bs * element_size, a_ptr, b_ptr);
-        emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr);
+        emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr,
+                k_step_stores_at(stores, bs, 1, loop.max_bs));
     }, [&](dim_t bs) { ir.add_imm(batch_ptr, bs * element_size); });
 }
 
@@ -716,23 +740,39 @@ void emit_output_path(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 // One output block.
 //
 // Creates the accumulators of the block with the compute path and reduces them
-// over the batch. Then the compute path stores them to C when
-// `stores_accumulators()` is true. Otherwise the output path stores them to C,
-// or to D on a post-ops call.
-void emit_block(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
-        const m_loop_input_regs_t &regs, const out_block_t &blk) {
+// over the batch. Then they are stored. When `stores_accumulators()` is false,
+// the output path stores them to C, or to D on a post-ops call. Otherwise the
+// compute path stores them to C, in the K steps when `acc_stores` is not
+// `none` and after them when it is.
+//
+// `prev` is the previous block. The first K step of this block stores the rest
+// of the accumulators of `prev`. Returns this block when `acc_stores` is
+// `next_block`, and an empty `prev_block_t` otherwise.
+prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
+        const compute_path_t &cp, const m_loop_input_regs_t &regs,
+        const out_block_t &blk, acc_stores_t acc_stores,
+        const prev_block_t &prev) {
 
     const bool acc_from_c = cfg.output.beta != 0.0f && cp.loads_accumulators();
     const std::vector<ir::vreg_t> acc = acc_from_c
-            ? cp.load_accumulators(ir, cfg, blk, regs.advancing.c_ptr)
-            : cp.init_accumulators(ir, cfg, blk);
+            ? cp.load_accumulators(ir, cfg, blk, regs.advancing.c_ptr, prev)
+            : cp.init_accumulators(ir, cfg, blk, prev);
 
-    emit_batch_level(ir, cfg, cp, regs, blk, acc);
+    k_step_stores_t stores;
+    stores.prev = prev;
+    stores.acc_stores = acc_stores;
+    stores.c_ptr = acc_from_c ? regs.advancing.c_ptr : ir::vreg_t::none;
+    stores.store_ptr = regs.advancing.store_ptr;
+    emit_batch_level(ir, cfg, cp, regs, blk, acc, stores);
 
-    if (cp.stores_accumulators())
-        cp.store_accumulators(ir, cfg, blk, acc, regs.advancing.store_ptr);
-    else
+    if (!cp.stores_accumulators()) {
         emit_output_path(ir, cfg, cp, regs, blk, acc);
+    } else if (acc_stores == acc_stores_t::none) {
+        cp.store_accumulators(ir, cfg, blk, acc, regs.advancing.store_ptr);
+    }
+
+    if (acc_stores != acc_stores_t::next_block) return {};
+    return {blk, acc};
 }
 
 // Returns the block of `bd_block` rows at `bd_start` and `ld_elems` elements of
@@ -769,6 +809,35 @@ void emit_mn_step(ir::ir_t &ir, const conf_t &cfg, const advancing_regs_t &regs,
     }
 }
 
+// Returns what the last K step of the block that ends at row `bd_end` and N
+// element `ld_end` stores, see `acc_stores_t`.
+//
+// It is `none` without `interleave_acc_stores`, when the batch or K level is
+// looped, or when the batch is empty. Otherwise it is `next_block` when the
+// next block follows with no loop between them, and `block` otherwise. With N
+// inside M, the next block is the next N block
+// of an unrolled N level, or the first N block of the next M block when both
+// levels are unrolled. The same holds with M inside N. Positions are compared
+// only for unrolled levels, which count them from their first block.
+acc_stores_t block_acc_stores(
+        const loop_conf_t &loop, dim_t bd_end, dim_t ld_end) {
+
+    const bool has_k_step_stores = loop.interleave_acc_stores
+            && loop.bs_form == level_form_t::unrolled
+            && loop.k_form == level_form_t::unrolled && loop.max_bs > 0;
+    if (!has_k_step_stores) return acc_stores_t::none;
+
+    const bool is_m_unrolled = loop.m_form == level_form_t::unrolled;
+    const bool is_n_unrolled = loop.n_form == level_form_t::unrolled;
+    const bool has_m_next = bd_end < level_size(m_runs(loop));
+    const bool has_n_next = ld_end < level_size(n_runs(loop));
+
+    const bool has_next_block = loop.innermost_loop == brgemm_ld_loop_innermost
+            ? is_n_unrolled && (has_n_next || (is_m_unrolled && has_m_next))
+            : is_m_unrolled && (has_m_next || (is_n_unrolled && has_n_next));
+    return has_next_block ? acc_stores_t::next_block : acc_stores_t::block;
+}
+
 // Emits the loop nest over the output blocks.
 //
 // `innermost_loop` decides which of the M and N levels is inside the other, as
@@ -793,6 +862,10 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
     // Where the M and N pointers stand, in elements from the first block.
     dim_t m_pos = 0, n_pos = 0;
 
+    // The last block emitted, if some of its accumulators are still to be
+    // stored.
+    prev_block_t prev;
+
     if (loop.innermost_loop == brgemm_ld_loop_innermost) {
         emit_level(ir, m, loop.m_form, m_pos, n_pos,
                 [&](dim_t bd_block, dim_t bd_start) {
@@ -800,7 +873,9 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
                     [&](dim_t ld_elems, dim_t ld_start) {
                 const out_block_t blk = make_out_block(cfg, bd_block, bd_start,
                         ld_elems, ld_start, ld_tail_mask);
-                emit_block(ir, cfg, cp, regs, blk);
+                const acc_stores_t acc_stores = block_acc_stores(
+                        loop, bd_start + bd_block, ld_start + ld_elems);
+                prev = emit_block(ir, cfg, cp, regs, blk, acc_stores, prev);
             }, [&](dim_t ld) { emit_mn_step(ir, cfg, regs.advancing, 0, ld); });
         }, [&](dim_t bd, dim_t ld) {
             emit_mn_step(ir, cfg, regs.advancing, bd, ld);
@@ -812,12 +887,17 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
                     [&](dim_t bd_block, dim_t bd_start) {
                 const out_block_t blk = make_out_block(cfg, bd_block, bd_start,
                         ld_elems, ld_start, ld_tail_mask);
-                emit_block(ir, cfg, cp, regs, blk);
+                const acc_stores_t acc_stores = block_acc_stores(
+                        loop, bd_start + bd_block, ld_start + ld_elems);
+                prev = emit_block(ir, cfg, cp, regs, blk, acc_stores, prev);
             }, [&](dim_t bd) { emit_mn_step(ir, cfg, regs.advancing, bd, 0); });
         }, [&](dim_t ld, dim_t bd) {
             emit_mn_step(ir, cfg, regs.advancing, bd, ld);
         });
     }
+
+    // The last block never gets `next_block`, so no stores are left.
+    assert(prev.acc.empty());
 }
 
 // Builds IR for BRGEMM.
@@ -1012,8 +1092,6 @@ status_t init_loop_conf(
                     || prf.dist2 >= 0 || prf.distNTA >= 0;
         };
 
-        VCONDCHECK_BRGEMM_IR(!brg.interleave_tilestores_,
-                VERBOSE_UNSUPPORTED_FEATURE, "interleaved tile stores");
         VCONDCHECK_BRGEMM_IR(!prefetches(brg.prfA), VERBOSE_UNSUPPORTED_FEATURE,
                 "A prefetch");
         VCONDCHECK_BRGEMM_IR(!prefetches(brg.prfB), VERBOSE_UNSUPPORTED_FEATURE,
@@ -1069,6 +1147,12 @@ status_t init_loop_conf(
             // A separate block for the partial tile would load the A tiles of
             // the M block again at every K step.
             loop.n_tail_grouping = tail_grouping_t::grouped;
+            // `use_interleave_stores` allows the accumulators of a block to be
+            // stored in its K steps and in the first K step of the next block.
+            // TODO: interleave blockings other than 4 C tiles once they are
+            // measured.
+            loop.interleave_acc_stores = brgattr.use_interleave_stores
+                    && brg.bd_block2 * brg.ld_block2 == 4;
             break;
         }
     }

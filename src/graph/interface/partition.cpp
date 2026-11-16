@@ -29,6 +29,7 @@
 
 #include "common/cache_hit_types.hpp"
 #include "common/stream.hpp"
+#include "common/utils.hpp"
 #include "common/verbose.hpp"
 
 #include "graph/interface/allocator.hpp"
@@ -326,20 +327,37 @@ status_t dnnl_graph_compiled_partition_execute_v2(
         outs.emplace_back(**(outputs + i));
     }
 
-    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
-                dnnl::impl::component_t::graph)) {
-        const bool block_on_wait = stream->is_syncable();
-        if (block_on_wait) stream->wait();
-        double start_ms = dnnl::impl::get_msec();
+    const bool trace_enabled = get_verbose(
+            dnnl::impl::verbose_t::exec_trace, dnnl::impl::component_t::graph);
+    const bool profile_enabled
+            = get_verbose(dnnl::impl::verbose_t::exec_profile,
+                    dnnl::impl::component_t::graph);
+    const bool block_on_wait = profile_enabled && stream->is_syncable();
+
+    if (!trace_enabled && !profile_enabled) {
         CHECK(compiled_partition->execute(stream, ins, outs, scratchpad));
-        if (block_on_wait) stream->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
-        auto info = compiled_partition->exec_info(scratchpad != nullptr);
+        return status::success;
+    }
+
+    if (block_on_wait) stream->wait();
+    const double start_ms = dnnl::impl::get_msec();
+    const auto info = compiled_partition->exec_info(scratchpad != nullptr);
+    const size_t trace_id = trace_enabled
+            ? dnnl::impl::hash_combine(
+                      dnnl::impl::hash_combine(0, info), start_ms)
+            : 0;
+
+    if (trace_enabled) VTRACE(start, graph, exec, trace_id, "%s", info.c_str());
+
+    CHECK(compiled_partition->execute(stream, ins, outs, scratchpad));
+
+    if (block_on_wait) stream->wait();
+    if (profile_enabled) {
+        const double duration_ms = dnnl::impl::get_msec() - start_ms;
         VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
                 duration_ms);
-    } else {
-        CHECK(compiled_partition->execute(stream, ins, outs, scratchpad));
     }
+    if (trace_enabled) VTRACE(end, graph, exec, trace_id, "%s", info.c_str());
     return status::success;
 }
 
@@ -379,11 +397,26 @@ status_t dnnl_graph_sycl_interop_compiled_partition_execute_v2(
     for (size_t i = 0; i < num_outputs; ++i) {
         outs.emplace_back(**(outputs + i));
     }
-    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
-                dnnl::impl::component_t::graph)) {
-        bool use_profiler = stream->is_verbose_profiler_enabled();
-        if (!use_profiler) stream->wait();
-        double start_ms = dnnl::impl::get_msec();
+
+    const bool trace_enabled = get_verbose(
+            dnnl::impl::verbose_t::exec_trace, dnnl::impl::component_t::graph);
+    const bool profile_enabled
+            = get_verbose(dnnl::impl::verbose_t::exec_profile,
+                    dnnl::impl::component_t::graph);
+    const bool block_on_wait
+            = profile_enabled && !stream->is_verbose_profiler_enabled();
+
+    if (trace_enabled || profile_enabled) {
+        if (block_on_wait) stream->wait();
+        const double start_ms = dnnl::impl::get_msec();
+        const auto info = compiled_partition->exec_info(scratchpad != nullptr);
+        const size_t trace_id = trace_enabled
+                ? dnnl::impl::hash_combine(
+                          dnnl::impl::hash_combine(0, info), start_ms)
+                : 0;
+        if (trace_enabled)
+            VTRACE(start, graph, exec, trace_id, "%s", info.c_str());
+
         if (deps != nullptr) {
             const auto &sycl_deps = *(const std::vector<::sycl::event> *)deps;
             CHECK(compiled_partition->execute_sycl(stream, ins, outs,
@@ -393,26 +426,27 @@ status_t dnnl_graph_sycl_interop_compiled_partition_execute_v2(
             CHECK(compiled_partition->execute_sycl(stream, ins, outs,
                     scratchpad, {}, static_cast<::sycl::event *>(sycl_event)));
         }
-        auto info = compiled_partition->exec_info(scratchpad != nullptr);
-        if (!use_profiler) {
-            stream->wait();
-            double duration_ms = dnnl::impl::get_msec() - start_ms;
-            VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
-                    duration_ms);
-        } else {
+
+        if (stream->is_verbose_profiler_enabled()) {
             CHECK(stream->run_verbose_profiler(info, start_ms,
                     static_cast<uint64_t>(dnnl::impl::component_t::graph)));
-        }
-    } else {
-        if (deps != nullptr) {
-            const auto &sycl_deps = *(const std::vector<::sycl::event> *)deps;
-            CHECK(compiled_partition->execute_sycl(stream, ins, outs,
-                    scratchpad, sycl_deps,
-                    static_cast<::sycl::event *>(sycl_event)));
         } else {
-            CHECK(compiled_partition->execute_sycl(stream, ins, outs,
-                    scratchpad, {}, static_cast<::sycl::event *>(sycl_event)));
+            if (block_on_wait) stream->wait();
+            if (profile_enabled) {
+                const double duration_ms = dnnl::impl::get_msec() - start_ms;
+                VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
+                        duration_ms);
+            }
+            if (trace_enabled)
+                VTRACE(end, graph, exec, trace_id, "%s", info.c_str());
         }
+    } else if (deps != nullptr) {
+        const auto &sycl_deps = *(const std::vector<::sycl::event> *)deps;
+        CHECK(compiled_partition->execute_sycl(stream, ins, outs, scratchpad,
+                sycl_deps, static_cast<::sycl::event *>(sycl_event)));
+    } else {
+        CHECK(compiled_partition->execute_sycl(stream, ins, outs, scratchpad,
+                {}, static_cast<::sycl::event *>(sycl_event)));
     }
 
     return status::success;
@@ -474,31 +508,47 @@ status_t dnnl_graph_ocl_interop_compiled_partition_execute_v2(
     }
 
     ocl_event_t ret_event;
+    const bool trace_enabled = get_verbose(
+            dnnl::impl::verbose_t::exec_trace, dnnl::impl::component_t::graph);
+    const bool profile_enabled
+            = get_verbose(dnnl::impl::verbose_t::exec_profile,
+                    dnnl::impl::component_t::graph);
+    const bool block_on_wait
+            = profile_enabled && !stream->is_verbose_profiler_enabled();
 
-    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
-                dnnl::impl::component_t::graph)) {
-        bool use_profiler = stream->is_verbose_profiler_enabled();
-        if (!use_profiler) stream->wait();
-        double start_ms = dnnl::impl::get_msec();
+    if (!trace_enabled && !profile_enabled) {
         CHECK(compiled_partition->execute_ocl(
                 stream, ins, outs, scratchpad, wrapped_deps, ret_event));
-        // Transfer ownership to caller.
         if (ocl_event) *ocl_event = ret_event.release();
-        auto info = compiled_partition->exec_info(scratchpad != nullptr);
-        if (!use_profiler) {
-            stream->wait();
-            double duration_ms = dnnl::impl::get_msec() - start_ms;
+        return status::success;
+    }
+
+    if (block_on_wait) stream->wait();
+    const double start_ms = dnnl::impl::get_msec();
+    const auto info = compiled_partition->exec_info(scratchpad != nullptr);
+    const size_t trace_id = trace_enabled
+            ? dnnl::impl::hash_combine(
+                      dnnl::impl::hash_combine(0, info), start_ms)
+            : 0;
+    if (trace_enabled) VTRACE(start, graph, exec, trace_id, "%s", info.c_str());
+
+    CHECK(compiled_partition->execute_ocl(
+            stream, ins, outs, scratchpad, wrapped_deps, ret_event));
+    // Transfer ownership to caller.
+    if (ocl_event) *ocl_event = ret_event.release();
+
+    if (stream->is_verbose_profiler_enabled()) {
+        CHECK(stream->run_verbose_profiler(info, start_ms,
+                static_cast<uint64_t>(dnnl::impl::component_t::graph)));
+    } else {
+        if (block_on_wait) stream->wait();
+        if (profile_enabled) {
+            const double duration_ms = dnnl::impl::get_msec() - start_ms;
             VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
                     duration_ms);
-        } else {
-            CHECK(stream->run_verbose_profiler(info, start_ms,
-                    static_cast<uint64_t>(dnnl::impl::component_t::graph)));
         }
-    } else {
-        CHECK(compiled_partition->execute_ocl(
-                stream, ins, outs, scratchpad, wrapped_deps, ret_event));
-        // Transfer ownership to caller.
-        if (ocl_event) *ocl_event = ret_event.release();
+        if (trace_enabled)
+            VTRACE(end, graph, exec, trace_id, "%s", info.c_str());
     }
 
     return status::success;

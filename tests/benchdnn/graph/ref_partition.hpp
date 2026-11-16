@@ -47,6 +47,13 @@ public:
     // run partition in ref path, one by one ref primitive
     void exec_ops(res_t *res);
 
+    // Returns `true` if the partition registered any data displacement, which
+    // means the reference path must be executed to supply consistent data to
+    // the graph path inputs (e.g., softmax stats for SDPA backward).
+    bool has_displace_args() const {
+        return data_displacer.has_displace_args();
+    }
+
     // ref execution and cmp
     int check_partition_correctness(
             partition_mem_map_t &partition_mem_map, res_t *res);

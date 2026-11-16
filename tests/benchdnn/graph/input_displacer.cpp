@@ -136,7 +136,45 @@ partition_data_displacer_t::partition_data_displacer_t(
                     lt = &parent_op->in_lts_[0]) {
                 parent_op = &dg_->get_op_by_out_lt(lt->id_);
                 if (parent_op->empty()) {
-                    if (aop.kind_ == "Divide") {
+                    // In bitwise mode, the attention scale of SDPA patterns
+                    // (the user input of a Multiply/Divide op applied to the
+                    // `Q x K^T` output, of any shape) is displaced with a
+                    // small value. The matmul driver fills Q and K with
+                    // uniform values from [-16; 16] in bitwise mode, so with
+                    // the generic Multiply/Divide displacement below (designed
+                    // for correctness mode), the scores spread by hundreds and
+                    // the softmax is one-hot, which hides non-deterministic
+                    // accumulation. The value 1/1024 is picked empirically: a
+                    // sweep over complex_fusion/harness_mha_all on GPU showed
+                    // a wide plateau, where scales from 1/256 to 1/16384
+                    // detected 28-31 of 36 non-deterministic SDPA backward
+                    // cases, 1/1024 being the best, compared to 6 cases with
+                    // the generic displacement. An alternative solution could
+                    // be to adjust the matmul driver's data filling so that
+                    // the scores spread is better controlled.
+                    const bool is_sdpa_pattern = dg.get_recognized_pattern()
+                                    == graph_recognized_pattern_t::sdpa_fwd
+                            || dg.get_recognized_pattern()
+                                    == graph_recognized_pattern_t::sdpa_bwd;
+                    const bool is_bitwise_sdpa_scale
+                            = has_bench_mode_bit(mode_bit_t::bitwise)
+                            && is_sdpa_pattern && aop.in_lts_.size() == 2
+                            && (aop.kind_ == "Multiply"
+                                    || (aop.kind_ == "Divide" && i == 1))
+                            && dg_->get_op_by_out_lt(aop.in_lts_[1 - i].id_)
+                                            .kind_
+                                    == "MatMul";
+                    if (is_bitwise_sdpa_scale) {
+                        const float scale = 1.f / 1024;
+                        const float val
+                                = aop.kind_ == "Divide" ? 1.f / scale : scale;
+                        // Assignment overrides the generic displacement in
+                        // case another op consuming the scale (e.g., the
+                        // `dS * scale` op of SDPA backward) came first.
+                        displace_args_[lt->id_] = displace_args_t {aop, i, *lt,
+                                filling_type_t::fixed_setting,
+                                {{val}, "SDPA bitwise scale displacer"}};
+                    } else if (aop.kind_ == "Divide") {
                         // Division has values > 1.f to reduce final values.
                         static const std::vector<float> user_set {
                                 2.f, 4.f, 8.f};
@@ -533,6 +571,8 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
             s = "Quantization";
         } else if (filling_type == filling_type_t::compressed_sdpa) {
             s = "Compressed SDPA";
+        } else if (filling_type == filling_type_t::softmax_stats) {
+            s = "SDPA softmax stats";
         }
         return s;
     };

@@ -71,6 +71,9 @@ public:
         return it->second.filling_type_;
     }
 
+    // Returns `true` if the partition registered any data displacement.
+    bool has_displace_args() const { return !displace_args_.empty(); }
+
 private:
     const deserialized_graph_t *dg_ = nullptr;
     // A set of op_id values from a partition came to a displacer. Used to

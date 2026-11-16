@@ -32,11 +32,15 @@
 #define VERBOSE_exec "exec"
 #define VERBOSE_compile "compile"
 #define VERBOSE_debuginfo "debuginfo"
+#define VERBOSE_trace "trace"
 
 // log subtypes strings
 #define VERBOSE_check ":check"
 #define VERBOSE_dispatch ":dispatch"
 #define VERBOSE_debug ":debug"
+#define VERBOSE_trace_start ":start"
+#define VERBOSE_trace_info ":info"
+#define VERBOSE_trace_end ":end"
 #define VERBOSE_profile ""
 #define VERBOSE_external ":external"
 

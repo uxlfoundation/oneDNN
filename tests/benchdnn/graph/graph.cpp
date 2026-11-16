@@ -819,7 +819,20 @@ int doit(const prb_t *prb, res_t *res) {
             SAFE(ref_partition.init_ref(graph_in_ports, res), WARN);
             if (res->state == SKIPPED) return OK;
 
-            if (has_bench_mode_bit(mode_bit_t::corr)) {
+            // Correctness mode requires a reference run. Bitwise mode requires
+            // it only when the partition relies on data displacement: the
+            // displacement happens as part of the reference execution and
+            // supplies mathematically consistent data to the graph inputs
+            // (e.g., softmax stats and other coupled tensors for SDPA
+            // backward). Without it, inconsistent input data may hide
+            // non-deterministic behavior of the library kernels from the
+            // bitwise validation.
+            const bool require_ref_exec = has_bench_mode_bit(mode_bit_t::corr)
+                    || (has_bench_mode_bit(mode_bit_t::bitwise)
+                            && !has_bench_mode_modifier(
+                                    mode_modifier_t::no_ref_memory)
+                            && ref_partition.has_displace_args());
+            if (require_ref_exec) {
                 // correctness mode, run ref partition
                 if (res->state == UNTESTED || res->state == EXECUTED
                         || res->state == DEFERRED) {

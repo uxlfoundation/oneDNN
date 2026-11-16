@@ -653,7 +653,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
         const dim_t work_amount = groups * tasks_per_group;
         if (work_amount == 0) return peak;
 
-        const int team
+        const int nthr
                 = static_cast<int>(nstl::min<dim_t>(conf.nthr, work_amount));
         const dim_t full_qblks = n_qblk - 1;
         const dim_t tail_rows = p_.seq_q - full_qblks * qb;
@@ -698,9 +698,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                     * (qblk == full_qblks ? tail_rows_per_qblk : rows_per_qblk);
         };
 
-        for (int tid = 0; tid < team; ++tid) {
+        for (int tid = 0; tid < nthr; ++tid) {
             dim_t start = 0, end = 0;
-            balance211(work_amount, team, tid, start, end);
+            balance211(work_amount, nthr, tid, start, end);
             const double keys = prefix_keys(end) - prefix_keys(start);
             const double row_keys
                     = prefix_rows(end, false) - prefix_rows(start, false);
@@ -1423,9 +1423,9 @@ void softmax_rows(const exec_state_t &st, float *scores, char *prob,
 class thread_state_t {
 public:
     thread_state_t(const exec_state_t &st, int tid)
-        : thread_scratch(st.thread_scratch(tid))
+        : scratch(st.thread_scratch(tid))
         , amx_wsp(st.conf.amx_wsp_bytes > 0
-                          ? thread_scratch + st.conf.thread_scratch.amx_wsp
+                          ? scratch + st.conf.thread_scratch.amx_wsp
                           : nullptr) {
         heads.reserve(st.conf.query_heads_per_item);
         // Upper bound: one rhs per mm1 post-op, plus fill and condition.
@@ -1445,7 +1445,7 @@ public:
         const uint8_t *cond;
     };
 
-    char *const thread_scratch;
+    char *const scratch;
     void *const amx_wsp;
     std::vector<head_ptrs_t> heads;
     std::vector<const void *> rhs;
@@ -1514,8 +1514,8 @@ public:
     void mm1(dim_t kv_begin, dim_t kv_end, const item_tiles_t &scores) {
         const auto &brg = conf_.brgemm;
         b_operand_t k_op(st_.k_td, batch_idx_, kv_head_idx_,
-                st_.kernels.k_packers, conf_.k_tile_desc,
-                thread_state_.thread_scratch, st_.mm_dt_sz);
+                st_.kernels.k_packers, conf_.k_tile_desc, thread_state_.scratch,
+                st_.mm_dt_sz);
         for_each_block(kv_begin, kv_end, conf_.mm1_n_block,
                 [&](dim_t kv0, bool n_tail) {
             k_op.load_tile(0, kv0, n_tail);
@@ -1560,8 +1560,8 @@ public:
             const item_tiles_t &c) {
         const auto &brg = conf_.brgemm;
         b_operand_t v_op(st_.v_td, batch_idx_, kv_head_idx_,
-                st_.kernels.v_packers, conf_.v_tile_desc,
-                thread_state_.thread_scratch, st_.mm_dt_sz);
+                st_.kernels.v_packers, conf_.v_tile_desc, thread_state_.scratch,
+                st_.mm_dt_sz);
         for_each_block(kv_begin, kv_end, conf_.mm2_k_block,
                 [&](dim_t kv0, bool k_tail) {
             v_op.load_tile(kv0, 0, k_tail);
@@ -1625,17 +1625,16 @@ private:
 void execute_fused(const exec_state_t &st, int nthr) {
     const auto &conf = st.conf;
     const auto &p = st.p;
-    const auto &ts = conf.thread_scratch;
+    const auto &scratch_layout = conf.thread_scratch;
     const size_t q_block = static_cast<size_t>(conf.q_block);
     const dim_t n_qblk = utils::div_up(p.seq_q, conf.q_block);
     const dim_t n_items = p.num_head_q / conf.query_heads_per_item;
     auto body = [&](thread_state_t &thread_state, dim_t batch_idx,
                         dim_t item_head_idx, dim_t q_block_idx) {
-        char *my_scratch = thread_state.thread_scratch;
-        const item_tiles_t scores
-                = {my_scratch, q_block * conf.ld_scores * sizeof(float)};
-        const item_tiles_t prob = ts.has_prob
-                ? item_tiles_t {my_scratch + ts.prob,
+        const item_tiles_t scores = {
+                thread_state.scratch, q_block * conf.ld_scores * sizeof(float)};
+        const item_tiles_t prob = scratch_layout.has_prob
+                ? item_tiles_t {thread_state.scratch + scratch_layout.prob,
                           q_block * conf.ld_prob * st.mm_dt_sz}
                 : scores;
 
@@ -1646,22 +1645,22 @@ void execute_fused(const exec_state_t &st, int nthr) {
         if (conf.mm2_direct) {
             item.mm2(0, p.seq_kv, prob, item.output_tiles());
         } else {
-            const item_tiles_t pv = {
-                    my_scratch + ts.pv, q_block * conf.ld_pv * sizeof(float)};
+            const item_tiles_t pv = {thread_state.scratch + scratch_layout.pv,
+                    q_block * conf.ld_pv * sizeof(float)};
             item.mm2(0, p.seq_kv, prob, pv);
             item.store(pv);
         }
     };
     const dim_t work = p.batch * n_items * n_qblk;
-    parallel(adjust_num_threads(nthr, work), [&](int ithr, int team) {
+    parallel(adjust_num_threads(nthr, work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
         if (conf.interleave_items) {
-            for (dim_t i = ithr; i < work; i += team)
+            for (dim_t i = ithr; i < work; i += nthr)
                 body(thread_state, i / (n_items * n_qblk),
                         (i / n_qblk) % n_items, i % n_qblk);
             return;
         }
-        for_nd(ithr, team, p.batch, n_items, n_qblk,
+        for_nd(ithr, nthr, p.batch, n_items, n_qblk,
                 [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx) {
             body(thread_state, batch_idx, item_head_idx, q_block_idx);
         });
@@ -1713,9 +1712,9 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                 p.seq_q * row_bytes};
     };
     const dim_t mm1_work = item_work * sk.mm1_chunks;
-    parallel(adjust_num_threads(nthr, mm1_work), [&](int ithr, int team) {
+    parallel(adjust_num_threads(nthr, mm1_work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
-        for_nd(ithr, team, p.batch, n_items, n_qblk, sk.mm1_chunks,
+        for_nd(ithr, nthr, p.batch, n_items, n_qblk, sk.mm1_chunks,
                 [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx,
                         dim_t c) {
             work_item_t item(
@@ -1740,9 +1739,9 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
     });
 
     const dim_t mm2_work = item_work * sk.mm2_chunks;
-    parallel(adjust_num_threads(nthr, mm2_work), [&](int ithr, int team) {
+    parallel(adjust_num_threads(nthr, mm2_work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
-        for_nd(ithr, team, p.batch, n_items, n_qblk, sk.mm2_chunks,
+        for_nd(ithr, nthr, p.batch, n_items, n_qblk, sk.mm2_chunks,
                 [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx,
                         dim_t c) {
             work_item_t item(

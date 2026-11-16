@@ -1923,7 +1923,10 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             && jcp.ic <= jcp.acc_simd_w
             // Enable the shapes not supported in direct convs
             && is_groups_ok(jcp);
-    const bool isa_has_small_group_perf = is_amx(isa) || jcp.isa == avx2;
+    // bf16 groups with up to 4 channels are not supported by the direct
+    // jit kernels, so brg is used instead of falling back to gemm
+    const bool isa_has_small_group_perf = is_amx(isa) || jcp.isa == avx2
+            || (jcp.wei_dt == data_type::bf16 && jcp.ic <= 4);
     if (is_grouped_small_ic && !isa_has_small_group_perf)
         VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
                 VERBOSE_IMPL_HEURISTIC_FAIL,

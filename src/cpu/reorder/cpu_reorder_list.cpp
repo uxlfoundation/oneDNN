@@ -73,15 +73,10 @@ const impl_list_item_t *get_reorder_impl_list(const reorder_desc_t *) {
             CPU_INSTANCE_RV64(rv64::jit_blk_reorder_t)
             CPU_INSTANCE_RV64(rv64::jit_uni_reorder_t)
 
-            CPU_INSTANCE(rnn_data_reorder_t<f32, s8>)
-            CPU_INSTANCE(rnn_data_reorder_t<f32, u8>)
-            CPU_INSTANCE(rnn_weights_reorder_t<f32, f32>)
-            CPU_INSTANCE(rnn_weights_reorder_t<f32, bf16>)
-            CPU_INSTANCE(rnn_weights_reorder_t<bf16, bf16>)
-            CPU_INSTANCE(rnn_weights_reorder_s8_t<f32>)
-            CPU_INSTANCE(rnn_weights_reorder_s8_t<s8>)
-            CPU_INSTANCE(rnn_brgemm_weights_reorder_s8_t<f32, s8>)
-            CPU_INSTANCE(rnn_brgemm_weights_reorder_s8_t<s8, s8>)
+            CPU_INSTANCE(rnn_data_reorder_t)
+            CPU_INSTANCE(rnn_weights_reorder_t)
+            CPU_INSTANCE(rnn_weights_reorder_s8_t)
+            CPU_INSTANCE(rnn_brgemm_weights_reorder_s8_t)
 
             CPU_INSTANCE(simple_reorder_t)
 

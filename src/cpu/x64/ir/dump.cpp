@@ -86,6 +86,17 @@ const char *cmp_name(cmp_t cmp) {
     return "?";
 }
 
+const char *prefetch_kind_name(prefetch_kind_t kind) {
+    switch (kind) {
+        case prefetch_kind_t::t0: return "t0";
+        case prefetch_kind_t::t1: return "t1";
+        case prefetch_kind_t::write: return "write";
+    }
+    assert(!"unknown prefetch kind");
+
+    return "?";
+}
+
 const char *reg_kind_name(reg_kind_t kind) {
     switch (kind) {
         case reg_kind_t::gpr: return "gpr";
@@ -297,7 +308,9 @@ std::string op_str(const ir_t &ir, const op_t &op, cpu_isa_t isa,
         case op_kind_t::vstore_masked:
         case op_kind_t::tstore:
             return k + mem(op.s0) + ", " + r(op.s0) + ", " + r(op.s1);
-        case op_kind_t::prefetch: return k + mem(vreg_t::none);
+        case op_kind_t::prefetch:
+            return k + mem(vreg_t::none) + ", "
+                    + prefetch_kind_name(op.prefetch_kind);
         case op_kind_t::loop_begin:
             return "loop " + r(op.dst) + " = "
                     + (op.init_is_reg ? r(op.s0) : std::to_string(op.imm))

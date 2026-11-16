@@ -230,11 +230,12 @@ void ir_t::vstore_masked(
     ops_.push_back(op);
 }
 
-void ir_t::prefetch(vreg_t base, dim_t disp) {
+void ir_t::prefetch(vreg_t base, dim_t disp, prefetch_kind_t kind) {
     op_t op;
     op.kind = op_kind_t::prefetch;
     op.mem.base = base;
     op.mem.disp = disp;
+    op.prefetch_kind = kind;
     ops_.push_back(op);
 }
 

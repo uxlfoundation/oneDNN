@@ -550,11 +550,13 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     // once and every A row.
     const ir::vreg_t x = ir.new_vec(cfg.dt_x_reg);
     const ir::vreg_t a = ir.new_vec(cfg.dt_a_reg);
-    if (cfg.pf_x_off > 0) ir.prefetch(x_ptr, cfg.pf_x_off);
+    if (cfg.pf_x_off > 0)
+        ir.prefetch(x_ptr, cfg.pf_x_off, ir::prefetch_kind_t::t0);
     ir.vload(x, x_ptr, 0, cfg.dt_x);
     for (int acc_idx = 0; acc_idx < (int)acc.size(); acc_idx++) {
         const dim_t a_off = cfg.dt_sz_a * (dim_t)acc_idx * cfg.lda;
-        if (cfg.pf_a_off > 0) ir.prefetch(a_ptr, a_off + cfg.pf_a_off);
+        if (cfg.pf_a_off > 0)
+            ir.prefetch(a_ptr, a_off + cfg.pf_a_off, ir::prefetch_kind_t::t0);
         ir.vload(a, a_ptr, a_off, cfg.dt_a);
         ir.vdot(acc[acc_idx].reg, a, x);
     }
@@ -634,7 +636,8 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     ir.vload_bcast(x, x_ptr, 0, cfg.dt_x);
     for (int acc_idx = 0; acc_idx < (int)acc.size(); acc_idx++) {
         const dim_t a_off = acc_off(cfg, acc_idx, cfg.dt_sz_a);
-        if (cfg.pf_a_off > 0) ir.prefetch(a_ptr, a_off + cfg.pf_a_off);
+        if (cfg.pf_a_off > 0)
+            ir.prefetch(a_ptr, a_off + cfg.pf_a_off, ir::prefetch_kind_t::t0);
         if (acc[acc_idx].n_elems == cfg.acc_elems)
             ir.vload(a, a_ptr, a_off, cfg.dt_a);
         else

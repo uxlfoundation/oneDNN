@@ -103,7 +103,7 @@ struct vector_compute_path_t : public compute_path_t {
                             = cfg.b_off(rd_pos, cfg.ld_pos(blk, n_pf_b))
                             + cfg.rdb_b_off();
                     if (jit_generator_t::imm_fits_int32(pf_off))
-                        ir.prefetch(b_ptr, pf_off);
+                        ir.prefetch(b_ptr, pf_off, ir::prefetch_kind_t::t0);
                     n_pf_b++;
                 }
 

@@ -521,13 +521,21 @@ inline uint32_t philox4x32(uint32_t idx, uint32_t seed) {
     return philox4x32<nrounds>(idx_64, seed_64, offset_64);
 }
 
-inline uint32_t philox4x32_dropout(
-        uint64_t idx, uint64_t seed, uint64_t offset) {
-    return philox4x32<philox_dropout_rounds>(idx, seed, offset);
-}
-
 inline uint32_t philox4x32_dropout(uint32_t idx, uint32_t seed) {
     return philox4x32<philox_dropout_rounds>(idx, seed);
+}
+
+// Dropout generator with offset: one Philox block gives eight 16-bit values.
+// idx uses halfword (idx & 7) of the block for counter (idx & ~7). The value
+// is returned in the upper 16 bits so it compares against the same 32-bit
+// threshold as the other generators.
+// Must match philox_4x32_dropout_w_offset() in src/gpu/intel/include/philox.h.
+inline uint32_t philox4x32_dropout(
+        uint64_t idx, uint64_t seed, uint64_t offset) {
+    const uint64_t h = idx & 7;
+    const uint32_t w = philox4x32<philox_dropout_rounds>(
+            (idx & ~uint64_t(7)) + (h >> 1), seed, offset);
+    return (h & 1) ? (w & 0xFFFF0000u) : (w << 16);
 }
 
 inline uint16_t philox8x16(uint32_t idx, uint32_t seed) {

@@ -28,10 +28,28 @@
 #error "The dropout functions below implement 7 Philox rounds"
 #endif
 
-/* Dropout uses a 7-round Philox-4x32 (the *_w_keys and *dropout*
-   functions); stochastic rounding and the other generators keep the
-   standard 10 rounds. The dropout round count is checked above against
-   math::philox_dropout_rounds in src/common/math_utils.hpp. */
+/* Philox-4x32 generators. Dropout uses 7 rounds, everything else the
+   standard 10. The dropout round count is checked above against
+   math::philox_dropout_rounds in src/common/math_utils.hpp.
+
+   A block is the output of one Philox call: four 32-bit words (128 bits).
+   A value is the random number of one element: a 32-bit word, or a 16-bit
+   half-word of a block. Dropout compares a value against
+   get_dropout_threshold(); 16-bit values are the top half of a 32-bit one.
+
+   Function                        Rounds Returns / used by
+   philox_4x32_key_schedule          -    keys for *_ctr_w_keys(), per seed
+   philox_4x32_vec4_ctr_w_keys       7    one block from a counter
+   philox_4x32_vec4x2_ctr_w_keys     7    two blocks, two chains (ILP)
+   philox_4x32_ctr_w_offset          -    counter with offset (idx & ~3)
+   philox_4x32_ctr_legacy            -    counter without offset
+   philox_4x32_dropout_w_offset      7    one value; dropout attr, offset
+   philox_4x32_dropout               7    one value; dropout attr, legacy
+   philox_4x32_vec4_w_offset        10    one block; generic
+   philox_4x32_w_offset             10    one value; generic
+   philox_4x32 / philox_4x32_vec4   10    one value / block; generic
+   philox_8x16 / philox_16x8        10    16 / 8 bits; stochastic rounding
+   The grouped SDPA fill builds its generators from the blocks above. */
 
 /* Key schedule depends only on seed: compute once, then use *_w_keys(). */
 typedef struct {
@@ -106,30 +124,20 @@ uint4 philox_4x32_ctr_w_offset(ulong idx, ulong offset) {
             (uint)(x >> 32));
 }
 
-uint4 philox_4x32_vec4_w_keys(
-        ulong idx, ulong offset, uint16 key0, uint4 key1) {
-    return philox_4x32_vec4_ctr_w_keys(
-            philox_4x32_ctr_w_offset(idx, offset), key0, key1);
-}
-
 /* Standard 10 rounds: the 7 dropout rounds and three more. */
-uint4 philox_4x32_vec4_ctr_10_w_keys(uint4 ctr, uint16 key0, uint4 key1) {
+uint4 philox_4x32_vec4_w_offset(ulong idx, ulong seed, ulong offset) {
     const uint2 PHILOX_M4x32 = (uint2)(0xD2511F53u, 0xCD9E8D57u);
-    ctr = philox_4x32_vec4_ctr_w_keys(ctr, key0, key1);
-    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.sEF);
-    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key1.s01);
-    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key1.s23);
+    const philox_key_schedule_t ks = philox_4x32_key_schedule(seed);
+    uint4 ctr = philox_4x32_vec4_ctr_w_keys(
+            philox_4x32_ctr_w_offset(idx, offset), ks.key0, ks.key1);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, ks.key0.sEF);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, ks.key1.s01);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, ks.key1.s23);
     return ctr;
 }
 
-uint4 philox_4x32_vec4_w_offset(ulong idx, ulong seed, ulong offset) {
-    philox_key_schedule_t ks = philox_4x32_key_schedule(seed);
-    return philox_4x32_vec4_ctr_10_w_keys(
-            philox_4x32_ctr_w_offset(idx, offset), ks.key0, ks.key1);
-}
-
 /* Legacy (no offset) generator, as in philox_4x32(): the counter comes from a
-   32-bit idx alone and every index of a group of four gets word 2. */
+   32-bit idx alone and all indices sharing idx & ~3 get word 2 of the block. */
 ulong philox_4x32_legacy_seed(long seed) {
     return ((ulong)(uint)seed << 32) + (uint)seed;
 }
@@ -139,29 +147,20 @@ uint4 philox_4x32_ctr_legacy(uint idx) {
     return (uint4)(x, x + 1, x, x + 3);
 }
 
-/* Indices idx & ~3 .. (idx & ~3) + 3 all get word 2 of the block. */
-uint4 philox_4x32_legacy4_w_keys(ulong idx, uint16 key0, uint4 key1) {
-    const uint4 r = philox_4x32_vec4_ctr_w_keys(
-            philox_4x32_ctr_legacy((uint)idx), key0, key1);
-    return (uint4)(r.s2);
-}
-
-uint8 philox_4x32_legacy4x2_w_keys(ulong idx, uint16 key0, uint4 key1) {
-    const uint8 r
-            = philox_4x32_vec4x2_ctr_w_keys(philox_4x32_ctr_legacy((uint)idx),
-                    philox_4x32_ctr_legacy((uint)idx + 4), key0, key1);
-    return (uint8)((uint4)(r.s2), (uint4)(r.s6));
-}
-
 uint philox_4x32_w_offset(long idx, long seed, long offset) {
     return philox_4x32_vec4_w_offset(
             (ulong)idx, (ulong)seed, (ulong)offset)[idx & 3L];
 }
 
+/* Dropout with offset: one block gives eight 16-bit values. idx uses
+   half-word (idx & 7) of the block with counter (idx & ~7). Matches
+   philox4x32_dropout() in math_utils.hpp. */
 uint philox_4x32_dropout_w_offset(long idx, long seed, long offset) {
-    philox_key_schedule_t ks = philox_4x32_key_schedule((ulong)seed);
-    return philox_4x32_vec4_w_keys(
-            (ulong)idx, (ulong)offset, ks.key0, ks.key1)[idx & 3L];
+    const philox_key_schedule_t ks = philox_4x32_key_schedule((ulong)seed);
+    const uint4 blk = philox_4x32_vec4_ctr_w_keys(
+            philox_4x32_ctr_w_offset((ulong)idx & ~7UL, (ulong)offset), ks.key0,
+            ks.key1);
+    return (uint)as_ushort8(blk)[idx & 7L] << 16;
 }
 
 uint philox_4x32(long idx, long seed) {
@@ -178,13 +177,11 @@ uint philox_4x32(long idx, long seed) {
 
 /* Dropout without offset: the counter of philox_4x32(), 7 rounds. */
 uint philox_4x32_dropout(long idx, long seed) {
-    uint idx_u = (uint)idx;
-    uint seed_u = (uint)seed;
-    ulong x = idx_u & ~3UL;
-    ulong idx_64 = ((x + 3) << 32) + (x + 2);
-    ulong offset_64 = ((x + 1) << 32) + x;
-    ulong seed_64 = ((ulong)seed_u << 32) + seed_u;
-    return philox_4x32_dropout_w_offset(idx_64, seed_64, offset_64);
+    const philox_key_schedule_t ks
+            = philox_4x32_key_schedule(philox_4x32_legacy_seed(seed));
+    return philox_4x32_vec4_ctr_w_keys(
+            philox_4x32_ctr_legacy((uint)idx), ks.key0, ks.key1)
+            .s2;
 }
 
 uint4 philox_4x32_vec4(uint idx, uint seed) {

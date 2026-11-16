@@ -160,24 +160,46 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
 #if DROPOUT_GROUPED
     const philox_key_schedule_t ks = philox_4x32_key_schedule(
             DROPOUT_USE_OFFSET ? (ulong)seed : philox_4x32_legacy_seed(seed));
-    /* One Philox call gives four consecutive indices: four 32-bit words
-       (offset) or four copies of one word (legacy). */
+    /* A group is the DROPOUT_G consecutive dropout indices that share one
+       Philox block, starting at a multiple of DROPOUT_G: eight 16-bit values
+       (offset) or four copies of one 32-bit word (legacy). dropout_gen()
+       returns the values of the group containing its argument, and
+       dropout_gen2() those of two adjacent groups from two independent
+       chains. */
 #if DROPOUT_USE_OFFSET
-#define dropout_gen(x) philox_4x32_vec4_w_keys(x, offset, ks.key0, ks.key1)
+#define DROPOUT_G 8
+#define dropout_vec_t ushort8
+#define dropout_vec2_t ushort16
+#define dropout_gen(x) \
+    as_ushort8(philox_4x32_vec4_ctr_w_keys( \
+            philox_4x32_ctr_w_offset((x) & ~7UL, offset), ks.key0, ks.key1))
 #define dropout_gen2(x) \
-    philox_4x32_vec4x2_ctr_w_keys(philox_4x32_ctr_w_offset(x, offset), \
-            philox_4x32_ctr_w_offset((x) + 4, offset), ks.key0, ks.key1)
+    ({ \
+        const ulong _g = (x) & ~7UL; \
+        as_ushort16(philox_4x32_vec4x2_ctr_w_keys( \
+                philox_4x32_ctr_w_offset(_g, offset), \
+                philox_4x32_ctr_w_offset(_g + 8, offset), ks.key0, ks.key1)); \
+    })
+    /* r > threshold for 32-bit r = v << 16. */
+    const ushort thr = (ushort)(threshold >> 16);
 #else
 #define DROPOUT_G 4
 #define dropout_vec_t uint4
 #define dropout_vec2_t uint8
-#define dropout_gen(x) philox_4x32_legacy4_w_keys(x, ks.key0, ks.key1)
-#define dropout_gen2(x) philox_4x32_legacy4x2_w_keys(x, ks.key0, ks.key1)
-#endif
-#define DROPOUT_G 4
-#define dropout_vec_t uint4
-#define dropout_vec2_t uint8
+#define dropout_gen(x) \
+    (uint4)(philox_4x32_vec4_ctr_w_keys( \
+            philox_4x32_ctr_legacy((uint)(x)), ks.key0, ks.key1) \
+                    .s2)
+#define dropout_gen2(x) \
+    ({ \
+        const uint _g = (uint)(x); \
+        const uint8 _r \
+                = philox_4x32_vec4x2_ctr_w_keys(philox_4x32_ctr_legacy(_g), \
+                        philox_4x32_ctr_legacy(_g + 4), ks.key0, ks.key1); \
+        (uint8)((uint4)(_r.s2), (uint4)(_r.s6)); \
+    })
     const uint thr = threshold;
+#endif
 #define dropout_store(v, j0) \
     { \
         const dropout_vec_t _v = (v); \

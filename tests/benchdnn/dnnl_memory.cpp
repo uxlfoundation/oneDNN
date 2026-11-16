@@ -683,11 +683,31 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md(int ndims,
         const dnnl_dims_t dims, dnnl_data_type_t data_type,
         const std::string &tag_, const dims_t &strides_) {
     dnnl_memory_desc_t md {};
+
+    // User-provided dims/tag/dt may be unrepresentable (e.g., a sub-byte data
+    // type with non-byte-aligned strides), which the library reports as
+    // `invalid_arguments`, leaving `md` null. Return it as is instead of
+    // aborting: the library rejects null descriptors with `invalid_arguments`
+    // at the next API call, so the problem resolves to INVALID_ARGUMENTS
+    // through `check_dnnl_status()`. Any other status indicates a benchdnn
+    // bug and remains fatal.
+    const auto create = [&](dnnl_status_t status) {
+        if (status == dnnl_invalid_arguments) {
+            BENCHDNN_PRINT(2,
+                    "[INIT_MD]: Invalid memory descriptor: ndims:%d dt:%s "
+                    "tag:%s dims:%s\n",
+                    ndims, dt2str(data_type), tag_.c_str(),
+                    dims2str(dims_t(dims, dims + ndims)).c_str());
+            return;
+        }
+        DNN_SAFE_V(status);
+    };
+
     const bool use_strides = !strides_.empty();
     // Ignore tag_ in case strides_ are explicitly provided
     if (use_strides) {
         const std::vector<dnnl_dim_t> &strides(strides_);
-        DNN_SAFE_V(dnnl_memory_desc_create_with_strides(
+        create(dnnl_memory_desc_create_with_strides(
                 &md, ndims, dims, data_type, strides.data()));
         return md;
     }
@@ -699,12 +719,12 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md(int ndims,
                 ? dnnl_format_tag_undef
                 : tag == tag::any ? dnnl_format_tag_any
                                   : str2fmt_tag(tag.c_str());
-        DNN_SAFE_V(dnnl_memory_desc_create_with_tag(
+        create(dnnl_memory_desc_create_with_tag(
                 &md, ndims, dims, data_type, enum_tag));
         return md;
     }
 
-    DNN_SAFE_V(dnnl_memory_desc_create_with_string_tag(
+    create(dnnl_memory_desc_create_with_string_tag(
             &md, ndims, dims, data_type, tag.data()));
 
     return md;

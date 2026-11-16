@@ -1308,6 +1308,30 @@ status_t brg_blocking_t::calc_blocks() {
         sp_block = os_block;
         ow_tail = 0;
     } else {
+        // When several groups share a src cache line and the
+        // groups are the innermost loop, consecutive kernel calls read the
+        // same src lines. Limit ow_block to one M block (ur) if this makes
+        // the src rows of one call fit into L1, so the lines are still there
+        // when the next group is processed. The pixel stride of nxc src maps
+        // the lines of a row to a fraction of the L1 sets only.
+        const auto src_fits_L1 = [&](dim_t owb) {
+            const dim_t L1_full = platform::get_per_core_cache_size(1);
+            const dim_t px_sz = ngroups * ic_without_padding * src_dsz;
+            const dim_t alias
+                    = nstl::max<dim_t>(1, math::gcd<dim_t>(px_sz, 4096) / 64);
+            const dim_t lines
+                    = kh_block * get_inp_size(iwp, owb, kw, stride_w, dilate_w);
+            return lines * alias * 64 <= L1_full;
+        };
+        if (!is_amx(isa) && exec_type != exec_trans && ngroups > 1
+                && loop_order == loop_ndhwgc && nb_oc == 1 && ic * src_dsz < 64
+                && ur > 0 && sp_block % ur == 0 && !src_fits_L1(sp_block)) {
+            // for 16-bit src half of the M block is tried as well
+            if (sp_block > ur && src_fits_L1(ur))
+                sp_block = ur;
+            else if (src_dsz == 2 && ur % 2 == 0 && src_fits_L1(ur / 2))
+                sp_block = ur / 2;
+        }
         ow_block = os_block = sp_block;
         os_block = sp_block = ow_block;
         ow_tail = ow % ow_block;

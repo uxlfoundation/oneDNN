@@ -519,7 +519,8 @@ void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 
                 // The classic kernel prefetches the next element for the
                 // address kind only.
-                if (loop.batch_kind == brgemm_addr) ir.prefetch(batch_ptr, 0);
+                if (loop.batch_kind == brgemm_addr)
+                    ir.prefetch(batch_ptr, 0, ir::prefetch_kind_t::t0);
             }
 
             emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr);

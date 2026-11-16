@@ -360,10 +360,17 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 break;
             }
 
-            // prefetcht0 is base x86-64, so emit it directly.
+            // `prefetcht0` and `prefetcht1` are base x86-64, so emit them
+            // directly. No `cpu_isa_t` covers `prefetchw`, so it is emitted on
+            // every ISA, as in the classic kernels.
             case op_kind_t::prefetch: {
                 Xbyak::Reg64 base = gpr_use(op.mem.base);
-                gen.prefetcht0(gen.ptr[base + (int)op.mem.disp]);
+                const Xbyak::Address addr = gen.ptr[base + (int)op.mem.disp];
+                switch (op.prefetch_kind) {
+                    case prefetch_kind_t::t0: gen.prefetcht0(addr); break;
+                    case prefetch_kind_t::t1: gen.prefetcht1(addr); break;
+                    case prefetch_kind_t::write: gen.prefetchw(addr); break;
+                }
                 break;
             }
 

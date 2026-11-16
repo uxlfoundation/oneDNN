@@ -157,7 +157,8 @@ enum class op_kind_t {
     // [base + disp] = s0 under the mask vreg s1.
     vstore_masked,
 
-    // prefetch [base + disp] into cache. Reads base, writes nothing.
+    // prefetch [base + disp] into cache, as `prefetch_kind` selects. Reads
+    // base, writes nothing.
     prefetch,
 
     // Tile operations
@@ -238,6 +239,13 @@ inline mem_hint_t operator&(mem_hint_t a, mem_hint_t b) {
             static_cast<unsigned>(a) & static_cast<unsigned>(b));
 }
 
+// Kinds of a `prefetch`.
+//
+//   t0    - temporal data, into every cache level
+//   t1    - temporal data, into the second-level cache and higher
+//   write - data that will be written
+enum class prefetch_kind_t { t0, t1, write };
+
 // An `op_t` is a single IR operation. One fixed struct represents every
 // operation and works like a tagged union, where the `kind` field decides which
 // operation it is. Each operation only uses the fields it needs and ignores the
@@ -264,6 +272,8 @@ inline mem_hint_t operator&(mem_hint_t a, mem_hint_t b) {
 //        is, and a different one when the access converts.
 // hint  - for tload, vload, and vload_masked, the hints of the access (see
 //         `mem_hint_t`).
+// prefetch_kind - for prefetch, the kind of the prefetch (see
+//                 `prefetch_kind_t`).
 // match - for loop_end, index of matching loop_begin operation. For _else and
 //         if_end, index of matching if_begin operation.
 // cmp   - for if_begin, how s0 is compared with s1 or imm.
@@ -277,6 +287,7 @@ struct op_t {
     mem_t mem;
     data_type_t mem_dt = data_type::undef;
     mem_hint_t hint = mem_hint_t::none;
+    prefetch_kind_t prefetch_kind = prefetch_kind_t::t0;
     int match = -1;
     cmp_t cmp = cmp_t::eq;
     bool init_is_reg = false;
@@ -393,7 +404,7 @@ struct DNNL_API ir_t {
     void vstore_masked(vreg_t base, dim_t disp, vreg_t src, vreg_t mask,
             data_type_t mem_dt);
 
-    void prefetch(vreg_t base, dim_t disp);
+    void prefetch(vreg_t base, dim_t disp, prefetch_kind_t kind);
 
     // mask
     void set_mask_imm(vreg_t mask, int n_elems);

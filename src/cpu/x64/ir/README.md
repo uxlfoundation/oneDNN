@@ -331,7 +331,7 @@ index | gpr vec mask | operation
    40 |  15  17    0 |         vload f32:v26@zmm16, f32:[g32@r15+0]
    41 |  15  18    0 |         vload f32:v27@zmm17, f32:[g32@r15+64]
    42 |  15  19    0 |         vload_bcast f32:v29@zmm18, f32:[g31@r14+0]
-   43 |  15  19    0 |         prefetch [g32@r15+512]
+   43 |  15  19    0 |         prefetch [g32@r15+512], t0
    44 |  15  19    0 |         vdot f32:v10@zmm0, f32:v26@zmm16, f32:v29@zmm18
 ...
   154 |  15  16    0 |       } // g33@rcx -= 1, repeat while > 0

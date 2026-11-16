@@ -25,7 +25,7 @@ namespace gbr {
 
 static_assert(nFeatures == 46 && same(featureNames[0], "lm") && same(featureNames[1], "ln") && same(featureNames[2], "lk") && same(featureNames[3], "c_wgK") && same(featureNames[4], "lchunkA") && same(featureNames[5], "lchunkB") && same(featureNames[6], "copiesA") && same(featureNames[7], "copiesB") && same(featureNames[8], "lpfA") && same(featureNames[9], "lpfB") && same(featureNames[10], "ldistA") && same(featureNames[11], "ldistB") && same(featureNames[12], "um") && same(featureNames[13], "un") && same(featureNames[14], "larea") && same(featureNames[15], "tai") && same(featureNames[16], "wgM") && same(featureNames[17], "wgN") && same(featureNames[18], "threads") && same(featureNames[19], "wgeff") && same(featureNames[20], "lwgs") && same(featureNames[21], "wgfill") && same(featureNames[22], "lkpt") && same(featureNames[23], "lkit") && same(featureNames[24], "ltraf") && same(featureNames[25], "ltcomp") && same(featureNames[26], "ltmem") && same(featureNames[27], "lslack") && same(featureNames[28], "wfrac") && same(featureNames[29], "gM") && same(featureNames[30], "ctzk") && same(featureNames[31], "kt_chunk") && same(featureNames[32], "f_xaf") && same(featureNames[33], "f_st") && same(featureNames[34], "f_dm") && same(featureNames[35], "f_fx") && same(featureNames[36], "f_rr") && same(featureNames[37], "f_sm") && same(featureNames[38], "f_sn") && same(featureNames[39], "f_bk0") && same(featureNames[40], "f_of") && same(featureNames[41], "f_pfaux") && same(featureNames[42], "f_pt") && same(featureNames[43], "f_bo") && same(featureNames[44], "f_hi") && same(featureNames[45], "f_li"), "feature names");
 
-// kkit 071b93d
+// kkit 4acd31d
 // gbr.db 4adb9a370056
 const int mxKBytes = 32, mxGroup = 32;
 // scorer 0: v7_cri_674f_bf16 cover.kernels c156e9bd7cb7 model.txt ba241224e296 banned.txt e3b0c44298fc device.yaml 6efe69d878c4 bits 5
@@ -5053,12 +5053,12 @@ static const uint64_t s5Blob[3313] = {
 };
 const int nScorers = 6;
 const Scorer scorers[6] = {
-    {200, 10, 5, s0ThrCount, s0Thr, s0Scale, s0Blob, 1, s0Ids, ngen::HW::Unknown, 4, 4},
-    {200, 10, 5, s1ThrCount, s1Thr, s1Scale, s1Blob, 1, s1Ids, ngen::HW::Unknown, 4, 4},
-    {200, 10, 5, s2ThrCount, s2Thr, s2Scale, s2Blob, 1, s2Ids, ngen::HW::Unknown, 4, 4},
-    {200, 10, 5, s3ThrCount, s3Thr, s3Scale, s3Blob, 1, s3Ids, ngen::HW::Unknown, 4, 4},
-    {200, 10, 5, s4ThrCount, s4Thr, s4Scale, s4Blob, 1, s4Ids, ngen::HW::Unknown, 4, 4},
-    {200, 10, 5, s5ThrCount, s5Thr, s5Scale, s5Blob, 1, s5Ids, ngen::HW::Unknown, 4, 4}
+    {200, 10, 5, s0ThrCount, s0Thr, s0Scale, s0Blob, 1, s0Ids, ngen::HW::Unknown, 16, 16},
+    {200, 10, 5, s1ThrCount, s1Thr, s1Scale, s1Blob, 1, s1Ids, ngen::HW::Unknown, 16, 16},
+    {200, 10, 5, s2ThrCount, s2Thr, s2Scale, s2Blob, 1, s2Ids, ngen::HW::Unknown, 16, 16},
+    {200, 10, 5, s3ThrCount, s3Thr, s3Scale, s3Blob, 1, s3Ids, ngen::HW::Unknown, 16, 16},
+    {200, 10, 5, s4ThrCount, s4Thr, s4Scale, s4Blob, 1, s4Ids, ngen::HW::Unknown, 16, 16},
+    {200, 10, 5, s5ThrCount, s5Thr, s5Scale, s5Blob, 1, s5Ids, ngen::HW::Unknown, 16, 16}
 };
 
 } // namespace gbr

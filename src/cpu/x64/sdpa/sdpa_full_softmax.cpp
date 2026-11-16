@@ -1359,12 +1359,12 @@ struct exec_state_t {
 // matrix; the brgemm ukernel has no transposed-B mode) and mm2's B (V) once
 // per (batch, kv_head) into the shared area. bf16/f16 are VNNI-packed over the
 // reduction axis.
-void pack_ahead(const exec_state_t &st) {
+void pack_ahead(const exec_state_t &st, int nthr) {
     const dim_t num_head_kv = st.p.num_head_q / st.p.group_head;
     auto pack = [&](const tensor_desc_t<const char> &td,
                         const sdpa_brgemm_copy::b_packer_t &packer) {
-        parallel_nd(st.p.batch, num_head_kv,
-                [&](dim_t batch_idx, dim_t kv_head_idx) {
+        parallel_nd_ext(nthr, st.p.batch, num_head_kv,
+                [&](int, int, dim_t batch_idx, dim_t kv_head_idx) {
             packer.execute(get_arg_ptr(td, batch_idx, kv_head_idx),
                     get_copy_ptr(td, batch_idx, kv_head_idx));
         });
@@ -1418,18 +1418,56 @@ void softmax_rows(const exec_state_t &st, float *scores, char *prob,
     }
 }
 
+// State of one thread of a parallel region, shared by all of the thread's
+// work items: its scratch, the pointer vectors (allocated once), and the AMX
+// palette currently loaded. Configured AMX tiles are released on destruction,
+// i.e. once per thread at the end of the region.
+class thread_state_t {
+public:
+    thread_state_t(const exec_state_t &st, int tid)
+        : thread_scratch(st.thread_scratch(tid))
+        , amx_wsp(st.conf.amx_wsp_bytes > 0
+                          ? thread_scratch + st.conf.thread_scratch.amx_wsp
+                          : nullptr) {
+        heads.reserve(st.conf.query_heads_per_item);
+        // Upper bound: one rhs per mm1 post-op, plus fill and condition.
+        rhs.reserve(
+                st.conf.query_heads_per_item * (st.p.mm1_post_ops.size() + 2));
+    }
+
+    ~thread_state_t() {
+        if (used_amx) amx_tile_release();
+    }
+
+    DNNL_DISALLOW_COPY_AND_ASSIGN(thread_state_t);
+
+    struct head_ptrs_t {
+        const char *q;
+        char *out;
+        const uint8_t *cond;
+    };
+
+    char *const thread_scratch;
+    void *const amx_wsp;
+    std::vector<head_ptrs_t> heads;
+    std::vector<const void *> rhs;
+    int prev_brg_idx = -1;
+    bool used_amx = false;
+};
+
 // One work item: query block q_block_idx of the query_heads_per_item
 // consecutive query heads starting at item_head_idx * query_heads_per_item,
 // which share one KV head. Its operations take a key range and the tiles to
 // use, so a work item serves both a whole fused computation in per-thread
-// tiles and one split_kv chunk in shared tiles. AMX tiles configured by its
-// BRGEMM calls are released on destruction.
+// tiles and one split_kv chunk in shared tiles. It uses the thread's
+// thread_state_t for its pointers and the AMX tile configuration.
 class work_item_t {
 public:
-    work_item_t(const exec_state_t &st, int tid, dim_t batch_idx,
-            dim_t item_head_idx, dim_t q_block_idx)
+    work_item_t(const exec_state_t &st, thread_state_t &thread_state,
+            dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx)
         : st_(st)
         , conf_(st.conf)
+        , thread_state_(thread_state)
         , batch_idx_(batch_idx)
         , kv_head_idx_(
                   item_head_idx * conf_.query_heads_per_item / st.p.group_head)
@@ -1440,30 +1478,24 @@ public:
         // with head 0's pointers and the head stride as the row stride.
         , brgemm_calls_(conf_.stack_heads ? 1 : conf_.query_heads_per_item)
         , has_mm1_postops_(
-                  !st.p.mm1_post_ops.empty() || conf_.mm1_select_postop)
-        , thread_scratch_(st.thread_scratch(tid))
-        , amx_wsp_(conf_.amx_wsp_bytes > 0
-                          ? thread_scratch_ + conf_.thread_scratch.amx_wsp
-                          : nullptr)
-        , heads_(conf_.query_heads_per_item) {
+                  !st.p.mm1_post_ops.empty() || conf_.mm1_select_postop) {
         const dim_t head0 = item_head_idx * conf_.query_heads_per_item;
         const dim_t q0 = q_block_idx * conf_.q_block;
+        auto &heads = thread_state_.heads;
+        auto &rhs = thread_state_.rhs;
+        heads.resize(conf_.query_heads_per_item);
+        rhs.clear();
         for (dim_t h = 0; h < conf_.query_heads_per_item; ++h) {
             const dim_t head = head0 + h;
-            auto &hp = heads_[h];
+            auto &hp = heads[h];
             hp.q = get_arg_ptr(st.q_td, batch_idx, head, q0);
             hp.out = get_arg_ptr(st.o_td, batch_idx, head, q0);
             hp.cond = st.cond(batch_idx, head, q0);
             if (has_mm1_postops_)
-                append_mm1_rhs(rhs_, st.p, st.args, batch_idx, head, q0,
+                append_mm1_rhs(rhs, st.p, st.args, batch_idx, head, q0,
                         conf_.mm1_select_postop, hp.cond);
         }
-        rhs_per_head_ = rhs_.size() / conf_.query_heads_per_item;
-    }
-
-    ~work_item_t() {
-        // Do not leak the configured AMX state past this work item.
-        if (used_amx_) amx_tile_release();
+        rhs_per_head_ = rhs.size() / conf_.query_heads_per_item;
     }
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(work_item_t);
@@ -1473,7 +1505,7 @@ public:
     item_tiles_t output_tiles() const {
         const size_t head_stride
                 = st_.p.o_strides[1] * types::data_type_size(st_.p.out_dt);
-        return {heads_[0].out, head_stride};
+        return {thread_state_.heads[0].out, head_stride};
     }
 
     // mm1: scores[m, kv_begin:kv_end) = Q[m, hs_qk] * K[hs_qk, kv_begin:kv_end)
@@ -1484,29 +1516,30 @@ public:
     void mm1(dim_t kv_begin, dim_t kv_end, const item_tiles_t &scores) {
         const auto &brg = conf_.brgemm;
         b_operand_t k_op(st_.k_td, batch_idx_, kv_head_idx_,
-                st_.kernels.k_packers, conf_.k_tile_desc, thread_scratch_,
-                st_.mm_dt_sz);
+                st_.kernels.k_packers, conf_.k_tile_desc,
+                thread_state_.thread_scratch, st_.mm_dt_sz);
         for_each_block(kv_begin, kv_end, conf_.mm1_n_block,
                 [&](dim_t kv0, bool n_tail) {
             k_op.load_tile(0, kv0, n_tail);
             const brgemm_kernel_t *kernel = this->kernel(brg.mm1[qi_][n_tail]);
             for (dim_t h = 0; h < brgemm_calls_; ++h) {
                 brgemm_batch_element_t be;
-                be.ptr.A = heads_[h].q;
+                be.ptr.A = thread_state_.heads[h].q;
                 be.ptr.B = k_op.at(0, kv0);
                 float *c_blk = scores.f32(h) + kv0;
                 if (has_mm1_postops_) {
                     brgemm_post_ops_data_t pod(/*bias=*/nullptr,
-                            /*binary_post_ops_rhs=*/rhs_.data()
+                            /*binary_post_ops_rhs=*/thread_state_.rhs.data()
                                     + h * rhs_per_head_,
                             /*oc_logical_off=*/0,
                             /*dst_row_logical_off=*/0,
                             /*data_C_ptr_=*/scores.of(h),
                             /*first_mb_matrix_addr_off=*/0);
-                    brgemm_kernel_execute_postops(
-                            kernel, 1, &be, c_blk, c_blk, pod, amx_wsp_);
+                    brgemm_kernel_execute_postops(kernel, 1, &be, c_blk, c_blk,
+                            pod, thread_state_.amx_wsp);
                 } else {
-                    brgemm_kernel_execute(kernel, 1, &be, c_blk, amx_wsp_);
+                    brgemm_kernel_execute(
+                            kernel, 1, &be, c_blk, thread_state_.amx_wsp);
                 }
             }
         });
@@ -1515,7 +1548,8 @@ public:
     // Softmax of the item's score rows; see softmax_rows().
     void softmax(const item_tiles_t &scores, const item_tiles_t &prob) const {
         for (dim_t h = 0; h < conf_.query_heads_per_item; ++h)
-            softmax_rows(st_, scores.f32(h), prob.of(h), heads_[h].cond, m_);
+            softmax_rows(st_, scores.f32(h), prob.of(h),
+                    thread_state_.heads[h].cond, m_);
     }
 
     // mm2: c[m, hs_v] = P[m, kv_begin:kv_end) * V[kv_begin:kv_end, hs_v], tiled
@@ -1528,8 +1562,8 @@ public:
             const item_tiles_t &c) {
         const auto &brg = conf_.brgemm;
         b_operand_t v_op(st_.v_td, batch_idx_, kv_head_idx_,
-                st_.kernels.v_packers, conf_.v_tile_desc, thread_scratch_,
-                st_.mm_dt_sz);
+                st_.kernels.v_packers, conf_.v_tile_desc,
+                thread_state_.thread_scratch, st_.mm_dt_sz);
         for_each_block(kv_begin, kv_end, conf_.mm2_k_block,
                 [&](dim_t kv0, bool k_tail) {
             v_op.load_tile(kv0, 0, k_tail);
@@ -1545,8 +1579,8 @@ public:
                     brgemm_batch_element_t be;
                     be.ptr.A = prob.of(h) + kv0 * st_.mm_dt_sz;
                     be.ptr.B = v_op.at(kv0, v0);
-                    brgemm_kernel_execute(
-                            kernel, 1, &be, c.f32(h) + v0, amx_wsp_);
+                    brgemm_kernel_execute(kernel, 1, &be, c.f32(h) + v0,
+                            thread_state_.amx_wsp);
                 }
             });
         });
@@ -1557,8 +1591,8 @@ public:
         const auto &p = st_.p;
         const dim_t o_col_stride = p.o_strides[sdpa_pd_t::ndims - 1];
         for (dim_t h = 0; h < brgemm_calls_; ++h)
-            store_pv_tile(pv.f32(h), conf_.ld_pv, heads_[h].out, conf_.out_ld,
-                    o_col_stride, p.out_dt, call_m_, p.hs_v);
+            store_pv_tile(pv.f32(h), conf_.ld_pv, thread_state_.heads[h].out,
+                    conf_.out_ld, o_col_stride, p.out_dt, call_m_, p.hs_v);
     }
 
 private:
@@ -1568,21 +1602,16 @@ private:
         assert(brg_idx >= 0);
         const bool is_amx = (*conf_.brgemm.descs)[brg_idx]->is_tmm;
         st_.kernels.brgemm_palettes.maybe_tile_configure(
-                is_amx, prev_brg_idx_, brg_idx);
-        used_amx_ = used_amx_ || is_amx;
+                is_amx, thread_state_.prev_brg_idx, brg_idx);
+        thread_state_.used_amx = thread_state_.used_amx || is_amx;
         const brgemm_kernel_t *kernel = st_.kernels.brgemm_kernels[brg_idx];
         assert(kernel);
         return kernel;
     }
 
-    struct head_ptrs_t {
-        const char *q;
-        char *out;
-        const uint8_t *cond;
-    };
-
     const exec_state_t &st_;
     const sdpa_full_softmax_conf_t &conf_;
+    thread_state_t &thread_state_;
     const dim_t batch_idx_, kv_head_idx_;
     // Query rows of each head, and whether they form the query tail block.
     const dim_t m_;
@@ -1590,13 +1619,7 @@ private:
     // Rows of each BRGEMM call, and calls per mm1/mm2 block.
     const dim_t call_m_, brgemm_calls_;
     const bool has_mm1_postops_;
-    char *const thread_scratch_;
-    void *const amx_wsp_;
-    std::vector<head_ptrs_t> heads_;
-    std::vector<const void *> rhs_;
     size_t rhs_per_head_ = 0;
-    int prev_brg_idx_ = -1;
-    bool used_amx_ = false;
 };
 
 // per_head and kv_head_group: each work item computes all keys of its query
@@ -1608,9 +1631,9 @@ void execute_fused(const exec_state_t &st, int nthr) {
     const size_t q_block = static_cast<size_t>(conf.q_block);
     const dim_t n_qblk = utils::div_up(p.seq_q, conf.q_block);
     const dim_t n_items = p.num_head_q / conf.query_heads_per_item;
-    auto body = [&](int tid, dim_t batch_idx, dim_t item_head_idx,
-                        dim_t q_block_idx) {
-        char *my_scratch = st.thread_scratch(tid);
+    auto body = [&](thread_state_t &thread_state, dim_t batch_idx,
+                        dim_t item_head_idx, dim_t q_block_idx) {
+        char *my_scratch = thread_state.thread_scratch;
         const item_tiles_t scores
                 = {my_scratch, q_block * conf.ld_scores * sizeof(float)};
         const item_tiles_t prob = ts.has_prob
@@ -1618,7 +1641,8 @@ void execute_fused(const exec_state_t &st, int nthr) {
                           q_block * conf.ld_prob * st.mm_dt_sz}
                 : scores;
 
-        work_item_t item(st, tid, batch_idx, item_head_idx, q_block_idx);
+        work_item_t item(
+                st, thread_state, batch_idx, item_head_idx, q_block_idx);
         item.mm1(0, p.seq_kv, scores);
         item.softmax(scores, prob);
         if (conf.mm2_direct) {
@@ -1630,19 +1654,19 @@ void execute_fused(const exec_state_t &st, int nthr) {
             item.store(pv);
         }
     };
-    if (conf.interleave_items) {
-        const dim_t work = p.batch * n_items * n_qblk;
-        parallel(nthr, [&](int ithr, int team) {
+    const dim_t work = p.batch * n_items * n_qblk;
+    parallel(adjust_num_threads(nthr, work), [&](int ithr, int team) {
+        thread_state_t thread_state(st, ithr);
+        if (conf.interleave_items) {
             for (dim_t i = ithr; i < work; i += team)
-                body(ithr, i / (n_items * n_qblk), (i / n_qblk) % n_items,
-                        i % n_qblk);
+                body(thread_state, i / (n_items * n_qblk),
+                        (i / n_qblk) % n_items, i % n_qblk);
+            return;
+        }
+        for_nd(ithr, team, p.batch, n_items, n_qblk,
+                [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx) {
+            body(thread_state, batch_idx, item_head_idx, q_block_idx);
         });
-        return;
-    }
-    parallel_nd_ext(nthr, p.batch, n_items, n_qblk,
-            [&](int tid, int, dim_t batch_idx, dim_t item_head_idx,
-                    dim_t q_block_idx) {
-        body(tid, batch_idx, item_head_idx, q_block_idx);
     });
 }
 
@@ -1662,6 +1686,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
     const auto &sk = conf.split_kv;
     const dim_t n_items = p.num_head_q / conf.query_heads_per_item;
     const dim_t n_qblk = utils::div_up(p.seq_q, conf.q_block);
+    const dim_t item_work = p.batch * n_items * n_qblk;
 
     const size_t score_row_bytes = conf.ld_scores * sizeof(float);
     const size_t prob_row_bytes = conf.thread_scratch.has_prob
@@ -1689,19 +1714,24 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                                      q_block_idx * conf.q_block),
                 p.seq_q * row_bytes};
     };
-    parallel_nd_ext(nthr, p.batch, n_items, n_qblk, sk.mm1_chunks,
-            [&](int tid, int, dim_t batch_idx, dim_t item_head_idx,
-                    dim_t q_block_idx, dim_t c) {
-        work_item_t item(st, tid, batch_idx, item_head_idx, q_block_idx);
-        const auto kv = split_kv_chunk_keys(
-                c, sk.mm1_chunks, conf.mm1_n_block, p.seq_kv);
-        item.mm1(kv.first, kv.second,
-                item_tiles(sk.scores, score_row_bytes, batch_idx, item_head_idx,
-                        q_block_idx));
+    const dim_t mm1_work = item_work * sk.mm1_chunks;
+    parallel(adjust_num_threads(nthr, mm1_work), [&](int ithr, int team) {
+        thread_state_t thread_state(st, ithr);
+        for_nd(ithr, team, p.batch, n_items, n_qblk, sk.mm1_chunks,
+                [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx,
+                        dim_t c) {
+            work_item_t item(
+                    st, thread_state, batch_idx, item_head_idx, q_block_idx);
+            const auto kv = split_kv_chunk_keys(
+                    c, sk.mm1_chunks, conf.mm1_n_block, p.seq_kv);
+            item.mm1(kv.first, kv.second,
+                    item_tiles(sk.scores, score_row_bytes, batch_idx,
+                            item_head_idx, q_block_idx));
+        });
     });
 
-    parallel_nd(p.batch, p.num_head_q, n_qblk,
-            [&](dim_t batch_idx, dim_t head, dim_t q_block_idx) {
+    parallel_nd_ext(nthr, p.batch, p.num_head_q, n_qblk,
+            [&](int, int, dim_t batch_idx, dim_t head, dim_t q_block_idx) {
         const dim_t q0 = q_block_idx * conf.q_block;
         softmax_rows(st,
                 reinterpret_cast<float *>(shared_rows(
@@ -1711,19 +1741,24 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                 nstl::min(conf.q_block, p.seq_q - q0));
     });
 
-    parallel_nd_ext(nthr, p.batch, n_items, n_qblk, sk.mm2_chunks,
-            [&](int tid, int, dim_t batch_idx, dim_t item_head_idx,
-                    dim_t q_block_idx, dim_t c) {
-        work_item_t item(st, tid, batch_idx, item_head_idx, q_block_idx);
-        const auto kv = split_kv_chunk_keys(
-                c, sk.mm2_chunks, conf.mm2_k_block, p.seq_kv);
-        const auto pv = item_tiles(sk.partials + c * partial_bytes,
-                pv_row_bytes, batch_idx, item_head_idx, q_block_idx);
-        item.mm2(kv.first, kv.second,
-                item_tiles(sk.prob, prob_row_bytes, batch_idx, item_head_idx,
-                        q_block_idx),
-                pv);
-        if (sk.mm2_chunks == 1) item.store(pv);
+    const dim_t mm2_work = item_work * sk.mm2_chunks;
+    parallel(adjust_num_threads(nthr, mm2_work), [&](int ithr, int team) {
+        thread_state_t thread_state(st, ithr);
+        for_nd(ithr, team, p.batch, n_items, n_qblk, sk.mm2_chunks,
+                [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx,
+                        dim_t c) {
+            work_item_t item(
+                    st, thread_state, batch_idx, item_head_idx, q_block_idx);
+            const auto kv = split_kv_chunk_keys(
+                    c, sk.mm2_chunks, conf.mm2_k_block, p.seq_kv);
+            const auto pv = item_tiles(sk.partials + c * partial_bytes,
+                    pv_row_bytes, batch_idx, item_head_idx, q_block_idx);
+            item.mm2(kv.first, kv.second,
+                    item_tiles(sk.prob, prob_row_bytes, batch_idx,
+                            item_head_idx, q_block_idx),
+                    pv);
+            if (sk.mm2_chunks == 1) item.store(pv);
+        });
     });
     if (sk.mm2_chunks == 1) return;
 
@@ -1731,8 +1766,8 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
     const dim_t o_row_stride = p.o_strides[sdpa_pd_t::ndims - 2];
     const dim_t o_col_stride = p.o_strides[sdpa_pd_t::ndims - 1];
     const size_t partial_floats = partial_bytes / sizeof(float);
-    parallel_nd(p.batch, p.num_head_q, n_qblk,
-            [&](dim_t batch_idx, dim_t head, dim_t q_block_idx) {
+    parallel_nd_ext(nthr, p.batch, p.num_head_q, n_qblk,
+            [&](int, int, dim_t batch_idx, dim_t head, dim_t q_block_idx) {
         const dim_t q0 = q_block_idx * conf.q_block;
         const dim_t m = nstl::min(conf.q_block, p.seq_q - q0);
         float *acc = reinterpret_cast<float *>(
@@ -1755,7 +1790,7 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
         const sdpa_full_softmax_kernels_t &kernels,
         const sdpa_full_softmax_run_args_t &args, int nthr) {
     const exec_state_t st(conf, kernels, args, nthr);
-    pack_ahead(st);
+    pack_ahead(st, nthr);
     if (conf.schedule == sdpa_full_softmax_schedule_t::split_kv)
         execute_split_kv(st, nthr);
     else

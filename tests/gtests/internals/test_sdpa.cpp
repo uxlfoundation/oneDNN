@@ -1070,7 +1070,8 @@ memory as(dnnl::stream &strm, memory &mem, memory::data_type dt) {
 
     auto md = memory::desc(sz, dt, mem.get_desc().get_strides());
     auto out = memory(md, mem.get_engine());
-    dnnl::reorder(mem, out).execute(strm, mem, out);
+    if (dt != mdt::undef && mem.get_desc().get_data_type() != mdt::undef)
+        dnnl::reorder(mem, out).execute(strm, mem, out);
     return out;
 }
 

@@ -492,6 +492,62 @@ TEST(iface_grouped_test_t, TestGrouped2Dby2DUnsupportedAttr) {
     }
 }
 
+TEST(iface_grouped_test_t, TestGroupedUnsupportedQuantMode) {
+    engine eng = get_test_engine();
+
+    const int ngroups = 2;
+    const int M = 4, K = 8, N = 6;
+    const auto sbzp = quantization_mode::static_sbzp;
+
+    // Per token src and per expert wei masks
+    const int src_mask = 1 << 0;
+    const int wei_mask = (1 << 0) | (1 << 2);
+
+    auto src_md = memory::desc::grouped({M, K}, dt::s8, 0, ngroups);
+    auto wei_md
+            = memory::desc({ngroups, K, N}, dt::s8, memory::format_tag::abc);
+    auto dst_md = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+
+    // only the default mode is supported for any argument
+    {
+        primitive_attr attr;
+        attr.set_scales(DNNL_ARG_SRC, src_mask, {});
+        attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, {});
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
+
+    // dynamic_mx and dynamic_fp are not supported
+    for (auto qmode :
+            {quantization_mode::dynamic_mx, quantization_mode::dynamic_fp}) {
+        primitive_attr src_attr;
+        src_attr.set_scales(DNNL_ARG_SRC, src_mask, {}, dt::f32, false, qmode);
+        EXPECT_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, src_attr),
+                dnnl::error);
+
+        primitive_attr wei_attr;
+        wei_attr.set_scales(
+                DNNL_ARG_WEIGHTS, wei_mask, {}, dt::f32, false, qmode);
+        EXPECT_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, wei_attr),
+                dnnl::error);
+    }
+
+    // static_sbzp (WoQ weights) is not supported yet
+    {
+        auto woq_src_md = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
+        primitive_attr attr;
+        attr.set_fpmath_mode(fpmath_mode::strict, true);
+        attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, {}, dt::f16, false, sbzp);
+        attr.set_zero_points(
+                DNNL_ARG_WEIGHTS, wei_mask, {}, dt::f16, false, sbzp);
+        EXPECT_THROW(
+                matmul::primitive_desc(eng, woq_src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+}
+
 HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestMaxGroupMHint) {
     engine eng = get_test_engine();
     SKIP_IF(eng.get_kind() == engine::kind::gpu

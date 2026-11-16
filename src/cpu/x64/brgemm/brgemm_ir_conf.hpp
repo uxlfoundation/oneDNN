@@ -97,30 +97,36 @@ enum class tail_grouping_t { separate, grouped };
 
 // Loop nest configuration.
 //
-//   m_form/n_form   - how the M and N levels are emitted
-//   bs_form         - how the batch level is emitted, looped with `var_bs`
-//   k_form          - how the K level is emitted
-//   innermost_loop  - which of the M and N levels is inside the other
-//   n_tail_grouping - which N block holds the partial vector register or tile
-//   batch_kind      - how a batch element gives the address of its A and B
-//   max_bs          - maximum batch size known at IR generation time
-//   var_bs          - the batch size can change on each call, up to `max_bs`.
-//                     The kernel reads `BS`.
-//   load_dim        - N, the columns of C
-//   lda/ldb/ldc     - leading dimensions of A, B, and C, in elements
-//   bd_block        - M rows per block
-//   ld_block        - N elements per vector register or tile
-//   ld_block2       - vector registers or tiles of N per block
-//   rd_block        - K elements reduced per K block
-//   bdb             - number of full M blocks
-//   ldb2            - number of full N blocks
-//   rdb             - number of full K blocks
-//   bdb_tail        - M rows left over after the full M blocks
-//   ldb2_tail       - full N vector registers or tiles left over after the
-//                     full N blocks
-//   ldb_tail        - N columns left over after every full N vector register
-//                     or tile
-//   rdb_tail        - K elements left over after the full K blocks
+//   m_form/n_form         - how the M and N levels are emitted
+//   bs_form               - how the batch level is emitted, looped with
+//                           `var_bs`
+//   k_form                - how the K level is emitted
+//   innermost_loop        - which of the M and N levels is inside the other
+//   n_tail_grouping       - which N block holds the partial vector register
+//                           or tile
+//   interleave_acc_stores - the accumulators are stored in the K steps when
+//                           the batch and K levels are unrolled, see
+//                           `block_acc_stores()`
+//   batch_kind            - how a batch element gives the address of its A
+//                           and B
+//   max_bs                - maximum batch size known at IR generation time
+//   var_bs                - the batch size can change on each call, up to
+//                           `max_bs`. The kernel reads `BS`.
+//   load_dim              - N, the columns of C
+//   lda/ldb/ldc           - leading dimensions of A, B, and C, in elements
+//   bd_block              - M rows per block
+//   ld_block              - N elements per vector register or tile
+//   ld_block2             - vector registers or tiles of N per block
+//   rd_block              - K elements reduced per K block
+//   bdb                   - number of full M blocks
+//   ldb2                  - number of full N blocks
+//   rdb                   - number of full K blocks
+//   bdb_tail              - M rows left over after the full M blocks
+//   ldb2_tail             - full N vector registers or tiles left over after
+//                           the full N blocks
+//   ldb_tail              - N columns left over after every full N vector
+//                           register or tile
+//   rdb_tail              - K elements left over after the full K blocks
 struct loop_conf_t {
     level_form_t m_form = level_form_t::looped;
     level_form_t n_form = level_form_t::looped;
@@ -128,6 +134,7 @@ struct loop_conf_t {
     level_form_t k_form = level_form_t::looped;
     brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
     tail_grouping_t n_tail_grouping = tail_grouping_t::separate;
+    bool interleave_acc_stores = false;
     brgemm_batch_kind_t batch_kind = brgemm_addr;
     dim_t max_bs = 0;
     bool var_bs = true;

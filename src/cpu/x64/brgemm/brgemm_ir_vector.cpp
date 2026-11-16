@@ -42,7 +42,7 @@ struct vector_compute_path_t : public compute_path_t {
     // adds C after the reduction, as in the classic kernel. Loading C into them
     // up front would make every FMA chain wait for those loads.
     std::vector<ir::vreg_t> init_accumulators(ir::ir_t &ir, const conf_t &cfg,
-            const out_block_t &blk) const override {
+            const out_block_t &blk, const prev_block_t &prev) const override {
         std::vector<ir::vreg_t> acc(
                 blk.bd_block * blk.ld_block2, ir::vreg_t::none);
         for (int bd = 0; bd < blk.bd_block; bd++) {
@@ -61,8 +61,8 @@ struct vector_compute_path_t : public compute_path_t {
     // `jit_brgemm_kernel.cpp`.
     void emit_microkernel(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
-            ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start,
-            int rd_loop) const override {
+            ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start, int rd_loop,
+            const k_step_stores_t &stores) const override {
         std::vector<ir::vreg_t> b(blk.ld_block2, ir::vreg_t::none);
         for (int ld = 0; ld < blk.ld_block2; ld++)
             b[ld] = ir.new_vec(cfg.compute_path.dt_b);

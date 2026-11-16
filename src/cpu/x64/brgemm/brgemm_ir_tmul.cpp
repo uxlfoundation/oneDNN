@@ -16,6 +16,7 @@
 
 // The TMUL compute path of the IR-based BRGEMM kernel.
 
+#include <algorithm>
 #include <cassert>
 #include <memory>
 #include <vector>
@@ -52,55 +53,22 @@ struct tmul_compute_path_t : public compute_path_t {
 
     // One tile per (M tile, N tile) of the block, in row order.
     std::vector<ir::vreg_t> init_accumulators(ir::ir_t &ir, const conf_t &cfg,
-            const out_block_t &blk) const override {
-
-        const compute_path_conf_t &compute_path = cfg.compute_path;
-        const int n_m = m_tiles(cfg, blk);
-        const int n_n = blk.ld_block2;
-        std::vector<ir::vreg_t> acc(n_m * n_n, ir::vreg_t::none);
-
-        for (int m = 0; m < n_m; m++) {
-            for (int n = 0; n < n_n; n++) {
-                ir::vreg_t &t = acc[m * n_n + n];
-                t = ir.new_tile(
-                        compute_path.dt_acc, c_tile_shape(cfg, blk, m, n));
-                ir.tzero(t);
-            }
-        }
-        return acc;
+            const out_block_t &blk, const prev_block_t &prev) const override {
+        return create_accumulators(ir, cfg, blk, ir::vreg_t::none, prev);
     }
 
     std::vector<ir::vreg_t> load_accumulators(ir::ir_t &ir, const conf_t &cfg,
-            const out_block_t &blk, ir::vreg_t c_ptr) const override {
-
-        const compute_path_conf_t &compute_path = cfg.compute_path;
-        const int n_m = m_tiles(cfg, blk);
-        const int n_n = blk.ld_block2;
-        std::vector<ir::vreg_t> acc(n_m * n_n, ir::vreg_t::none);
-
-        for (int m = 0; m < n_m; m++) {
-            for (int n = 0; n < n_n; n++) {
-                ir::vreg_t &t = acc[m * n_n + n];
-                t = ir.new_tile(
-                        compute_path.dt_acc, c_tile_shape(cfg, blk, m, n));
-                ir.tload(t, c_ptr, c_tile_off(cfg, blk, m, n), c_stride_);
-            }
-        }
-        return acc;
+            const out_block_t &blk, ir::vreg_t c_ptr,
+            const prev_block_t &prev) const override {
+        return create_accumulators(ir, cfg, blk, c_ptr, prev);
     }
 
     void store_accumulators(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t c_ptr) const override {
 
-        const int n_m = m_tiles(cfg, blk);
-        const int n_n = blk.ld_block2;
-
-        for (int m = 0; m < n_m; m++) {
-            for (int n = 0; n < n_n; n++) {
-                const dim_t off = c_tile_off(cfg, blk, m, n);
-                ir.tstore(c_ptr, off, acc[m * n_n + n], c_stride_);
-            }
+        for (int i = 0; i < (int)acc.size(); i++) {
+            store_accumulator(ir, cfg, blk, acc, i, c_ptr);
         }
     }
 
@@ -109,11 +77,11 @@ struct tmul_compute_path_t : public compute_path_t {
     // `gemm_microkernel_amx()` in `jit_brgemm_amx_uker.cpp`, which issues each
     // multiplication after the next tile load. For 2x2 tiles the order is A0 B0
     // B1 T00 A1 T01 T10 T11, where Tmn multiplies into the accumulator
-    // (`m`, `n`).
+    // (`m`, `n`). The `tmma` into accumulator `i` is the (`i` + 1)-th one.
     void emit_microkernel(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
-            ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start,
-            int rd_loop) const override {
+            ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start, int rd_loop,
+            const k_step_stores_t &stores) const override {
 
         const compute_path_conf_t &compute_path = cfg.compute_path;
 
@@ -144,19 +112,139 @@ struct tmul_compute_path_t : public compute_path_t {
                 // Multiply the previous pair: (`m`, `n - 1`), or the last pair
                 // of the previous M tile when `n` is 0.
                 if (n > 0) {
-                    ir.tmma(acc[m * n_n + n - 1], a[m], b[n - 1]);
+                    const int i = m * n_n + n - 1;
+                    ir.tmma(acc[i], a[m], b[n - 1]);
+                    emit_stores_after_tmma(ir, cfg, blk, acc, stores, i + 1);
                 } else if (m > 0) {
-                    ir.tmma(acc[m * n_n - 1], a[m - 1], b[n_n - 1]);
+                    const int i = m * n_n - 1;
+                    ir.tmma(acc[i], a[m - 1], b[n_n - 1]);
+                    emit_stores_after_tmma(ir, cfg, blk, acc, stores, i + 1);
                 }
             }
         }
         ir.tmma(acc.back(), a.back(), b.back());
+        emit_stores_after_tmma(ir, cfg, blk, acc, stores, (int)acc.size());
     }
 
 private:
+    // Number of `tmma` after the last `tmma` into an accumulator before its
+    // store, when another block follows (`acc_stores_t::next_block`).
+    static constexpr int store_delay = 2;
+
     // Row strides of the A, B, and C tiles in memory, in bytes. They are set
     // once for the whole kernel.
     ir::vreg_t a_stride_, b_stride_, c_stride_;
+
+    // Creates the accumulators of `blk` and loads them from C at `c_ptr`, or
+    // zeroes them when `c_ptr` is `none`. Those that `init_or_load_pos()`
+    // places in the first K step are loaded or zeroed there.
+    std::vector<ir::vreg_t> create_accumulators(ir::ir_t &ir, const conf_t &cfg,
+            const out_block_t &blk, ir::vreg_t c_ptr,
+            const prev_block_t &prev) const {
+
+        const int n_m = m_tiles(cfg, blk);
+        const int n_n = blk.ld_block2;
+        const int n_acc = n_m * n_n;
+        std::vector<ir::vreg_t> acc(n_acc, ir::vreg_t::none);
+
+        for (int m = 0; m < n_m; m++) {
+            for (int n = 0; n < n_n; n++) {
+                const int i = m * n_n + n;
+                acc[i] = ir.new_tile(
+                        cfg.compute_path.dt_acc, c_tile_shape(cfg, blk, m, n));
+                if (init_or_load_pos(i, n_acc, prev) == 0)
+                    init_or_load_accumulator(ir, cfg, blk, acc, i, c_ptr);
+            }
+        }
+        return acc;
+    }
+
+    // Loads the accumulator `i` of `blk` from C at `c_ptr`, or zeroes it when
+    // `c_ptr` is `none`.
+    void init_or_load_accumulator(ir::ir_t &ir, const conf_t &cfg,
+            const out_block_t &blk, const std::vector<ir::vreg_t> &acc, int i,
+            ir::vreg_t c_ptr) const {
+
+        const int m = i / blk.ld_block2;
+        const int n = i % blk.ld_block2;
+        if (c_ptr == ir::vreg_t::none) {
+            ir.tzero(acc[i]);
+        } else {
+            ir.tload(acc[i], c_ptr, c_tile_off(cfg, blk, m, n), c_stride_);
+        }
+    }
+
+    // Stores the accumulator `i` of `blk` to C at `c_ptr`.
+    void store_accumulator(ir::ir_t &ir, const conf_t &cfg,
+            const out_block_t &blk, const std::vector<ir::vreg_t> &acc, int i,
+            ir::vreg_t c_ptr) const {
+
+        const int m = i / blk.ld_block2;
+        const int n = i % blk.ld_block2;
+        ir.tstore(c_ptr, c_tile_off(cfg, blk, m, n), acc[i], c_stride_);
+    }
+
+    // Emits what follows the `n_tmma`-th `tmma` of a K step of `blk`: the
+    // stores of `prev`, the loads or zeroes that `init_or_load_pos()` places
+    // there, then at most one store of an accumulator of `blk`.
+    //
+    // With `next_block`, each accumulator is stored `store_delay` `tmma` after
+    // its last one, so the last `store_delay` accumulators are stored in the
+    // first K step of the next block. With `block`, each one is stored right
+    // after its last `tmma`.
+    void emit_stores_after_tmma(ir::ir_t &ir, const conf_t &cfg,
+            const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
+            const k_step_stores_t &stores, int n_tmma) const {
+
+        const prev_block_t &prev = stores.prev;
+        const int n_acc = (int)acc.size();
+
+        for (int i = 0; i < (int)prev.acc.size(); i++) {
+            if (prev_store_pos(i, n_acc, prev) != n_tmma) continue;
+            store_accumulator(ir, cfg, prev.blk, prev.acc, i, stores.store_ptr);
+        }
+        for (int i = 0; i < n_acc; i++) {
+            if (init_or_load_pos(i, n_acc, prev) != n_tmma) continue;
+            init_or_load_accumulator(ir, cfg, blk, acc, i, stores.c_ptr);
+        }
+
+        if (stores.acc_stores == acc_stores_t::none) return;
+
+        int delay = 0;
+        if (stores.acc_stores == acc_stores_t::next_block) delay = store_delay;
+        const int stored = n_tmma - 1 - delay;
+        if (stored >= 0)
+            store_accumulator(ir, cfg, blk, acc, stored, stores.store_ptr);
+    }
+
+    // Returns the number of the `tmma` of the first K step after which the
+    // accumulator `i` of `prev` is stored, or 0 when the last K step of `prev`
+    // stores it. It is the `store_delay`-th `tmma` after the last one into the
+    // accumulator, but at most `n_acc`, the last `tmma` of the K step. For 2x2
+    // blocks, accumulators 2 and 3 of `prev` are stored after `tmma` 1 and 2.
+    static int prev_store_pos(int i, int n_acc, const prev_block_t &prev) {
+        const int n_prev_tmma = (int)prev.acc.size();
+        const int pos = i + 1 + store_delay - n_prev_tmma;
+        if (pos <= 0) return 0;
+        return std::min(pos, n_acc);
+    }
+
+    // Returns the number of the `tmma` of the first K step after which the
+    // accumulator `i` is loaded or zeroed, or 0 when it is loaded or zeroed
+    // with the others before the K steps. `n_acc` is the number of accumulators
+    // of the block.
+    //
+    // An accumulator is loaded or zeroed right after a store of `prev` when its
+    // first `tmma` is the `store_delay`-th one after that store. The stored
+    // accumulator is no longer live there, so the number of live tiles does not
+    // grow.
+    static int init_or_load_pos(int i, int n_acc, const prev_block_t &prev) {
+        for (int j = 0; j < (int)prev.acc.size(); j++) {
+            const int pos = prev_store_pos(j, n_acc, prev);
+            if (pos > 0 && pos + store_delay - 1 == i) return pos;
+        }
+        return 0;
+    }
 
     // Rows of the M tiles at index 0 of `a_tile` and `c_tile`. When M has
     // only its tail tile, these are the tail rows.

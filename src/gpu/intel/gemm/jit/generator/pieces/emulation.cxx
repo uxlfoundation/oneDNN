@@ -119,6 +119,7 @@ void Generator<hw>::emul(const ngen::InstructionModifier &mod, const ngen::RegDa
 {
     const bool is_xe3p = (hw == ngen::HW::Xe3p);
     const bool dstBf = dst.getType() == DataType::bf;
+    const bool src0Bf = src0.getType() == DataType::bf;
     const bool src1F = src1.getType() == DataType::f;
     // Xe3p has specific restrictions for mixed bf16/f32 mul.
     if (is_xe3p && (dstBf && src1F) && dst.getByteHS() != src1.getByteHS()){
@@ -130,6 +131,14 @@ void Generator<hw>::emul(const ngen::InstructionModifier &mod, const ngen::RegDa
         auto temp = tempRange[0].sub(dst.getOffset(), dst.getType());
         mov(tmp_mod, temp(1), src1);
         mul(mod, dst, src0, temp(src1.getVS(), src1.getWidth(), src1.getHS()));
+        state.ra.safeRelease(tempRange);
+    } else if (src0Bf && src1F && src0.getHS() != 1 && !(src0.getHS() == 0 && src0.getVS() == 0)) {
+        // bf16/f32 mixed mode requires packed bf16 sources: repack src0 first.
+        auto tempRange = state.ra.alloc_range(div_up(mod.getExecSize(), elementsPerGRF(hw, DataType::bf)));
+        auto src0UW = src0;
+        src0UW.setType(DataType::uw);
+        mov(mod, tempRange[0].uw(0)(1), src0UW, loc);
+        mul(mod, dst, tempRange[0].bf(0)(1), src1, loc);
         state.ra.safeRelease(tempRange);
     } else {
         ngen::EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc);

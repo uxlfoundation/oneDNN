@@ -613,7 +613,11 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.A.accessType = AccessType::Block2DTranspose;
         s.ka_load = 64 / Ta_load / m_iter;
     } else if (problem.A.layout == MatrixLayout::N) {
-        s.A.accessType = AccessType::Block2DVNNI;
+        // VNNI blocks cannot be sliced to a quantization group smaller than their crosspack,
+        // as needed for early dequantization in the k remainder.
+        bool smallQGroup = problem.quantized2DA() && problem.earlyDequantizeA()
+                && problem.aqGroupK > 0 && problem.aqGroupK < std::max(1, 4 / problem.Ta_ext);
+        s.A.accessType = smallQGroup ? AccessType::Block2D : AccessType::Block2DVNNI;
         s.ka_load =  s.unroll[LoopM] / m_iter;
         s.A_copies = 2;
     }

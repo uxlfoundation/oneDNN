@@ -34,7 +34,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
 struct nchw_pooling_fwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
@@ -52,14 +51,12 @@ struct nchw_pooling_fwd_t : public primitive_t {
                             alg_kind::pooling_avg_exclude_padding),
                     VERBOSE_BAD_ALGORITHM);
 
-            // Disabling verbose dispatch messages for unsupported dt for better
-            // readability.
-            // TODO: restore once `d_type` template argument is removed.
-            if (!utils::everyone_is(
-                        d_type, src_md()->data_type, dst_md()->data_type)) {
-                return status::unimplemented;
-            }
-
+            const data_type_t d_type = src_md()->data_type;
+            VDISPATCH_POOLING(utils::one_of(d_type, data_type::f32,
+                                      data_type::bf16, data_type::f16,
+                                      data_type::f8_e5m2, data_type::f8_e4m3)
+                            && dst_md()->data_type == d_type,
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
@@ -107,8 +104,6 @@ struct nchw_pooling_fwd_t : public primitive_t {
 
     nchw_pooling_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    using data_t = typename prec_traits_t<d_type>::type;
-
     status_t init(engine_t *engine) override {
         ref_post_ops_
                 = utils::make_unique<ref_post_ops_t>(pd()->attr()->post_ops_);
@@ -118,16 +113,18 @@ struct nchw_pooling_fwd_t : public primitive_t {
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_forward(ctx);
+        return pd()->src_md()->data_type == data_type::f32
+                ? execute_forward_f32(ctx)
+                : execute_forward_cvt(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward_f32(const exec_ctx_t &ctx) const;
+    status_t execute_forward_cvt(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<ref_post_ops_t> ref_post_ops_;
 };
 
-template <data_type_t d_type>
 struct nchw_pooling_bwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_bwd_pd_t {
         using cpu_pooling_bwd_pd_t::cpu_pooling_bwd_pd_t;
@@ -146,9 +143,10 @@ struct nchw_pooling_bwd_t : public primitive_t {
                             alg_kind::pooling_avg_include_padding,
                             alg_kind::pooling_avg_exclude_padding),
                     VERBOSE_BAD_ALGORITHM);
-            VDISPATCH_POOLING(
-                    utils::everyone_is(d_type, diff_dst_md()->data_type,
-                            diff_src_md()->data_type),
+            const data_type_t d_type = diff_dst_md()->data_type;
+            VDISPATCH_POOLING(utils::one_of(d_type, data_type::f32,
+                                      data_type::bf16, data_type::f16)
+                            && diff_src_md()->data_type == d_type,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -225,14 +223,16 @@ struct nchw_pooling_bwd_t : public primitive_t {
     };
 
     nchw_pooling_bwd_t(const pd_t *apd) : primitive_t(apd) {}
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_backward(ctx);
+        return pd()->diff_dst_md()->data_type == data_type::f32
+                ? execute_backward_f32(ctx)
+                : execute_backward_cvt(ctx);
     }
 
 private:
-    status_t execute_backward(const exec_ctx_t &ctx) const;
+    status_t execute_backward_f32(const exec_ctx_t &ctx) const;
+    status_t execute_backward_cvt(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 

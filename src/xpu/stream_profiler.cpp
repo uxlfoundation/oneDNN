@@ -47,23 +47,37 @@ void verbose_profiler_t::add_to_pending_primitive_list(
     last_entry.start_ms_ = start_ms;
     last_entry.pd_info_ = pd_info;
     last_entry.component_kind_ = component;
+    // trace:start is printed at enqueue; log_profile() prints the matching
+    // trace:end once the primitive completes. The ID is derived from the same
+    // pd_info and start_ms as at enqueue, so both records share it.
+    last_entry.trace_enabled_ = get_verbose(verbose_t::exec_trace);
+    if (last_entry.trace_enabled_)
+        last_entry.trace_id_ = hash_combine(hash_combine(0, pd_info), start_ms);
 }
 
 void verbose_profiler_t::log_profile(
         const prim_profile_data_t &prof_data, double duration_ms) {
+    const char *info = prof_data.pd_info_.c_str();
+    const uint64_t id = prof_data.trace_id_;
     switch (static_cast<component_t::flag_kind>(prof_data.component_kind_)) {
         case component_t::graph:
-            VPROF(prof_data.start_ms_, graph, exec, VERBOSE_profile,
-                    prof_data.pd_info_.c_str(), duration_ms);
+            VPROF(prof_data.start_ms_, graph, exec, VERBOSE_profile, info,
+                    duration_ms);
+            if (prof_data.trace_enabled_)
+                VTRACE(end, graph, exec, id, "%s", info);
             break;
         case component_t::ukernel:
-            VPROF(prof_data.start_ms_, ukernel, exec, VERBOSE_profile,
-                    prof_data.pd_info_.c_str(), duration_ms);
+            VPROF(prof_data.start_ms_, ukernel, exec, VERBOSE_profile, info,
+                    duration_ms);
+            if (prof_data.trace_enabled_)
+                VTRACE(end, ukernel, exec, id, "%s", info);
             break;
         case component_t::primitive:
         default:
-            VPROF(prof_data.start_ms_, primitive, exec, VERBOSE_profile,
-                    prof_data.pd_info_.c_str(), duration_ms);
+            VPROF(prof_data.start_ms_, primitive, exec, VERBOSE_profile, info,
+                    duration_ms);
+            if (prof_data.trace_enabled_)
+                VTRACE(end, primitive, exec, id, "%s", info);
             break;
     }
 }

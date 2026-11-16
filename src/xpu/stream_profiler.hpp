@@ -189,6 +189,8 @@ struct verbose_profiler_t : public impl::verbose_profiler_t {
     struct prim_profile_data_t {
         uint64_t component_kind_ = 0;
         double start_ms_ = 0.0;
+        uint64_t trace_id_ = 0;
+        bool trace_enabled_ = false;
         std::string pd_info_;
         std::vector<std::shared_ptr<xpu::event_t>> prim_events_;
     };

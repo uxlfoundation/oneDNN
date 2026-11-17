@@ -158,14 +158,14 @@ struct CopyTemporary
 {
     friend class CopyPlan;
 
-    int bytes = 0, align = 0, offset = 0;
+    int bytes = 0, offset = 0;
     bool flag = false;
     uint16_t phaseMin = 0xFFFF;
     int assignment = -1;
     CopyRange range;
 
-    explicit CopyTemporary(int bytes_, int align_, int offset_ = 0)
-            : bytes(bytes_), align(align_), offset(offset_) {}
+    explicit CopyTemporary(int bytes_, int offset_ = 0)
+            : bytes(bytes_), offset(offset_) {}
 
     static CopyTemporary createFlag(int bits = 16);
 
@@ -256,7 +256,7 @@ protected:
         PhaseOnly, Register, SourceOrder
     };
 
-    CopyOperand newTemp(ngen::DataType type, int elems, int stride, int align = 0, int offset = 0);
+    CopyOperand newTemp(ngen::DataType type, int elems, int stride, int offset = 0);
     CopyOperand newFlag(int bits = 16);
 
     CopyOperand getResource(CopyResource::Kind kind);

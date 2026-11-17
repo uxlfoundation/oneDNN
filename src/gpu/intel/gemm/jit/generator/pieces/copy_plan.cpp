@@ -364,11 +364,9 @@ CopyInstruction &CopyPlan::appendDestructiveMov(int simd, InstructionModifier mo
     return i;
 }
 
-CopyOperand CopyPlan::newTemp(DataType type, int elems, int stride, int align, int offset)
+CopyOperand CopyPlan::newTemp(DataType type, int elems, int stride, int offset)
 {
-    int grf = GRF::bytes(hw);
     auto bytes = elementsToBytes(offset + elems * stride, type);
-    if (align == 0) align = grf;
 
     CopyOperand op{};
     op.grf = 0;
@@ -379,7 +377,7 @@ CopyOperand CopyPlan::newTemp(DataType type, int elems, int stride, int align, i
     op.temp = true;
     op.value = temps.size();
 
-    temps.emplace_back(bytes, align, offset);
+    temps.emplace_back(bytes, offset);
 
     return op;
 }
@@ -704,7 +702,7 @@ void CopyPlan::repositionSrc(CopyInstruction &i, int n, int stride, int offset)
         i0.dst.stride = stride;
         i0.dst.offset = offset;
     } else {
-        i0.dst = newTemp(type, i.simd, stride, 0, offset);
+        i0.dst = newTemp(type, i.simd, stride, offset);
         i0.dst.overwriteStride = true;
     }
     i0.dst.neg = i0.src0.neg;
@@ -730,7 +728,7 @@ void CopyPlan::repositionDst(CopyInstruction &i, int stride, int offset)
 {
     auto &i0 = i, &i1 = split(i);
 
-    i0.dst = newTemp(i.dst.type, i.simd, stride, 0, offset);
+    i0.dst = newTemp(i.dst.type, i.simd, stride, offset);
 
     i1.op = Opcode::mov;
     i1.src0 = i0.dst;
@@ -1889,7 +1887,7 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
             }
         } else {
             // High nybble
-            auto tmp = newTemp(i.dst.type, i.simd, i.dst.stride, 1, 0);
+            auto tmp = newTemp(i.dst.type, i.simd, i.dst.stride, 0);
             auto s0BO = i.src0.offset * getBytes(i.src0.type);
             auto dBO = i.dst.offset * getBytes(i.dst.type);
             if (hw == ngen::HW::Xe3p && (s0BO != dBO)) {
@@ -2625,8 +2623,8 @@ void CopyPlan::planEmulatedNF4ToHF(CopyInstruction &i)
     auto y = i.dst;
     auto ie = splitMultiple<8>(i);
 
-    auto t0 = newTemp(DataType::hf, i.simd, y.stride, 0, y.offset);
-    auto t1 = newTemp(DataType::hf, i.simd, y.stride, 0, y.offset);
+    auto t0 = newTemp(DataType::hf, i.simd, y.stride, y.offset);
+    auto t1 = newTemp(DataType::hf, i.simd, y.stride, y.offset);
     auto f = newFlag(i.simd);
 
     // On entry, data has been zero-extended into 16 bits.

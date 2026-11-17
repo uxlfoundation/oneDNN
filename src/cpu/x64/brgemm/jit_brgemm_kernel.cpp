@@ -3869,7 +3869,18 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(int bd_block2, bool is_bdb_tail,
                 gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2,
                         is_rd_tail, is_ld_tail);
         } else {
-            if (brg.rdb > 0) {
+            if (brg.rdb == 1) {
+                const bool is_rd_tail = false;
+                if (brg.is_gemv)
+                    gemv_microkernel(is_bdb_tail, ld_block2, is_rd_tail);
+                else
+                    gemm_microkernel(bd_block2, is_bdb_tail, ld_block2,
+                            is_rd_tail, is_ld_tail, vpad, rows_for_rd_tail);
+                if (brg.rdb_tail != 0) {
+                    add(reg_aux_A, rdb_A_offset());
+                    add(reg_aux_B, rdb_B_offset());
+                }
+            } else if (brg.rdb > 0) {
                 Label rdb_loop_label;
                 mov(reg_rdb_loop, brg.rdb);
                 L_aligned(rdb_loop_label, 64);

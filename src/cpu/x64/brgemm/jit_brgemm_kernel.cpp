@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "common/c_types_map.hpp"
@@ -583,6 +584,13 @@ private:
     void bs_loop(int bd_block2, bool is_bdb_tail, int ld_block, bool is_ld_tail,
             bool first_bdb, bool last_bdb, int rows_for_rd_tail,
             bool skip_accumulation);
+    // Range of batch element vpads (top - bottom) with a specialized variant
+    // in bs_loop().
+    std::pair<int, int> vpad_range(bool first_bdb, bool last_bdb) const;
+    // The vpad the bs_loop() variant for batch element vpad `vpad` uses, 0 if
+    // there is no specialized variant for it.
+    int vpad_variant(
+            int vpad, bool is_bdb_tail, bool first_bdb, bool last_bdb) const;
 
     void ldb_loop(int bd_block2, bool is_bdb_tail, int ld_block,
             dim_t ldb_loop_length, bool is_reg_tail, bool is_ld_tail,
@@ -3728,12 +3736,38 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
 }
 
 template <typename Wmm>
+std::pair<int, int> jit_brgemm_kernel_t<Wmm>::vpad_range(
+        bool first_bdb, bool last_bdb) const {
+    return {last_bdb ? -brg.brgattr.max_bottom_vpad : 1,
+            first_bdb ? brg.brgattr.max_top_vpad : -1};
+}
+
+template <typename Wmm>
+int jit_brgemm_kernel_t<Wmm>::vpad_variant(
+        int vpad, bool is_bdb_tail, bool first_bdb, bool last_bdb) const {
+    const auto range = vpad_range(first_bdb, last_bdb);
+    if (vpad < range.first || vpad > range.second) return 0;
+    if (!first_bdb && vpad > 0) return 0;
+    if (!last_bdb && vpad < 0) return 0;
+    if (last_bdb && brg.bdb_tail && vpad < 0) {
+        // for last full block before bdb_tail && -vpad greater than bdb_tail
+        if (!is_bdb_tail) return brg.bdb_tail < -vpad ? vpad + brg.bdb_tail : 0;
+        // for block with tail, call ldb_loop() to only calculate compensation
+        // for padding area when bdb_tail < -vpad for the cases using pre-cal
+        // compensation
+        if (brg.bdb_tail < -vpad && need_comp_pads && !brg.req_cal_comp_pads)
+            return -brg.bdb_tail;
+    }
+    return vpad;
+}
+
+template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::bs_loop(int bd_block2, bool is_bdb_tail,
         int ld_block2, bool is_ld_tail, bool first_bdb, bool last_bdb,
         int rows_for_rd_tail, bool skip_accumulation) {
 
-    auto bs_loop_body = [&](int vpad) {
-        set_A_B_matrices();
+    auto bs_loop_body = [&](int vpad, bool set_A_B = true) {
+        if (set_A_B) set_A_B_matrices();
 
         int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
         const auto bd_b = nstl::max(0, vpad);
@@ -3795,6 +3829,30 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(int bd_block2, bool is_bdb_tail,
 
     reg64_savable_guard_t reg_aux_D_guard({&reg_aux_D}, brg.brgattr.max_bs > 1);
 
+    if (brg.alpha != 0.f && !skip_accumulation
+            && brg.type == brgemm_static_offs) {
+        // The batch is fully known at JIT time: unroll it, address A and B
+        // with immediate offsets and pick the vpad variant of each element.
+        assert(!brg.is_tmm);
+        const bool is_row_major = brg.layout == brgemm_row_major;
+        for (dim_t i = 0; i < brg.brgattr.max_bs; i++) {
+            const auto &e = brg.brgattr.static_offsets[i];
+            const dim_t off_A = is_row_major ? e.offset.A : e.offset.B;
+            const dim_t off_B = is_row_major ? e.offset.B : e.offset.A;
+            assert(off_A == static_cast<int32_t>(off_A)
+                    && off_B == static_cast<int32_t>(off_B));
+            lea(reg_aux_A, ptr[reg_A + reg_a_offset + off_A]);
+            lea(reg_aux_B, ptr[reg_B + reg_b_offset + off_B]);
+            const int vpad = vpad_exist && (first_bdb || last_bdb)
+                    ? vpad_variant(
+                              static_cast<int>(e.vvpad.top - e.vvpad.bottom),
+                              is_bdb_tail, first_bdb, last_bdb)
+                    : 0;
+            bs_loop_body(vpad, false);
+        }
+        return;
+    }
+
     if (brg.alpha != 0.f && !skip_accumulation) {
         restore_A_B_matrices();
         if (brg.is_tmm) {
@@ -3806,10 +3864,9 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(int bd_block2, bool is_bdb_tail,
         L_aligned(BS_loop_label, 64);
         {
             if (first_bdb || last_bdb) {
-                const auto vpad_first
-                        = last_bdb ? (-brg.brgattr.max_bottom_vpad) : 1;
-                const auto vpad_last
-                        = first_bdb ? brg.brgattr.max_top_vpad : -1;
+                const auto range = vpad_range(first_bdb, last_bdb);
+                const auto vpad_first = range.first;
+                const auto vpad_last = range.second;
                 const auto n_vpads = vpad_last - vpad_first + 2;
                 constexpr auto MAX_N_VPADS = 2 * brgemm_desc_t::MAX_VPAD;
                 assert(n_vpads < MAX_N_VPADS);
@@ -3832,27 +3889,10 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(int bd_block2, bool is_bdb_tail,
                 for (int vpad = vpad_first; vpad <= vpad_last; vpad++) {
                     const auto label_vpad = vpad - vpad_first;
                     L(Vpad_loop_iter_label[label_vpad]);
-                    if (!first_bdb && vpad > 0) continue;
-                    if (!last_bdb && vpad < 0) continue;
-                    auto real_vpad = vpad;
-                    if (last_bdb && brg.bdb_tail && vpad < 0) {
-                        if (!is_bdb_tail) {
-                            // for last full block before
-                            // bdb_tail && -vpad greater than bdb_tail
-                            if (brg.bdb_tail < -vpad)
-                                real_vpad += brg.bdb_tail;
-                            else
-                                continue;
-                        } else {
-                            // for block with tail, call ldb_loop()
-                            // to only calculate compensation for
-                            // padding area when bdb_tail < -vpad for
-                            // the cases using pre-cal compensation
-                            if (brg.bdb_tail < -vpad && need_comp_pads
-                                    && !brg.req_cal_comp_pads)
-                                real_vpad = -brg.bdb_tail;
-                        }
-                    }
+                    // a nonzero vpad without a variant goes to the default
+                    const auto real_vpad = vpad_variant(
+                            vpad, is_bdb_tail, first_bdb, last_bdb);
+                    if (vpad != 0 && real_vpad == 0) continue;
                     cmp(reg_aux_A_vpad, vpad);
                     jne(Vpad_loop_iter_label[label_vpad + 1], T_NEAR);
                     bs_loop_body(real_vpad);
@@ -4371,7 +4411,18 @@ brgemm_attr_t::brgemm_attr_t()
     , static_offsets(nullptr) {}
 
 brgemm_kernel_t *create_brgemm_kernel(const brgemm_desc_t &brg) {
-    if (brg.type == brgemm_static_offs) return nullptr;
+    if (brg.type == brgemm_static_offs) {
+        // Only the vector kernel unrolls a static batch; A and B offsets are
+        // encoded as 32-bit displacements.
+        if (brg.is_tmm || brg.is_gemv || !brg.brgattr.static_offsets)
+            return nullptr;
+        for (dim_t i = 0; i < brg.brgattr.max_bs; i++) {
+            const auto &e = brg.brgattr.static_offsets[i];
+            if (e.offset.A != static_cast<int32_t>(e.offset.A)
+                    || e.offset.B != static_cast<int32_t>(e.offset.B))
+                return nullptr;
+        }
+    }
 
     if (brg.is_tmm) return new jit_brgemm_kernel_t<Xbyak::Tmm>(brg);
     if (brg.is_zmm) return new jit_brgemm_kernel_t<Xbyak::Zmm>(brg);

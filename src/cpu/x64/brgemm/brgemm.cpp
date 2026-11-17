@@ -999,6 +999,11 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
         for (int i = 0; i < lhs.brgattr.max_bs; i++) {
             CMP_BRGEMM_FIELD(brgattr.static_offsets[i].offset.A);
             CMP_BRGEMM_FIELD(brgattr.static_offsets[i].offset.B);
+            if (lhs.brgattr.max_top_vpad > 0
+                    || lhs.brgattr.max_bottom_vpad > 0) {
+                CMP_BRGEMM_FIELD(brgattr.static_offsets[i].vvpad.top);
+                CMP_BRGEMM_FIELD(brgattr.static_offsets[i].vvpad.bottom);
+            }
         }
 
 #undef CMP_BRGEMM_FIELD

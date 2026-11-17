@@ -138,6 +138,9 @@ struct brgemm_convolution_fwd_base_t : public primitive_t {
         // each distinct (M, virtual paddings) class of ow blocks
         std::vector<int> owb_vpad_cls;
         std::vector<int> vpad_cls_owb; // representative ow block of a class
+        // exec_vpad: consecutive groups of a thread's work may be processed
+        // by a single ker_vpad call, see ker_vpad
+        bool vpad_group_runs = false;
 
     protected:
         status_t init(const engine_t *engine, cpu_isa_t isa);
@@ -203,7 +206,7 @@ private:
 
     void ker_base(brgemm_thread_ctx_t &btc) const;
     void ker_trans(brgemm_thread_ctx_t &btc) const;
-    void ker_vpad(brgemm_thread_ctx_t &btc) const;
+    void ker_vpad(brgemm_thread_ctx_t &btc, dim_t n_groups = 1) const;
 
     void perform_outwork(const brgemm_thread_ctx_t &btc, char *dst_base,
             const char *bias_w, dim_t ow, dim_t g_oc, bool is_oc_tail,

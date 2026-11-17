@@ -21,7 +21,7 @@ endif()
 
 # Use oneDNN names for ALL to ensure string replacement functions correctly
 set(GPUS ${DNNL_ENABLE_PRIMITIVE_GPU_ISA})
-string(REPLACE "ALL" "XELP;XEHP;XEHPG;XEHPC;XE2;XE3;XE3P" GPUS "${GPUS}")
+string(REPLACE "ALL" "XEHPG;XEHPC;XE2;XE3;XE3P" GPUS "${GPUS}")
 string(REPLACE "XELP" "12LP" GPUS "${GPUS}")
 string(REPLACE "XEHPG" "12p7" GPUS "${GPUS}")
 string(REPLACE "XEHPC" "12p8" GPUS "${GPUS}")

@@ -28,6 +28,7 @@
 #include <string>
 
 #include "ngen_core.hpp"
+#include "ngen_base.hpp"
 #include "ngen_debuginfo.hpp"
 #include "ngen_gen12.hpp"
 
@@ -481,11 +482,7 @@ bool AsmInstruction::getCModDepRegion(autoswsb::DependencyRegion &region) const
     return true;
 }
 
-#if defined(NGEN_GLOBAL_REGS) && !defined(NGEN_GLOBAL_REGS_DEFINED)
-#include "ngen_registers.hpp"
-#endif
-
-class AsmCodeGenerator {
+class AsmCodeGenerator : public BaseCodeGenerator<> {
 private:
 #include "ngen_compiler_fix.hpp"
 public:
@@ -1844,9 +1841,6 @@ public:
 
 #include "ngen_shortcuts.hpp"
 #include "ngen_pseudo.hpp"
-#ifndef NGEN_GLOBAL_REGS
-#include "ngen_registers.hpp"
-#endif
 };
 
 

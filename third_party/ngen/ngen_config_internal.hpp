@@ -55,5 +55,20 @@
 
 #endif
 
+#ifndef NGEN_IGNORE_DEPRECATE
+#ifdef _MSC_VER
+#define NGEN_DEPRECATION_WARNING(msg) \
+    __pragma(message(msg)) \
+    __pragma(message("Define NGEN_IGNORE_DEPRECATE to suppress deprecation warnings."))
+#else
+#define NGEN_DETAIL_PRAGMA_IMPL(x) _Pragma(#x)
+#define NGEN_DETAIL_PRAGMA(x) NGEN_DETAIL_PRAGMA_IMPL(x)
+#define NGEN_DEPRECATION_WARNING(msg) \
+    NGEN_DETAIL_PRAGMA(GCC warning msg) \
+    NGEN_DETAIL_PRAGMA(message "Define NGEN_IGNORE_DEPRECATE to suppress deprecation warnings.")
+#endif
+#else
+#define NGEN_DEPRECATION_WARNING(msg)
+#endif
 
 #endif /* header guard */

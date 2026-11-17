@@ -762,8 +762,8 @@ status_t brgemm_kernel_create(
     // Try the IR-based kernels first. `is_gemv` goes to
     // `create_brgemv_ir_kernel()`, everything else to
     // `create_brgemm_ir_kernel()`. Either returns `nullptr` when the IR kernel
-    // is unsupported, and then the Xbyak-based brgemm implementations below
-    // take over.
+    // is unsupported. GEMV has no other kernel, so that is final for it. For
+    // everything else the Xbyak-based brgemm implementations below take over.
     {
         std::unique_ptr<brgemm_kernel_t> ir_ker(brg.is_gemv
                         ? create_brgemv_ir_kernel(brg)
@@ -772,6 +772,7 @@ status_t brgemm_kernel_create(
             *brg_kernel = ir_ker.release();
             return status::success;
         }
+        if (brg.is_gemv) return status::unimplemented;
     }
 
     std::unique_ptr<brgemm_kernel_t> ker(create_xbyak_kernel(brg));

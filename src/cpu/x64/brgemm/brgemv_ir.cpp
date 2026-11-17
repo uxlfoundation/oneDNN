@@ -852,8 +852,8 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
             VERBOSE_UNSUPPORTED_DT);
 
     // Post-ops go through the JIT injector. Accept eltwise, binary and sum, and
-    // only binary arguments the injector can handle on this ISA. Other kinds
-    // fall back.
+    // only binary arguments the injector can handle on this ISA, fp8 ones
+    // included (see `ir::postops_injector_t`). Other kinds fall back.
     if (brg.attr()) {
         const memory_desc_wrapper dst_d(brg.dst_md());
         const std::vector<injector::post_op_type> accepted
@@ -868,17 +868,6 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
                         binary_injector::
                                 get_all_strategies_supported_by_injector()}),
                 VERBOSE_UNSUPPORTED_POSTOP);
-
-        // The binary injector loads an fp8 argument through fp8 converters,
-        // which `ir::postops_injector_t` does not create.
-        const post_ops_t &post_ops = brg.attr()->post_ops_;
-        for (int i = 0; i < post_ops.len(); i++) {
-            const auto &e = post_ops.entry_[i];
-            VCONDCHECK_BRGEMV_IR(!e.is_binary()
-                            || !utils::one_of(e.binary.src1_desc.data_type,
-                                    f8_e5m2, f8_e4m3),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-        }
     }
     VCONDCHECK_BRGEMV_IR(!brg.is_per_k_src_scales && !brg.is_per_k_wei_scales,
             VERBOSE_UNSUPPORTED_SCALES_CFG);

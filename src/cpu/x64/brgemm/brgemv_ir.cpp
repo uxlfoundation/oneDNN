@@ -105,7 +105,10 @@ namespace {
 //   single_wei_scale - whether the weights scale is one scalar for the whole
 //                    output. False only for per-N scales with a row output,
 //                    where each output element has its own scale
-//   dt_src_scales / dt_wei_scales - element data type of each scale
+//   with_dst_scales - whether a destination scale multiplies the output after
+//                    the post-ops. Always a single common scalar
+//   dt_src_scales / dt_wei_scales / dt_dst_scales - element data type of each
+//                    scale
 //   dt_sz_wei_scales - element size in bytes of the weights scale
 //   mblk_wei_scale_off - byte offset to advance the weights-scale pointer
 //                    between M blocks
@@ -161,8 +164,12 @@ struct brgemv_ir_conf_t {
         , with_src_scales(brg.with_src_scales)
         , with_wei_scales(brg.with_wei_scales)
         , single_wei_scale(brg.gemv_single_wei_scale())
+        , with_dst_scales(brg.with_dst_scales)
         , dt_src_scales(brg.dt_src_scales)
         , dt_wei_scales(brg.dt_wei_scales)
+        // The brgemm descriptor carries no type for the destination scale.
+        // The driver passes it as f32 (see `brgemm_kernel_params_t`).
+        , dt_dst_scales(data_type::f32)
         , dt_sz_wei_scales(with_wei_scales
                           ? (int)types::data_type_size(dt_wei_scales)
                           : 0)
@@ -189,7 +196,8 @@ struct brgemv_ir_conf_t {
     const dim_t mblk_bias_off;
     const bool with_injector_postops;
     const bool with_src_scales, with_wei_scales, single_wei_scale;
-    const data_type_t dt_src_scales, dt_wei_scales;
+    const bool with_dst_scales;
+    const data_type_t dt_src_scales, dt_wei_scales, dt_dst_scales;
     const int dt_sz_wei_scales;
     const dim_t mblk_wei_scale_off;
 
@@ -198,7 +206,7 @@ struct brgemv_ir_conf_t {
     // accumulator into `d`.
     bool has_post_ops() const {
         return with_bias || with_injector_postops || with_src_scales
-                || with_wei_scales;
+                || with_wei_scales || with_dst_scales;
     }
 };
 
@@ -258,6 +266,9 @@ struct invariant_regs_t {
     // Source-scale pointer. A single common scalar, so it never advances.
     // `none` unless `with_src_scales`.
     ir::vreg_t src_scale_ptr = ir::vreg_t::none;
+    // Destination-scale pointer. A single common scalar, so it never advances.
+    // `none` unless `with_dst_scales`.
+    ir::vreg_t dst_scale_ptr = ir::vreg_t::none;
 };
 
 // Complete input register set for the M-loop, partitioned by whether values
@@ -315,6 +326,11 @@ m_loop_input_regs_t init_m_loop_input_regs(
     if (cfg.with_wei_scales) {
         regs.advancing.wei_scale_ptr = ir.new_gpr();
         ir.load_param(regs.advancing.wei_scale_ptr, GET_OFF(ptr_wei_scales));
+    }
+
+    if (cfg.with_dst_scales) {
+        regs.invariant.dst_scale_ptr = ir.new_gpr();
+        ir.load_param(regs.invariant.dst_scale_ptr, GET_OFF(ptr_dst_scales));
     }
 
     if (cfg.store_to_d) {
@@ -464,11 +480,12 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 
     // The implemented order conforms to oneDNN's defined semantics for
     // applying scales, bias and post-ops:
-    //   src scale -> weights scale -> bias -> post-ops.
+    //   src scale -> weights scale -> bias -> post-ops -> dst scale.
     // Scales apply to the accumulated result before the bias add and
     // post-ops apply after bias. The two scales can swap because both are
     // multiplies but a scale must not move past the bias and the bias must
-    // not move past the post-ops.
+    // not move past the post-ops. The destination scale comes last, after
+    // the post-ops.
     // Scales and bias are loaded into accumulator-typed vregs, so a 16-bit
     // float in memory is widened by its load.
     if (cfg.with_src_scales) {
@@ -533,6 +550,16 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
                     run_acc, regs.advancing.d_ptr, run_off, acc[beg].n_elems);
             beg = end;
         }
+    }
+
+    if (cfg.with_dst_scales) {
+        // Loaded once and applied to every output.
+        const ir::vreg_t sc = ir.new_vec(cfg.dt_acc);
+        emit_bcast_load(ir, sc, regs.invariant.dst_scale_ptr, 0, bcast_elems,
+                cfg.dt_dst_scales);
+
+        for (int acc_idx = 0; acc_idx < n_acc; acc_idx++)
+            ir.vmul(acc[acc_idx].reg, sc);
     }
 }
 
@@ -853,7 +880,6 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
                     VERBOSE_UNSUPPORTED_POSTOP);
         }
     }
-    VCONDCHECK_BRGEMV_IR(!brg.with_dst_scales, VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMV_IR(!brg.is_per_k_src_scales && !brg.is_per_k_wei_scales,
             VERBOSE_UNSUPPORTED_SCALES_CFG);
     // Scales and bias are f32 or a 16-bit float the load widens, which the

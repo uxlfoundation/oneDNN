@@ -17,6 +17,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include "common/utils.hpp"
+
 #include "cpu/x64/ir/emitter/backend_avx2.hpp"
 #include "cpu/x64/ir/emitter/backend_avx512.hpp"
 #include "cpu/x64/ir/emitter/backend_tile.hpp"
@@ -444,15 +446,25 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     }
 }
 
+bool needs_cvt_vec(const ir_t &ir) {
+    for (const op_t &op : ir.ops()) {
+        if (!utils::one_of(op.kind, op_kind_t::vstore, op_kind_t::vstore_scalar,
+                    op_kind_t::vstore_masked))
+            continue;
+        if (op.mem_dt != ir.vreg_info()[(int)op.s0].dt) return true;
+    }
+    return false;
+}
+
 void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &reg_cfg, data_section_t &data,
         postops_injector_t *postops) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
-        avx512_backend_t be(gen, isa);
+        avx512_backend_t be(gen, isa, reg_cfg.cvt_vec);
         emit(be, ir, alloc, reg_cfg, data, postops);
     } else {
-        avx2_backend_t be(gen, isa);
+        avx2_backend_t be(gen, isa, reg_cfg.cvt_vec);
         emit(be, ir, alloc, reg_cfg, data, postops);
     }
 }

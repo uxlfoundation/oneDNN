@@ -72,7 +72,7 @@ void generate_kernel(
 
     // Build the register configuration for code emission.
     const reg_config_t reg_cfg = make_reg_config(isa, abi_param1.getIdx(),
-            Xbyak::Operand::RSP, reserved_masks, cfg.tiles);
+            Xbyak::Operand::RSP, reserved_masks, cfg.tiles, needs_cvt_vec(ir));
 
     // Allocate registers.
     const reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools);

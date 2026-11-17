@@ -35,6 +35,7 @@
 #include <cassert>
 
 #include "common/c_types_map.hpp"
+#include "common/utils.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/jit_generator.hpp"
 #include "cpu/x64/utils/jit_regops.hpp"
@@ -46,8 +47,10 @@ namespace x64 {
 namespace ir {
 
 struct avx512_backend_t {
-    avx512_backend_t(jit_generator_t &gen, cpu_isa_t isa)
-        : gen_(gen), isa(isa) {}
+    // `cvt_vec` is the scratch of a converting store (see `needs_cvt_vec()`),
+    // or -1 when the IR has none.
+    avx512_backend_t(jit_generator_t &gen, cpu_isa_t isa, int cvt_vec)
+        : gen_(gen), isa(isa), cvt_vec_(cvt_vec) {}
 
     jit_generator_t &gen() { return gen_; }
 
@@ -95,12 +98,17 @@ struct avx512_backend_t {
         }
     }
 
-    // Store a full vector.
+    // Store a full vector. The pair of data types selects the form:
+    //   f32 -> f32   plain move
+    //   f32 -> bf16  narrowed into the scratch, half a register written
+    //   f32 -> f16   narrowed into the scratch, half a register written
     void vstore(int base, dim_t disp, int s, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
             gen().vmovups(addr, Xbyak::Zmm(s));
+        else if (is_narrowing(mem_dt, reg_dt))
+            gen().vmovdqu16(addr, narrow(s, mem_dt));
         else { JIT_ASSERT(!"vstore: dtype not implemented"); }
     }
 
@@ -113,12 +121,15 @@ struct avx512_backend_t {
         else { JIT_ASSERT(!"vload_scalar: dtype not implemented"); }
     }
 
-    // Store element 0 of `src`.
+    // Store element 0 of `src`. A narrowing form converts into the scratch and
+    // writes its first 16-bit element.
     void vstore_scalar(int base, dim_t disp, int s, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
             gen().vmovss(addr, Xbyak::Xmm(s));
+        else if (is_narrowing(mem_dt, reg_dt))
+            gen().vpextrw(addr, Xbyak::Xmm(narrow(s, mem_dt).getIdx()), 0);
         else { JIT_ASSERT(!"vstore_scalar: dtype not implemented"); }
     }
 
@@ -235,19 +246,48 @@ struct avx512_backend_t {
     }
 
     // Store the elements of `src` selected by `mask`. There is no `T_z` here,
-    // since masking a store is already a merge into memory.
+    // since masking a store is already a merge into memory. The mask counts
+    // elements of `mem_dt`, so a narrowing form converts first and masks the
+    // narrow write.
     void vstore_masked(int base, dim_t disp, int s, int mask,
             data_type_t mem_dt, data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        const Xbyak::Opmask k(mask);
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
-            gen().vmovups(addr | Xbyak::Opmask(mask), Xbyak::Zmm(s));
+            gen().vmovups(addr | k, Xbyak::Zmm(s));
+        } else if (is_narrowing(mem_dt, reg_dt)) {
+            gen().vmovdqu16(addr | k, narrow(s, mem_dt));
         } else {
             JIT_ASSERT(!"vstore_masked: dtype not implemented");
         }
     }
 
 private:
+    // Whether a store of an `reg_dt` vreg into `mem_dt` memory narrows f32 to a
+    // 16-bit float.
+    static bool is_narrowing(data_type_t mem_dt, data_type_t reg_dt) {
+        return reg_dt == data_type::f32
+                && utils::one_of(mem_dt, data_type::bf16, data_type::f16);
+    }
+
+    // Narrow the f32 elements of `s` to `dt` into the low half of the scratch
+    // register and return that half. The source is left as it is.
+    Xbyak::Ymm narrow(int s, data_type_t dt) {
+        const Xbyak::Ymm cvt(cvt_vec_ >= 0 ? cvt_vec_ : 0);
+        JIT_ASSERT_RET(
+                cvt_vec_ >= 0 && "narrowing store: no scratch register", cvt);
+        if (dt == data_type::bf16) {
+            JIT_ASSERT_RET(is_superset(isa, avx512_core_bf16)
+                            && "narrowing store: bf16 needs avx512_core_bf16",
+                    cvt);
+            gen().vcvtneps2bf16(cvt, Xbyak::Zmm(s));
+        } else {
+            gen().vcvtps2ph(cvt, Xbyak::Zmm(s), jit_generator_t::_op_mxcsr);
+        }
+        return cvt;
+    }
+
     // The backend is used during the emitter step, which is called from an
     // IR-based kernel during kernel generation. The kernel owns `gen_`.
     jit_generator_t &gen_;
@@ -255,6 +295,9 @@ private:
     // ISA is used to dispatch ISA-specific instructions (e.g. on
     // avx512_core_bf16).
     cpu_isa_t isa;
+
+    // Scratch of the narrowing stores, -1 when there is none.
+    int cvt_vec_;
 };
 
 } // namespace ir

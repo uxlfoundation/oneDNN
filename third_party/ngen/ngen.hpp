@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "ngen_core.hpp"
+#include "ngen_base.hpp"
 #include "ngen_auto_swsb.hpp"
 #include "ngen_debuginfo.hpp"
 // -----------------------------------------------------------------------
@@ -84,11 +85,6 @@ public:
 
 };
 
-#if defined(NGEN_GLOBAL_REGS) && !defined(NGEN_GLOBAL_REGS_DEFINED)
-#define NGEN_GLOBAL_REGS_DEFINED
-#include "ngen_registers.hpp"
-#endif
-
 #if __cplusplus >= 201402L
 #define DEPRECATED [[deprecated]]
 #else
@@ -96,7 +92,7 @@ public:
 #endif
 
 template <HW hw>
-class BinaryCodeGenerator
+class BinaryCodeGenerator : public BaseCodeGenerator<>
 {
     friend class ELFCodeGenerator<hw>;
 
@@ -398,11 +394,6 @@ protected:
 public:
     template <typename String>
     void comment(String)                            {}
-
-    // Registers.
-#ifndef NGEN_GLOBAL_REGS
-#include "ngen_registers.hpp"
-#endif
 
     // Labels.
     void mark(Label &label)            { streamStack.back()->mark(label, labelManager); }

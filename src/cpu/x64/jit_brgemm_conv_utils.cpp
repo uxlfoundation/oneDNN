@@ -2429,6 +2429,19 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             ? brgemm_static_offs
             : brgemm_addr; // TODO: Choose right type of BRGEMM
 
+    // For small K the per-call overhead dominates, so build the batch at
+    // primitive creation (one kernel per kd/kh range and vpad pattern) and
+    // pass only the base pointers on execution.
+    const bool use_static_vpad = !jcp.use_uker && !is_amx(isa)
+            && jcp.exec_type == exec_vpad && jcp.K <= jcp.acc_simd_w
+            && jcp.max_batch * jcp.nb_ic_blocking <= 9 && jcp.kd_block == jcp.kd
+            && jcp.kh_block == jcp.kh && jcp.kw_block == jcp.kw
+            && jcp.nb_ic % jcp.nb_ic_blocking == 0
+            && IMPLICATION(jcp.ic % jcp.ic_block != 0, jcp.nb_ic_blocking == 1)
+            && !jcp.req_cal_comp_pad && !jcp.req_brg_comp_pad
+            && !jcp.src_zero_point && !jcp.s8s8_compensation_required;
+    if (use_static_vpad) jcp.brg_type = brgemm_static_offs;
+
     assert(IMPLICATION(!jcp.copy_input, !jcp.copy_block_only));
 
     VDISPATCH_CONV_IC(

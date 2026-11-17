@@ -367,13 +367,8 @@ CopyInstruction &CopyPlan::appendDestructiveMov(int simd, InstructionModifier mo
 CopyOperand CopyPlan::newTemp(DataType type, int elems, int stride, int align, int offset)
 {
     int grf = GRF::bytes(hw);
-    auto bytes = elementsToBytes(elems * stride, type);
-
+    auto bytes = elementsToBytes(offset + elems * stride, type);
     if (align == 0) align = grf;
-    int soffset = (offset / stride) * stride;
-
-    if (soffset > 0 && soffset + bytes > grf)
-        stub("Misaligned multi-GRF temporary");
 
     CopyOperand op{};
     op.grf = 0;

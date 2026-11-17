@@ -33,6 +33,7 @@
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
+#include "common/float8.hpp"
 
 #include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/ir/dump.hpp"
@@ -80,7 +81,7 @@ int simd_w() {
 // pressure under the test's control.
 reg_pools_t make_pools(int n_gpr) {
     reg_config_t rc = make_reg_config(test_isa(), /*param_reg=*/0,
-            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {});
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved=*/ {});
 
     reg_file_t &gpr_file = rc.pools.files[0];
     gpr_file.regs.clear();
@@ -350,9 +351,21 @@ protected:
         const int rsp_idx = Xbyak::Operand::RSP;
         const int param_idx = abi_param1.getIdx();
 
+        // The injector's registers are reserved the way `generate_kernel()`
+        // reserves them.
+        reserved_regs_t reserved;
+        reserved.masks = {eltwise_opmask, binary_tail_opmask};
+        postops_injector_t::fp8_cvt_regs_t fp8_regs;
+        if (postops_cfg_.post_ops
+                && postops_injector_t::needs_fp8_cvt(*postops_cfg_.post_ops)) {
+            fp8_regs = postops_injector_t::fp8_cvt_regs(max_cpu_isa());
+            reserved.vecs = fp8_regs.vecs;
+            reserved.masks.push_back(fp8_regs.opmask);
+            reserved.gprs.push_back(fp8_regs.gpr);
+        }
+
         reg_config_t reg_cfg = make_reg_config(max_cpu_isa(), param_idx,
-                rsp_idx, {eltwise_opmask, binary_tail_opmask}, tiles_,
-                needs_cvt_vec(ir_));
+                rsp_idx, reserved, tiles_, needs_cvt_vec(ir_));
         if (!gpr_pool_.empty()) reg_cfg.pools.files[0].regs = gpr_pool_;
 
         // Shrink the register pools to force spills when requested.
@@ -379,7 +392,7 @@ protected:
                     default_strategies(), abi_param1,
                     static_cast<int>(postops_cfg_.rhs_arg_offset),
                     postops_cfg_.dst_orig_offset, postops_cfg_.tail_elems,
-                    eltwise_opmask, binary_tail_opmask));
+                    eltwise_opmask, binary_tail_opmask, fp8_regs));
         }
 
         preamble();
@@ -690,14 +703,15 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
 // machine.
 TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
     const int param_reg = 0, rsp_reg = 4;
-    const std::vector<int> reserved_masks {6, 7};
+    reserved_regs_t reserved;
+    reserved.masks = {6, 7};
     // The GPR file excludes `rsp` and `param_reg`, plus `rbp` where the build
     // reserves it (see `jit_generator_t::may_use_rbp()`).
     const size_t n_reserved_gprs = jit_generator_t::may_use_rbp() ? 2 : 3;
 
     {
         const reg_config_t rc
-                = make_reg_config(avx2, param_reg, rsp_reg, reserved_masks);
+                = make_reg_config(avx2, param_reg, rsp_reg, reserved);
 
         ASSERT_EQ(rc.pools.files.size(), 2u);
         EXPECT_EQ(rc.pools.kind_to_file,
@@ -708,8 +722,8 @@ TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
     }
 
     {
-        const reg_config_t rc = make_reg_config(
-                avx512_core, param_reg, rsp_reg, reserved_masks);
+        const reg_config_t rc
+                = make_reg_config(avx512_core, param_reg, rsp_reg, reserved);
 
         ASSERT_EQ(rc.pools.files.size(), 3u);
         EXPECT_EQ(rc.pools.kind_to_file,
@@ -741,12 +755,28 @@ TEST(RegConfigTests, ReservesScratchForNarrowingStores) {
     EXPECT_TRUE(needs_cvt_vec(narrowing));
 
     const reg_config_t rc = make_reg_config(avx512_core, /*param_reg=*/0,
-            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {}, {},
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved=*/ {}, {},
             /*reserve_cvt_vec=*/true);
     EXPECT_EQ(rc.cvt_vec, 31);
     EXPECT_EQ(rc.pools.files[1].regs.size(), 31u);
     EXPECT_EQ(std::count(rc.pools.files[1].regs.begin(),
                       rc.pools.files[1].regs.end(), rc.cvt_vec),
+            0);
+
+    // The scratch skips the reserved vectors, which leave the pool as well.
+    reserved_regs_t reserved;
+    reserved.gprs = {Xbyak::Operand::R12};
+    reserved.vecs = {31, 30};
+    const reg_config_t rc_reserved = make_reg_config(avx512_core,
+            /*param_reg=*/0, /*rsp_reg=*/Xbyak::Operand::RSP, reserved, {},
+            /*reserve_cvt_vec=*/true);
+    EXPECT_EQ(rc_reserved.cvt_vec, 29);
+    EXPECT_EQ(rc_reserved.pools.files[1].regs.size(), 29u);
+    EXPECT_EQ(rc_reserved.pools.files[0].regs.size(),
+            rc.pools.files[0].regs.size() - 1);
+    EXPECT_EQ(std::count(rc_reserved.pools.files[0].regs.begin(),
+                      rc_reserved.pools.files[0].regs.end(),
+                      (int)Xbyak::Operand::R12),
             0);
 }
 
@@ -759,7 +789,7 @@ TEST(RegConfigTests, BuildsOneTileFilePerShape) {
     tiles.shapes = {big, small, tile_shape_t {}, big};
 
     const reg_config_t rc = make_reg_config(avx512_core_amx, /*param_reg=*/0,
-            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {}, tiles);
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved=*/ {}, tiles);
 
     // The gpr, vec, and mask files come first.
     ASSERT_EQ(rc.pools.files.size(), 5u);
@@ -952,7 +982,7 @@ TEST(AllocatorTests, SpillsMasksOnAvx2) {
     ir.vstore(ptr, 0, x, data_type::f32);
 
     reg_pools_t pools = make_reg_config(avx2, /*param_reg=*/0,
-            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {})
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved=*/ {})
                                 .pools;
     pools.files[1].regs.resize(3);
     const reg_alloc_result_t res = allocate_registers(ir, pools);
@@ -981,7 +1011,7 @@ TEST(AllocatorTests, NeverSpillsAvx512Masks) {
     ir.vstore(ptr, 0, x, data_type::f32);
 
     reg_pools_t pools = make_reg_config(avx512_core, /*param_reg=*/0,
-            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {})
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved=*/ {})
                                 .pools;
     pools.files[2].regs.resize(1);
     const reg_alloc_result_t res = allocate_registers(ir, pools);
@@ -1014,7 +1044,7 @@ TEST(AllocatorTests, AllocatesTilesByShapeWithoutSpills) {
         ir.tstore(ptr, 0, v, stride);
 
     const reg_pools_t pools = make_reg_config(avx512_core_amx, /*param_reg=*/0,
-            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {}, tiles)
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved=*/ {}, tiles)
                                       .pools;
     const reg_alloc_result_t res = allocate_registers(ir, pools);
 
@@ -1745,6 +1775,82 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
                 = ref_dot(&a[r * simd_w()], b_data.data(), simd_w()) + rhs[r];
         EXPECT_FLOAT_EQ(c[r], expected) << "row " << r;
     }
+}
+
+// Validates a binary post-op with an fp8 right-hand side of type `T`, which
+// the injector converts through the fp8 emulation. The emulation runs on
+// fixed registers the IR allocator has to stay clear of, so the accumulators
+// take most of the vector file: with that many full vectors live across the
+// post-op, a scratch the allocator also handed out would corrupt one of them.
+template <typename T>
+void check_fp8_binary_rhs(dnnl::memory::data_type rhs_dt) {
+    const cpu_isa_t isa = avx512_core_fp16;
+    const int simd = isa_max_vlen(isa) / (int)sizeof(float);
+    const int n = isa_num_vregs(isa)
+            - (int)postops_injector_t::fp8_cvt_regs(isa).vecs.size() - 2;
+    const dim_t vlen = simd * (dim_t)sizeof(float);
+
+    using dt = dnnl::memory::data_type;
+    using tag = dnnl::memory::format_tag;
+    const dnnl::memory::desc dst_desc({n, simd}, dt::f32, tag::ab);
+    const dnnl::memory::desc rhs_desc({n, simd}, rhs_dt, tag::ab);
+
+    dnnl::post_ops po;
+    po.append_binary(dnnl::algorithm::binary_add, rhs_desc);
+
+    const impl::memory_desc_t &dst_md = *dst_desc.get();
+    const impl::post_ops_t &post_ops = *po.get();
+
+    ir_t ir;
+
+    const vreg_t a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(binary_args_t, a));
+
+    const vreg_t c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(binary_args_t, c));
+
+    std::vector<vreg_t> acc(n, vreg_t::none);
+    std::vector<dim_t> out_byte_off(n);
+    for (int r = 0; r < n; r++) {
+        acc[r] = ir.new_vec(data_type::f32);
+        ir.vload(acc[r], a_ptr, r * vlen, data_type::f32);
+        out_byte_off[r] = r * vlen;
+    }
+    ir.inject_postops(acc, c_ptr, out_byte_off, simd);
+    for (int r = 0; r < n; r++)
+        ir.vstore(c_ptr, r * vlen, acc[r], data_type::f32);
+
+    ir_kernel_t kernel(ir, /*vec_regs_limit=*/-1, /*gpr_regs_limit=*/-1, isa);
+    ir_kernel_t::postops_cfg_t cfg;
+    cfg.post_ops = &post_ops;
+    cfg.dst_md = &dst_md;
+    cfg.rhs_arg_offset = offsetof(binary_args_t, binary_rhs);
+    cfg.dst_orig_offset = offsetof(binary_args_t, dst_orig);
+    kernel.set_postops(cfg);
+
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+
+    // Values every fp8 type holds exactly.
+    std::vector<float> a(n * simd), c(n * simd, 0.f);
+    std::vector<T> rhs;
+    for (int i = 0; i < n * simd; i++) {
+        a[i] = (float)(i % 7) - 3.f;
+        rhs.emplace_back((float)((i % 5) - 2) * 0.5f);
+    }
+
+    const void *rhs_ptrs[1] = {rhs.data()};
+    binary_args_t args {a.data(), nullptr, c.data(), rhs_ptrs, c.data()};
+    kernel.run(&args);
+
+    for (int i = 0; i < n * simd; i++)
+        EXPECT_FLOAT_EQ(c[i], a[i] + (float)rhs[i]) << "element " << i;
+}
+
+TEST(IntegrationTests, BinaryPostOpConvertsFp8Rhs) {
+    if (!mayiuse(avx512_core_fp16))
+        GTEST_SKIP() << "fp8 binary post-ops require AVX512_CORE_FP16";
+    check_fp8_binary_rhs<float8_e5m2_t>(dnnl::memory::data_type::f8_e5m2);
+    check_fp8_binary_rhs<float8_e4m3_t>(dnnl::memory::data_type::f8_e4m3);
 }
 
 // Validates that the post-ops injector works with any register layout the

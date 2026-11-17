@@ -469,9 +469,11 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     // post-ops apply after bias. The two scales can swap because both are
     // multiplies but a scale must not move past the bias and the bias must
     // not move past the post-ops.
+    // Scales and bias are loaded into accumulator-typed vregs, so a 16-bit
+    // float in memory is widened by its load.
     if (cfg.with_src_scales) {
         // Loaded once and applied to every output.
-        const ir::vreg_t sc = ir.new_vec(cfg.dt_src_scales);
+        const ir::vreg_t sc = ir.new_vec(cfg.dt_acc);
         emit_bcast_load(ir, sc, regs.invariant.src_scale_ptr, 0, bcast_elems,
                 cfg.dt_src_scales);
 
@@ -482,7 +484,7 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     if (cfg.with_wei_scales) {
         // The single scale is loop invariant, so load it once above the
         // loop. The per-N case loads a separate scale per output element.
-        const ir::vreg_t sc = ir.new_vec(cfg.dt_wei_scales);
+        const ir::vreg_t sc = ir.new_vec(cfg.dt_acc);
         if (cfg.single_wei_scale)
             emit_bcast_load(ir, sc, regs.advancing.wei_scale_ptr, 0,
                     bcast_elems, cfg.dt_wei_scales);
@@ -499,7 +501,7 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     if (cfg.with_bias) {
         // The broadcast bias is loop invariant, so load it once outside the
         // loop. A row output loads a separate bias per output element.
-        const ir::vreg_t bias = ir.new_vec(cfg.dt_bias);
+        const ir::vreg_t bias = ir.new_vec(cfg.dt_acc);
         if (!cfg.treat_y_as_row)
             emit_bcast_load(ir, bias, regs.advancing.bias_ptr, 0, bcast_elems,
                     cfg.dt_bias);
@@ -854,19 +856,26 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     VCONDCHECK_BRGEMV_IR(!brg.with_dst_scales, VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMV_IR(!brg.is_per_k_src_scales && !brg.is_per_k_wei_scales,
             VERBOSE_UNSUPPORTED_SCALES_CFG);
+    // Scales and bias are f32 or a 16-bit float the load widens, which the
+    // avx2 backend has no lowering for.
+    const auto epilogue_dt_ok = [&](data_type_t dt) {
+        return dt == f32
+                || (utils::one_of(dt, bf16, f16)
+                        && is_superset(brg.isa_impl, avx512_core));
+    };
     VCONDCHECK_BRGEMV_IR(
-            IMPLICATION(brg.with_src_scales, brg.dt_src_scales == f32),
+            IMPLICATION(brg.with_src_scales, epilogue_dt_ok(brg.dt_src_scales)),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMV_IR(
-            IMPLICATION(brg.with_wei_scales, brg.dt_wei_scales == f32),
+            IMPLICATION(brg.with_wei_scales, epilogue_dt_ok(brg.dt_wei_scales)),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMV_IR(!brg.req_s8s8_compensation,
             VERBOSE_UNSUPPORTED_FEATURE, "s8s8 compensation");
     VCONDCHECK_BRGEMV_IR(utils::everyone_is(brgemm_broadcast_t::none,
                                  brg.zp_type_a, brg.zp_type_b, brg.zp_type_c),
             VERBOSE_UNSUPPORTED_ZP_CFG);
-    VCONDCHECK_BRGEMV_IR(
-            !brg.with_bias || brg.dt_bias == f32, VERBOSE_UNSUPPORTED_BIAS_CFG);
+    VCONDCHECK_BRGEMV_IR(!brg.with_bias || epilogue_dt_ok(brg.dt_bias),
+            VERBOSE_UNSUPPORTED_BIAS_CFG);
     VCONDCHECK_BRGEMV_IR(
             brg.alpha == 1.0f, VERBOSE_UNSUPPORTED_FEATURE, "alpha != 1");
     VCONDCHECK_BRGEMV_IR(brg.beta == 0.0f || brg.beta == 1.0f,

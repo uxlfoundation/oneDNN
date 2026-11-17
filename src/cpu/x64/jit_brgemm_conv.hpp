@@ -141,6 +141,9 @@ struct brgemm_convolution_fwd_t : public primitive_t {
         // each distinct (M, virtual paddings) kind of ow blocks
         std::vector<int> owb_vpad_kind;
         std::vector<int> vpad_kind_owb; // representative ow block of a kind
+        // exec_vpad: consecutive groups of a thread's work may be processed
+        // by a single ker_vpad call, see ker_vpad
+        bool vpad_group_runs = false;
 
     protected:
         dim_t KD {}, KH {}, KW {}, EXT_KD {}, EXT_KH {}, EXT_KW {}, KS {},
@@ -204,7 +207,7 @@ private:
 
     void ker_base(brgemm_thread_ctx_t &btc) const;
     void ker_trans(brgemm_thread_ctx_t &btc) const;
-    void ker_vpad(brgemm_thread_ctx_t &btc) const;
+    void ker_vpad(brgemm_thread_ctx_t &btc, dim_t n_groups = 1) const;
 
     void perform_outwork(const brgemm_thread_ctx_t &btc, char *dst_base,
             const char *bias_w, dim_t ow, dim_t g_oc, bool is_oc_tail,

@@ -122,6 +122,9 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
     const memory_desc_wrapper rhs_d(src1_desc);
     auto bcast_type = get_rhs_arg_broadcasting_strategy(
             src1_desc, dst_d, supported_strategy_set);
+    const int ndims = dst_d.ndims();
+    const bool is_innermost_bcast = ndims >= 1
+            && (rhs_d.format_any() || rhs_d.dims()[ndims - 1] == 1);
     const bool use_shared_axes_fallback
             = supported_strategy_set.count(broadcasting_strategy_t::shared_axes)
             && !utils::one_of(bcast_type, broadcasting_strategy_t::unsupported,
@@ -135,7 +138,9 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
                     || (!rhs_d.format_any() && !rhs_d.is_dense(true)
                             && bcast_type
                                     != broadcasting_strategy_t::
-                                            per_mb_spatial));
+                                            per_mb_spatial)
+                    || (bcast_type == broadcasting_strategy_t::per_mb_spatial
+                            && is_innermost_bcast));
     if (use_shared_axes_fallback)
         bcast_type = broadcasting_strategy_t::shared_axes;
     const bool rhs_nontrivial_strides = !rhs_d.is_dense(true);
@@ -632,6 +637,9 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range_impl(
     const memory_desc_wrapper rhs_d(src1_desc);
     auto rhs_broadcasting_strategy = get_rhs_arg_broadcasting_strategy(
             src1_desc, rhs_arg_static_params_.dst_d, supported_strategy_set_);
+    const int ndims = dst_d.ndims();
+    const bool is_innermost_bcast = ndims >= 1
+            && (rhs_d.format_any() || rhs_d.dims()[ndims - 1] == 1);
     if (supported_strategy_set_.count(broadcasting_strategy_t::shared_axes)
             && !utils::one_of(rhs_broadcasting_strategy,
                     broadcasting_strategy_t::unsupported,
@@ -645,7 +653,10 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range_impl(
                     || (!rhs_d.is_dense(true)
                             && rhs_broadcasting_strategy
                                     != broadcasting_strategy_t::
-                                            per_mb_spatial)))
+                                            per_mb_spatial)
+                    || (rhs_broadcasting_strategy
+                                    == broadcasting_strategy_t::per_mb_spatial
+                            && is_innermost_bcast)))
         rhs_broadcasting_strategy = broadcasting_strategy_t::shared_axes;
     const auto rhs_arg_data_type = src1_desc.data_type;
     const auto needs_ternary_input = post_op.is_binary_with_ternary_op();
@@ -980,8 +991,12 @@ Xbyak::Address jit_uni_binary_injector_t<Vmm>::prepare_rhs_arg_addr(int vmm_idx,
                     rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first,
                     rhs_d);
-
-            return host_->ptr[rhs_addr_reg];
+                
+            const int ndims = rhs_d.ndims();
+            // If the innermost vectorized dimension is broadcast (size 1), use scalar broadcast!
+            return (ndims >= 1 && rhs_d.dims()[ndims - 1] == 1)
+                    ? host_->ptr_b[rhs_addr_reg]
+                    : host_->ptr[rhs_addr_reg];
         }
         case broadcasting_strategy_t::per_mb_w: {
             append_mb_w_offset(rhs_arg_params.vmm_idx_to_out_addr,

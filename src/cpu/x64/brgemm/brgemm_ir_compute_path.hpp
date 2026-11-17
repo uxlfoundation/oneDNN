@@ -52,8 +52,16 @@ struct prev_block_t {
     std::vector<ir::vreg_t> acc;
 };
 
-// What a K step emits between the operations of its microkernel, with
-// `loop_conf_t::interleave_acc_stores`.
+// A prefetch of the line at byte offset `off` from `ptr`.
+struct prefetch_t {
+    ir::vreg_t ptr;
+    dim_t off;
+    ir::prefetch_kind_t kind;
+};
+
+// What a K step emits between the operations of its microkernel: the stores,
+// loads, and zeroes of accumulators with `loop_conf_t::interleave_acc_stores`,
+// and the prefetches with `loop_conf_t::prefetch_c`.
 //
 //   prev       - the previous block, for the first K step of a block only.
 //                That K step stores the rest of the accumulators of `prev`,
@@ -62,11 +70,13 @@ struct prev_block_t {
 //   c_ptr      - where the K step loads accumulators from C, `none` when it
 //                zeroes them
 //   store_ptr  - where the accumulators are stored, C or D
+//   prefetches - the prefetches the K step issues, one list per accumulator
 struct k_step_interleave_t {
     prev_block_t prev;
     acc_stores_t acc_stores = acc_stores_t::none;
     ir::vreg_t c_ptr = ir::vreg_t::none;
     ir::vreg_t store_ptr = ir::vreg_t::none;
+    std::vector<std::vector<prefetch_t>> prefetches;
 };
 
 // One compute path of the builder: the accumulators of an output block and
@@ -77,8 +87,9 @@ struct k_step_interleave_t {
 // It calls `load_accumulators()` instead of `init_accumulators()` when beta is
 // 1 and `loads_accumulators()` is true. When `stores_accumulators()` is true,
 // it calls `store_accumulators()` at the end of the block, unless the
-// accumulators are stored in the K steps (`k_step_interleave_t`). The compute
-// path chooses the layout of the accumulators.
+// accumulators are stored in the K steps (`k_step_interleave_t`). With
+// `loop_conf_t::prefetch_c`, it gets the prefetches of the block from
+// `c_prefetches()`. The compute path chooses the layout of the accumulators.
 struct compute_path_t {
     virtual ~compute_path_t() = default;
 
@@ -120,6 +131,14 @@ struct compute_path_t {
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t c_ptr) const {
         assert(!"store_accumulators: not supported by the compute path");
+    }
+
+    // Returns the write prefetches of the C or D lines at `store_ptr` that
+    // the accumulators of `blk` are stored to, one list per accumulator.
+    virtual std::vector<std::vector<prefetch_t>> c_prefetches(const conf_t &cfg,
+            const out_block_t &blk, ir::vreg_t store_ptr) const {
+        assert(!"c_prefetches: not supported by the compute path");
+        return {};
     }
 
     // Reduces `rd_loop` elements of K into `acc`, starting at K index

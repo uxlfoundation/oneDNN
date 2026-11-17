@@ -16,6 +16,7 @@
 
 // The vector compute path of the IR-based BRGEMM kernel.
 
+#include <cassert>
 #include <memory>
 #include <vector>
 
@@ -63,6 +64,11 @@ struct vector_compute_path_t : public compute_path_t {
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start, int rd_loop,
             const k_step_interleave_t &interleave) const override {
+
+        // `prefetch_c` is set only with `can_dispatch_uker()`, which implies
+        // the TMUL compute path.
+        assert(interleave.prefetches.empty());
+
         std::vector<ir::vreg_t> b(blk.ld_block2, ir::vreg_t::none);
         for (int ld = 0; ld < blk.ld_block2; ld++)
             b[ld] = ir.new_vec(cfg.compute_path.dt_b);

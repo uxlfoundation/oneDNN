@@ -72,12 +72,41 @@ struct tmul_compute_path_t : public compute_path_t {
         }
     }
 
+    // One prefetch per row of each accumulator tile, the lines that
+    // `store_accumulator()` stores the tile to.
+    std::vector<std::vector<prefetch_t>> c_prefetches(const conf_t &cfg,
+            const out_block_t &blk, ir::vreg_t store_ptr) const override {
+
+        const int n_m = m_tiles(cfg, blk);
+        const int n_n = blk.ld_block2;
+        std::vector<std::vector<prefetch_t>> prefetches(n_m * n_n);
+
+        for (int m = 0; m < n_m; m++) {
+            for (int n = 0; n < n_n; n++) {
+                const int i = m * n_n + n;
+                const dim_t off = c_tile_off(cfg, blk, m, n);
+                const int rows = c_tile_shape(cfg, blk, m, n).rows;
+                prefetches[i].reserve(rows);
+                for (int r = 0; r < rows; r++) {
+                    const dim_t row_off = off + r * cfg.c_off(1, 0);
+                    prefetches[i].push_back(
+                            {store_ptr, row_off, ir::prefetch_kind_t::write});
+                }
+            }
+        }
+        return prefetches;
+    }
+
     // Loads an A tile for each M tile and a B tile for each N tile, and
     // multiplies each pair into its accumulator. The order follows
     // `gemm_microkernel_amx()` in `jit_brgemm_amx_uker.cpp`, which issues each
     // multiplication after the next tile load. For 2x2 tiles the order is A0 B0
     // B1 T00 A1 T01 T10 T11, where Tmn multiplies into the accumulator
     // (`m`, `n`). The `tmma` into accumulator `i` is the (`i` + 1)-th one.
+    //
+    // The prefetches of accumulator `i` in `interleave` go before the `tmma`
+    // into it. Every store of the accumulator follows its `tmma` in the last K
+    // step of the block, so each prefetch precedes the store of its line.
     void emit_microkernel(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start, int rd_loop,
@@ -90,6 +119,7 @@ struct tmul_compute_path_t : public compute_path_t {
 
         const int n_m = m_tiles(cfg, blk);
         const int n_n = blk.ld_block2;
+        const int n_acc = (int)acc.size();
         std::vector<ir::vreg_t> a(n_m, ir::vreg_t::none);
         std::vector<ir::vreg_t> b(n_n, ir::vreg_t::none);
 
@@ -113,19 +143,22 @@ struct tmul_compute_path_t : public compute_path_t {
                 // of the previous M tile when `n` is 0.
                 if (n > 0) {
                     const int i = m * n_n + n - 1;
+                    emit_prefetches_before_tmma(ir, interleave, i);
                     ir.tmma(acc[i], a[m], b[n - 1]);
                     emit_stores_after_tmma(
                             ir, cfg, blk, acc, interleave, i + 1);
                 } else if (m > 0) {
                     const int i = m * n_n - 1;
+                    emit_prefetches_before_tmma(ir, interleave, i);
                     ir.tmma(acc[i], a[m - 1], b[n_n - 1]);
                     emit_stores_after_tmma(
                             ir, cfg, blk, acc, interleave, i + 1);
                 }
             }
         }
+        emit_prefetches_before_tmma(ir, interleave, n_acc - 1);
         ir.tmma(acc.back(), a.back(), b.back());
-        emit_stores_after_tmma(ir, cfg, blk, acc, interleave, (int)acc.size());
+        emit_stores_after_tmma(ir, cfg, blk, acc, interleave, n_acc);
     }
 
 private:
@@ -184,6 +217,17 @@ private:
         const int m = i / blk.ld_block2;
         const int n = i % blk.ld_block2;
         ir.tstore(c_ptr, c_tile_off(cfg, blk, m, n), acc[i], c_stride_);
+    }
+
+    // Emits the prefetches of `interleave` for accumulator `i`, which go before
+    // the `tmma` into it.
+    static void emit_prefetches_before_tmma(
+            ir::ir_t &ir, const k_step_interleave_t &interleave, int i) {
+
+        if (interleave.prefetches.empty()) return;
+        for (const prefetch_t &p : interleave.prefetches[i]) {
+            ir.prefetch(p.ptr, p.off, p.kind);
+        }
     }
 
     // Emits what follows the `n_tmma`-th `tmma` of a K step of `blk`: the

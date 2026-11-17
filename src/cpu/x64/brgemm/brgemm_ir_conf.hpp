@@ -107,6 +107,8 @@ enum class tail_grouping_t { separate, grouped };
 //   interleave_acc_stores - the accumulators are stored in the K steps when
 //                           the batch and K levels are unrolled, see
 //                           `block_acc_stores()`
+//   prefetch_c            - each block prefetches for write the C or D lines
+//                           it stores
 //   batch_kind            - how a batch element gives the address of its A
 //                           and B
 //   max_bs                - maximum batch size known at IR generation time
@@ -135,6 +137,7 @@ struct loop_conf_t {
     brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
     tail_grouping_t n_tail_grouping = tail_grouping_t::separate;
     bool interleave_acc_stores = false;
+    bool prefetch_c = false;
     brgemm_batch_kind_t batch_kind = brgemm_addr;
     dim_t max_bs = 0;
     bool var_bs = true;

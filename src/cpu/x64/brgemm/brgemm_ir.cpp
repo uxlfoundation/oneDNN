@@ -460,18 +460,38 @@ void emit_level(ir::ir_t &ir, const std::vector<block_run_t> &runs,
             [&](dim_t n, dim_t) { step(n); });
 }
 
+// True if the batch and K levels are unrolled and the batch is not empty. Each
+// K step of a block is then its own call of `emit_microkernel()`, so it can
+// emit its own stores and prefetches (`k_step_interleave_t`).
+bool has_unrolled_k_steps(const loop_conf_t &loop) {
+    return loop.bs_form == level_form_t::unrolled
+            && loop.k_form == level_form_t::unrolled && loop.max_bs > 0;
+}
+
 // Returns the part of `interleave` of the batch element or K block that starts
 // at `pos` and has `size` elements, in a level of `level_size` elements. The
-// first one keeps `prev` and the last one keeps `acc_stores`.
+// first one keeps `prev`, the last one keeps `acc_stores`, and each one gets
+// the part of each list of `prefetches` in proportion to its position and size
+// (each of 4 K blocks gets 4 of the 16 prefetches of a tile).
 //
-// `pos` counts from the first element of the level. `block_acc_stores()` gives
-// stores only to unrolled batch and K levels, which count it that way.
+// `pos` counts from the first element of the level, as in an unrolled level.
+// When `has_unrolled_k_steps()` is false, `interleave` has no stores or
+// prefetches, so `pos` does not matter.
 k_step_interleave_t k_step_interleave_at(const k_step_interleave_t &interleave,
         dim_t pos, dim_t size, dim_t level_size) {
 
     k_step_interleave_t part = interleave;
     if (pos != 0) part.prev = {};
     if (pos + size != level_size) part.acc_stores = acc_stores_t::none;
+
+    for (int i = 0; i < (int)interleave.prefetches.size(); i++) {
+        const std::vector<prefetch_t> &acc_prefetches
+                = interleave.prefetches[i];
+        const dim_t n = (dim_t)acc_prefetches.size();
+        const auto first = acc_prefetches.begin();
+        part.prefetches[i].assign(first + n * pos / level_size,
+                first + n * (pos + size) / level_size);
+    }
     return part;
 }
 
@@ -747,6 +767,9 @@ void emit_output_path(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 // compute path stores them to C, in the K steps when `acc_stores` is not
 // `none` and after them when it is.
 //
+// With `prefetch_c`, the block prefetches the lines it stores, in its K steps
+// when `has_unrolled_k_steps()` is true and before the batch level otherwise.
+//
 // `prev` is the previous block. The first K step of this block stores the rest
 // of the accumulators of `prev`. Returns this block when `acc_stores` is
 // `next_block`, and an empty `prev_block_t` otherwise.
@@ -760,11 +783,28 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
             ? cp.load_accumulators(ir, cfg, blk, regs.advancing.c_ptr, prev)
             : cp.init_accumulators(ir, cfg, blk, prev);
 
+    std::vector<std::vector<prefetch_t>> prefetches;
+    if (cfg.loop.prefetch_c)
+        prefetches = cp.c_prefetches(cfg, blk, regs.advancing.store_ptr);
+
     k_step_interleave_t interleave;
     interleave.prev = prev;
     interleave.acc_stores = acc_stores;
     interleave.c_ptr = acc_from_c ? regs.advancing.c_ptr : ir::vreg_t::none;
     interleave.store_ptr = regs.advancing.store_ptr;
+
+    // A K step in a loop would issue its prefetches on every iteration, and an
+    // empty batch has no K step.
+    if (has_unrolled_k_steps(cfg.loop)) {
+        interleave.prefetches = std::move(prefetches);
+    } else {
+        for (const std::vector<prefetch_t> &acc_prefetches : prefetches) {
+            for (const prefetch_t &p : acc_prefetches) {
+                ir.prefetch(p.ptr, p.off, p.kind);
+            }
+        }
+    }
+
     emit_batch_level(ir, cfg, cp, regs, blk, acc, interleave);
 
     if (!cp.stores_accumulators()) {
@@ -814,20 +854,18 @@ void emit_mn_step(ir::ir_t &ir, const conf_t &cfg, const advancing_regs_t &regs,
 // Returns what the last K step of the block that ends at row `bd_end` and N
 // element `ld_end` stores, see `acc_stores_t`.
 //
-// It is `none` without `interleave_acc_stores`, when the batch or K level is
-// looped, or when the batch is empty. Otherwise it is `next_block` when the
+// It is `none` without `interleave_acc_stores` or when
+// `has_unrolled_k_steps()` is false. Otherwise it is `next_block` when the
 // next block follows with no loop between them, and `block` otherwise. With N
-// inside M, the next block is the next N block
-// of an unrolled N level, or the first N block of the next M block when both
-// levels are unrolled. The same holds with M inside N. Positions are compared
-// only for unrolled levels, which count them from their first block.
+// inside M, the next block is the next N block of an unrolled N level, or the
+// first N block of the next M block when both levels are unrolled. The same
+// holds with M inside N. Positions are compared only for unrolled levels,
+// which count them from their first block.
 acc_stores_t block_acc_stores(
         const loop_conf_t &loop, dim_t bd_end, dim_t ld_end) {
 
-    const bool has_k_step_stores = loop.interleave_acc_stores
-            && loop.bs_form == level_form_t::unrolled
-            && loop.k_form == level_form_t::unrolled && loop.max_bs > 0;
-    if (!has_k_step_stores) return acc_stores_t::none;
+    if (!loop.interleave_acc_stores || !has_unrolled_k_steps(loop))
+        return acc_stores_t::none;
 
     const bool is_m_unrolled = loop.m_form == level_form_t::unrolled;
     const bool is_n_unrolled = loop.n_form == level_form_t::unrolled;
@@ -1098,14 +1136,18 @@ status_t init_loop_conf(
                 "A prefetch");
         VCONDCHECK_BRGEMM_IR(!prefetches(brg.prfB), VERBOSE_UNSUPPORTED_FEATURE,
                 "B prefetch");
-        // The uker prefetches C only at the first two distances.
-        VCONDCHECK_BRGEMM_IR(brg.prfC.dist0 < 0 && brg.prfC.dist1 < 0,
-                VERBOSE_UNSUPPORTED_FEATURE, "C prefetch");
+        // A `prfC.dist0` above 0 prefetches the lines of a later block in the
+        // loop order of the uker.
+        VCONDCHECK_BRGEMM_IR(brg.prfC.dist0 <= 0, VERBOSE_UNSUPPORTED_FEATURE,
+                "C prefetch of a later block");
     }
 
     // Without the uker, N is inside M, as in `jit_brgemm_kernel_t`.
     loop.innermost_loop
             = can_dispatch_uker ? brg.innermost_loop : brgemm_ld_loop_innermost;
+    // `jit_brgemm_kernel_t` ignores `prfC`, and the uker emits nothing for its
+    // distances other than `dist0`.
+    loop.prefetch_c = can_dispatch_uker && brg.prfC.dist0 == 0;
     loop.batch_kind = brg.type;
     loop.max_bs = brgattr.max_bs;
     loop.load_dim = brg.load_dim;

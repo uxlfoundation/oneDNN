@@ -180,6 +180,7 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
                 philox_4x32_ctr_w_offset(_g, offset), \
                 philox_4x32_ctr_w_offset(_g + 8, offset), ks.key0, ks.key1)); \
     })
+#define dropout_window philox_window8
     /* r > threshold for 32-bit r = v << 16. */
     const ushort thr = (ushort)(threshold >> 16);
 #else
@@ -198,6 +199,7 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
                         philox_4x32_ctr_legacy(_g + 4), ks.key0, ks.key1); \
         (uint8)((uint4)(_r.s2), (uint4)(_r.s6)); \
     })
+#define dropout_window philox_window4
     const uint thr = threshold;
 #endif
 #define dropout_store(v, j0) \
@@ -214,7 +216,6 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
        parallelism: independent instructions the GPU can overlap). */
 #pragma unroll
     for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
-        const int offset_c = tile_offset_c + i0 + get_sub_group_local_id();
         const ulong s = lane_base + (ulong)i0 * (ulong)k_stride;
         if (aligned) {
 #pragma unroll
@@ -228,12 +229,28 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
                 }
             }
         } else {
-            /* Not on a Philox block boundary: one call per key. */
-            for (int j = 0; j < tile_len; j++)
-                dropout_set(
-                        i0, j, dropout_predicate(tile_offset_r + j, offset_c));
+            /* Start at the block below s and shift by a = s % DROPOUT_G. */
+            const int a = (int)(s % DROPOUT_G);
+            const ulong x0 = s - (ulong)a;
+            dropout_vec_t cur = dropout_gen(x0);
+#pragma unroll
+            for (int j = 0; j < tile_len; j += 2 * DROPOUT_G) {
+                if (j + DROPOUT_G < tile_len) {
+                    const dropout_vec2_t v
+                            = dropout_gen2(x0 + (ulong)j + DROPOUT_G);
+                    dropout_store(dropout_window(cur, v.lo, a), j);
+                    dropout_store(dropout_window(v.lo, v.hi, a), j + DROPOUT_G);
+                    cur = v.hi;
+                } else {
+                    dropout_store(
+                            dropout_window(cur,
+                                    dropout_gen(x0 + (ulong)j + DROPOUT_G), a),
+                            j);
+                }
+            }
         }
     }
+#undef dropout_window
 #undef dropout_store
 #undef dropout_gen2
 #undef dropout_gen

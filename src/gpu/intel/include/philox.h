@@ -43,6 +43,7 @@
    philox_4x32_vec4x2_ctr_w_keys     7    two blocks, two chains (ILP)
    philox_4x32_ctr_w_offset          -    counter with offset (idx & ~3)
    philox_4x32_ctr_legacy            -    counter without offset
+   philox_window4 / philox_window8   -    shifted window; unaligned SDPA
    philox_4x32_dropout_w_offset      7    one value; dropout attr, offset
    philox_4x32_dropout               7    one value; dropout attr, legacy
    philox_4x32_vec4_w_offset        10    one block; generic
@@ -145,6 +146,23 @@ ulong philox_4x32_legacy_seed(long seed) {
 uint4 philox_4x32_ctr_legacy(uint idx) {
     uint x = idx & ~3u;
     return (uint4)(x, x + 1, x, x + 3);
+}
+
+/* Words [a, a + 4) of the 8-word window (lo, hi), for a in [0, 3]. */
+uint4 philox_window4(uint4 lo, uint4 hi, int a) {
+    return a == 0    ? lo
+            : a == 1 ? (uint4)(lo.s123, hi.s0)
+            : a == 2 ? (uint4)(lo.s23, hi.s01)
+                     : (uint4)(lo.s3, hi.s012);
+}
+
+/* Halfwords [a, a + 8) of the 16-halfword window (lo, hi), for a in [0, 7]. */
+ushort8 philox_window8(ushort8 lo, ushort8 hi, int a) {
+    const uint4 l = as_uint4(lo), h = as_uint4(hi);
+    const int b = a >> 1;
+    const uint4 w = philox_window4(l, h, b);
+    const uint e = b == 0 ? h.s0 : b == 1 ? h.s1 : b == 2 ? h.s2 : h.s3;
+    return as_ushort8((a & 1) ? (w >> 16) | ((uint4)(w.s123, e) << 16) : w);
 }
 
 uint philox_4x32_w_offset(long idx, long seed, long offset) {

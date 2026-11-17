@@ -20,6 +20,12 @@
 
 #include "gpu/intel/logging.hpp"
 
+REG_XEHPG_ISA(template class ngen::BinaryCodeGenerator<ngen::HW::XeHPG>);
+REG_XEHPC_ISA(template class ngen::BinaryCodeGenerator<ngen::HW::XeHPC>);
+REG_XE2_ISA(template class ngen::BinaryCodeGenerator<ngen::HW::Xe2>);
+REG_XE3_ISA(template class ngen::BinaryCodeGenerator<ngen::HW::Xe3>);
+REG_XE3P_ISA(template class ngen::BinaryCodeGenerator<ngen::HW::Xe3p>);
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

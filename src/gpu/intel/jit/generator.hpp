@@ -49,6 +49,16 @@
 #include "ngen_level_zero.hpp"
 #endif
 
+// generator.cpp explicitly instantiates these for the enabled HW. Declaring
+// them here keeps every includer from re-instantiating the expensive non-inline
+// members (e.g. getCode() with the auto-SWSB pass) for each HW it generates
+// code for.
+REG_XEHPG_ISA(extern template class ngen::BinaryCodeGenerator<ngen::HW::XeHPG>);
+REG_XEHPC_ISA(extern template class ngen::BinaryCodeGenerator<ngen::HW::XeHPC>);
+REG_XE2_ISA(extern template class ngen::BinaryCodeGenerator<ngen::HW::Xe2>);
+REG_XE3_ISA(extern template class ngen::BinaryCodeGenerator<ngen::HW::Xe3>);
+REG_XE3P_ISA(extern template class ngen::BinaryCodeGenerator<ngen::HW::Xe3p>);
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

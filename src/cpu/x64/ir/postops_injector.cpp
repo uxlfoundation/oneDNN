@@ -17,9 +17,11 @@
 #include <cassert>
 
 #include "common/memory_desc_wrapper.hpp"
+#include "common/utils.hpp"
 
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/ir/postops_injector.hpp"
+#include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -47,13 +49,57 @@ injector_t<Vmm> *cast2tgt(void *injector) {
     return static_cast<injector_t<Vmm> *>(injector);
 }
 
+// Whether a binary post-op of `post_ops` reads a right-hand side of type `dt`.
+bool has_binary_rhs_of(const post_ops_t &post_ops, data_type_t dt) {
+    for (int i = 0; i < post_ops.len(); i++) {
+        const auto &e = post_ops.entry_[i];
+        if (e.is_binary() && e.binary.src1_desc.data_type == dt) return true;
+    }
+    return false;
+}
+
 } // namespace
+
+bool postops_injector_t::needs_fp8_cvt(const post_ops_t &post_ops) {
+    return has_binary_rhs_of(post_ops, data_type::f8_e5m2)
+            || has_binary_rhs_of(post_ops, data_type::f8_e4m3);
+}
+
+postops_injector_t::fp8_cvt_regs_t postops_injector_t::fp8_cvt_regs(
+        cpu_isa_t isa) {
+    // The binary injector takes an fp8 right-hand side only where
+    // `binary_injector::is_data_supported()` allows it, which needs
+    // avx512_core_fp16 for the fp8 converters.
+    assert(binary_injector::is_data_supported(isa, data_type::f8_e5m2)
+            && binary_injector::is_data_supported(isa, data_type::f8_e4m3));
+
+    fp8_cvt_regs_t regs;
+    // The e4m3 converter takes five scratch vectors, the e5m2 one three of
+    // them. The sixth is the binary injector's right-hand-side vector: the
+    // injector picks a free register for it from the top of the file when
+    // its hint is taken, so a fixed one keeps it clear of the scratch. The
+    // highest register is left to the converting stores (see
+    // `make_reg_config()`).
+    const int n_vec = isa_num_vregs(isa);
+    for (int i = n_vec - 7; i < n_vec - 1; i++)
+        regs.vecs.push_back(i);
+    // `k6` and `k7` belong to the eltwise and binary injectors.
+    regs.opmask = 5;
+    // The binary injector borrows `r13` to `r15`, `rax`, `rdx`, `r8` and `r9`
+    // around the right-hand-side load that runs the converters, so the table
+    // pointer has to be another register.
+    regs.gpr = Xbyak::Operand::R12;
+    return regs;
+}
+
+postops_injector_t::~postops_injector_t() = default;
 
 postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
         const post_ops_t &post_ops, const memory_desc_t &dst_md,
         const bcast_set_t &bcast_set, const Xbyak::Reg64 &param_reg,
         int rhs_arg_offset, dim_t dst_orig_off, int tail_elems,
-        int eltwise_opmask, int binary_tail_opmask)
+        int eltwise_opmask, int binary_tail_opmask,
+        const fp8_cvt_regs_t &fp8_regs)
     : is_zmm_(is_superset(isa, avx512_core))
     , tail_elems_(tail_elems)
     , binary_tail_opmask_(binary_tail_opmask) {
@@ -72,7 +118,25 @@ postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
     static constexpr bool preserve_vmm = true;
     static constexpr bool use_exact_tail_scalar_bcast = false;
 
-    const size_t rhs_dt_helper_vmm_idx = 0;
+    // The fp8 converters of the right-hand sides the chain reads. Each takes
+    // its scratch from `fp8_regs` (see `fp8_cvt_regs_t`).
+    int rhs_dt_helper_vmm_idx = 0;
+    if (needs_fp8_cvt(post_ops)) {
+        JIT_ASSERT(is_zmm_ && fp8_regs.vecs.size() == 6 && fp8_regs.opmask >= 0
+                && fp8_regs.gpr >= 0
+                && "postops_injector: fp8 right-hand side needs its registers");
+        const auto &v = fp8_regs.vecs;
+        const Xbyak::Reg64 gpr(fp8_regs.gpr);
+        if (has_binary_rhs_of(post_ops, data_type::f8_e5m2))
+            f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(&gen,
+                    Xbyak::Xmm(v[0]), Xbyak::Xmm(v[1]), Xbyak::Xmm(v[2]),
+                    Xbyak::Opmask(fp8_regs.opmask), gpr);
+        if (has_binary_rhs_of(post_ops, data_type::f8_e4m3))
+            f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(&gen,
+                    Xbyak::Xmm(v[0]), Xbyak::Xmm(v[1]), Xbyak::Xmm(v[2]),
+                    Xbyak::Xmm(v[3]), Xbyak::Xmm(v[4]), gpr);
+        rhs_dt_helper_vmm_idx = v[5];
+    }
 
     // Right-hand-side argument config, used by binary post-ops and, for the
     // load path only, by sum. Eltwise does not use it.
@@ -86,7 +150,8 @@ postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
             preserve_vmm, rhs_arg_offset, dst_orig_off, dst_d, tail_elems,
             Xbyak::Opmask(binary_tail_opmask), use_exact_tail_scalar_bcast};
 
-    const binary_injector::static_params_t bsp {param_reg, bcast_set, rhs_sp};
+    const binary_injector::static_params_t bsp {param_reg, bcast_set, rhs_sp,
+            f8_e5m2_cvt_.get(), f8_e4m3_cvt_.get()};
 
     // Everything but the mask keeps the eltwise injector's own defaults. The
     // mask has to be named because its default, `k1`, is a register the IR
@@ -166,13 +231,16 @@ void postops_injector_t::inject(const std::vector<int> &acc_phys, int base_phys,
 
 void postops_injector_t::maybe_prepare_table() {
     // The constant table is needed for eltwise and sum.
-    if (!with_eltwise_ && !with_sum_) return;
+    if (with_eltwise_ || with_sum_) {
+        const bool generate = true;
+        if (is_zmm_)
+            cast2tgt<Xbyak::Zmm>(injector_.get())->prepare_table(generate);
+        else
+            cast2tgt<Xbyak::Ymm>(injector_.get())->prepare_table(generate);
+    }
 
-    const bool generate = true;
-    if (is_zmm_)
-        cast2tgt<Xbyak::Zmm>(injector_.get())->prepare_table(generate);
-    else
-        cast2tgt<Xbyak::Ymm>(injector_.get())->prepare_table(generate);
+    if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
+    if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
 }
 
 } // namespace ir

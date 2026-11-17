@@ -91,11 +91,24 @@ else()
 endif()
 message(STATUS "Enabled GeMM kernels ISA: ${ONEDNN_ENABLE_GEMM_KERNELS_ISA}")
 
-# When certain primitives or primitive ISA are switched off, some functions may
-# become unused which is expected. Switch off warning for unused functions in
-# such cases.
+# When certain primitives, primitive ISA or workload are switched off, some
+# functions may become unused which is expected. Switch off warning for unused
+# functions in such cases. Implementations filtered out of the implementation
+# lists are still compiled but no longer referenced, let the linker drop them.
 if (NOT DNNL_ENABLE_PRIMITIVE STREQUAL "ALL" OR
         NOT DNNL_ENABLE_PRIMITIVE_CPU_ISA STREQUAL "ALL" OR
-        NOT DNNL_ENABLE_PRIMITIVE_GPU_ISA STREQUAL "ALL")
-    append(CMAKE_CCXX_FLAGS "-Wno-error=unused-function -Wno-unused-function")
+        NOT DNNL_ENABLE_PRIMITIVE_GPU_ISA STREQUAL "ALL" OR
+        NOT DNNL_ENABLE_WORKLOAD STREQUAL "TRAINING")
+    # CMAKE_CCXX_FLAGS is already applied by platform.cmake at this point.
+    if(NOT MSVC)
+        append(CMAKE_C_FLAGS "-Wno-error=unused-function -Wno-unused-function")
+        append(CMAKE_CXX_FLAGS
+                "-Wno-error=unused-function -Wno-unused-function")
+    endif()
+    if(NOT WIN32 AND NOT APPLE)
+        append(CMAKE_C_FLAGS "-ffunction-sections -fdata-sections")
+        append(CMAKE_CXX_FLAGS "-ffunction-sections -fdata-sections")
+        append(CMAKE_SHARED_LINKER_FLAGS "-Wl,--gc-sections")
+        append(CMAKE_EXE_LINKER_FLAGS "-Wl,--gc-sections")
+    endif()
 endif()

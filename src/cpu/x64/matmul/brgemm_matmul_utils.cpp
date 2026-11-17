@@ -25,8 +25,8 @@
 #include "cpu/x64/brgemm/brgemm_utils.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/matmul/amx_blocking_heuristics.hpp"
+#include "cpu/x64/matmul/brgemm_matmul_per_mn_comp.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
-#include "cpu/x64/matmul/jit_brgemm_matmul_per_mn_comp.hpp"
 #include "cpu/x64/matmul/postops_estimator.hpp"
 #include "cpu/x64/platform.hpp"
 #include "oneapi/dnnl/dnnl_debug.h"
@@ -2269,6 +2269,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     } else if (bgmmc.with_int8_grouped_quantization) {
 
         bgmmc.wei_dt = one_of(bgmmc.wei_dt, s8, u8) ? bgmmc.wei_dt : s8;
+        // Widened int4 weights fit the unsigned operand of the brgemm (s4
+        // after a +8 shift), so an s8 src needs no shift and no compensation.
+        bgmmc.int8_b_as_unsigned
+                = bgmmc.s8s8_compensation_required && bgmmc.is_int4_weights;
+        if (bgmmc.int8_b_as_unsigned) bgmmc.s8s8_compensation_required = false;
         const bool has_src_zp
                 = !attr.zero_points_.get(DNNL_ARG_SRC).has_default_values();
         bgmmc.src_dt = one_of(bgmmc.src_dt, s8, u8)   ? bgmmc.src_dt
@@ -2898,6 +2903,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
+    VCONDCHECK_BG(IMPLICATION(bgmmc.with_per_mn_compensation,
+                          brgemm_matmul_per_mn_comp_t::init_conf(bgmmc)),
+            VERBOSE_UNSUPPORTED_FEATURE, "per-(M, N) compensation");
+
     const bool need_store_prfw = bgmmc.N <= 14528
             && ((bgmmc.M <= 768 && bgmmc.K <= 128)
                     || bgmmc.K * bgmmc.M <= 49152);
@@ -3312,41 +3321,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.with_per_mn_compensation = bgmmc.with_int8_grouped_quantization
             && (bgmmc.has_zero_point_a || bgmmc.has_zero_point_b
-                    || bgmmc.s8s8_compensation_required);
-    const bool per_k_scales_in_kernel = bgmmc.is_src_scale_per_k
-            || (bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b);
-    bgmmc.per_mn_comp_via_brgemm = bgmmc.with_per_mn_compensation
-            && per_k_scales_in_kernel && bgmmc.use_buffer_c
-            && !bgmmc.s8s8_compensation_required && !bgmmc.is_c_buf_dst_dt
-            && !bgmmc.is_gemv && !bgmmc.is_runtime_M && !bgmmc.is_runtime_N
-            && !bgmmc.is_runtime_K && !is_runtime_value(bgmmc.batch)
-            && is_superset(bgmmc.isa, avx512_core)
-            && (bgmmc.is_amx || bgmmc.N_blk <= bgmmc.LDC)
-            // Row sums of A are read from plain, K-contiguous src.
-            && !bgmmc.transposed_A
-            && bgmmc.A_strides[0] == bgmmc.a_dt_sz
-            // Blocked weights: only int4 (no md compensation). The src zp term
-            // reads column sums of B and needs plain, N-contiguous weights.
-            && IMPLICATION(bgmmc.blocked_B, bgmmc.is_int4_weights)
-            && IMPLICATION(bgmmc.has_zero_point_a,
-                    !bgmmc.blocked_B && !bgmmc.transposed_B
-                            && bgmmc.B_strides[0] == bgmmc.b_dt_sz);
-    if (bgmmc.per_mn_comp_via_brgemm) {
-        dim_t gsize = 0;
-        auto fold = [&](bool active, dim_t g) {
-            if (active && g > 0) gsize = gsize ? math::gcd(gsize, g) : g;
-        };
-        fold(bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b,
-                bgmmc.wei_scales_k_gsize);
-        fold(bgmmc.is_wei_zp_per_k, bgmmc.wei_zp_k_gsize);
-        bgmmc.per_mn_comp_wei_gsize = gsize ? gsize : bgmmc.K;
-        bgmmc.per_mn_comp_wei_rows = bgmmc.has_zero_point_b
-                ? div_up(bgmmc.K, bgmmc.per_mn_comp_wei_gsize)
-                : 0;
-        bgmmc.per_mn_comp_K = bgmmc.per_mn_comp_wei_rows
-                + (bgmmc.has_zero_point_a ? bgmmc.num_K_blocks + 1 : 0);
-        bgmmc.per_mn_comp_ldv = bgmmc.N + bgmmc.LDC;
-    }
+                    || bgmmc.s8s8_compensation_required
+                    || bgmmc.int8_b_shift() != 0);
     bgmmc.post_ops_applicable = one_of(true, bgmmc.with_sum, bgmmc.with_bias,
             bgmmc.with_src_scales,
             bgmmc.with_wei_scales && !bgmmc.apply_scales_in_buffer_b,
@@ -3429,23 +3405,8 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
                 bgmmc.nthr * bgmmc.zp_b_comp_elems_per_thr,
                 types::data_type_size(s32));
 
-    if (bgmmc.per_mn_comp_via_brgemm) {
-        scratchpad.book(key_brgemm_primitive_per_mn_comp_u,
-                static_cast<size_t>(
-                        bgmmc.batch * bgmmc.M * bgmmc.per_mn_comp_K),
-                types::data_type_size(f32));
-        scratchpad.book(key_brgemm_primitive_per_mn_comp_v,
-                static_cast<size_t>(bgmmc.batch * bgmmc.per_mn_comp_K
-                        * bgmmc.per_mn_comp_ldv),
-                types::data_type_size(f32));
-    } else if (bgmmc.with_per_mn_compensation) {
-        // f32 tile that mirrors buffer_c's stripe layout
-        const size_t per_thr_elems = static_cast<size_t>(bgmmc.M_blk)
-                * static_cast<size_t>(rnd_up(bgmmc.N_blk, bgmmc.LDC));
-        scratchpad.book(key_brgemm_primitive_per_mn_comp,
-                static_cast<size_t>(bgmmc.nthr) * per_thr_elems,
-                types::data_type_size(f32));
-    }
+    if (bgmmc.with_per_mn_compensation)
+        brgemm_matmul_per_mn_comp_t::book_scratchpad(scratchpad, bgmmc);
 
     if (isa_has_tile_accumulators(bgmmc.isa))
         scratchpad.book(key_conv_amx_tile_buffer,

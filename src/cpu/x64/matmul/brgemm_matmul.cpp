@@ -352,33 +352,9 @@ status_t brgemm_matmul_base_t::pd_t::init(
                              bgmmc_.N % 8 == 0),
             "unsupported configuration");
 
-    // Layout / ISA constraints of the per-(M, N) compensation are owned by
-    // its JIT kernel.
-    if (bgmmc_.with_per_mn_compensation) {
-        VDISPATCH_MATMUL(bgmmc_.per_mn_comp_via_brgemm
-                        || per_mn_comp_kernel_t::is_applicable(&bgmmc_)
-                                == status::success,
-                VERBOSE_UNSUPPORTED_FEATURE,
-                "per-mn-comp jit kernel not applicable");
-    }
-
-    if (bgmmc_.per_mn_comp_via_brgemm) {
-        // C(M x LDC stripe) = -U(M x K') * V(K' x N) initializes buffer C.
-        for (int i_M = 0; i_M < 2; i_M++) {
-            const dim_t vM = i_M ? bgmmc_.M_tail : bgmmc_.M_blk;
-            if (vM == 0) continue;
-            brgemm_desc_t &brg = per_mn_comp_brg_descs_[i_M];
-            CHECK(brgemm_desc_init(&brg, avx512_core, brgemm_addr, f32, f32,
-                    false, false, brgemm_row_major, -1.0f, 0.0f,
-                    bgmmc_.per_mn_comp_K, bgmmc_.per_mn_comp_ldv, bgmmc_.LDC,
-                    vM, nstl::min(bgmmc_.LDC, bgmmc_.N_blk),
-                    bgmmc_.per_mn_comp_K, nullptr));
-            brgemm_attr_t brgattr;
-            brgattr.max_bs = 1;
-            CHECK(brgemm_desc_set_attr(&brg, brgattr));
-            CHECK(brgemm_desc_finalize(&brg));
-        }
-    }
+    if (bgmmc_.with_per_mn_compensation)
+        CHECK(brgemm_matmul_per_mn_comp_t::init_brgemm_descs(
+                per_mn_comp_brg_descs_, bgmmc_));
 
     const float alpha = 1.0f;
     const float beta = 1.0f;
@@ -405,7 +381,8 @@ status_t brgemm_matmul_base_t::pd_t::init(
 
     const int i_bs_end = bgmmc_.brgemm_batch_tail_size ? 2 : 1;
     const int i_init_start
-            = bgmmc_.K_blk != bgmmc_.K || bgmmc_.per_mn_comp_via_brgemm ? 0 : 1;
+            = bgmmc_.K_blk != bgmmc_.K || bgmmc_.with_per_mn_compensation ? 0
+                                                                          : 1;
     const int i_K_end = bgmmc_.K_tail ? 2 : 1;
 
     for_(int i_bs = 0; i_bs < i_bs_end; i_bs++)
@@ -430,8 +407,10 @@ status_t brgemm_matmul_base_t::pd_t::init(
         brgemm_desc_t &brg = brg_descs_[idx];
         const auto kernel_isa = i_M == max_m_ker_idx - 1 ? backup_isa : isa;
 
-        brg.with_per_mn_compensation = bgmmc_.with_per_mn_compensation
-                && !bgmmc_.per_mn_comp_via_brgemm;
+        brg.int8_b_as_unsigned = bgmmc_.int8_b_as_unsigned;
+        brg.int8_b_shift = bgmmc_.int8_b_shift();
+        // The zero points and the s8 shift are compensated by
+        // brgemm_matmul_per_mn_comp_t.
         if (bgmmc_.with_per_mn_compensation) {
             brg.skip_zp_a_compensation = true;
             brg.skip_zp_b_compensation = true;
@@ -461,6 +440,7 @@ status_t brgemm_matmul_base_t::pd_t::init(
                     brgemm_row_major, alpha, vbeta, LDA, bgmmc_.LDB, bgmmc_.LDC,
                     vM, vN, vK, nullptr));
         }
+        if (bgmmc_.with_per_mn_compensation) brg.req_s8s8_compensation = false;
 
         auto LDD = bgmmc_.LDD;
         brg.skip_wei_scales = bgmmc_.apply_scales_in_buffer_b;
@@ -552,7 +532,7 @@ status_t brgemm_matmul_base_t::pd_t::init(
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
         CHECK(brgemm_desc_finalize(&brg));
 
-        if (bgmmc_.per_mn_comp_via_brgemm && idx == 0)
+        if (bgmmc_.with_per_mn_compensation && idx == 0)
             bgmmc_.per_mn_comp_src_scale_per_call = brg.can_dispatch_uker();
 
         // Narrow dt_c is implemented by the AMX uker only, so every kernel in
@@ -579,7 +559,7 @@ status_t brgemm_matmul_base_t::init(engine_t *engine) {
 
     const int i_bs_end = bgmmc.brgemm_batch_tail_size ? 2 : 1;
     const int i_init_start
-            = bgmmc.K_blk != bgmmc.K || bgmmc.per_mn_comp_via_brgemm ? 0 : 1;
+            = bgmmc.K_blk != bgmmc.K || bgmmc.with_per_mn_compensation ? 0 : 1;
     const int i_K_end = bgmmc.K_tail ? 2 : 1;
 
     for_(int i_bs = 0; i_bs < i_bs_end; i_bs++)
@@ -661,17 +641,9 @@ status_t brgemm_matmul_base_t::init(engine_t *engine) {
         CHECK(sparse_decompress_kernel_->create_kernel());
     }
 
-    if (bgmmc.per_mn_comp_via_brgemm) {
-        for (int i_M = 0; i_M < 2; i_M++) {
-            if ((i_M ? bgmmc.M_tail : bgmmc.M_blk) == 0) continue;
-            brgemm_kernel_t *ker = nullptr;
-            CHECK(brgemm_kernel_create(
-                    &ker, pd()->get_per_mn_comp_brg_desc(i_M)));
-            CHECK(safe_ptr_assign(per_mn_comp_brg_kernels_[i_M], ker));
-        }
-    } else if (bgmmc.with_per_mn_compensation) {
-        CHECK(per_mn_comp_kernel_t::create(per_mn_comp_kernel_, &bgmmc));
-    }
+    if (bgmmc.with_per_mn_compensation)
+        CHECK(per_mn_comp_.create_kernels(
+                pd()->get_per_mn_comp_brg_descs(), bgmmc));
 
     return status::success;
 }
@@ -772,16 +744,11 @@ struct brgemm_matmul_base_t::brg_matmul_exec_ctx_t {
                           key_brgemm_primitive_zp_comp_b)
                 : nullptr;
 
-        per_mn_comp_ptr_ = bgmmc.with_per_mn_compensation
-                        && !bgmmc.per_mn_comp_via_brgemm
-                ? scratchpad.template get<float>(
-                          key_brgemm_primitive_per_mn_comp)
-                : nullptr;
-        per_mn_comp_u_ptr_ = bgmmc.per_mn_comp_via_brgemm
+        per_mn_comp_u_ptr_ = bgmmc.with_per_mn_compensation
                 ? scratchpad.template get<float>(
                           key_brgemm_primitive_per_mn_comp_u)
                 : nullptr;
-        per_mn_comp_v_ptr_ = bgmmc.per_mn_comp_via_brgemm
+        per_mn_comp_v_ptr_ = bgmmc.with_per_mn_compensation
                 ? scratchpad.template get<float>(
                           key_brgemm_primitive_per_mn_comp_v)
                 : nullptr;
@@ -1569,26 +1536,15 @@ struct brgemm_matmul_base_t::brg_matmul_exec_ctx_t {
 
     const void *get_zp_c_ptr() const { return dst_zp_ptr_; }
 
-    // Returns the per-thread f32 tile (M_blk × LDC elements) used by the
-    // per-(M, N) compensation kernel hook. Caller fills it just before the
-    // final K-block brgemm call.
-    float *get_per_mn_comp_ptr(int ithr) const {
-        if (!bgmmc_.with_per_mn_compensation) return nullptr;
-        // Per-thread tile mirrors buffer_c's stripe layout for AMX:
-        // ceil(N_blk / LDC) stripes of M_blk × LDC floats.
-        const size_t per_thr_elems = static_cast<size_t>(bgmmc_.M_blk)
-                * static_cast<size_t>(rnd_up(bgmmc_.N_blk, bgmmc_.LDC));
-        return per_mn_comp_ptr_ + ithr * per_thr_elems;
-    }
-
-    // U is [batch][M][K'], V is [batch][K'][ldv]; K' = rank * (calls).
+    // U is [batch][M][K'] and V is [batch][K'][ldv] of the per-(M, N)
+    // compensation, see brgemm_matmul_per_mn_comp_t.
     float *get_per_mn_comp_u_ptr(dim_t b_idx, dim_t m) const {
-        return per_mn_comp_u_ptr_
-                + (b_idx * bgmmc_.M + m) * bgmmc_.per_mn_comp_K;
+        return brgemm_matmul_per_mn_comp_t::U_ptr(
+                bgmmc_, per_mn_comp_u_ptr_, b_idx, m);
     }
     float *get_per_mn_comp_v_ptr(dim_t b_idx, dim_t kk) const {
-        return per_mn_comp_v_ptr_
-                + (b_idx * bgmmc_.per_mn_comp_K + kk) * bgmmc_.per_mn_comp_ldv;
+        return brgemm_matmul_per_mn_comp_t::V_ptr(
+                bgmmc_, per_mn_comp_v_ptr_, b_idx, kk);
     }
 
     // K range of the main (or K-tail) brgemm call of K block k_blk_idx.
@@ -1962,8 +1918,7 @@ private:
     int32_t *zero_point_a_compensations_ptr_;
     int32_t *zero_point_b_compensations_ptr_;
     int32_t *reorder_zp_a_comp_ptr_;
-    // Per-thread f32 tile (size M_blk × LDC)
-    float *per_mn_comp_ptr_;
+    // U and V factors of the per-(M, N) compensation
     float *per_mn_comp_u_ptr_;
     float *per_mn_comp_v_ptr_;
 
@@ -2101,7 +2056,7 @@ status_t brgemm_matmul_base_t::execute_body(const exec_ctx_t &ctx) const {
     auto brgmm_ctx_ptr
             = std::make_shared<brg_matmul_exec_ctx_t>(ctx, pd(), helper);
 
-    prepare_per_mn_comp_brgemm(*brgmm_ctx_ptr);
+    prepare_per_mn_comp(*brgmm_ctx_ptr);
 
     const int num_threads
             = brgmm_ctx_ptr->get_num_threads_for_parallelization();
@@ -2274,22 +2229,16 @@ void brgemm_matmul_base_t::compute_kernel(
 
     const dim_t n = brgmm_ctx.get_N_idx(n_blk_idx, true);
 
-    if (bgmmc.per_mn_comp_via_brgemm && do_init && k_blk_idx == 0) {
+    if (bgmmc.with_per_mn_compensation && do_init && k_blk_idx == 0) {
         // Buffer C starts from the whole-K compensation of this tile, so the
         // int8 brgemm calls accumulate on top of it.
-        const int i_M = brgmm_ctx.get_M_kernel_idx(m_blk_idx);
-        const dim_t m = brgmm_ctx.get_M_idx(m_blk_idx, true);
-        char *buf_C = brgmm_ctx.get_buf_C_ptr(ithr, m_blk_idx, n_blk_idx);
-        brgemm_batch_element_t be;
-        be.ptr.A = brgmm_ctx.get_per_mn_comp_u_ptr(b_idx, m);
-        const dim_t n_size = brgmm_ctx.get_N_kernel_size(n_blk_idx);
-        for (dim_t s = 0; s * bgmmc.LDC < n_size; ++s) {
-            be.ptr.B = brgmm_ctx.get_per_mn_comp_v_ptr(b_idx, 0) + n
-                    + s * bgmmc.LDC;
-            brgemm_kernel_execute(per_mn_comp_brg_kernels_[i_M].get(), 1, &be,
-                    buf_C + s * bgmmc.M_blk * bgmmc.LDC * bgmmc.acc_dt_sz,
-                    nullptr);
-        }
+        per_mn_comp_.init_buffer_c(bgmmc,
+                brgmm_ctx.get_per_mn_comp_u_ptr(
+                        b_idx, brgmm_ctx.get_M_idx(m_blk_idx, true)),
+                brgmm_ctx.get_per_mn_comp_v_ptr(b_idx, 0),
+                brgmm_ctx.get_M_kernel_idx(m_blk_idx), n,
+                brgmm_ctx.get_N_kernel_size(n_blk_idx),
+                brgmm_ctx.get_buf_C_ptr(ithr, m_blk_idx, n_blk_idx));
         do_init = false;
     }
 
@@ -2339,37 +2288,21 @@ void brgemm_matmul_base_t::compute_kernel(
     };
 
     // Execute the kernel for one K-block. Pure accumulation into C goes through
-    // the plain execute API. Accumulation-time scales / grouped s8s8
-    // compensation and the final-block epilogue go through the post-ops API.
-    // The `do_only_*` flags map to {do_post_ops, do_apply_comp} as {0,1} (comp
-    // only) and {1,1} (epilogue).
+    // the plain execute API. Accumulation-time scales and the final-block
+    // epilogue go through the post-ops API. The `do_only_*` flags map to
+    // {do_post_ops, do_apply_comp} as {0,1} (comp only) and {1,1} (epilogue).
     auto execute_brgemm = [&](const brgemm_kernel_t *kernel, const int brg_idx,
-                                  const dim_t bs, const bool need_postops,
-                                  const bool is_tail) {
+                                  const dim_t bs, const bool need_postops) {
         const bool per_k_scales = bgmmc.is_src_scale_per_k
                 || (bgmmc.is_wei_scale_per_k
                         && !bgmmc.apply_scales_in_buffer_b);
         const auto k = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size;
         const auto m = brgmm_ctx.get_M_idx(m_blk_idx, true);
 
-        // Symmetric src/wei zp + 128-shift compensation tile for this
-        // brgemm K-block call
-        const bool per_mn_tile = bgmmc.with_per_mn_compensation
-                && !bgmmc.per_mn_comp_via_brgemm;
-        if (per_mn_tile) {
-            fill_per_mn_compensation(brgmm_ctx, ithr, b_idx, m_blk_idx,
-                    n_blk_idx, A_data_batch_ptr, B_data_batch_ptr,
-                    brgmm_ctx.get_M_kernel_size(m_blk_idx),
-                    brgmm_ctx.get_N_kernel_size(n_blk_idx), k_blk_idx, is_tail);
-        }
-        const void *per_mn_comp = per_mn_tile
-                ? static_cast<const void *>(brgmm_ctx.get_per_mn_comp_ptr(ithr))
-                : nullptr;
-
         if (!need_postops) {
             // Intermediate K-block: plain accumulation unless per-K scales
-            // or per-MN compensation must be applied during accumulation.
-            if (!per_k_scales && !per_mn_tile) {
+            // must be applied during accumulation.
+            if (!per_k_scales) {
                 void *scratch
                         = is_brg_amx(brg_idx) ? (void *)wsp_tile : nullptr;
                 brgemm_kernel_execute(kernel, bs, addr_batch, (void *)ptr_C,
@@ -2395,8 +2328,7 @@ void brgemm_matmul_base_t::compute_kernel(
                     /*skip_accumulation=*/false, /*zp_a_val=*/1,
                     /*do_only_comp=*/false,
                     /*do_only_zp_a_val=*/true, src_scales, wei_scales,
-                    /*dst_scales=*/nullptr, /*a_zp_values=*/nullptr,
-                    /*per_mn_compensation=*/per_mn_comp};
+                    /*dst_scales=*/nullptr};
             brgemm_kernel_execute_postops(kernel, bs, addr_batch, (void *)ptr_C,
                     (void *)ptr_D, post_ops_data, scratch, &leading_dimensions);
             return;
@@ -2434,8 +2366,7 @@ void brgemm_matmul_base_t::compute_kernel(
                 /*c_zp_values=*/brgmm_ctx.get_zp_c_ptr(),
                 /*skip_accumulation=*/false, /*zp_a_val=*/1,
                 /*do_only_comp=*/false, /*do_only_zp_a_val=*/false, src_scales,
-                wei_scales, dst_scales, /*a_zp_values=*/nullptr,
-                /*per_mn_compensation=*/per_mn_comp};
+                wei_scales, dst_scales};
 
         brgemm_kernel_execute_postops(kernel, bs, addr_batch, (void *)ptr_C,
                 (void *)ptr_D, post_ops_data, scratch, &leading_dimensions);
@@ -2452,8 +2383,7 @@ void brgemm_matmul_base_t::compute_kernel(
                 n_blk_idx);
         const bool need_postops
                 = post_ops_applicable && is_last_K_blk && !is_K_tail;
-        execute_brgemm(brg_kernel, brg_ker_idx, gemm_batch, need_postops,
-                /*is_tail=*/false);
+        execute_brgemm(brg_kernel, brg_ker_idx, gemm_batch, need_postops);
 
         maybe_reduce_A(brgmm_ctx, ithr, gemm_batch, m_blk_idx, n_blk_idx,
                 k_blk_idx, do_init, is_K_tail, /* do_K_tail */ false);
@@ -2474,8 +2404,8 @@ void brgemm_matmul_base_t::compute_kernel(
                 is_brg_amx(brg_ker_idx), prev_ker_idx, brg_ker_idx);
         const auto brg_kernel_k_tail = brg_kernels_[brg_ker_idx].get();
 
-        execute_brgemm(brg_kernel_k_tail, brg_ker_idx, /*bs=*/1,
-                post_ops_applicable, /*is_tail=*/true);
+        execute_brgemm(
+                brg_kernel_k_tail, brg_ker_idx, /*bs=*/1, post_ops_applicable);
 
         maybe_reduce_A(brgmm_ctx, ithr, gemm_batch, m_blk_idx, n_blk_idx,
                 k_blk_idx, do_init, is_K_tail,
@@ -2486,255 +2416,34 @@ void brgemm_matmul_base_t::compute_kernel(
             ithr, b_idx, m_blk_idx, n_blk_idx);
 }
 
-void brgemm_matmul_base_t::prepare_per_mn_comp_brgemm(
+void brgemm_matmul_base_t::prepare_per_mn_comp(
         const brg_matmul_exec_ctx_t &brgmm_ctx) const {
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    if (!bgmmc.per_mn_comp_via_brgemm) return;
+    if (!bgmmc.with_per_mn_compensation) return;
 
-    // For a brgemm K call c over k in [k0, k0 + len), with T = sum_k A[m][k],
-    // S = sum_k B[k][n] and the scales the brgemm applies in that call (sa per
-    // row, sb per column, sb constant within a wei group g):
-    //   U[m][g]        = sum_{c in g} sa * (T[m] - len * za[m]),
-    //   V[g][n]        = sb * zb[n],
-    //   U[m][G + c]    = sa * za[m],      V[G + c][n] = sb * S[n].
-    const dim_t num_calls = bgmmc.num_K_blocks + 1;
-    const dim_t wei_rows = bgmmc.per_mn_comp_wei_rows;
-    const dim_t wei_gsize = bgmmc.per_mn_comp_wei_gsize;
-    const bool src_signed = bgmmc.orig_src_dt == data_type::s8;
-    const bool sa_per_call = bgmmc.is_src_scale_per_k;
-    const bool sb_per_call
-            = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b;
-
-    auto call_range = [&](dim_t c, dim_t &k0, dim_t &len) {
+    brgemm_matmul_per_mn_comp_t::ctx_t ctx;
+    ctx.A_batch = [&](dim_t b) { return brgmm_ctx.get_data_A_batch_ptr(b); };
+    ctx.B_batch = [&](dim_t b) { return brgmm_ctx.get_data_B_batch_ptr(b); };
+    ctx.call_range = [&](dim_t c, dim_t &k0, dim_t &len) {
         const bool is_tail = c == bgmmc.num_K_blocks;
         brgmm_ctx.get_k_call_range(is_tail ? c - 1 : c, is_tail, k0, len);
     };
-
-    parallel_nd(bgmmc.batch, bgmmc.M, [&](dim_t b, dim_t m) {
-        const char *row
-                = brgmm_ctx.get_data_A_batch_ptr(b) + m * bgmmc.A_strides[1];
-        float *u = brgmm_ctx.get_per_mn_comp_u_ptr(b, m);
-        std::fill_n(u, wei_rows, 0.f);
-        for (dim_t c = 0; c < num_calls; ++c) {
-            dim_t k0 = 0, len = 0;
-            call_range(c, k0, len);
-            int32_t t = 0;
-            for (dim_t k = k0; k < k0 + len; ++k)
-                t += src_signed ? static_cast<int8_t>(row[k])
-                                : static_cast<uint8_t>(row[k]);
-            float za = 0.f;
-            if (bgmmc.has_zero_point_a && len > 0) {
-                int nibble = 0;
-                const void *zp = brgmm_ctx.get_src_zp_ptr(b, k0, m, &nibble);
-                za = io::load_float_value(bgmmc.src_zp_dt, zp, nibble);
-            }
-            const float sa = sa_per_call && len > 0
-                    ? io::load_float_value(bgmmc.src_scales_dt,
-                              brgmm_ctx.get_src_scales_ptr(b, k0, m), 0)
-                    : 1.f;
-            if (bgmmc.has_zero_point_b && len > 0)
-                u[k0 / wei_gsize] += sa * (static_cast<float>(t) - len * za);
-            if (bgmmc.has_zero_point_a) u[wei_rows + c] = sa * za;
-        }
-    });
-
-    const float src_common_scale = sb_per_call && bgmmc.with_src_scales
-                    && !bgmmc.is_src_scale_per_k
-                    && bgmmc.per_mn_comp_src_scale_per_call
-            ? io::load_float_value(
-                      bgmmc.src_scales_dt, brgmm_ctx.get_src_scales_ptr(0), 0)
-            : 1.f;
-    const dim_t ldv = bgmmc.per_mn_comp_ldv;
-    // Converts len values of a per-N (or broadcast) row to f32.
-    auto load_row = [](data_type_t dt, const void *base, dim_t idx0, bool per_n,
-                            dim_t len, float *dst) {
-        using namespace data_type;
-        if (!per_n) {
-            std::fill_n(dst, len, io::load_float_value(dt, base, idx0));
-        } else if (dt == f32) {
-            const float *p = static_cast<const float *>(base) + idx0;
-            std::copy(p, p + len, dst);
-        } else if (utils::one_of(dt, u4, s4)) {
-            const auto *p = static_cast<const uint8_t *>(base);
-            for (dim_t i = 0; i < len; ++i) {
-                const dim_t idx = idx0 + i;
-                const int v = (p[idx >> 1] >> ((idx & 1) * 4)) & 0xF;
-                dst[i] = static_cast<float>(dt == s4 ? (v ^ 8) - 8 : v);
-            }
-        } else if (utils::one_of(dt, u8, s8)) {
-            const auto *p = static_cast<const uint8_t *>(base) + idx0;
-            for (dim_t i = 0; i < len; ++i)
-                dst[i] = dt == s8 ? static_cast<int8_t>(p[i]) : p[i];
-        } else {
-            for (dim_t i = 0; i < len; ++i)
-                dst[i] = io::load_float_value(dt, base, idx0 + i);
-        }
+    ctx.src_scales = [&](dim_t b, dim_t k, dim_t m) {
+        return brgmm_ctx.get_src_scales_ptr(b, k, m);
     };
-
-    constexpr dim_t n_chunk = 512;
-    const dim_t num_n_chunks = utils::div_up(ldv, n_chunk);
-    parallel_nd(bgmmc.batch, bgmmc.per_mn_comp_K, num_n_chunks,
-            [&](dim_t b, dim_t r, dim_t nc) {
-        const bool is_wei_row = r < wei_rows;
-        dim_t k0 = r * wei_gsize, len = 0;
-        if (!is_wei_row) call_range(r - wei_rows, k0, len);
-        const dim_t n0 = nc * n_chunk;
-        const dim_t n_len = nstl::min(n_chunk, ldv - n0);
-        float *v = brgmm_ctx.get_per_mn_comp_v_ptr(b, r) + n0;
-        std::fill_n(v, n_len, 0.f);
-        const dim_t nv = nstl::min(n_len, bgmmc.N - n0);
-        if ((!is_wei_row && len == 0) || nv <= 0) return;
-
-        float sb[n_chunk];
-        if (sb_per_call) {
-            load_row(bgmmc.wei_scales_dt, brgmm_ctx.get_wei_scales_ptr(b, k0),
-                    bgmmc.is_wei_scale_per_n ? n0 : 0, bgmmc.is_wei_scale_per_n,
-                    nv, sb);
-            for (dim_t i = 0; i < nv; ++i)
-                sb[i] *= src_common_scale;
-        } else {
-            std::fill_n(sb, nv, 1.f);
-        }
-        if (is_wei_row) {
-            load_row(bgmmc.wei_zp_dt, brgmm_ctx.get_wei_zp_base(),
-                    brgmm_ctx.get_wei_zp_elem_idx(b, k0, n0),
-                    !bgmmc.is_wei_zp_common && bgmmc.is_wei_zp_per_n, nv, v);
-        } else {
-            const char *B = brgmm_ctx.get_data_B_batch_ptr(b);
-            float row[n_chunk];
-            for (dim_t k = k0; k < k0 + len; ++k) {
-                load_row(bgmmc.orig_wei_dt, B, k * bgmmc.B_strides[1] + n0,
-                        true, nv, row);
-                for (dim_t i = 0; i < nv; ++i)
-                    v[i] += row[i];
-            }
-        }
-        for (dim_t i = 0; i < nv; ++i)
-            v[i] *= sb[i];
-    });
-}
-
-void brgemm_matmul_base_t::fill_per_mn_compensation(
-        const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr, dim_t b_idx,
-        dim_t m_blk_idx, dim_t n_blk_idx, const char *A_data_batch_ptr,
-        const char *B_data_batch_ptr, dim_t m_kernel_size, dim_t n_kernel_size,
-        dim_t k_blk_idx, bool is_tail) const {
-    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    if (!bgmmc.with_per_mn_compensation) return;
-    assert(per_mn_comp_kernel_ != nullptr);
-
-    const int batch_size = brgmm_ctx.get_brgemm_batch_size(k_blk_idx);
-    const dim_t k_start = static_cast<dim_t>(k_blk_idx) * bgmmc.K_blk
-                    * bgmmc.brgemm_batch_size
-            + (is_tail ? batch_size * bgmmc.K_blk : dim_t {0});
-    const dim_t k_len
-            = nstl::min(is_tail ? bgmmc.K_tail : batch_size * bgmmc.K_blk,
-                    bgmmc.K - k_start);
-
-    const dim_t m = brgmm_ctx.get_M_idx(m_blk_idx, true);
-    const dim_t n = brgmm_ctx.get_N_idx(n_blk_idx, true);
-
-    // Resolve per-N / per-K-group base pointers via existing getters.
-    // For sub-byte src ZP (s4/u4), get_src_zp_ptr byte-aligns the pointer
-    // and returns the nibble index so the kernel picks the right nibble.
-    int src_zp_nibble_idx = 0;
-    const void *src_zp_ptr
-            = brgmm_ctx.get_src_zp_ptr(b_idx, k_start, m, &src_zp_nibble_idx);
-    const void *wei_zp_ptr = brgmm_ctx.get_wei_zp_ptr(b_idx, k_start, n);
-
-    per_mn_comp_kernel_t::ctx_t kctx;
-    kctx.src_batch_ptr = A_data_batch_ptr + k_start * bgmmc.A_strides[0];
-    // Plain weights at (k_start, n = 0): the kernel applies the N offset.
-    kctx.wei_batch_ptr
-            = brgmm_ctx.get_data_B_kn_ptr(B_data_batch_ptr, k_start, 0);
-    kctx.src_zp_ptr = src_zp_ptr;
-    kctx.src_zp_nibble_idx = src_zp_nibble_idx;
-    kctx.wei_zp_ptr = wei_zp_ptr;
-    kctx.delta_ptr = brgmm_ctx.get_per_mn_comp_ptr(ithr);
-    kctx.m_base = m;
-    kctx.n_base = n;
-    kctx.M_blk = m_kernel_size;
-    kctx.N_blk = n_kernel_size;
-    kctx.k_len = k_len;
-
-    // Zero the per-thread delta tile to guard the brgemm consumer
-    // against reading unwritten rows when bd_block > M_blk (the AMX
-    // tile iterates over bd_block, not M_blk).
-    const size_t per_thr_elems = static_cast<size_t>(bgmmc.M_blk)
-            * static_cast<size_t>(rnd_up(bgmmc.N_blk, bgmmc.LDC));
-    std::memset(kctx.delta_ptr, 0, per_thr_elems * sizeof(float));
-
-    const bool has_src_zp
-            = bgmmc.has_zero_point_a && kctx.src_zp_ptr != nullptr;
-    const bool has_wei_zp
-            = bgmmc.has_zero_point_b && kctx.wei_zp_ptr != nullptr;
-    const bool wei_zp_per_n = has_wei_zp && bgmmc.is_wei_zp_per_n;
-    const bool src_zp_per_m = has_src_zp && bgmmc.is_src_zp_per_m;
-    const bool src_zp_per_k = has_src_zp && bgmmc.is_src_zp_per_k;
-    const dim_t src_zp_m_stride_elems = src_zp_per_m
-            ? (src_zp_per_k ? utils::div_up(bgmmc.K, bgmmc.src_zp_k_gsize)
-                            : dim_t {1})
-            : dim_t {0};
-    const bool wei_zp_scalar = has_wei_zp && !wei_zp_per_n;
-    const float wei_zp_f32 = wei_zp_scalar
-            ? io::load_float_value(bgmmc.wei_zp_dt, kctx.wei_zp_ptr, 0)
-            : 0.0f;
-
-    const dim_t num_stripes = utils::div_up(kctx.N_blk, bgmmc.LDC);
-    const dim_t m_step = src_zp_per_m ? dim_t {1} : kctx.M_blk;
-
-    for (dim_t s = 0; s < num_stripes; ++s) {
-        const dim_t n_origin = s * bgmmc.LDC;
-        const dim_t stripe_w = nstl::min(bgmmc.LDC, kctx.N_blk - n_origin);
-        float *const delta_stripe
-                = kctx.delta_ptr + s * bgmmc.M_blk * bgmmc.LDC;
-        // Blocked weights are addressed from the stripe start, see
-        // per_mn_comp_kernel_t::ctx_t::wei_n_blk_off. `kctx.wei_batch_ptr`
-        // is at (k_start, 0); the stripe adds whole weights N blocks and
-        // columns of VNNI row groups.
-        const dim_t stripe_n = kctx.n_base + n_origin;
-        const void *stripe_wei_ptr = kctx.wei_batch_ptr;
-        dim_t stripe_wei_n_blk_off = 0;
-        if (bgmmc.blocked_B) {
-            const auto n_blocking = std::div(stripe_n, dim_t(bgmmc.wei_n_blk));
-            const dim_t off_elems = n_blocking.quot * bgmmc.B_strides[0]
-                    + n_blocking.rem
-                            * static_cast<dim_t>(
-                                    data_type_vnni_granularity(bgmmc.wei_dt));
-            stripe_wei_ptr = static_cast<const char *>(kctx.wei_batch_ptr)
-                    + types::elements_to_bytes(bgmmc.orig_wei_dt, off_elems);
-            stripe_wei_n_blk_off = n_blocking.rem;
-        }
-
-        for (dim_t m_off = 0; m_off < kctx.M_blk; m_off += m_step) {
-            per_mn_comp_kernel_t::ctx_t call_ctx = kctx;
-            const dim_t rows = nstl::min(m_step, kctx.M_blk - m_off);
-
-            call_ctx.m_base = kctx.m_base + m_off;
-            call_ctx.n_base = stripe_n;
-            call_ctx.wei_batch_ptr = stripe_wei_ptr;
-            call_ctx.wei_n_blk_off = stripe_wei_n_blk_off;
-            call_ctx.M_blk = rows;
-            call_ctx.delta_ptr = delta_stripe + m_off * bgmmc.LDC;
-            call_ctx.stripe_w = stripe_w;
-            call_ctx.wei_zp_ptr = wei_zp_per_n
-                    ? reinterpret_cast<const uint8_t *>(kctx.wei_zp_ptr)
-                            + types::elements_to_bytes(
-                                    bgmmc.wei_zp_dt, n_origin)
-                    : nullptr;
-            call_ctx.wei_zp_f32 = wei_zp_f32;
-            call_ctx.src_zp_f32 = has_src_zp
-                    ? io::load_float_value(bgmmc.src_zp_dt, kctx.src_zp_ptr,
-                              kctx.src_zp_nibble_idx
-                                      + m_off * src_zp_m_stride_elems)
-                    : 0.0f;
-            call_ctx.g_sz_f32 = (has_src_zp && has_wei_zp)
-                    ? call_ctx.src_zp_f32 * static_cast<float>(k_len)
-                    : 0.0f;
-
-            (*per_mn_comp_kernel_)(&call_ctx);
-        }
-    }
+    ctx.src_zp = [&](dim_t b, dim_t k, dim_t m, int *nibble) {
+        return brgmm_ctx.get_src_zp_ptr(b, k, m, nibble);
+    };
+    ctx.wei_scales = [&](dim_t b, dim_t k) {
+        return brgmm_ctx.get_wei_scales_ptr(b, k);
+    };
+    ctx.wei_zp = brgmm_ctx.get_wei_zp_base();
+    ctx.wei_zp_idx = [&](dim_t b, dim_t k, dim_t n) {
+        return brgmm_ctx.get_wei_zp_elem_idx(b, k, n);
+    };
+    ctx.U = brgmm_ctx.get_per_mn_comp_u_ptr(0, 0);
+    ctx.V = brgmm_ctx.get_per_mn_comp_v_ptr(0, 0);
+    per_mn_comp_.prepare(bgmmc, ctx);
 }
 
 void brgemm_matmul_base_t::maybe_reduce_A(

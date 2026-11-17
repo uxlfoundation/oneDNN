@@ -136,11 +136,15 @@ class Converter(metaclass=ConverterMeta):
 
     def _convert_select_post_op(self, po: ir.SelectPostOp):
         src1_arg = f"{po.dt}.{po.mask}"
-        if po.tag != "any":
-            src1_arg = src1_arg + f".{po.tag}"
+        if po.tag != "any" or po.strides != "":
+            src1_arg += f".{po.tag}"
+        if po.strides != "":
+            src1_arg += f".{po.strides}"
         src2_arg = f"{po.src2_mask}"
-        if po.src2_tag != "any":
-            src2_arg = src2_arg + f".{po.tag}"
+        if po.src2_tag != "any" or po.src2_strides != "":
+            src2_arg += f".{po.src2_tag}"
+        if po.src2_strides != "":
+            src2_arg += f".{po.src2_strides}"
         return ":".join([po.alg, src1_arg, src2_arg])
 
     def _convert_binary_post_op(self, po: ir.BinaryPostOp):

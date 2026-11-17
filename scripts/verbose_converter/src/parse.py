@@ -368,15 +368,24 @@ class ParserImpl:
         if not spec.read_literal(":"):
             raise ParseError("Expected src1 data type for select post-op")
         dt = spec.read_str()
-        post_op = ir.SelectPostOp(dt=dt)
+        post_op = ir.SelectPostOp(dt=dt, tag="abx", src2_tag="abx")
         spec.read_literal(":")
         post_op.mask = spec.read_uint()
-        if spec.read_literal(":"):
-            post_op.tag = spec.read_str()
-        if spec.read_literal(":"):
-            post_op.src2_mask = spec.read_uint()
+        spec.read_literal(":")
+        s = spec.read_str()
+        if not s.isdigit():
+            post_op.tag = s
+            spec.read_literal(":")
+            s = spec.read_str()
+        if "x" in s:
+            post_op.strides = s
+            spec.read_literal(":")
+            s = spec.read_str()
+        post_op.src2_mask = int(s)
         if spec.read_literal(":"):
             post_op.src2_tag = spec.read_str()
+        if spec.read_literal(":"):
+            post_op.src2_strides = spec.read_str()
         return post_op
 
     @staticmethod

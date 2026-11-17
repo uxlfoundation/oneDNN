@@ -253,16 +253,17 @@ struct brgemm_matmul_conf_t {
     int wei_packed_elems_per_byte = 0;
     bool is_f4_fused_decompress = false;
     bool with_int8_grouped_quantization = false;
-    // Enables the driver-side per-(M, N) f32 compensation tile that captures
-    // the symmetric src/wei zero-point + 128-shift correction in the grouped
-    // int8 quantization path. Mirrors brgemm_desc_t::with_per_mn_compensation.
+    // Mirrors brgemm_desc_t::int8_b_as_unsigned / int8_b_shift.
+    bool int8_b_as_unsigned = false;
+    int int8_b_shift() const {
+        return int8_b_as_unsigned && orig_wei_dt == data_type::s4 ? 8 : 0;
+    }
+    // Zero-point / s8-shift compensation of the grouped int8 path, computed by
+    // brgemm_matmul_per_mn_comp_t as C = -U * V, U (M x K'), V (K' x N).
     bool with_per_mn_compensation = false;
-    // Per-(M, N) compensation summed over K and initialized into buffer C by
-    // one f32 brgemm per tile: C = -U * V, U (M x K'), V (K' x N).
-    bool per_mn_comp_via_brgemm = false;
-    // K' = per_mn_comp_wei_rows + (src zp ? num_K_blocks + 1 : 0). The wei zp
-    // term has one row per group of wei scales/zp along K, the src zp term
-    // one row per brgemm K call.
+    // K' = per_mn_comp_wei_rows + (src zp or s8 shift ? num_K_blocks + 1 : 0).
+    // The wei zp term has one row per group of wei scales/zp along K, the
+    // src term one row per brgemm K call.
     dim_t per_mn_comp_wei_gsize = 0;
     dim_t per_mn_comp_wei_rows = 0;
     dim_t per_mn_comp_K = 0;

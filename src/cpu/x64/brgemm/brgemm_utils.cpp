@@ -1228,11 +1228,7 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     set_brg_vmm(brg); // TODO: Investigate if it is really needed here.
     brg->req_src_s8_shift = brg->is_int8 && brg->dt_a == data_type::s8
             && !isa_has_s8s8(brg->isa_impl) && !brg->int8_b_as_unsigned;
-    // s8s8 compensation could be applied in per_mn_compensation kernel,
-    // in that case brgemm kernel should supress this flag
-    // to avoid double compensation.
-    brg->req_s8s8_compensation
-            = brg->req_src_s8_shift && !brg->with_per_mn_compensation;
+    brg->req_s8s8_compensation = brg->req_src_s8_shift;
 
     brg->LDA = (brg->is_row_major()) ? LDA : LDB;
     brg->is_runtime_lda = (brg->is_row_major()) ? is_runtime_value(LDA)

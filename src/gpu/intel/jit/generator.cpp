@@ -19,7 +19,6 @@
 #include "gpu/intel/jit/generator.hpp"
 
 #include "gpu/intel/logging.hpp"
-#include "ngen_register_decl.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -3331,12 +3331,16 @@ void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     else if (brg.is_bf16)
         vdpbf16ps(v1, v2, v3);
     else if (brg.is_int8) {
+        // v3 broadcasts A, v2 loads B; vpdpbusd / vpmaddubsw take the unsigned
+        // operand first.
+        const Vmm vu = brg.int8_b_as_unsigned ? v2 : v3;
+        const Vmm vs = brg.int8_b_as_unsigned ? v3 : v2;
         if (brg.dt_a == data_type::s8 && isa_has_s8s8(brg.isa_impl))
             vpdpbssd(v1, v3, v2);
         else if (brg.has_int8_vnni)
-            vpdpbusd(v1, v3, v2, get_encoding());
+            vpdpbusd(v1, vu, vs, get_encoding());
         else {
-            vpmaddubsw(int8_dot_product_temp(), v3, v2);
+            vpmaddubsw(int8_dot_product_temp(), vu, vs);
             vpmaddwd(int8_dot_product_temp(), int8_dot_product_temp(),
                     int8_ones_words());
             vpaddd(v1, v1, int8_dot_product_temp());
@@ -3559,9 +3563,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     } else
         rd_loop = brg.rd_block;
 
-    if (brg.req_src_s8_shift) {
+    if (brg.req_src_s8_shift || brg.int8_b_shift != 0) {
         reg_bdb_loop.save();
-        mov(reg_s8_input_shift, 128);
+        mov(reg_s8_input_shift, brg.req_src_s8_shift ? 128 : brg.int8_b_shift);
         uni_vpbroadcastb(vmm_inp_shift(), reg_s8_input_shift.cvt8());
         reg_bdb_loop.restore();
     }
@@ -3712,6 +3716,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
         } else {
             uni_vmovups(vmm_load, addr);
         }
+        if (brg.is_int8 && brg.int8_b_shift != 0)
+            uni_vpaddb(load(vmm_load_idx), load(vmm_load_idx), vmm_inp_shift());
     };
 
     const bool comp_vpad = vpad != 0

@@ -391,6 +391,12 @@ struct brgemm_desc_t {
     bool with_bias = false;
     bool req_s8s8_compensation = false;
     bool req_src_s8_shift = false;
+    // s8 B taken as the unsigned vpdpbusd operand by the vector int8 kernels,
+    // after adding int8_b_shift to every byte (B + int8_b_shift must be
+    // non-negative, e.g. widened u4 with 0 or s4 with 8), so an s8 A needs no
+    // shift and no compensation. The caller accounts for the B shift.
+    bool int8_b_as_unsigned = false;
+    int int8_b_shift = 0;
     // `with_weights_scale_adjust` is controlled by the implementation and not
     // by kernel API.
     bool with_weights_scale_adjust = false;

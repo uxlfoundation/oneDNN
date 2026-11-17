@@ -595,6 +595,13 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     // u3 is computed as u4, so size its loads as u4
     Type Ta_load = problem.Ta_ext.is3() ? Type(Type::u4) : problem.Ta_ext;
 
+    // f32 FMA loads global operands directly with prefetch instead of copying them to SLM.
+    // k-contiguous A and mixed integer/f32 inputs run out of registers without the SLM copy.
+    bool f32Direct = !systolic && hw >= HW::XeHPG && problem.Ta_ext == Type::f32
+            && problem.Tb_ext == Type::f32;
+    bool directA = f32Direct && !localA && problem.A.layout == MatrixLayout::N;
+    bool directB = f32Direct && !localB;
+
     s.ka_load = s.kb_load = 16;
     if (!systolic) {
         // Keep eight bytes per integer operand without enlarging the other
@@ -602,6 +609,8 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         // defaults, including for integer data computed in f32.
         s.ka_load = (Ta_load.isInteger() && problem.Ta != Type::f32) ? 8 / Ta_load : 4;
         s.kb_load = (problem.Tb_ext.isInteger() && problem.Tb != Type::f32) ? 8 / problem.Tb_ext : 4;
+        if (directA) s.ka_load = 8;
+        if (directB) s.kb_load = 8;
     }
 
     auto m_iter = std::max(1, s.unroll[LoopM] / elementsPerGRF<uint32_t>(hw));
@@ -626,7 +635,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
             ka_slm_copy = std::min(64, (rowBytes / 2) / Ta_load / m_iter);
         } else if (systolic)
             s.ka_load = 16;
-        s.slmA = (hw >= HW::XeHP);
+        s.slmA = (hw >= HW::XeHP) && !directA;
     } else if (problem.A.layout == MatrixLayout::T) {
         s.A.accessType = AccessType::Block2DTranspose;
         s.ka_load = 64 / Ta_load / m_iter;
@@ -650,7 +659,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
             if (problem.B.layout == MatrixLayout::N && problem.B.alignment < 4)
                 s.kb_load = std::min(s.kb_load, 32 / problem.Tb_ext);
         }
-        s.slmB = (hw >= HW::XeHP);
+        s.slmB = (hw >= HW::XeHP) && !directB;
     } else if (problem.B.layout == MatrixLayout::T)
         s.B.accessType = AccessType::Block2DTranspose;
     else if (problem.B.layout == MatrixLayout::N) {
@@ -684,15 +693,15 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     s.AO.newDP = s.A_scale.newDP = useNewDP;
     s.BO.newDP = s.B_scale.newDP = useNewDP;
 
-    if (!localA && block2DA) {
-        if (!isPacked(problem.A.layout))
+    if ((!localA && block2DA) || directA) {
+        if (block2DA && !isPacked(problem.A.layout))
             s.A_prefetch.accessType = AccessType::Block2D;
         s.prefetchA = s.prefetchAMasked = 2 * s.ka_load;
         s.ka_pfStride = s.ka_prefetch = s.ka_load;
     }
 
-    if (!localB && block2DB) {
-        if (!isPacked(problem.B.layout))
+    if ((!localB && block2DB) || directB) {
+        if (block2DB && !isPacked(problem.B.layout))
             s.B_prefetch.accessType = AccessType::Block2D;
         s.prefetchB = s.prefetchBMasked = 2 * s.kb_load;
         s.kb_pfStride = s.kb_prefetch = s.kb_load;
@@ -718,7 +727,8 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
             s.kChain = 2;
         }
     }
-    s.registerScheme = GEMMStrategy::VAvoid;
+    bool fmaNSeparate = directA || directB;
+    s.registerScheme = fmaNSeparate ? GEMMStrategy::NSeparate : GEMMStrategy::VAvoid;
 
     /* GRF mode is chosen by the caller via chooseMicrokernelGRFMode(). */
     if (localA && !localB)
@@ -759,8 +769,9 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 
     if (hw == HW::Xe2 || hw == HW::Xe3)
         s.raHW = HW::XeHPC;
-    // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
-    if (hw == ngen::HW::Xe3p && !hwInfo.isEfficient64Bit) {
+    // Use XeHPC banking if reusing XeHPC strategies (legacy mode).
+    // NSeparate FMA tiles also run out of native Xe3p bundles.
+    if (hw == ngen::HW::Xe3p && (!hwInfo.isEfficient64Bit || fmaNSeparate)) {
         s.raHW = ngen::HW::XeHPC;
     }
 

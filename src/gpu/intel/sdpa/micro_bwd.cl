@@ -165,16 +165,15 @@ DECLARE_2D_TILE_BLOCK_OPS(k_tile_type, FMA_TYPE, SUBGROUP_SIZE,
 #endif
 #endif
 
+#if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE(s_tile_type_packed, uint, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1 / 2, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1)
-DECLARE_2D_TILE(s_tile_type_packed_t, uint, SUBGROUP_SIZE,
-        ugemm_kq_c_type_block1, ugemm_kq_c_type_block0 / 2,
-        ugemm_kq_c_type_nblock1, ugemm_kq_c_type_nblock0)
 
 DECLARE_2D_TILE(p_tile_type_packed, uint, SUBGROUP_SIZE,
         ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1 / 2,
         ugemm_vtdA_c_type_nblock0, ugemm_vtdA_c_type_nblock1)
+#endif
 
 DECLARE_2D_TILE(s_tile_type_reblock, FMA_TYPE, SUBGROUP_SIZE,
         ugemm_kq_sg_tile_m, 1, 1, ugemm_kq_sg_tile_n)

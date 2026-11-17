@@ -254,7 +254,8 @@ struct DNNL_API brgemm_attr_t {
     // determines whether to write this row to the result matrix or skip
     const char *bd_mask;
     // static_offsets is a static array of fixed offsets used for
-    // brgemm_static_offs batch kind
+    // brgemm_static_offs batch kind; with virtual padding (max_top_vpad/max_bottom_vpad)
+    // the per-element vvpad values are used as well
     const brgemm_batch_element_t *static_offsets;
     // hint whether to use on the fly copy of A due to unaligned accesses
     bool hint_fused_copy_a = false;

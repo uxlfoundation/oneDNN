@@ -1327,6 +1327,55 @@ TEST(IntegrationTests, NarrowingStoresConvertAndKeepSource) {
     check_narrowing_stores<float16_t>(data_type::f16, avx512_core_bf16);
 }
 
+// Arguments of the widening-load kernel. `a` is the 16-bit input, `c` the f32
+// output.
+struct widen_args_t {
+    const void *a;
+    float *c;
+};
+
+// Validates the scalar load that widens the 16-bit float `T` to f32. The
+// element after the first is loaded, so a lowering that reads more than one
+// element or ignores the displacement changes the result, and the whole
+// register is stored, so the elements past the first have to read as zero.
+template <typename T>
+void check_widening_scalar_load(data_type_t dt, cpu_isa_t isa) {
+    const int simd = isa_max_vlen(isa) / (int)sizeof(float);
+
+    ir_t ir;
+
+    const vreg_t a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(widen_args_t, a));
+
+    const vreg_t c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(widen_args_t, c));
+
+    const vreg_t a = ir.new_vec(data_type::f32);
+    ir.vload_scalar(a, a_ptr, sizeof(T), dt);
+    ir.vstore(c_ptr, 0, a, data_type::f32);
+
+    ir_kernel_t kernel(ir, /*vec_regs_limit=*/-1, /*gpr_regs_limit=*/-1, isa);
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+
+    const T value(-1.25f), sentinel(7.f);
+    std::vector<T> a_buf(simd, sentinel);
+    a_buf[1] = value;
+    std::vector<float> c_buf(simd, -9.f);
+    widen_args_t args {a_buf.data(), c_buf.data()};
+    kernel.run(&args);
+
+    EXPECT_EQ(c_buf[0], (float)value);
+    for (int i = 1; i < simd; i++)
+        EXPECT_EQ(c_buf[i], 0.f) << " at element " << i;
+}
+
+TEST(IntegrationTests, WideningScalarLoadReadsOneElement) {
+    if (!mayiuse(avx512_core))
+        GTEST_SKIP() << "widening scalar loads require AVX512_CORE";
+    check_widening_scalar_load<bfloat16_t>(data_type::bf16, avx512_core);
+    check_widening_scalar_load<float16_t>(data_type::f16, avx512_core);
+}
+
 // Validates that register allocator decisions never change results. The same
 // computation is run with full register files and with files only as large as
 // its widest operations (3 vec for `vdot`, 1 gpr). Spilled values need no

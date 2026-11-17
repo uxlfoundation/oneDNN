@@ -55,9 +55,11 @@ endforeach()
 
 # There is no easy way to emulate target_compile_definitions() with the dpcpp
 # host compiler arguments. As such, we cannot split compilation of the generator
-# templates by using defines.
+# and codegen templates by using defines.
 if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
    list(REMOVE_ITEM SOURCES ${ONEDNN_GEMMSTONE_DIR}/generator/generator.cpp)
+   set_property(SOURCE ${ONEDNN_GEMMSTONE_DIR}/dsl/ir/codegen/codegen.cpp
+           APPEND PROPERTY COMPILE_DEFINITIONS GEMMSTONE_CODEGEN_SPLIT)
 
     file (GLOB GENERATOR_SOURCES
         ${ONEDNN_GEMMSTONE_DIR}/generator/generator.cpp
@@ -78,6 +80,13 @@ if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
             target_compile_definitions(${GENERATOR_LIB} PRIVATE DNNL_GPU_ISA_${isa})
             set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
                             $<TARGET_OBJECTS:${GENERATOR_LIB}>)
+
+            set(CODEGEN_LIB codegen${isa})
+            add_library(${CODEGEN_LIB} OBJECT
+                    ${ONEDNN_GEMMSTONE_DIR}/dsl/ir/codegen/codegen.cpp)
+            target_compile_definitions(${CODEGEN_LIB} PRIVATE DNNL_GPU_ISA_${isa})
+            set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
+                            $<TARGET_OBJECTS:${CODEGEN_LIB}>)
     endforeach()
 endif()
 

@@ -51,6 +51,18 @@
 // keep the formatting here.
 // clang-format on
 
+// When the host compiler supports per-target defines, this file is compiled
+// once per HW with DNNL_GPU_ISA_<HW> to instantiate only that HW's templates,
+// and once with GEMMSTONE_CODEGEN_SPLIT for the HW-independent code, so that a
+// single translation unit doesn't carry the cost of all HWs. Otherwise, it's
+// compiled once with everything.
+#if defined(DNNL_GPU_ISA_XELP) || defined(DNNL_GPU_ISA_XEHP) \
+        || defined(DNNL_GPU_ISA_XEHPG) || defined(DNNL_GPU_ISA_XEHPC) \
+        || defined(DNNL_GPU_ISA_XE2) || defined(DNNL_GPU_ISA_XE3) \
+        || defined(DNNL_GPU_ISA_XE3P)
+#define GEMMSTONE_CODEGEN_HW_ONLY
+#endif
+
 GEMMSTONE_NAMESPACE_START
 namespace dsl {
 namespace ir {
@@ -1694,6 +1706,7 @@ void convert_ir_to_ngen(const stmt_t &body, GeneratorT &host,
     return convert_ir_to_ngen_impl(body, host, kernel_grid_walk_order);
 }
 
+#ifndef GEMMSTONE_CODEGEN_HW_ONLY
 #ifdef NGEN_ASM
 template <>
 void convert_ir_to_ngen<ir_asm_generator_t>(const stmt_t &body,
@@ -1768,6 +1781,7 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
     interface.finalize();
     return interface;
 }
+#endif
 } // namespace ir
 
 #ifdef GEMMSTONE_BUILD_12LP
@@ -1833,6 +1847,135 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
         default: dsl_assert(false) << "Unexpected GPU architecture"; \
     }
 
+#ifdef GEMMSTONE_WITH_BINARY_RUNTIME
+template <ngen::HW hw>
+using binary_gen_t = ir::ir_to_ngen_generator_t<ngen::ELFCodeGenerator<hw>>;
+
+template <ngen::HW hw>
+std::vector<uint8_t> make_binary_hw(
+        const kernel_t &ir_kernel, ngen::NEOInterfaceHandler interface) {
+    binary_gen_t<hw> g(ir_kernel.iface, ir_kernel.options, ir_kernel.debug_cfg);
+    g.setInterface(std::move(interface));
+    ir::convert_ir_to_ngen(ir_kernel.body, g);
+    return g.getBinary();
+}
+
+#define GEMMSTONE_BINARY_INSTANTIATE(prefix, hw) \
+    prefix template std::vector<uint8_t> make_binary_hw<hw>( \
+            const kernel_t &, ngen::NEOInterfaceHandler);
+#else
+#define GEMMSTONE_BINARY_INSTANTIATE(prefix, hw)
+#endif
+
+#ifdef GEMMSTONE_WITH_SYCL_RUNTIME
+template <ngen::HW hw>
+using sycl_gen_t = ir::ir_to_ngen_generator_t<ngen::SYCLCodeGenerator<hw>>;
+
+template <ngen::HW hw>
+::sycl::kernel make_kernel_hw(const kernel_t &ir_kernel,
+        ngen::NEOInterfaceHandler interface, ::sycl::context ctx,
+        ::sycl::device dev) {
+    sycl_gen_t<hw> g(ir_kernel.iface, ir_kernel.options, ir_kernel.debug_cfg);
+    g.setInterface(std::move(interface));
+    ir::convert_ir_to_ngen(ir_kernel.body, g);
+    return g.getKernel(ctx, dev);
+}
+
+#define GEMMSTONE_SYCL_INSTANTIATE(prefix, hw) \
+    prefix template void ir::convert_ir_to_ngen<sycl_gen_t<hw>>( \
+            const stmt_t &, sycl_gen_t<hw> &, const walk_order_t *); \
+    prefix template ::sycl::kernel make_kernel_hw<hw>(const kernel_t &, \
+            ngen::NEOInterfaceHandler, ::sycl::context, ::sycl::device);
+#else
+#define GEMMSTONE_SYCL_INSTANTIATE(prefix, hw)
+#endif
+
+#ifdef GEMMSTONE_WITH_L0_RUNTIME
+template <ngen::HW hw>
+using l0_gen_t = ir::ir_to_ngen_generator_t<ngen::LevelZeroCodeGenerator<hw>>;
+
+template <ngen::HW hw>
+LevelZeroKernelAndModule make_kernel_hw(const kernel_t &ir_kernel,
+        ngen::NEOInterfaceHandler interface, ze_context_handle_t ctx,
+        ze_device_handle_t dev) {
+    l0_gen_t<hw> g(ir_kernel.iface, ir_kernel.options, ir_kernel.debug_cfg);
+    g.setInterface(std::move(interface));
+    ir::convert_ir_to_ngen(ir_kernel.body, g);
+    auto km = g.getModuleAndKernel(ctx, dev);
+    return {km.second, km.first};
+}
+
+#define GEMMSTONE_L0_INSTANTIATE(prefix, hw) \
+    prefix template void ir::convert_ir_to_ngen<l0_gen_t<hw>>( \
+            const stmt_t &, l0_gen_t<hw> &, const walk_order_t *); \
+    prefix template LevelZeroKernelAndModule make_kernel_hw<hw>( \
+            const kernel_t &, ngen::NEOInterfaceHandler, ze_context_handle_t, \
+            ze_device_handle_t);
+#else
+#define GEMMSTONE_L0_INSTANTIATE(prefix, hw)
+#endif
+
+#ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
+template <ngen::HW hw>
+using ocl_gen_t = ir::ir_to_ngen_generator_t<ngen::OpenCLCodeGenerator<hw>>;
+
+template <ngen::HW hw>
+cl_kernel make_kernel_hw(const kernel_t &ir_kernel,
+        ngen::NEOInterfaceHandler interface, cl_context ctx, cl_device_id dev) {
+    ocl_gen_t<hw> g(ir_kernel.iface, ir_kernel.options, ir_kernel.debug_cfg);
+    g.setInterface(std::move(interface));
+    ir::convert_ir_to_ngen(ir_kernel.body, g);
+    return g.getKernel(ctx, dev);
+}
+
+#define GEMMSTONE_OPENCL_INSTANTIATE(prefix, hw) \
+    prefix template void ir::convert_ir_to_ngen<ocl_gen_t<hw>>( \
+            const stmt_t &, ocl_gen_t<hw> &, const walk_order_t *); \
+    prefix template cl_kernel make_kernel_hw<hw>(const kernel_t &, \
+            ngen::NEOInterfaceHandler, cl_context, cl_device_id);
+#else
+#define GEMMSTONE_OPENCL_INSTANTIATE(prefix, hw)
+#endif
+
+#define GEMMSTONE_CODEGEN_INSTANTIATE(prefix, hw) \
+    GEMMSTONE_BINARY_INSTANTIATE(prefix, hw) \
+    GEMMSTONE_SYCL_INSTANTIATE(prefix, hw) \
+    GEMMSTONE_L0_INSTANTIATE(prefix, hw) \
+    GEMMSTONE_OPENCL_INSTANTIATE(prefix, hw)
+
+#if defined(DNNL_GPU_ISA_XEHPG)
+GEMMSTONE_XEHPG_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::XeHPG))
+#elif defined(DNNL_GPU_ISA_XEHPC)
+GEMMSTONE_XEHPC_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::XeHPC))
+#elif defined(DNNL_GPU_ISA_XE2)
+GEMMSTONE_XE2_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::Xe2))
+#elif defined(DNNL_GPU_ISA_XE3)
+GEMMSTONE_XE3_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::Xe3))
+#elif defined(DNNL_GPU_ISA_XE3P)
+GEMMSTONE_XE3P_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::Xe3p))
+#elif !defined(GEMMSTONE_CODEGEN_HW_ONLY)
+#ifdef GEMMSTONE_CODEGEN_SPLIT
+#define GEMMSTONE_CODEGEN_PREFIX extern
+#else
+#define GEMMSTONE_CODEGEN_PREFIX
+#endif
+// XeLP and XeHP have no per-HW object library, so they're always instantiated
+// here.
+GEMMSTONE_XELP_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::XeLP))
+GEMMSTONE_XEHP_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::XeHP))
+GEMMSTONE_XEHPG_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(
+        GEMMSTONE_CODEGEN_PREFIX, ngen::HW::XeHPG))
+GEMMSTONE_XEHPC_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(
+        GEMMSTONE_CODEGEN_PREFIX, ngen::HW::XeHPC))
+GEMMSTONE_XE2_ISA(
+        GEMMSTONE_CODEGEN_INSTANTIATE(GEMMSTONE_CODEGEN_PREFIX, ngen::HW::Xe2))
+GEMMSTONE_XE3_ISA(
+        GEMMSTONE_CODEGEN_INSTANTIATE(GEMMSTONE_CODEGEN_PREFIX, ngen::HW::Xe3))
+GEMMSTONE_XE3P_ISA(
+        GEMMSTONE_CODEGEN_INSTANTIATE(GEMMSTONE_CODEGEN_PREFIX, ngen::HW::Xe3p))
+#endif
+
+#ifndef GEMMSTONE_CODEGEN_HW_ONLY
 #ifdef GEMMSTONE_WITH_ASM_RUNTIME
 std::string make_asm(const kernel_t &ir_kernel) {
     auto &iface = ir_kernel.iface;
@@ -1852,199 +1995,65 @@ std::string make_asm(const kernel_t &ir_kernel) {
 #endif
 
 #ifdef GEMMSTONE_WITH_BINARY_RUNTIME
-template <ngen::HW hw>
-using binary_gen_t = ir::ir_to_ngen_generator_t<ngen::ELFCodeGenerator<hw>>;
-
 std::vector<uint8_t> make_binary(const kernel_t &ir_kernel) {
-    auto &iface = ir_kernel.iface;
-    auto &options = ir_kernel.options;
-    auto &body = ir_kernel.body;
-    auto &debug_cfg = ir_kernel.debug_cfg;
-    maybe_unused(debug_cfg);
-
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
-            iface, options, body);
+            ir_kernel.iface, ir_kernel.options, ir_kernel.body);
 
 #define GPU_HW_CASE(hw) \
-    binary_gen_t<(hw)> g(iface, options, debug_cfg); \
-    g.setInterface(interface); \
-    ir::convert_ir_to_ngen(body, g); \
-    return g.getBinary(); \
-    break;
+    return make_binary_hw<(hw)>(ir_kernel, std::move(interface));
 
-    GEMMSTONE_HW_SWITCH(options.hw().ngen_hw());
+    GEMMSTONE_HW_SWITCH(ir_kernel.options.hw().ngen_hw());
 #undef GPU_HW_CASE
     return {};
 }
 #endif
 
 #ifdef GEMMSTONE_WITH_SYCL_RUNTIME
-template <ngen::HW hw>
-using sycl_gen_t = ir::ir_to_ngen_generator_t<ngen::SYCLCodeGenerator<hw>>;
-
-GEMMSTONE_XELP_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::XeLP>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::XeLP> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHP_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::XeHP>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::XeHP> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHPG_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::XeHPG>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::XeHPG> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHPC_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::XeHPC>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::XeHPC> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE2_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe2>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::Xe2> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe3>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::Xe3> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3P_ISA(
-        template void ir::convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe3p>>(
-                const stmt_t &body, sycl_gen_t<ngen::HW::Xe3p> &host,
-                const walk_order_t *kernel_grid_walk_order));
-
 ::sycl::kernel make_kernel(
         const kernel_t &ir_kernel, ::sycl::context ctx, ::sycl::device dev) {
-    auto &iface = ir_kernel.iface;
-    auto &options = ir_kernel.options;
-    auto &body = ir_kernel.body;
-    auto &debug_cfg = ir_kernel.debug_cfg;
-    maybe_unused(debug_cfg);
-
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
-            iface, options, body);
+            ir_kernel.iface, ir_kernel.options, ir_kernel.body);
     std::optional<::sycl::kernel> kernel;
 
 #define GPU_HW_CASE(hw) \
-    sycl_gen_t<(hw)> g(iface, options, debug_cfg); \
-    g.setInterface(interface); \
-    ir::convert_ir_to_ngen(body, g); \
-    kernel = g.getKernel(ctx, dev); \
+    kernel = make_kernel_hw<(hw)>(ir_kernel, std::move(interface), ctx, dev); \
     break;
 
-    GEMMSTONE_HW_SWITCH(options.hw().ngen_hw());
+    GEMMSTONE_HW_SWITCH(ir_kernel.options.hw().ngen_hw());
 #undef GPU_HW_CASE
     return kernel.value();
 }
 #endif
 
 #ifdef GEMMSTONE_WITH_L0_RUNTIME
-template <ngen::HW hw>
-using l0_gen_t = ir::ir_to_ngen_generator_t<ngen::LevelZeroCodeGenerator<hw>>;
-
-GEMMSTONE_XELP_ISA(
-        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::XeLP>>(
-                const stmt_t &body, l0_gen_t<ngen::HW::XeLP> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHP_ISA(
-        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::XeHP>>(
-                const stmt_t &body, l0_gen_t<ngen::HW::XeHP> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHPG_ISA(
-        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::XeHPG>>(
-                const stmt_t &body, l0_gen_t<ngen::HW::XeHPG> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHPC_ISA(
-        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::XeHPC>>(
-                const stmt_t &body, l0_gen_t<ngen::HW::XeHPC> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE2_ISA(template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::Xe2>>(
-        const stmt_t &body, l0_gen_t<ngen::HW::Xe2> &host,
-        const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3_ISA(template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::Xe3>>(
-        const stmt_t &body, l0_gen_t<ngen::HW::Xe3> &host,
-        const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3P_ISA(
-        template void ir::convert_ir_to_ngen<l0_gen_t<ngen::HW::Xe3p>>(
-                const stmt_t &body, l0_gen_t<ngen::HW::Xe3p> &host,
-                const walk_order_t *kernel_grid_walk_order));
-
 LevelZeroKernelAndModule make_kernel(const kernel_t &ir_kernel,
         ze_context_handle_t ctx, ze_device_handle_t dev) {
-    auto &iface = ir_kernel.iface;
-    auto &options = ir_kernel.options;
-    auto &body = ir_kernel.body;
-    auto &debug_cfg = ir_kernel.debug_cfg;
-    maybe_unused(debug_cfg);
-
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
-            iface, options, body);
+            ir_kernel.iface, ir_kernel.options, ir_kernel.body);
 
 #define GPU_HW_CASE(hw) \
-    l0_gen_t<(hw)> g(iface, options, debug_cfg); \
-    g.setInterface(interface); \
-    ir::convert_ir_to_ngen(body, g); \
-    auto km = g.getModuleAndKernel(ctx, dev); \
-    return {km.second, km.first};
+    return make_kernel_hw<(hw)>(ir_kernel, std::move(interface), ctx, dev);
 
-    GEMMSTONE_HW_SWITCH(options.hw().ngen_hw());
+    GEMMSTONE_HW_SWITCH(ir_kernel.options.hw().ngen_hw());
 #undef GPU_HW_CASE
     return {};
 }
 #endif
 
 #ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
-template <ngen::HW hw>
-using ocl_gen_t = ir::ir_to_ngen_generator_t<ngen::OpenCLCodeGenerator<hw>>;
-
-GEMMSTONE_XELP_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::XeLP>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::XeLP> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHP_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::XeHP>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::XeHP> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHPG_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::XeHPG>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::XeHPG> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XEHPC_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::XeHPC>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::XeHPC> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE2_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe2>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::Xe2> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe3>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::Xe3> &host,
-                const walk_order_t *kernel_grid_walk_order));
-GEMMSTONE_XE3P_ISA(
-        template void ir::convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe3p>>(
-                const stmt_t &body, ocl_gen_t<ngen::HW::Xe3p> &host,
-                const walk_order_t *kernel_grid_walk_order));
-
 cl_kernel make_kernel(
         const kernel_t &ir_kernel, cl_context ctx, cl_device_id dev) {
-    auto &iface = ir_kernel.iface;
-    auto &options = ir_kernel.options;
-    auto &body = ir_kernel.body;
-    auto &debug_cfg = ir_kernel.debug_cfg;
-    maybe_unused(debug_cfg);
-
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
-            iface, options, body);
+            ir_kernel.iface, ir_kernel.options, ir_kernel.body);
 
 #define GPU_HW_CASE(hw) \
-    ocl_gen_t<(hw)> g(iface, options, debug_cfg); \
-    g.setInterface(std::move(interface)); \
-    ir::convert_ir_to_ngen(body, g); \
-    return g.getKernel(ctx, dev);
+    return make_kernel_hw<(hw)>(ir_kernel, std::move(interface), ctx, dev);
 
-    GEMMSTONE_HW_SWITCH(options.hw().ngen_hw());
+    GEMMSTONE_HW_SWITCH(ir_kernel.options.hw().ngen_hw());
 #undef GPU_HW_CASE
     return {};
 }
+#endif
 #endif
 
 } // namespace dsl

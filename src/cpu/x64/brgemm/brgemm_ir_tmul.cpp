@@ -81,7 +81,7 @@ struct tmul_compute_path_t : public compute_path_t {
     void emit_microkernel(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start, int rd_loop,
-            const k_step_stores_t &stores) const override {
+            const k_step_interleave_t &interleave) const override {
 
         const compute_path_conf_t &compute_path = cfg.compute_path;
 
@@ -114,16 +114,18 @@ struct tmul_compute_path_t : public compute_path_t {
                 if (n > 0) {
                     const int i = m * n_n + n - 1;
                     ir.tmma(acc[i], a[m], b[n - 1]);
-                    emit_stores_after_tmma(ir, cfg, blk, acc, stores, i + 1);
+                    emit_stores_after_tmma(
+                            ir, cfg, blk, acc, interleave, i + 1);
                 } else if (m > 0) {
                     const int i = m * n_n - 1;
                     ir.tmma(acc[i], a[m - 1], b[n_n - 1]);
-                    emit_stores_after_tmma(ir, cfg, blk, acc, stores, i + 1);
+                    emit_stores_after_tmma(
+                            ir, cfg, blk, acc, interleave, i + 1);
                 }
             }
         }
         ir.tmma(acc.back(), a.back(), b.back());
-        emit_stores_after_tmma(ir, cfg, blk, acc, stores, (int)acc.size());
+        emit_stores_after_tmma(ir, cfg, blk, acc, interleave, (int)acc.size());
     }
 
 private:
@@ -194,27 +196,29 @@ private:
     // after its last `tmma`.
     void emit_stores_after_tmma(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
-            const k_step_stores_t &stores, int n_tmma) const {
+            const k_step_interleave_t &interleave, int n_tmma) const {
 
-        const prev_block_t &prev = stores.prev;
+        const prev_block_t &prev = interleave.prev;
         const int n_acc = (int)acc.size();
 
         for (int i = 0; i < (int)prev.acc.size(); i++) {
             if (prev_store_pos(i, n_acc, prev) != n_tmma) continue;
-            store_accumulator(ir, cfg, prev.blk, prev.acc, i, stores.store_ptr);
+            store_accumulator(
+                    ir, cfg, prev.blk, prev.acc, i, interleave.store_ptr);
         }
         for (int i = 0; i < n_acc; i++) {
             if (init_or_load_pos(i, n_acc, prev) != n_tmma) continue;
-            init_or_load_accumulator(ir, cfg, blk, acc, i, stores.c_ptr);
+            init_or_load_accumulator(ir, cfg, blk, acc, i, interleave.c_ptr);
         }
 
-        if (stores.acc_stores == acc_stores_t::none) return;
+        if (interleave.acc_stores == acc_stores_t::none) return;
 
         int delay = 0;
-        if (stores.acc_stores == acc_stores_t::next_block) delay = store_delay;
+        if (interleave.acc_stores == acc_stores_t::next_block)
+            delay = store_delay;
         const int stored = n_tmma - 1 - delay;
         if (stored >= 0)
-            store_accumulator(ir, cfg, blk, acc, stored, stores.store_ptr);
+            store_accumulator(ir, cfg, blk, acc, stored, interleave.store_ptr);
     }
 
     // Returns the number of the `tmma` of the first K step after which the

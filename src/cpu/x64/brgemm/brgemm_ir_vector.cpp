@@ -62,7 +62,7 @@ struct vector_compute_path_t : public compute_path_t {
     void emit_microkernel(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start, int rd_loop,
-            const k_step_stores_t &stores) const override {
+            const k_step_interleave_t &interleave) const override {
         std::vector<ir::vreg_t> b(blk.ld_block2, ir::vreg_t::none);
         for (int ld = 0; ld < blk.ld_block2; ld++)
             b[ld] = ir.new_vec(cfg.compute_path.dt_b);

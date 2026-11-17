@@ -52,7 +52,7 @@ struct prev_block_t {
     std::vector<ir::vreg_t> acc;
 };
 
-// The stores a K step emits between the operations of its microkernel, with
+// What a K step emits between the operations of its microkernel, with
 // `loop_conf_t::interleave_acc_stores`.
 //
 //   prev       - the previous block, for the first K step of a block only.
@@ -62,7 +62,7 @@ struct prev_block_t {
 //   c_ptr      - where the K step loads accumulators from C, `none` when it
 //                zeroes them
 //   store_ptr  - where the accumulators are stored, C or D
-struct k_step_stores_t {
+struct k_step_interleave_t {
     prev_block_t prev;
     acc_stores_t acc_stores = acc_stores_t::none;
     ir::vreg_t c_ptr = ir::vreg_t::none;
@@ -77,8 +77,8 @@ struct k_step_stores_t {
 // It calls `load_accumulators()` instead of `init_accumulators()` when beta is
 // 1 and `loads_accumulators()` is true. When `stores_accumulators()` is true,
 // it calls `store_accumulators()` at the end of the block, unless the
-// accumulators are stored in the K steps (`k_step_stores_t`). The compute path
-// chooses the layout of the accumulators.
+// accumulators are stored in the K steps (`k_step_interleave_t`). The compute
+// path chooses the layout of the accumulators.
 struct compute_path_t {
     virtual ~compute_path_t() = default;
 
@@ -124,11 +124,12 @@ struct compute_path_t {
 
     // Reduces `rd_loop` elements of K into `acc`, starting at K index
     // `rd_start`, counted from where `a_ptr` and `b_ptr` stand. It also emits
-    // the stores in `stores` between its operations.
+    // what `interleave` holds between its operations, see
+    // `k_step_interleave_t`.
     virtual void emit_microkernel(ir::ir_t &ir, const conf_t &cfg,
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t a_ptr, ir::vreg_t b_ptr, dim_t rd_start, int rd_loop,
-            const k_step_stores_t &stores) const
+            const k_step_interleave_t &interleave) const
             = 0;
 };
 

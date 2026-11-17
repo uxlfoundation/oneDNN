@@ -29,6 +29,24 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace binary_injector_utils {
+
+/*
+ * Tracks rhs_arg_idx while iterating over post_ops.
+ * @param f - takes 3 parameters: post-op idx, post-op entry, and rhs_arg_idx.
+ */
+template <typename F>
+void for_each_post_op_with_rhs_arg_idx(const post_ops_t &post_ops, F &&f) {
+    int rhs_arg_idx = 0;
+    int idx = 0;
+    for (const auto &post_op : post_ops.entry_) {
+        f(idx, post_op, rhs_arg_idx);
+
+        if (post_op.is_like_binary())
+            rhs_arg_idx += post_op.is_binary_with_ternary_op() ? 2 : 1;
+        ++idx;
+    }
+}
+
 /*
  * Extracts pointers to tensors passed by user as binary postops rhs
  * (right-hand-side) arguments from execution context and advances them to

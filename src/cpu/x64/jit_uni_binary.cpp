@@ -1169,10 +1169,8 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
 
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     const auto &post_ops = pd()->attr()->post_ops_;
-    const auto &orig_post_ops_binary_rhs_arg_vec
+    auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(post_ops, ctx);
-    std::vector<const void *> post_ops_binary_rhs_arg_vec
-            = orig_post_ops_binary_rhs_arg_vec;
 
     const void *src0_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0);
@@ -1218,9 +1216,8 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
         const std::vector<dim_t> &expanded_elems_len
                 = pd()->get_conf().post_ops_expanded_rhs_elems_len;
 
-        binary_injector::extend_binary_args_per_w(post_ops,
-                orig_post_ops_binary_rhs_arg_vec, post_ops_binary_rhs_arg_vec,
-                expanded_buf, expanded_elems_len);
+        binary_injector::expand_binary_args_per_w(post_ops,
+                post_ops_binary_rhs_arg_vec, expanded_buf, expanded_elems_len);
     }
 
     if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)

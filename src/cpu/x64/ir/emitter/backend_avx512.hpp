@@ -112,13 +112,26 @@ struct avx512_backend_t {
         else { JIT_ASSERT(!"vstore: dtype not implemented"); }
     }
 
-    // Load one element and zero the rest of `dst`.
+    // Load one element and zero the rest of `dst`. A bf16 or f16 element is
+    // widened to f32. The 16-bit element is inserted into a zeroed register so
+    // that only that element is read from memory.
     void vload_scalar(int d, int base, dim_t disp, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
-            gen().vmovss(Xbyak::Xmm(d), addr);
-        else { JIT_ASSERT(!"vload_scalar: dtype not implemented"); }
+        const Xbyak::Xmm x(d);
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
+            gen().vmovss(x, addr);
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
+            gen().vpxord(x, x, x);
+            gen().vpinsrw(x, x, addr, 0);
+            gen().vpslld(x, x, 16);
+        } else if (mem_dt == data_type::f16 && reg_dt == data_type::f32) {
+            gen().vpxord(x, x, x);
+            gen().vpinsrw(x, x, addr, 0);
+            gen().vcvtph2ps(x, x);
+        } else {
+            JIT_ASSERT(!"vload_scalar: dtype not implemented");
+        }
     }
 
     // Store element 0 of `src`. A narrowing form converts into the scratch and

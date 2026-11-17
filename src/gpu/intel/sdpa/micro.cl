@@ -266,9 +266,11 @@ DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
         ugemm_vs_c_type_nblock1, CONVERT_FLOAT_T)
 #endif
 
+#if USE_SYSTOLIC_UKERNEL
 DECLARE_2D_TILE(s_tile_type_packed, uint, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1 / S_ELEMS_PER_DWORD, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1)
+#endif
 DECLARE_2D_TILE(s_tile_type_reblock, fma_tile_data_t, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_n, 1, ugemm_kq_sg_tile_n / ugemm_vs_sg_tile_n,
         ugemm_kq_sg_tile_m)

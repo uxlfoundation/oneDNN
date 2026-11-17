@@ -1784,18 +1784,6 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
 #endif
 } // namespace ir
 
-#ifdef GEMMSTONE_BUILD_12LP
-#define GEMMSTONE_XELP_ISA(...) __VA_ARGS__
-#else
-#define GEMMSTONE_XELP_ISA(...)
-#endif
-
-#ifdef GEMMSTONE_BUILD_12HP
-#define GEMMSTONE_XEHP_ISA(...) __VA_ARGS__
-#else
-#define GEMMSTONE_XEHP_ISA(...)
-#endif
-
 #ifdef GEMMSTONE_BUILD_12P7
 #define GEMMSTONE_XEHPG_ISA(...) __VA_ARGS__
 #else
@@ -1836,8 +1824,6 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
 
 #define GEMMSTONE_HW_SWITCH(hw) \
     switch (hw) { \
-        GEMMSTONE_XELP_ISA(GPU_HW_CASE_(XeLP)); \
-        GEMMSTONE_XEHP_ISA(GPU_HW_CASE_(XeHP)); \
         GEMMSTONE_XEHPG_ISA(GPU_HW_CASE_(XeHPG)); \
         GEMMSTONE_XEHPC_ISA(GPU_HW_CASE_(XeHPC)); \
         GEMMSTONE_XE2_ISA(GPU_HW_CASE_(Xe2)); \
@@ -1959,10 +1945,6 @@ GEMMSTONE_XE3P_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::Xe3p))
 #else
 #define GEMMSTONE_CODEGEN_PREFIX
 #endif
-// XeLP and XeHP have no per-HW object library, so they're always instantiated
-// here.
-GEMMSTONE_XELP_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::XeLP))
-GEMMSTONE_XEHP_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(, ngen::HW::XeHP))
 GEMMSTONE_XEHPG_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(
         GEMMSTONE_CODEGEN_PREFIX, ngen::HW::XeHPG))
 GEMMSTONE_XEHPC_ISA(GEMMSTONE_CODEGEN_INSTANTIATE(

@@ -1365,8 +1365,31 @@ bool is_fwd_prop_kind(dnnl_prop_kind_t prop_kind) {
             || prop_kind == dnnl_prop_kind_undef;
 }
 
+namespace {
+
+bool has_runtime_dims(const_dnnl_memory_desc_t md) {
+    for (int d = 0; d < query_md_ndims(md); ++d)
+        if (query_md_dims(md)[d] == DNNL_RUNTIME_DIM_VAL) return true;
+    return false;
+}
+
+// Bias is reported as the second weights md but has its own argument.
+int query2arg(dnnl_query_t query, int idx) {
+    switch (query) {
+        case dnnl_query_src_md: return idx == 0 ? DNNL_ARG_SRC : DNNL_ARG_UNDEF;
+        case dnnl_query_weights_md:
+            if (idx == 0) return DNNL_ARG_WEIGHTS;
+            return idx == 1 ? DNNL_ARG_BIAS : DNNL_ARG_UNDEF;
+        case dnnl_query_dst_md: return idx == 0 ? DNNL_ARG_DST : DNNL_ARG_UNDEF;
+        default: return DNNL_ARG_UNDEF;
+    }
+}
+
+} // namespace
+
 void get_memory_bytes(check_mem_size_args_t &check_mem_size_args) {
     auto const_pd = check_mem_size_args.pd;
+    const auto *base_prb = check_mem_size_args.base_prb;
     const int n_idx = check_mem_size_args.want_input
             ? query_n_inputs(const_pd)
             : query_n_outputs(const_pd);
@@ -1391,7 +1414,15 @@ void get_memory_bytes(check_mem_size_args_t &check_mem_size_args) {
     for_(const auto query : query_mds)
     for (int idx = 0; idx < n_idx; ++idx) {
         const auto &md = query_md(const_pd, query, idx);
-        add_md_size(md, check_mem_size_args);
+        // Memories for mds with runtime dimensions are created from `get_md`,
+        // see `init_memory_args`.
+        if (base_prb && has_runtime_dims(md)) {
+            const int arg = query2arg(query, idx);
+            assert(arg != DNNL_ARG_UNDEF);
+            add_md_size(base_prb->get_md(arg), check_mem_size_args);
+        } else {
+            add_md_size(md, check_mem_size_args);
+        }
     }
 
     // Binary post-op memories counted as input.
@@ -1445,7 +1476,7 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
 
     // Get input sizes.
     check_mem_size_args_t check_mem_size_args(
-            const_pd, /* input = */ true, dir);
+            const_pd, /* input = */ true, dir, mem_size_args.base_prb);
     get_memory_bytes(check_mem_size_args);
 
     // Get scratchpad size.
@@ -1481,12 +1512,14 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
 }
 
 int get_memory_footprint(const_dnnl_primitive_desc_t const_pd, res_t *res) {
+    // Set by `create_primitive` which precedes this call.
+    const auto *base_prb = res->mem_size_args.base_prb;
     check_mem_size_args_t check_mem_in_size_args(const_pd,
-            /* want_input = */ true, DIR_UNDEF,
+            /* want_input = */ true, DIR_UNDEF, base_prb,
             /* use_logical_size */ true);
     get_memory_bytes(check_mem_in_size_args); // Get input bytes.
     check_mem_size_args_t check_mem_out_size_args(const_pd,
-            /* want_input = */ false, DIR_UNDEF,
+            /* want_input = */ false, DIR_UNDEF, base_prb,
             /* use_logical_size */ true);
     get_memory_bytes(check_mem_out_size_args); // Get output bytes.
 
@@ -1499,7 +1532,12 @@ int get_memory_footprint(const_dnnl_primitive_desc_t const_pd, res_t *res) {
         const auto kind = dnnl_post_ops_get_kind(const_attr_po, idx);
         if (kind == dnnl_sum) {
             const auto &dst_md = query_md(const_pd, DNNL_ARG_DST);
-            add_md_size(dst_md, check_mem_in_size_args);
+            if (base_prb && has_runtime_dims(dst_md)) {
+                add_md_size(
+                        base_prb->get_md(DNNL_ARG_DST), check_mem_in_size_args);
+            } else {
+                add_md_size(dst_md, check_mem_in_size_args);
+            }
         }
     }
 
@@ -2091,6 +2129,7 @@ int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
 
     // Note: Graph may contain more than one operation with identical `dir`.
     //   It's required to collect all memory sizes regardless of `dir`.
+    res->mem_size_args.base_prb = base_prb;
     SAFE(collect_mem_size(res->mem_size_args, pdw, dir,
                  /* need_skip = */ !is_graph_ref),
             WARN);
@@ -2308,12 +2347,6 @@ int init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
     auto const_po = query_post_ops(const_pd);
     const auto prim_kind = query_prim_kind(const_pd);
     const auto prop_kind = query_prop_kind(const_pd);
-
-    const auto has_runtime_dims = [](const_dnnl_memory_desc_t md) -> bool {
-        for (int d = 0; d < query_md_ndims(md); ++d)
-            if (query_md_dims(md)[d] == DNNL_RUNTIME_DIM_VAL) return true;
-        return false;
-    };
 
     if (prim_kind == dnnl_reorder) {
         auto src_engine = query_engine(const_pd, dnnl_query_reorder_src_engine);

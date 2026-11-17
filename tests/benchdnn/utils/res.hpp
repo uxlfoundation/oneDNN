@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+struct base_prb_t;
+
 /* result structure */
 enum res_state_t {
     UNTESTED = 0,
@@ -59,16 +61,22 @@ enum dir_t {
 struct check_mem_size_args_t {
     check_mem_size_args_t() = default;
     check_mem_size_args_t(const_dnnl_primitive_desc_t pd, bool want_input,
-            dir_t dir, bool use_logical_size = false)
+            dir_t dir, const base_prb_t *base_prb,
+            bool use_logical_size = false)
         : pd(pd)
         , want_input(want_input)
         , dir(dir)
+        , base_prb(base_prb)
         , use_logical_size(use_logical_size) {}
 
     // Input args: get their values only at construction.
     const_dnnl_primitive_desc_t pd = nullptr;
     bool want_input = false;
     dir_t dir = DIR_UNDEF; // See ANCHOR: MEM_CHECK_ARGS_DIR;
+    // `base_prb` provides memory descriptors for library mds with runtime
+    // dimensions as such mds have undefined sizes. When not set, these mds are
+    // skipped from the estimation.
+    const base_prb_t *base_prb = nullptr;
     // Logical size is used to properly return iobytes for bandwidth
     // calculation. Padded or strided area mustn't be included.
     bool use_logical_size = false;

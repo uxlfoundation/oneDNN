@@ -1441,6 +1441,9 @@ dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md) {
     return cloned_md;
 }
 
+// A md with runtime dimensions has no size. Memories for such mds can be
+// created from `base_prb_t::get_md()`, so callers with a `base_prb_t` pass
+// that md to get the size of what is actually allocated.
 size_t get_logical_size(const_dnnl_memory_desc_t md) {
     const auto ndims = query_md_ndims(md);
     if (ndims == 0) return 0;
@@ -1452,8 +1455,6 @@ size_t get_logical_size(const_dnnl_memory_desc_t md) {
         nelems = query_md_nnz(md);
     } else {
         for (int i = 0; i < ndims; ++i) {
-            // TODO: enable when there's a base_prb_t which can pass md from prb
-            // and not from a primitive.
             if (dims[i] == DNNL_RUNTIME_DIM_VAL) return 0;
             nelems *= dims[i];
         }

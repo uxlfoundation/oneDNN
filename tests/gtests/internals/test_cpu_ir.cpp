@@ -30,7 +30,9 @@
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_debug.h"
 
+#include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
+#include "common/float16.hpp"
 
 #include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/ir/dump.hpp"
@@ -349,7 +351,8 @@ protected:
         const int param_idx = abi_param1.getIdx();
 
         reg_config_t reg_cfg = make_reg_config(max_cpu_isa(), param_idx,
-                rsp_idx, {eltwise_opmask, binary_tail_opmask}, tiles_);
+                rsp_idx, {eltwise_opmask, binary_tail_opmask}, tiles_,
+                needs_cvt_vec(ir_));
         if (!gpr_pool_.empty()) reg_cfg.pools.files[0].regs = gpr_pool_;
 
         // Shrink the register pools to force spills when requested.
@@ -720,6 +723,31 @@ TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
         // write mask.
         EXPECT_EQ(rc.pools.files[2].regs, std::vector<int>({1, 2, 3, 4, 5}));
     }
+}
+
+// Checks the scratch of the narrowing stores. `needs_cvt_vec()` finds a store
+// whose memory type differs from its vreg type, and `make_reg_config()` takes
+// the last vector register out of the pool for it.
+TEST(RegConfigTests, ReservesScratchForNarrowingStores) {
+    ir_t plain, narrowing;
+    for (ir_t *ir : {&plain, &narrowing}) {
+        const vreg_t ptr = ir->new_gpr();
+        ir->load_param(ptr, 0);
+        const vreg_t v = ir->new_vec(data_type::f32);
+        ir->vload(v, ptr, 0, data_type::f32);
+        ir->vstore(ptr, 0, v, ir == &plain ? data_type::f32 : data_type::bf16);
+    }
+    EXPECT_FALSE(needs_cvt_vec(plain));
+    EXPECT_TRUE(needs_cvt_vec(narrowing));
+
+    const reg_config_t rc = make_reg_config(avx512_core, /*param_reg=*/0,
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*reserved_masks=*/ {}, {},
+            /*reserve_cvt_vec=*/true);
+    EXPECT_EQ(rc.cvt_vec, 31);
+    EXPECT_EQ(rc.pools.files[1].regs.size(), 31u);
+    EXPECT_EQ(std::count(rc.pools.files[1].regs.begin(),
+                      rc.pools.files[1].regs.end(), rc.cvt_vec),
+            0);
 }
 
 // Checks the tile files `make_reg_config()` builds from a tile configuration.
@@ -1279,6 +1307,78 @@ ir_t build_shared_vector_dot_ir(int n) {
                 c_ptr, r * (dim_t)sizeof(float), acc[r], data_type::f32);
 
     return ir;
+}
+
+// Arguments of the narrowing-store kernel. `a` is the f32 input, `c` is the
+// 16-bit output, and `b` receives `a` again as f32.
+struct narrow_args_t {
+    const float *a;
+    float *b;
+    void *c;
+};
+
+// Validates the stores that narrow f32 to the 16-bit float `T`. A full
+// vector, a masked vector, and a scalar are each narrowed into `c`, and the
+// source is stored again as f32 after them, so a lowering that converts in
+// place would corrupt it.
+template <typename T>
+void check_narrowing_stores(data_type_t dt, cpu_isa_t isa) {
+    const int simd = isa_max_vlen(isa) / (int)sizeof(float);
+    const int tail = simd - 3;
+    const dim_t full_off = 0, tail_off = simd * (dim_t)sizeof(T),
+                scalar_off = 2 * simd * (dim_t)sizeof(T);
+
+    ir_t ir;
+
+    const vreg_t a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(narrow_args_t, a));
+
+    const vreg_t b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, offsetof(narrow_args_t, b));
+
+    const vreg_t c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(narrow_args_t, c));
+
+    const vreg_t mask = ir.new_mask();
+    ir.set_mask_imm(mask, tail);
+
+    const vreg_t a = ir.new_vec(data_type::f32);
+    ir.vload(a, a_ptr, 0, data_type::f32);
+    ir.vstore(c_ptr, full_off, a, dt);
+    ir.vstore_masked(c_ptr, tail_off, a, mask, dt);
+    ir.vstore_scalar(c_ptr, scalar_off, a, dt);
+    ir.vstore(b_ptr, 0, a, data_type::f32);
+
+    ir_kernel_t kernel(ir, /*vec_regs_limit=*/-1, /*gpr_regs_limit=*/-1, isa);
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+
+    std::vector<float> a_buf(simd), b_buf(simd, 0.f);
+    for (int i = 0; i < simd; i++)
+        a_buf[i] = 1.f / 3.f * (float)(i + 1) - 2.5f;
+
+    const T sentinel(-1.f);
+    std::vector<T> c_buf(2 * simd + 1, sentinel);
+    narrow_args_t args {a_buf.data(), b_buf.data(), c_buf.data()};
+    kernel.run(&args);
+
+    for (int i = 0; i < simd; i++) {
+        EXPECT_EQ((float)c_buf[i], (float)T(a_buf[i])) << " at element " << i;
+        EXPECT_EQ(b_buf[i], a_buf[i]) << " at element " << i;
+    }
+    for (int i = 0; i < tail; i++)
+        EXPECT_EQ((float)c_buf[simd + i], (float)T(a_buf[i]))
+                << " at tail element " << i;
+    for (int i = tail; i < simd; i++)
+        EXPECT_EQ((float)c_buf[simd + i], (float)sentinel)
+                << " at tail element " << i;
+    EXPECT_EQ((float)c_buf[2 * simd], (float)T(a_buf[0]));
+}
+
+TEST(IntegrationTests, NarrowingStoresConvertAndKeepSource) {
+    if (!mayiuse(avx512_core_bf16))
+        GTEST_SKIP() << "narrowing stores require AVX512_CORE_BF16";
+    check_narrowing_stores<bfloat16_t>(data_type::bf16, avx512_core_bf16);
+    check_narrowing_stores<float16_t>(data_type::f16, avx512_core_bf16);
 }
 
 // Validates that register allocator decisions never change results. The same

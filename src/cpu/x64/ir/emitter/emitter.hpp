@@ -77,6 +77,14 @@ struct data_section_t {
 // forward declaration keeps this header free of post-ops specifics.
 struct postops_injector_t;
 
+// Whether lowering `ir` needs the scratch vector register
+// `reg_config_t::cvt_vec`. A store that narrows its value (an f32 vreg into
+// bf16 or f16 memory) converts into the scratch first, since the source has to
+// survive the store. Pass the result to `make_reg_config()`.
+//
+// Export for testing.
+bool DNNL_API needs_cvt_vec(const ir_t &ir);
+
 // This is the main entry point for the emitter. It dispatches by ISA family to
 // the matching backend.
 //

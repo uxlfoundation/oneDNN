@@ -380,7 +380,9 @@ struct DNNL_API ir_t {
 
     // vec
     // `mem_dt` is the element data type in memory. Pass the data type of the
-    // vreg to move the value as it is, or a different one to convert it.
+    // vreg to move the value as it is, or a different one to convert it. A
+    // load widens on the way in and a store narrows on the way out, leaving
+    // the source vreg as it is.
     void vzero(vreg_t dst);
     void vload(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt,
             mem_hint_t hint = mem_hint_t::none);

@@ -26,7 +26,8 @@ namespace x64 {
 namespace ir {
 
 reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
-        const std::vector<int> &reserved_masks, const tile_config_t &tiles) {
+        const std::vector<int> &reserved_masks, const tile_config_t &tiles,
+        bool reserve_cvt_vec) {
     reg_config_t rc;
     rc.param_reg = param_reg;
 
@@ -52,14 +53,17 @@ reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
         gpr_file.regs.push_back(i);
     }
 
-    // Vector file includes every vector register. On AVX2* a mask is a vector
-    // register, so masks allocate from this same file (see `kind_to_file`
-    // below) and spill like vectors. Spill slot is the vector size 32 for ymm
-    // and 64 for zmm.
+    // Vector file includes every vector register but the converting-store
+    // scratch, when one is reserved. On AVX2* a mask is a vector register, so
+    // masks allocate from this same file (see `kind_to_file` below) and spill
+    // like vectors. Spill slot is the vector size 32 for ymm and 64 for zmm.
+    if (reserve_cvt_vec) rc.cvt_vec = n_vec - 1;
     reg_file_t vec_file;
     vec_file.slot_size = isa_max_vlen(isa);
-    for (int i = 0; i < n_vec; i++)
+    for (int i = 0; i < n_vec; i++) {
+        if (i == rc.cvt_vec) continue;
         vec_file.regs.push_back(i);
+    }
 
     rc.pools.files = {gpr_file, vec_file};
 

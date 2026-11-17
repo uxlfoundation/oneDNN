@@ -1625,8 +1625,15 @@ status_t brgemm_convolution_fwd_base_t::execute(const exec_ctx_t &ctx) const {
                 last_btc.ohb = ohb;
                 last_btc.owb = owb;
             }
-            for (dim_t i = 0; i < n_groups; i++) {
+            // with group runs g is the innermost dimension (nb_oc == 1),
+            // so the run is skipped with one step
+            if (n_groups > 1) {
+                g += n_groups - 1;
                 BRGEMM_CONV_ITERATOR_STEP;
+            } else {
+                for (dim_t i = 0; i < n_groups; i++) {
+                    BRGEMM_CONV_ITERATOR_STEP;
+                }
             }
             work += n_groups;
         }

@@ -31,6 +31,7 @@ const char** get_lookup_table_entries() {
         "xe2:bmg dpas fwd x8:x8:any mb1 ic3ih416iw640oc64oh208ow320kh7kw7sh2sw2ph3pw3 simd=16 l=kh7 T=ow2 i=ic4kw8oc64ow32 bufs=0",
         "xe2:bmg dpas fwd x8:x8:any mb1 ic64ih104iw160oc128oh52ow80kh3kw3sh2sw2ph1pw1 simd=16 l=ic2kh3kw3 T=ow2 i=ic32oc64ow16",
         "xe2:bmg dpas fwd x8:x8:any mb1 ic64ih104iw160oc64oh104ow160kh3kw3ph1pw1 simd=16 l=ic2kh3kw3 T=ow4 i=ic32oc64ow20",
+        "xe3p:cri dpas fwd x16:x16:any mb1 ic1152ih256oc1152oh128kh4sh2ph1 simd=16 l=ic36kh4kw4 T=oc2ow4 i=ic32oc64ow32 bufs=1",
         "xe3p:cri dpas fwd x16:x16:any mb1 ic16id3ih62iw106oc384od1oh60ow104kd3kh3kw3pd0ph0pw0 simd=16 l=kd3kh3kw3 T=ow2 i=ic16oc32ow26",
         "xe3p:cri dpas fwd x16:x16:any mb1 ic16id3ih92iw162oc384od1oh90ow160kd3kh3kw3pd0ph0pw0 simd=16 l=kd3kh3kw3 T=x i=ic16oc64ow32",
         "xe3p:cri dpas fwd x16:x16:any mb1 ic192id4ih122iw210oc384od2oh120ow208kd3kh3kw3pd0ph0pw0 simd=16 l=ic6kd3kh3kw3 T=oc2ow8 i=ic32oc64ow26 bufs=0",

@@ -1531,8 +1531,8 @@ bool RegisterLayout::appendBlocks(int r, int c, int roff, int coff, RemainderOpt
         if ((r == rrem || rrem == 0) && (c == crem || crem == 0))
             success = false;
         else {
-            if (rrem) success &= appendBlocks(rrem, c - crem, r - rrem, 0, remOpts, maxRBlock, maxCBlock);
-            if (crem) success &= appendBlocks(r, crem, 0, c - crem, remOpts, maxRBlock, maxCBlock);
+            if (rrem) success &= appendBlocks(rrem, c - crem, roff + r - rrem, coff, remOpts, maxRBlock, maxCBlock);
+            if (crem) success &= appendBlocks(r, crem, roff, coff + c - crem, remOpts, maxRBlock, maxCBlock);
         }
     }
     return success;

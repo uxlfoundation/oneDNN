@@ -1604,7 +1604,8 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         if (state.useTempC)
             CREATE_LAYOUT(state.C_layout, Tc, unrollM, unrollN, state.tempC, state.tempCStrategy, false, false, true);
         else {
-            state.C_layout = RegisterLayout(hw, Tc, unrollM, unrollN, cColMajor, 1, strategy.C.tileR, strategy.C.tileC, false);
+            bool packC = strategy.systolic && Tc.size() < 4;
+            state.C_layout = RegisterLayout(hw, Tc, unrollM, unrollN, cColMajor, 1, strategy.C.tileR, strategy.C.tileC, packC);
         }
         CREATE_LAYOUT(state.C_layoutExt, Tc_ext, unrollM, unrollN, problem.C, state.Cext_strategy, remM_Ce, remN_Ce, true, AllowFragDescNFM);
     } else {

@@ -307,6 +307,37 @@ void store_pv_tile(const float *pv, dim_t ld_pv, char *out, dim_t o_row_stride,
     }
 }
 
+// acc[m x n] += src[m x n]; both have row stride ld. Padding columns between
+// rows are not read.
+void add_f32_tile(cpu_accumulator_1d_t<data_type::f32> &acc_ker, float *acc,
+        const float *src, dim_t m, dim_t n, dim_t ld) {
+    if (ld == n) {
+        acc_ker.accumulate(acc, src, static_cast<size_t>(m) * n);
+        return;
+    }
+    for (dim_t i = 0; i < m; ++i)
+        acc_ker.accumulate(acc + i * ld, src + i * ld, static_cast<size_t>(n));
+}
+
+// Adds a partial while converting to a dense bf16/f16 output.
+void add_tile_and_cvt_to_xf16(const float *acc, const float *src, dim_t ld,
+        char *dst, dim_t dst_row_stride, data_type_t dst_dt, dim_t m, dim_t n) {
+    const size_t dst_dt_sz = types::data_type_size(dst_dt);
+    for (dim_t i = 0; i < m; ++i) {
+        const float *acc_row = acc + i * ld;
+        const float *src_row = src + i * ld;
+        char *dst_row = dst + i * dst_row_stride * dst_dt_sz;
+        if (dst_dt == data_type::bf16)
+            add_floats_and_cvt_to_bfloat16(
+                    reinterpret_cast<bfloat16_t *>(dst_row), acc_row, src_row,
+                    n);
+        else
+            add_floats_and_cvt_to_float16(
+                    reinterpret_cast<float16_t *>(dst_row), acc_row, src_row,
+                    n);
+    }
+}
+
 status_t set_mm1_post_ops(brgemm_desc_t &brg, dim_t output_rows,
         dim_t full_output_width, dim_t output_row_stride,
         const std::vector<sdpa_mm1_post_op_t> *post_ops, bool select_as_postop,
@@ -1214,6 +1245,11 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
         CHECK(init_packers(kernels.v_packers, rows, cols, p_.v_strides[row_dim],
                 p_.v_strides[ndims - 1], conf.ldv));
     }
+    if (conf.schedule == sdpa_full_softmax_schedule_t::split_kv
+            && conf.split_kv.mm2_chunks > 1) {
+        kernels.split_kv_acc.reset(new cpu_accumulator_1d_t<data_type::f32>());
+        CHECK(kernels.split_kv_acc->create_kernel());
+    }
 
     const auto &descs = conf.brgemm.descs;
     const int num_descs = static_cast<int>(descs->refs_size());
@@ -1761,25 +1797,36 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
     });
     if (sk.mm2_chunks == 1) return;
 
-    // Sum the chunk results into the rows of chunk 0, then write them.
     const dim_t o_row_stride = p.o_strides[sdpa_pd_t::ndims - 2];
     const dim_t o_col_stride = p.o_strides[sdpa_pd_t::ndims - 1];
     const size_t partial_floats = partial_bytes / sizeof(float);
+    const bool fuse_add_and_convert_to_xf16 = o_col_stride == 1
+            && utils::one_of(p.out_dt, data_type::bf16, data_type::f16);
+    auto &acc_ker = *st.kernels.split_kv_acc;
     parallel_nd_ext(nthr, p.batch, p.num_head_q, n_qblk,
             [&](int, int, dim_t batch_idx, dim_t head, dim_t q_block_idx) {
         const dim_t q0 = q_block_idx * conf.q_block;
         const dim_t m = nstl::min(conf.q_block, p.seq_q - q0);
         float *acc = reinterpret_cast<float *>(
                 shared_rows(sk.partials, pv_row_bytes, batch_idx, head, q0));
-        for (dim_t c = 1; c < sk.mm2_chunks; ++c) {
-            const float *part = acc + c * partial_floats;
-            for (dim_t i = 0; i < m; ++i)
-                for (dim_t d = 0; d < p.hs_v; ++d)
-                    acc[i * conf.ld_pv + d] += part[i * conf.ld_pv + d];
+
+        const dim_t last_chunk = sk.mm2_chunks - 1;
+        for (dim_t c = 1; c < last_chunk; ++c) {
+            const float *src = acc + c * partial_floats;
+            add_f32_tile(acc_ker, acc, src, m, p.hs_v, conf.ld_pv);
         }
-        store_pv_tile(acc, conf.ld_pv,
-                get_arg_ptr(st.o_td, batch_idx, head, q0), o_row_stride,
-                o_col_stride, p.out_dt, m, p.hs_v);
+
+        char *out = get_arg_ptr(st.o_td, batch_idx, head, q0);
+        if (fuse_add_and_convert_to_xf16) {
+            add_tile_and_cvt_to_xf16(acc, acc + last_chunk * partial_floats,
+                    conf.ld_pv, out, o_row_stride, p.out_dt, m, p.hs_v);
+        } else {
+            const float *src = acc + last_chunk * partial_floats;
+            add_f32_tile(acc_ker, acc, src, m, p.hs_v, conf.ld_pv);
+
+            store_pv_tile(acc, conf.ld_pv, out, o_row_stride, o_col_stride,
+                    p.out_dt, m, p.hs_v);
+        }
     });
 }
 

@@ -21,6 +21,13 @@
 #ifndef NGEN_GEN8_HPP
 #define NGEN_GEN8_HPP
 
+#include "ngen_config_internal.hpp"
+
+#ifdef NGEN_WA_GCC_111613
+#pragma GCC push_options
+#pragma GCC optimize ("no-store-merging")
+#endif
+
 namespace NGEN_NAMESPACE {
 // Gen8-11 binary encoding implementation.
 
@@ -600,4 +607,9 @@ static inline constexpr14 Align16Operand extToAlign16(const ExtendedReg &reg)
 }
 
 } // namespace NGEN_NAMESPACE
+
+#ifdef NGEN_WA_GCC_111613
+#pragma GCC pop_options
+#endif
+
 #endif

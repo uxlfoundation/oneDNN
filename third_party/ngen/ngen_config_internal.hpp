@@ -17,6 +17,15 @@
 #ifndef NGEN_CONFIG_INTERNAL_HPP
 #define NGEN_CONFIG_INTERNAL_HPP
 
+// GCC PR 111613: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=111613
+// Store merging can drop bit-field assignments when encoding instruction binaries
+#if defined(__GNUC__) && !defined(__clang__) && !defined(__INTEL_COMPILER) \
+        && ((__GNUC__ == 12 && __GNUC_MINOR__ < 5) \
+                || (__GNUC__ == 13 && __GNUC_MINOR__ < 4) \
+                || (__GNUC__ == 14 && __GNUC_MINOR__ < 2))
+#define NGEN_WA_GCC_111613
+#endif
+
 // Drop NGEN_CONFIG define once C++11/14 support dropped
 #if (defined(__has_include) && __has_include("ngen_config.hpp")) || defined(NGEN_CONFIG)
 #include "ngen_config.hpp"

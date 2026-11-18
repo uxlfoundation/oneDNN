@@ -20,6 +20,13 @@
 #ifndef NGEN_GEN12_HPP
 #define NGEN_GEN12_HPP
 
+#include "ngen_config_internal.hpp"
+
+#ifdef NGEN_WA_GCC_111613
+#pragma GCC push_options
+#pragma GCC optimize ("no-store-merging")
+#endif
+
 #include "ngen_auto_swsb.hpp"
 #include "ngen_gen8.hpp"
 
@@ -1821,4 +1828,9 @@ autoswsb::DestinationMask Instruction12::destinations(int &jip, int &uip) const
 }
 
 }
+
+#ifdef NGEN_WA_GCC_111613
+#pragma GCC pop_options
+#endif
+
 #endif

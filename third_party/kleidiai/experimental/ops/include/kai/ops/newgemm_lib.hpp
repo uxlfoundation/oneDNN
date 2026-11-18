@@ -7,15 +7,26 @@
 #pragma once
 
 #include <fcntl.h>
+#ifdef __linux__
 #include <sched.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <sys/types.h>
 #include <sys/stat.h>
 #ifdef __APPLE__
 #include <sys/sysctl.h>
+#endif
+
+#if defined(_WIN32) && !defined(BARE_METAL)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
 #endif
 
 #include <fstream>
@@ -206,32 +217,6 @@ private:
     unsigned int L1_cache_size = 32768;
     unsigned int L2_cache_size = 262144;
 
-    void check_dot_allowlist(const unsigned long midr) {
-#if 0
-        /* Pre-4.15 kernels don't have the ASIMDDP bit.
-         *
-         * Although the CPUID bit allows us to read the feature register
-         * directly, the kernel quite sensibly masks this to only show
-         * features known by it to be safe to show to userspace.  As a
-         * result, pre-4.15 kernels won't show the relevant bit in the
-         * feature registers either.
-         *
-         * So for now, use a allowlist of CPUs known to support the feature.
-         */
-        if (!_dotprod) {
-            const unsigned int dotprod_allowlist_masks[]  = { 0xfff0fff0, 0xff00fff0, 0xfff0fff0, 0xfff0fff0, 0xff00fff0, 0xff00ffc0, 0xff00ff00, 0 };
-            const unsigned int dotprod_allowlist_values[] = { 0x4110d050, 0x4100d060, 0x4110d0a0, 0x4120d0a0, 0x4100d0b0, 0x4100d0c0, 0x4100d400, 0 };
-
-            for (int i=0;dotprod_allowlist_values[i];i++) {
-                if ((midr & dotprod_allowlist_masks[i]) == dotprod_allowlist_values[i]) {
-                    _dotprod = true;
-                    break;
-                }
-            }
-        }
-#endif // __aarch64__
-    }
-
     /* Convert an MIDR register value to a CPUModel enum value. */
     CPUModel midr_to_model(const unsigned int midr) {
         CPUModel model;
@@ -309,16 +294,13 @@ private:
                     _percpu[i].midr      = (midr & 0xffffffff);
                     _percpu[i].model     = midr_to_model(_percpu[i].midr);
                     _percpu[i].model_set = true;
-
-                    /* Check if this CPU should be allowlisted for dot product support. */
-                    check_dot_allowlist(midr & 0xffffffff);
                 }
             }
         }
     }
 
+#ifdef BARE_METAL
     void populate_models_baremetal() {
-#ifdef __aarch64__
         // Assume single CPU in bare metal mode.  Just read the ID register and feature bits directly.
         uint64_t fr0, pfr0, fr1, midr, pfr1, fpfr0;
 
@@ -446,8 +428,8 @@ private:
         _percpu[0].midr = midr;
         _percpu[0].model = midr_to_model(midr);
         _percpu[0].model_set = true;
-#endif // aarch64
     }
+#endif // BARE_METAL
 
     /* If "long-form" cpuinfo is present, parse that to populate models. */
     void populate_models_cpuinfo() {
@@ -481,10 +463,6 @@ private:
                         _percpu[curcpu].midr      = midr;
                         _percpu[curcpu].model     = midr_to_model(midr);
                         _percpu[curcpu].model_set = true;
-
-                        /* Check if this CPU should be allowlisted for dot product support. */
-                        check_dot_allowlist(midr);
-//                        printf("CPU %d: %x\n",curcpu,midr);
                     }
 
                     midr=0;
@@ -576,6 +554,33 @@ public:
     CPUInfo() {
         _percpu.resize(get_max_cpus());
 
+#if defined(_WIN32) && !defined(BARE_METAL)
+        // Numeric IsProcessorFeaturePresent IDs also work with older SDKs.
+        // Unsupported queries return false; features without queries stay disabled.
+        _dotprod = IsProcessorFeaturePresent(43) != 0;  // PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
+        _fp16 = IsProcessorFeaturePresent(67) != 0;     // PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE
+        _i8mm = IsProcessorFeaturePresent(66) != 0;     // PF_ARM_V82_I8MM_INSTRUCTIONS_AVAILABLE
+        _bf16 = IsProcessorFeaturePresent(68) != 0;     // PF_ARM_V86_BF16_INSTRUCTIONS_AVAILABLE
+        _sve = IsProcessorFeaturePresent(46) != 0;      // PF_ARM_SVE_INSTRUCTIONS_AVAILABLE
+        _sve2 = _sve && IsProcessorFeaturePresent(47) != 0;     // PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE
+        _svei8mm = _sve && IsProcessorFeaturePresent(57) != 0;  // PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE
+        _svef32mm = _sve && IsProcessorFeaturePresent(58) != 0; // PF_ARM_SVE_F32MM_INSTRUCTIONS_AVAILABLE
+        _svebf16 = _sve && IsProcessorFeaturePresent(52) != 0;  // PF_ARM_SVE_BF16_INSTRUCTIONS_AVAILABLE
+        _sme = IsProcessorFeaturePresent(70) != 0;             // PF_ARM_SME_INSTRUCTIONS_AVAILABLE
+        _sme2 = _sme && IsProcessorFeaturePresent(71) != 0;     // PF_ARM_SME2_INSTRUCTIONS_AVAILABLE
+        _sme_f16f16 = _sme && IsProcessorFeaturePresent(83) != 0;  // PF_ARM_SME_F16F16_INSTRUCTIONS_AVAILABLE
+        _sme_b16b16 = _sme && IsProcessorFeaturePresent(84) != 0;  // PF_ARM_SME_B16B16_INSTRUCTIONS_AVAILABLE
+        _sme_f64f64 = _sme && IsProcessorFeaturePresent(85) != 0;  // PF_ARM_SME_F64F64_INSTRUCTIONS_AVAILABLE
+        _sme_f8f32 = _sme && IsProcessorFeaturePresent(81) != 0;   // PF_ARM_SME_F8F32_INSTRUCTIONS_AVAILABLE
+
+        // Enable FEAT_SME data type combinations
+        _sme_i8i32 = _sme;
+        _sme_f16f32 = _sme;
+        _sme_b16f32 = _sme;
+        _sme_f32f32 = _sme;
+        return;
+#endif
+
 #ifdef __APPLE__
         _fp16       = sysctl_feature_supported("hw.optional.arm.FEAT_FP16");
         _dotprod    = sysctl_feature_supported("hw.optional.arm.FEAT_DotProd");
@@ -607,7 +612,6 @@ public:
         unsigned long hwcaps2 = 0;
 #endif // __linux__
 
-#ifdef __aarch64__
         // These are AArch64 specific HWCAP flags.
         if (hwcaps & HWCAP_CPUID) {
             _cpuid = true;
@@ -692,7 +696,6 @@ public:
         if (hwcaps2 & HWCAP2_SME_F8F32) {
             _sme_f8f32 = true;
         }
-#endif // __aarch64__
 
         if (_cpuid) {
             populate_models_cpuid();
@@ -746,8 +749,6 @@ public:
 #undef FORCE_FEAT_IMPL
 
     void midr_override(const unsigned long midr) {
-        check_dot_allowlist(midr);
-
         for(size_t i=0; i<_percpu.size(); i++) {
             _percpu[i].midr      = midr;
             _percpu[i].model     = midr_to_model(midr);

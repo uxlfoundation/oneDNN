@@ -3,14 +3,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-#ifdef __aarch64__
-
 #include "gemm_implementation.hpp"
 #include "gemm_interleaved.hpp"
 #include "kai/ops/gemm/gemm_common.hpp"
 #include "kai/ops/gemm/kai_ops.hpp"
 
-#include "kernels/a64_gemm_u16_8x12.hpp"
+#include "kernels/a64_interleaved_u16u32_mla_8x12.hpp"
 
 namespace kai {
 namespace ops {
@@ -18,10 +16,10 @@ namespace ops {
 static const GemmImplementation<uint16_t, uint16_t, uint32_t> gemm_u16_methods[] =
 {
 {
-    "a64_gemm_u16_8x12",
+    "a64_interleaved_u16u32_mla_8x12",
     nullptr,
     nullptr,
-    [](const GemmArgs &args) { return new GemmInterleaved<cls_a64_gemm_u16_8x12, uint16_t, uint16_t, uint32_t>(args); }
+    [](const GemmArgs &args) { return new GemmInterleaved<cls_a64_interleaved_u16u32_mla_8x12, uint16_t, uint16_t, uint32_t>(args); }
 },
 {
     "",
@@ -42,5 +40,3 @@ template std::vector<KernelDescription> get_compatible_kernels<uint16_t, uint16_
 
 }  // namespace ops
 }  // namespace kai
-
-#endif // __aarch64__

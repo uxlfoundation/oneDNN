@@ -6,23 +6,16 @@
 
 // clang-format off
 #pragma once
+
+#include "common_internal/kernel_args.hpp"
 #include "../kernel_weight_format.hpp"
 #include "../std_transforms_fixed.hpp"
-
-#define ARGLIST  \
-    unsigned int, const unsigned int *, \
-    IndirectInputArg<__fp16>, \
-    size_t, size_t, \
-    const __fp16 *, \
-    size_t, \
-    OutputArg<__fp16>, \
-    const __fp16 *, Activation, bool
 
 namespace kai {
 namespace ops {
 
 // Actual kernel implementations
-void a64_ffhybrid_fp16fp32fp16_mla_6x16( ARGLIST );
+extern "C" void kai_ops_a64_ffhybrid_fp16fp32fp16_mla_6x16( const KernelArgs * );
 
 class cls_a64_ffhybrid_fp16fp32fp16_mla_6x16
 {
@@ -31,7 +24,7 @@ public:
     typedef __fp16 rhs_operand_type;
     typedef __fp16 result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     /* Kernel blocking parameters */
     static constexpr unsigned int out_height()
@@ -63,10 +56,10 @@ public:
         return true;
     }
 
-    StdTransformsFixed<lhs_operand_type, rhs_operand_type, result_type, 6, 16, 1> transforms = {};
+    StdTransformsFixed<lhs_operand_type, rhs_operand_type, result_type, 6, 8, 8, 1> transforms = {};
 
     // Default to the generic kernel
-    kern_type kernel=a64_ffhybrid_fp16fp32fp16_mla_6x16;
+    kern_type kernel=kai_ops_a64_ffhybrid_fp16fp32fp16_mla_6x16;
     cls_a64_ffhybrid_fp16fp32fp16_mla_6x16(const CPUInfo *)
     {
     }
@@ -74,5 +67,3 @@ public:
 
 } // namespace ops
 } // namespace kai
-
-#undef ARGLIST

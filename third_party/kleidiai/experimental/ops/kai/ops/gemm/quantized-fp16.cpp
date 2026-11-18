@@ -5,6 +5,7 @@
 //
 
 #include "kai/ops/gemm/kai_ops.hpp"
+#include "kai/ops/float16.hpp"
 #include "common_internal/utils.hpp"
 #include "common_internal/quantized.hpp"
 
@@ -19,7 +20,6 @@ void dequantize_block_32<__fp16>(const DequantizeFloat &qp, unsigned int width, 
                                  const int32_t * in_ptr, unsigned int in_stride, __fp16 *out_ptr, unsigned int out_stride,
                                  const __fp16 * bias_ptr, bool not_first_pass, const Activation &act)
 {
-    const float32x4_t vscale = vdupq_n_f32(qp.scale);
     float maxval = std::numeric_limits<float>::infinity();
     float minval = -std::numeric_limits<float>::infinity();
 
@@ -35,11 +35,15 @@ void dequantize_block_32<__fp16>(const DequantizeFloat &qp, unsigned int width, 
             break;
     }
 
+#if defined(__ARM_FP16_ARGS) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+    const float32x4_t vscale = vdupq_n_f32(qp.scale);
     const float16x8_t vmin = vdupq_n_f16(static_cast<__fp16>(minval));
     const float16x8_t vmax = vdupq_n_f16(static_cast<__fp16>(maxval));
+#endif
 
     for(unsigned int row=0; row<height; row++) {
         unsigned int col=0;
+#if defined(__ARM_FP16_ARGS) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
         if (width >= 8) {
             for(; col <= (width-8); col+=8) {
                 const int32x4_t vin0 = vld1q_s32(in_ptr + col + (row * in_stride));
@@ -72,6 +76,8 @@ void dequantize_block_32<__fp16>(const DequantizeFloat &qp, unsigned int width, 
                 vst1q_f16(out_ptr + col + (row * out_stride), vdeq16);
             }
         }
+#endif
+
         // left-over elements
         for(; col < width; ++col) {
             const int32_t val = *(in_ptr + (row * in_stride) + col);

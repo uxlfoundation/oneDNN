@@ -6,25 +6,17 @@
 
 // clang-format off
 #pragma once
+
+#include "common_internal/kernel_args.hpp"
 #include "../kernel_weight_format.hpp"
 #include "../performance_parameters.hpp"
 #include "../std_transforms_sve.hpp"
-#include "kai/ops/bfloat.hpp"
-
-#define ARGLIST  \
-    unsigned int, const unsigned int *, \
-    IndirectInputArg<bfloat16>, \
-    size_t, size_t, \
-    const bfloat16 *, \
-    size_t, \
-    OutputArg<float>, \
-    const float *, Activation, bool
 
 namespace kai {
 namespace ops {
 
 // Actual kernel implementations
-void sve_ffhybrid_bf16fp32_mmla_6x4VL( ARGLIST );
+extern "C" void kai_ops_sve_ffhybrid_bf16fp32_mmla_6x4VL( const KernelArgs * );
 
 class cls_sve_ffhybrid_bf16fp32_mmla_6x4VL
 {
@@ -33,7 +25,7 @@ public:
     typedef bfloat16 rhs_operand_type;
     typedef float result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     /* Kernel blocking parameters */
     static constexpr unsigned int out_height()
@@ -65,7 +57,7 @@ public:
         return true;
     }
 
-    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 6, 8, 4> transforms = {};
+    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 6, 2, 2, 4> transforms = {};
     template<typename T>
     static inline PerformanceParameters get_performance_parameters(const CPUInfo *ci)
     {
@@ -80,7 +72,7 @@ public:
     }
 
     // Default to the generic kernel
-    kern_type kernel=sve_ffhybrid_bf16fp32_mmla_6x4VL;
+    kern_type kernel=kai_ops_sve_ffhybrid_bf16fp32_mmla_6x4VL;
     cls_sve_ffhybrid_bf16fp32_mmla_6x4VL(const CPUInfo *)
     {
     }
@@ -88,5 +80,3 @@ public:
 
 } // namespace ops
 } // namespace kai
-
-#undef ARGLIST

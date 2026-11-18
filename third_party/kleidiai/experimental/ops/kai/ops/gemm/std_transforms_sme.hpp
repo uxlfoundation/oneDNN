@@ -44,18 +44,21 @@ public:
     }
 
     bool PrepareB_supports_transpose() const {
-        return false;
+        return true;
     }
 
     template<typename TIn>
     void PrepareB(TOperand *out, const TIn *in, const int stride, const int x0,
                   const int xmax, const int k0, const int kmax, bool transposed) {
-        assert (!transposed);
-        Transform<width_vectors, block,  true, VLType::SME>(out, in, stride, x0, xmax, k0, kmax);
+        if (transposed) {
+            Transform<width_vectors, block, false, VLType::SME>(out, in, stride, x0, xmax, k0, kmax);
+        } else {
+            Transform<width_vectors, block,  true, VLType::SME>(out, in, stride, x0, xmax, k0, kmax);
+        }
     }
 
     template<typename TOut>
-    void Merge(TOut *, const TResult *, int, int, int, int, int, const TOut *, const Activation, bool) {
+    void Merge(const KernelArgs *) {
         // Separate merge not supported for SME.
     }
 };

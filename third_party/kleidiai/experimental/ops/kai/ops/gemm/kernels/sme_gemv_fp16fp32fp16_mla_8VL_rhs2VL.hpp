@@ -6,17 +6,14 @@
 
 // clang-format off
 #pragma once
-#include "../std_transforms_sme.hpp"
 
-#define ARGLIST  \
-    const __fp16 *, const __fp16 *, \
-    __fp16 *, size_t, size_t, \
-    const __fp16 *, Activation, bool
+#include "common_internal/kernel_args.hpp"
+#include "../std_transforms_sme.hpp"
 
 namespace kai {
 namespace ops {
 
-void sme_gemv_fp16fp32fp16_mla_8VL_rhs2VL( ARGLIST );
+extern "C" void kai_ops_sme_gemv_fp16fp32fp16_mla_8VL_rhs2VL( const KernelArgs * );
 
 class cls_sme_gemv_fp16fp32fp16_mla_8VL_rhs2VL
 {
@@ -24,7 +21,7 @@ public:
     typedef __fp16 operand_type;
     typedef __fp16 result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     static unsigned int out_width()
     {
@@ -56,7 +53,7 @@ public:
 
 
     // Default to the generic kernel
-    kern_type kernel=sme_gemv_fp16fp32fp16_mla_8VL_rhs2VL;
+    kern_type kernel=kai_ops_sme_gemv_fp16fp32fp16_mla_8VL_rhs2VL;
     cls_sme_gemv_fp16fp32fp16_mla_8VL_rhs2VL(const CPUInfo *)
     {
     }

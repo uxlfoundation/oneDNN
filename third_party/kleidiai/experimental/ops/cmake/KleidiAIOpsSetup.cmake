@@ -38,10 +38,16 @@ if((CMAKE_C_FLAGS MATCHES "(^| )-fsanitize=[^ ]*memtag" OR CMAKE_CXX_FLAGS MATCH
     string(APPEND KLEIDIAI_OPS_SVE_ARCH +memtag)
 endif()
 
-# Add -march to architecture values
-string(PREPEND KLEIDIAI_OPS_ARCH -march=)
-string(PREPEND KLEIDIAI_OPS_FP16_ARCH -march=)
-string(PREPEND KLEIDIAI_OPS_SVE_ARCH -march=)
+# Add -march or /arch: to architecture values
+if(NOT MSVC)
+    string(PREPEND KLEIDIAI_OPS_ARCH -march=)
+    string(PREPEND KLEIDIAI_OPS_FP16_ARCH -march=)
+    string(PREPEND KLEIDIAI_OPS_SVE_ARCH -march=)
+else()
+    string(PREPEND KLEIDIAI_OPS_ARCH /arch:)
+    string(PREPEND KLEIDIAI_OPS_FP16_ARCH /arch:)
+    string(PREPEND KLEIDIAI_OPS_SVE_ARCH /arch:)
+endif()
 
 # Set the compiler launcher for ccache support
 if(KLEIDIAI_OPS_ENABLE_CCACHE_SUPPORT)
@@ -73,8 +79,7 @@ endif()
 # -------------------------------------------------------------------------------------------------
 
 if(MSVC)
-    # We don't currently provide support for MSVC, but when we do, we likely want to use /Wall
-    set(KLEIDIAI_OPS_WARNING_FLAGS_BASE "/Wall")
+    set(KLEIDIAI_OPS_WARNING_FLAGS_BASE "/W4") # "/Wall")
 else()
     set(KLEIDIAI_OPS_WARNING_FLAGS_BASE
         "-Wall"

@@ -9,15 +9,11 @@
 #include "../std_transforms_sve.hpp"
 #include "../performance_parameters.hpp"
 
-#define ARGLIST  \
-    const uint8_t *, const int8_t *, \
-    int32_t *, int, int, int
-
 namespace kai {
 namespace ops {
 
 // Actual kernel implementations
-void sve_interleaved_u8s8s32_mmla_8x3VL( ARGLIST );
+extern "C" void kai_ops_sve_interleaved_u8s8s32_mmla_8x3VL( const KernelArgs * );
 
 class cls_sve_interleaved_u8s8s32_mmla_8x3VL
 {
@@ -26,7 +22,7 @@ public:
     typedef int8_t rhs_operand_type;
     typedef int32_t result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     /* Kernel blocking parameters */
     static constexpr unsigned int out_height()
@@ -44,9 +40,14 @@ public:
         return 8;
     }
 
+    static constexpr size_t accumulation_buffer_element_size()
+    {
+        return 0;
+    }
 
-    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 8, 6, 8, 2> transforms = {};
-    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 8, 6, 8, 2, true> transforms_quantized = {};
+
+    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 8, 6, 3, 8> transforms = {};
+    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 8, 6, 3, 8, true> transforms_quantized = {};
     template<typename T>
     static inline PerformanceParameters get_performance_parameters(const CPUInfo *ci)
     {
@@ -78,7 +79,7 @@ public:
     }
 
     // Default to the generic kernel
-    kern_type kernel=sve_interleaved_u8s8s32_mmla_8x3VL;
+    kern_type kernel=kai_ops_sve_interleaved_u8s8s32_mmla_8x3VL;
     cls_sve_interleaved_u8s8s32_mmla_8x3VL(const CPUInfo *)
     {
     }

@@ -64,7 +64,10 @@ disallow_flags_on_platforms("Generic" KLEIDIAI_OPS_ENABLE_THREADS)
 # Thread binding uses a Linux-specific API, so it only works on Linux/Android
 allow_flags_only_on_platforms("Linux|Android" KLEIDIAI_OPS_ENABLE_BIND_THREADS)
 
-# Cycle timing/profiling is only supported on Linux
+# Cycle timing is only supported on Linux
 allow_flags_only_on_platforms("Linux" KLEIDIAI_OPS_ENABLE_CYCLE_TIMING)
+
+# Windows benchmarks use wall-clock timing without Linux perf counters.
+disallow_flags_on_platforms("Windows" KLEIDIAI_OPS_ENABLE_CYCLE_PROFILING)
 
 # -------------------------------------------------------------------------------------------------

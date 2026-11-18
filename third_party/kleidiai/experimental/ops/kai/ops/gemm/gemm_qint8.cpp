@@ -3,28 +3,22 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-#ifdef __aarch64__
-
 #include "gemm_hybrid_indirect.hpp"
-#include "gemm_hybrid_quantized.hpp"
 #include "gemm_implementation.hpp"
 #include "gemm_interleaved.hpp"
 #include "gemv_pretransposed.hpp"
 #include "kai/ops/gemm/gemm_common.hpp"
 #include "kai/ops/gemm/kai_ops.hpp"
 
-#include "kernels/a64_gemm_s16_8x12.hpp"
-#include "kernels/a64_gemm_s8_4x4.hpp"
-#include "kernels/a64_gemm_s8_8x12.hpp"
 #include "kernels/a64_hybrid_s8qa_dot_4x16.hpp"
 #include "kernels/a64_hybrid_s8qa_mmla_4x16.hpp"
 #include "kernels/a64_hybrid_s8qs_dot_6x16.hpp"
 #include "kernels/a64_hybrid_s8qs_mmla_6x16.hpp"
 #include "kernels/a64_hybrid_s8s32_dot_6x16.hpp"
 #include "kernels/a64_hybrid_s8s32_mmla_6x16.hpp"
+#include "kernels/a64_interleaved_s16s32_mla_8x12.hpp"
+#include "kernels/a64_interleaved_s8s32_dot_8x12.hpp"
 #include "kernels/a64_interleaved_s8s32_mmla_8x12.hpp"
-#include "kernels/a64_smallK_hybrid_s8s32_dot_6x4.hpp"
-#include "kernels/a64_smallK_hybrid_s8s32_dot_8x4.hpp"
 #include "kernels/sme2_gemv_s8qa_dot_16VL.hpp"
 #include "kernels/sme2_interleaved_nomerge_s8q_mopa_1VLx4VL.hpp"
 #include "kernels/sme2_interleaved_nomerge_s8q_mopa_2VLx2VL.hpp"
@@ -172,22 +166,10 @@ GemmImplementation<int8_t, int8_t, int8_t, Requantize32>::with_estimate(
     [](const GemmArgs &args, const Requantize32 &qp) { return new GemmHybridIndirect<cls_a64_hybrid_s8s32_mmla_6x16, int8_t, int8_t, int8_t, Requantize32, true>(args, qp); }
 ),
 {
-    "a64_smallK_hybrid_s8s32_dot_8x4",
-    [](const GemmArgs &args, const Requantize32 &) { return args._ci->has_dotprod() && (args._Nsize % 4 == 0) && (args._Ksize<=32) && !args._indirect_input; },
-    [](const GemmArgs &args, const Requantize32 &) { return !(args._ci->has_svei8mm() || args._ci->has_i8mm()); },
-    [](const GemmArgs &args, const Requantize32 &qp) { return new GemmHybridQuantized<cls_a64_smallK_hybrid_s8s32_dot_8x4, int8_t, int8_t, int8_t>(args, qp); }
-},
-{
-    "a64_smallK_hybrid_s8s32_dot_6x4",
-    [](const GemmArgs &args, const Requantize32 &) { return args._ci->has_dotprod() && (args._Nsize % 4 == 0) && (args._Ksize>32) && (args._Ksize<=64) && !args._indirect_input; },
-    [](const GemmArgs &args, const Requantize32 &) { return !(args._ci->has_svei8mm() || args._ci->has_i8mm()); },
-    [](const GemmArgs &args, const Requantize32 &qp) { return new GemmHybridQuantized<cls_a64_smallK_hybrid_s8s32_dot_6x4, int8_t, int8_t, int8_t>(args, qp); }
-},
-{
-    "a64_gemm_s16_8x12",
+    "a64_interleaved_s16s32_mla_8x12",
     nullptr,
     [](const GemmArgs &args, const Requantize32 &) { return args._ci->get_cpu_model() == CPUModel::A53 && ((args._Msize > 28) || ((args._Msize % 8) > 4)); },
-    [](const GemmArgs &args, const Requantize32 &qp) { return new GemmInterleavedQuantized<cls_a64_gemm_s16_8x12, int8_t, int8_t, int8_t>(args, qp); }
+    [](const GemmArgs &args, const Requantize32 &qp) { return new GemmInterleavedQuantized<cls_a64_interleaved_s16s32_mla_8x12, int8_t, int8_t, int8_t>(args, qp); }
 },
 GemmImplementation<int8_t, int8_t, int8_t, Requantize32>::with_estimate(
     "a64_hybrid_s8qs_dot_6x16",
@@ -208,16 +190,10 @@ GemmImplementation<int8_t, int8_t, int8_t, Requantize32>::with_estimate(
     [](const GemmArgs &args, const Requantize32 &qp) { return new GemmHybridIndirect<cls_a64_hybrid_s8s32_dot_6x16, int8_t, int8_t, int8_t, Requantize32, true>(args, qp); }
 ),
 GemmImplementation<int8_t, int8_t, int8_t, Requantize32>::with_estimate(
-    "a64_gemm_s8_8x12",
+    "a64_interleaved_s8s32_dot_8x12",
     [](const GemmArgs &args, const Requantize32 &) { return args._ci->has_dotprod(); },
-    [](const GemmArgs &args, const Requantize32 &) { return GemmInterleavedQuantized<cls_a64_gemm_s8_8x12, int8_t, int8_t, int8_t>::estimate_cycles<int8_t>(args); },
-    [](const GemmArgs &args, const Requantize32 &qp) { return new GemmInterleavedQuantized<cls_a64_gemm_s8_8x12, int8_t, int8_t, int8_t>(args, qp); }
-),
-GemmImplementation<int8_t, int8_t, int8_t, Requantize32>::with_estimate(
-    "a64_gemm_s8_4x4",
-    nullptr,
-    [](const GemmArgs &args, const Requantize32 &) { return GemmInterleavedQuantized<cls_a64_gemm_s8_4x4, int8_t, int8_t, int8_t>::estimate_cycles<int8_t>(args); },
-    [](const GemmArgs &args, const Requantize32 &qp) { return new GemmInterleavedQuantized<cls_a64_gemm_s8_4x4, int8_t, int8_t, int8_t>(args, qp); }
+    [](const GemmArgs &args, const Requantize32 &) { return GemmInterleavedQuantized<cls_a64_interleaved_s8s32_dot_8x12, int8_t, int8_t, int8_t>::estimate_cycles<int8_t>(args); },
+    [](const GemmArgs &args, const Requantize32 &qp) { return new GemmInterleavedQuantized<cls_a64_interleaved_s8s32_dot_8x12, int8_t, int8_t, int8_t>(args, qp); }
 ),
 {
     "",
@@ -238,5 +214,3 @@ template std::vector<KernelDescription> get_compatible_kernels<int8_t, int8_t, i
 
 }  // namespace ops
 }  // namespace kai
-
-#endif // __aarch64__

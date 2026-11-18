@@ -6,17 +6,14 @@
 
 // clang-format off
 #pragma once
-#include "../std_transforms_sme.hpp"
 
-#define ARGLIST  \
-    const uint8_t *, const uint8_t *, \
-    uint8_t *, size_t, size_t, \
-    const Requantize32 *, const int32_t *, unsigned int
+#include "common_internal/kernel_args.hpp"
+#include "../std_transforms_sme.hpp"
 
 namespace kai {
 namespace ops {
 
-void sme2_gemv_u8qa_dot_16VL( ARGLIST );
+extern "C" void kai_ops_sme2_gemv_u8qa_dot_16VL( const KernelArgs * );
 
 class cls_sme2_gemv_u8qa_dot_16VL
 {
@@ -24,7 +21,7 @@ public:
     typedef uint8_t operand_type;
     typedef uint8_t result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     static unsigned int out_width()
     {
@@ -56,7 +53,7 @@ public:
 
 
     // Default to the generic kernel
-    kern_type kernel=sme2_gemv_u8qa_dot_16VL;
+    kern_type kernel=kai_ops_sme2_gemv_u8qa_dot_16VL;
     cls_sme2_gemv_u8qa_dot_16VL(const CPUInfo *)
     {
     }

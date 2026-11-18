@@ -3,17 +3,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-#if defined(__aarch64__)
-
 #include "gemm_hybrid_indirect.hpp"
 #include "gemm_implementation.hpp"
 #include "gemm_interleaved.hpp"
+#include "kai/ops/float16.hpp"
 #include "kai/ops/gemm/gemm_common.hpp"
 #include "kai/ops/gemm/kai_ops.hpp"
 
 #include "kernels/a64_ffhybrid_fp16fp32_mla_6x16.hpp"
 #include "kernels/a64_hybrid_fp16fp32_mla_6x16.hpp"
-#include "kernels/a64_sgemm_8x12.hpp"
+#include "kernels/a64_interleaved_fp32_mla_8x12.hpp"
 #include "kernels/sme2_interleaved_nomerge_fp16fp32_mopa_1VLx4VL.hpp"
 #include "kernels/sme2_interleaved_nomerge_fp16fp32_mopa_2VLx2VL.hpp"
 #include "kernels/sme2_interleaved_nomerge_fp16fp32_mopa_4VLx1VL.hpp"
@@ -95,10 +94,10 @@ static const GemmImplementation<__fp16, __fp16, float> gemm_fp16fp32_methods[] =
     [](const GemmArgs &args) { return new GemmHybridIndirectFixedFormat<cls_a64_ffhybrid_fp16fp32_mla_6x16, __fp16, float>(args); }
 },
 {
-    "a64_sgemm_8x12",
+    "a64_interleaved_fp32_mla_8x12",
     nullptr,
     [](const GemmArgs &args) { return !args._ci->has_fp16(); },
-    [](const GemmArgs &args) { return new GemmInterleaved<cls_a64_sgemm_8x12, __fp16, __fp16, float>(args); }
+    [](const GemmArgs &args) { return new GemmInterleaved<cls_a64_interleaved_fp32_mla_8x12, __fp16, __fp16, float>(args); }
 },
 {
     "",
@@ -119,5 +118,3 @@ template std::vector<KernelDescription> get_compatible_kernels<__fp16, __fp16, f
 
 }  // namespace ops
 }  // namespace kai
-
-#endif // defined(__aarch64__)

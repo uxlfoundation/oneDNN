@@ -3,16 +3,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-#ifdef __aarch64__
-
 #include "gemm_implementation.hpp"
 #include "gemm_interleaved.hpp"
 #include "kai/ops/gemm/gemm_common.hpp"
 #include "kai/ops/gemm/kai_ops.hpp"
 
-#include "kernels/a64_gemm_s16_8x12.hpp"
-#include "kernels/a64_gemm_s8_4x4.hpp"
-#include "kernels/a64_gemm_s8_8x12.hpp"
+#include "kernels/a64_interleaved_s16s32_mla_8x12.hpp"
+#include "kernels/a64_interleaved_s8s32_dot_8x12.hpp"
 #include "kernels/a64_interleaved_s8s32_mmla_8x12.hpp"
 #include "kernels/sme2_interleaved_nomerge_s8qfp32_mopa_1VLx4VL.hpp"
 #include "kernels/sme2_interleaved_nomerge_s8qfp32_mopa_2VLx2VL.hpp"
@@ -87,22 +84,16 @@ GemmImplementation<int8_t, int8_t, float, DequantizeFloat>::with_estimate(
     [](const GemmArgs &args, const DequantizeFloat &qp) { return new GemmInterleavedDequantized<cls_a64_interleaved_s8s32_mmla_8x12, int8_t, int8_t, float>(args, qp); }
 ),
 {
-    "a64_gemm_s16_8x12",
+    "a64_interleaved_s16s32_mla_8x12",
     nullptr,
     [](const GemmArgs &args, const DequantizeFloat &) { return args._ci->get_cpu_model() == CPUModel::A53 && ((args._Msize > 28) || ((args._Msize % 8) > 4)); },
-    [](const GemmArgs &args, const DequantizeFloat &qp) { return new GemmInterleavedDequantized<cls_a64_gemm_s16_8x12, int8_t, int8_t, float>(args, qp); }
+    [](const GemmArgs &args, const DequantizeFloat &qp) { return new GemmInterleavedDequantized<cls_a64_interleaved_s16s32_mla_8x12, int8_t, int8_t, float>(args, qp); }
 },
 GemmImplementation<int8_t, int8_t, float, DequantizeFloat>::with_estimate(
-    "a64_gemm_s8_8x12",
+    "a64_interleaved_s8s32_dot_8x12",
     [](const GemmArgs &args, const DequantizeFloat &) { return args._ci->has_dotprod(); },
-    [](const GemmArgs &args, const DequantizeFloat &) { return GemmInterleavedDequantized<cls_a64_gemm_s8_8x12, int8_t, int8_t, float>::estimate_cycles<int8_t>(args); },
-    [](const GemmArgs &args, const DequantizeFloat &qp) { return new GemmInterleavedDequantized<cls_a64_gemm_s8_8x12, int8_t, int8_t, float>(args, qp); }
-),
-GemmImplementation<int8_t, int8_t, float, DequantizeFloat>::with_estimate(
-    "a64_gemm_s8_4x4",
-    nullptr,
-    [](const GemmArgs &args, const DequantizeFloat &) { return GemmInterleavedDequantized<cls_a64_gemm_s8_4x4, int8_t, int8_t, float>::estimate_cycles<int8_t>(args); },
-    [](const GemmArgs &args, const DequantizeFloat &qp) { return new GemmInterleavedDequantized<cls_a64_gemm_s8_4x4, int8_t, int8_t, float>(args, qp); }
+    [](const GemmArgs &args, const DequantizeFloat &) { return GemmInterleavedDequantized<cls_a64_interleaved_s8s32_dot_8x12, int8_t, int8_t, float>::estimate_cycles<int8_t>(args); },
+    [](const GemmArgs &args, const DequantizeFloat &qp) { return new GemmInterleavedDequantized<cls_a64_interleaved_s8s32_dot_8x12, int8_t, int8_t, float>(args, qp); }
 ),
 {
     "",
@@ -123,5 +114,3 @@ template std::vector<KernelDescription> get_compatible_kernels<int8_t, int8_t, f
 
 }  // namespace ops
 }  // namespace kai
-
-#endif // __aarch64__

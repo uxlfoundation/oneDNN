@@ -17,13 +17,13 @@ namespace ops {
  * Define "standard" transforms for the blocked GEMMs for SVE.
  *
  * This assumes that A is interleaved 'height' ways, B is interleaved
- * 'width'xVL ways and transposed, and that the merge needs to work in
- * 'height' x 'width'xVL blocks.
+ * 'transform_width'xVL ways and transposed, and that the merge needs to
+ * work in 'height' x 'result_width'xVL blocks.
  *
  * The optional 'block' parameter is for kernels using dot-product type
  * instructions like UDOT and SDOT.
  */
-template<typename TInput, typename TWeight, typename TResult, unsigned int height, unsigned int width_vectors, unsigned int block=1, unsigned int mmla=1, bool integrate_sums=false>
+template<typename TInput, typename TWeight, typename TResult, unsigned int height, unsigned int transform_width, unsigned int result_width=transform_width, unsigned int block=1, bool integrate_sums=false>
 class StdTransformsSVE
 {
 public:
@@ -46,19 +46,22 @@ public:
     }
 
     bool PrepareB_supports_transpose() const {
-        return false;
+        return true;
     }
 
     template<typename TIn>
     void PrepareB(TWeight *out, const TIn *in, const int stride, const int x0,
                   const int xmax, const int k0, const int kmax, bool transposed) {
-        assert (!transposed);
-        Transform<width_vectors, block,  true, VLType::SVE>(out, in, stride, x0, xmax, k0, kmax);
+        if (transposed) {
+            Transform<transform_width, block, false, VLType::SVE>(out, in, stride, x0, xmax, k0, kmax);
+        } else {
+            Transform<transform_width, block,  true, VLType::SVE>(out, in, stride, x0, xmax, k0, kmax);
+        }
     }
 
     template<typename TOut>
-    void Merge(TOut *out, const TResult *in, int stride, int y0, int ymax, int x0, int xmax, const TOut *bias, const Activation act, bool append) {
-        MergeResults<width_vectors / mmla, height, true>(out, in, stride, y0, ymax, x0, xmax, bias, act, append);
+    void Merge(const KernelArgs *args) const {
+        MergeResults<result_width, height, true, TResult, TOut>(args);
     }
 };
 

@@ -7,58 +7,63 @@
 // clang-format off
 #pragma once
 
-
+#include "common_internal/kernel_args.hpp"
 #include "../std_transforms_sme.hpp"
 
 namespace kai {
 namespace ops {
 
 // Implementations
-void sme_interleaved_nomerge_fp32_mopa_1VLx4VL(const float *const A, const float *const B, float *const C, int ldc, const int M, const int N, const int K, const float *const bias, const Activation act, bool accumulate, float *const accumulator_buffer);
+extern "C" void kai_ops_sme_interleaved_nomerge_fp32_mopa_1VLx4VL(const KernelArgs *);
 
 class cls_sme_interleaved_nomerge_fp32_mopa_1VLx4VL
 {
 public:
-  typedef float lhs_operand_type;
-  typedef float rhs_operand_type;
-  typedef float result_type;
+    typedef float lhs_operand_type;
+    typedef float rhs_operand_type;
+    typedef float result_type;
 
-  typedef void (*kern_type)(const float *const A, const float *const B, float *const C, int ldc, const int M, const int N, const int K, const float *const bias, const Activation act, bool accumulate, float *const accumulator_buffer);
+    typedef void (*kern_type)(const KernelArgs *);
 
-  /* Kernel blocking parameters */
-  static unsigned int out_height()
-  {
-    return sme::get_vector_length<float>() * 1;
-  }
+    /* Kernel blocking parameters */
+    static unsigned int out_height()
+    {
+        return sme::get_vector_length<float>() * 1;
+    }
 
-  static unsigned int out_width()
-  {
-    return sme::get_vector_length<float>() * 4;
-  }
+    static unsigned int out_width()
+    {
+        return sme::get_vector_length<float>() * 4;
+    }
 
-  static constexpr unsigned int k_unroll()
-  {
-    return 1;
-  }
+    static constexpr unsigned int k_unroll()
+    {
+        return 1;
+    }
 
-  static constexpr bool supports_bias()
-  {
-    return true;
-  }
+    static constexpr bool supports_bias()
+    {
+        return true;
+    }
 
-  static constexpr bool is_sme()
-  {
-    return true;
-  }
+    static constexpr bool is_sme()
+    {
+        return true;
+    }
 
-  // Default to the generic kernel
-  kern_type kernel = sme_interleaved_nomerge_fp32_mopa_1VLx4VL;
+    static constexpr size_t accumulation_buffer_element_size()
+    {
+        return sizeof(float);
+    }
 
-  StdTransformsSME<lhs_operand_type, result_type, 1, 4, 1> transforms = {};
+    // Default to the generic kernel
+    kern_type kernel = kai_ops_sme_interleaved_nomerge_fp32_mopa_1VLx4VL;
 
-  cls_sme_interleaved_nomerge_fp32_mopa_1VLx4VL(const CPUInfo *)
-  {
-  }
+    StdTransformsSME<lhs_operand_type, result_type, 1, 4, 1> transforms = {};
+
+    cls_sme_interleaved_nomerge_fp32_mopa_1VLx4VL(const CPUInfo *)
+    {
+    }
 };
 
 } // namespace ops

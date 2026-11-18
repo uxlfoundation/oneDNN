@@ -13,6 +13,15 @@ project(
     DESCRIPTION "Benchmark GEMM kernels of various flavours for AArch64"
     LANGUAGES C CXX)
 
+if(MSVC)
+    enable_language(ASM_MARMASM)
+    set(CMAKE_ASM_MARMASM_COMPILE_OBJECT
+        "<CMAKE_C_COMPILER> /nologo /EP /P /Tc <SOURCE> <DEFINES> <INCLUDES> /Fi<OBJECT>.asm"
+        "<CMAKE_ASM_MARMASM_COMPILER> -o <OBJECT> <OBJECT>.asm")
+else()
+    enable_language(ASM)
+endif()
+
 if(NOT DEFINED PROJECT_IS_TOP_LEVEL)
     if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
         set(PROJECT_IS_TOP_LEVEL ON)
@@ -27,30 +36,36 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # -------------------------------------------------------------------------------------------------
 # cmake-format: off
 
-# Default option values
-set(_KLEIDIAI_OPS_ENABLE_THREADS_DEFAULT OFF)
-set(_KLEIDIAI_OPS_ENABLE_BIND_THREADS_DEFAULT OFF)
-set(_KLEIDIAI_OPS_SVE_ARCH_DEFAULT armv8.2-a+sve+fp16+dotprod)
-
 # Enable threading support by default on Linux and macOS
+set(_KLEIDIAI_OPS_ENABLE_THREADS_DEFAULT OFF)
 if(LINUX OR APPLE)
-  set(_KLEIDIAI_OPS_ENABLE_THREADS_DEFAULT ON)
+    set(_KLEIDIAI_OPS_ENABLE_THREADS_DEFAULT ON)
 endif()
 
 # Enable thread binding support by default on Linux
+set(_KLEIDIAI_OPS_ENABLE_BIND_THREADS_DEFAULT OFF)
 if(LINUX)
-  set(_KLEIDIAI_OPS_ENABLE_BIND_THREADS_DEFAULT ON)
+    set(_KLEIDIAI_OPS_ENABLE_BIND_THREADS_DEFAULT ON)
 endif()
 
-# Darwin clang needs SME2 enabled when compiling the combined SVE/SME/SME2 source bucket.
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-  set(_KLEIDIAI_OPS_SVE_ARCH_DEFAULT armv9.2-a+nosve+sme2+fp16+dotprod)
+if(NOT MSVC)
+    set(_KLEIDIAI_OPS_ARCH_DEFAULT armv8-a)
+    set(_KLEIDIAI_OPS_FP16_ARCH_DEFAULT armv8.2-a+fp16)
+    # Darwin clang needs SME2 enabled when compiling the combined SVE/SME/SME2 source bucket.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(_KLEIDIAI_OPS_SVE_ARCH_DEFAULT armv9.2-a+nosve+sme2+fp16+dotprod)
+    else()
+        set(_KLEIDIAI_OPS_SVE_ARCH_DEFAULT armv8.2-a+sve+fp16+dotprod)
+    endif()
+else()
+    set(_KLEIDIAI_OPS_ARCH_DEFAULT armv8.0)
+    set(_KLEIDIAI_OPS_FP16_ARCH_DEFAULT armv8.2)
+    set(_KLEIDIAI_OPS_SVE_ARCH_DEFAULT armv8.2)
 endif()
 
 # Configuration options
 option(KLEIDIAI_OPS_ENABLE_CCACHE_SUPPORT "Enable use of 'ccache' for build" OFF)
 option(KLEIDIAI_OPS_ENABLE_NATIVE "Enable native build" ON)
-option(KLEIDIAI_OPS_ENABLE_AARCH32 "Enable AArch32 mode" OFF)
 option(KLEIDIAI_OPS_ENABLE_BARE_METAL "Enable bare-metal mode" OFF)
 option(KLEIDIAI_OPS_ENABLE_ANDROID "Enable Android build" OFF)
 option(KLEIDIAI_OPS_ENABLE_BUILD_BENCHMARK "Enable build of 'gemm' benchmarking executable" ${PROJECT_IS_TOP_LEVEL})
@@ -67,8 +82,8 @@ set(KLEIDIAI_OPS_C_STANDARD 11 CACHE STRING "C Standard to use for the library."
 set(KLEIDIAI_OPS_CXX_STANDARD 11 CACHE STRING "CXX Standard to use for the library.")
 
 # Set architecture flags
-set(KLEIDIAI_OPS_ARCH armv8-a CACHE STRING "Architecture for the core library.")
-set(KLEIDIAI_OPS_FP16_ARCH armv8.2-a+fp16 CACHE STRING "Architecture for the fp16-specific library components.")
+set(KLEIDIAI_OPS_ARCH ${_KLEIDIAI_OPS_ARCH_DEFAULT} CACHE STRING "Architecture for the core library.")
+set(KLEIDIAI_OPS_FP16_ARCH ${_KLEIDIAI_OPS_FP16_ARCH_DEFAULT} CACHE STRING "Architecture for the fp16-specific library components.")
 set(KLEIDIAI_OPS_SVE_ARCH ${_KLEIDIAI_OPS_SVE_ARCH_DEFAULT} CACHE STRING "Architecture for the sve-specific library components.")
 
 # cmake-format: on

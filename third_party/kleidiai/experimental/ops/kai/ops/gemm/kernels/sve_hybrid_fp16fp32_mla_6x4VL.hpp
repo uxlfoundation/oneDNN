@@ -6,21 +6,15 @@
 
 // clang-format off
 #pragma once
-#include "../std_transforms_sve.hpp"
 
-#define ARGLIST  \
-    unsigned int, const unsigned int *, \
-    IndirectInputArg<__fp16>, \
-    size_t, size_t, \
-    const __fp16 *, \
-    OutputArg<float>, \
-    const float *, Activation, bool
+#include "common_internal/kernel_args.hpp"
+#include "../std_transforms_sve.hpp"
 
 namespace kai {
 namespace ops {
 
 // Actual kernel implementations
-void sve_hybrid_fp16fp32_mla_6x4VL( ARGLIST );
+extern "C" void kai_ops_sve_hybrid_fp16fp32_mla_6x4VL( const KernelArgs * );
 
 class cls_sve_hybrid_fp16fp32_mla_6x4VL
 {
@@ -29,7 +23,7 @@ public:
     typedef __fp16 rhs_operand_type;
     typedef float result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     /* Kernel blocking parameters */
     static constexpr unsigned int out_height()
@@ -52,10 +46,10 @@ public:
         return true;
     }
 
-    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 6, 2, 1> transforms = {};
+    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 6, 2, 2, 1> transforms = {};
 
     // Default to the generic kernel
-    kern_type kernel=sve_hybrid_fp16fp32_mla_6x4VL;
+    kern_type kernel=kai_ops_sve_hybrid_fp16fp32_mla_6x4VL;
     cls_sve_hybrid_fp16fp32_mla_6x4VL(const CPUInfo *)
     {
     }
@@ -63,5 +57,3 @@ public:
 
 } // namespace ops
 } // namespace kai
-
-#undef ARGLIST

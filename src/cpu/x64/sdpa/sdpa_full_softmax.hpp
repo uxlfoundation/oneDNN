@@ -26,6 +26,7 @@
 #include "common/sdpa_pd.hpp"
 
 #include "cpu/x64/brgemm/brgemm_containers.hpp"
+#include "cpu/x64/cpu_reducer.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -322,6 +323,9 @@ struct sdpa_full_softmax_kernels_t {
     // K / V packers. Packing ahead uses [0] for the whole tensor; packing per
     // tile uses [is_tail] for one tile (the copy kernels bake in their shape).
     std::unique_ptr<sdpa_brgemm_copy::b_packer_t> k_packers[2], v_packers[2];
+
+    // Sums the f32 mm2 chunk results of split_kv (null with one chunk).
+    std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> split_kv_acc;
 
     // Vectorized JIT softmax kernel and its pd. execute() invokes the kernel
     // for each score row.

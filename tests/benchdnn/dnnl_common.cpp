@@ -53,6 +53,7 @@
 #include "utils/dnnl_query.hpp"
 #include "utils/execution_mode.hpp"
 #include "utils/fill.hpp"
+#include "utils/gpu_freq.hpp"
 #include "utils/parallel.hpp"
 #include "utils/stream_kind.hpp"
 #include "utils/system.hpp"
@@ -707,6 +708,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
             4, "%s%d%s\n", "[PERF]: submissions: ", num_submissions, ";");
     // Measuring loop. A single synchronization point, called once, the number
     // of submissions determined above based on n_times or plain time criterion.
+    gpu_freq::session_t freq_session;
     t.reset();
     // Keep a separate variable due to a `break` inside the loop.
     int execute_count = 0;
@@ -721,6 +723,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     for (size_t j = 0; j < v_stream.size(); j++) {
         DNN_SAFE(dnnl_stream_wait(v_stream[j]), CRIT);
     }
+    // Stop right after the executions to exclude the profiling readback.
+    const auto freq_samples = freq_session.stop();
 
     SAFE(update_timer_with_profiling_info(
                  t, use_profiling, v_stream, execute_count),
@@ -733,6 +737,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
         t.filter_collection();
     }
+
+    t.set_freq_samples(freq_samples);
 
     return OK;
 }

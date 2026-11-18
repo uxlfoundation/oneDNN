@@ -52,6 +52,8 @@ void timer_t::reset() {
     for (int i = 0; i < n_modes; ++i)
         ms_[i] = 0;
     ms_start_ = 0;
+    freq_ = {};
+    kept_share_ = 1;
     samples_.clear();
 
     start();
@@ -104,6 +106,12 @@ void timer_t::filter_collection() {
     // First, drop the first half of all measurements. The motivation is second
     // half operates with stabilized frequency.
     size_t midpoint = samples_.size() / 2;
+    double total_ms = 0, dropped_ms = 0;
+    for (size_t i = 0; i < samples_.size(); i++) {
+        total_ms += samples_[i].ms;
+        if (i < midpoint) dropped_ms += samples_[i].ms;
+    }
+    if (total_ms > 0) kept_share_ = 1 - dropped_ms / total_ms;
     samples_.erase(samples_.begin(), samples_.begin() + midpoint);
     if (samples_.size() <= 1) return;
 
@@ -205,6 +213,16 @@ void timer_t::filter_collection() {
 
     BENCHDNN_PRINT(4, "[TIMER]: MinSamples: %zu; Outliers: %zu; %s\n",
             min_n_samples, deltas_size, msg.c_str());
+}
+
+void timer_t::set_freq_samples(const std::vector<gpu_freq::sample_t> &samples) {
+    if (samples.empty()) return;
+    freq_ = gpu_freq::tail_stats(samples, kept_share_);
+    BENCHDNN_PRINT(3,
+            "[GPU_FREQ]: samples: %zu; window: %.3f ms; tail: %.3f; used: %zu; "
+            "avg: %.0f MHz; min: %.0f MHz; max: %.0f MHz;\n",
+            samples.size(), samples.back().ms, kept_share_, freq_.n, freq_.avg,
+            freq_.min, freq_.max);
 }
 
 timer_t &timer_t::operator=(const timer_t &rhs) {

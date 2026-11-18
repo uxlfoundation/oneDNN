@@ -27,6 +27,7 @@ following information is printed for certain verbosity levels.
 * Cold cache stats.
 * Graph: the number of partitions and their decomposition.
 * Generated grouped size distribution.
+* GPU frequency source and sampling stats.
 
 ## Level 5
 * The library implementation name picked to compute the given problem.

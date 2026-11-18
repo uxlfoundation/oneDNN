@@ -309,6 +309,73 @@ void store_pv_tile(const float *pv, dim_t ld_pv, char *out, dim_t o_row_stride,
     }
 }
 
+status_t set_mm1_post_ops(brgemm_desc_t &brg, dim_t output_rows,
+        dim_t full_output_width, dim_t output_row_stride,
+        const std::vector<sdpa_mm1_post_op_t> *post_ops, bool select_as_postop,
+        bool stack_heads) {
+    const bool has_post_ops = post_ops && !post_ops->empty();
+    if (!has_post_ops && !select_as_postop) return status::success;
+
+    post_ops_t po;
+    if (has_post_ops) {
+        for (const auto &pop : *post_ops) {
+            if (!pop.is_binary) {
+                CHECK(po.append_eltwise(
+                        /*scale=*/1.0f, pop.alg, pop.alpha, pop.beta));
+                continue;
+            }
+
+            memory_desc_t rhs_md;
+            if (pop.rhs_is_scalar) {
+                dims_t rhs_dims = {1, 1};
+                CHECK(memory_desc_init_by_tag(
+                        rhs_md, 2, rhs_dims, pop.rhs_dt, format_tag::ab));
+            } else {
+                const int row_axis = stack_heads ? sdpa_pd_t::mask_h_index
+                                                 : sdpa_pd_t::mask_q_index;
+                const dim_t rows
+                        = pop.rhs_dims[row_axis] == 1 ? 1 : output_rows;
+
+                constexpr int key_axis = sdpa_pd_t::mask_k_index;
+                const dim_t cols
+                        = pop.rhs_dims[key_axis] == 1 ? 1 : full_output_width;
+
+                dims_t rhs_dims = {rows, cols};
+                dims_t rhs_str = {
+                        pop.rhs_strides[row_axis], pop.rhs_strides[key_axis]};
+
+                CHECK(memory_desc_init_by_strides(
+                        rhs_md, 2, rhs_dims, pop.rhs_dt, rhs_str));
+            }
+            CHECK(po.append_binary(pop.alg, &rhs_md));
+        }
+    }
+
+    if (select_as_postop) {
+        memory_desc_t fill_md;
+        dims_t fl_dims = {1, 1};
+        CHECK(memory_desc_init_by_tag(
+                fill_md, 2, fl_dims, data_type::f32, format_tag::ab));
+
+        memory_desc_t cond_md;
+        dims_t cd_dims = {output_rows, full_output_width};
+        CHECK(memory_desc_init_by_tag(
+                cond_md, 2, cd_dims, data_type::u8, format_tag::ab));
+
+        CHECK(po.append_binary(alg_kind::binary_select, &fill_md, &cond_md));
+    }
+
+    primitive_attr_t attr;
+    CHECK(attr.set_post_ops(po));
+
+    memory_desc_t dst_md;
+    dims_t d_dims = {output_rows, full_output_width};
+    dims_t d_strides = {output_row_stride, 1};
+    CHECK(memory_desc_init_by_strides(
+            dst_md, 2, d_dims, data_type::f32, d_strides));
+    return brgemm_desc_set_postops(&brg, &attr, &dst_md, output_row_stride);
+}
+
 // Build a finalized BRGEMM descriptor.
 status_t build_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
         dim_t M, dim_t N, dim_t K, dim_t lda, dim_t ldb, dim_t ldc,
@@ -328,76 +395,8 @@ status_t build_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
     // defaults to N when the full output fits one tile.
     const dim_t full_tile_width = full_output_width > 0 ? full_output_width : N;
 
-    // Append the supported mm1 post-ops (scale / attention-mask) to the GEMM
-    // post-op list. A scalar binary rhs is a [1 x 1] broadcast. For a tensor
-    // rhs, axes with extent 1 stay 1 in the descriptor and broadcast; other
-    // axes cover this tile and retain their user strides. The optional select
-    // uses a scalar fill rhs and a dense [M x full_tile_width] condition.
-    // Runtime pointers are supplied per execute call.
-    const bool has_post_ops = post_ops && !post_ops->empty();
-    if (has_post_ops || select_as_postop) {
-        post_ops_t po;
-        if (has_post_ops) {
-            for (const auto &pop : *post_ops) {
-                if (!pop.is_binary) {
-                    CHECK(po.append_eltwise(
-                            /*scale=*/1.0f, pop.alg, pop.alpha, pop.beta));
-                    continue;
-                }
-
-                memory_desc_t rhs_md;
-                if (pop.rhs_is_scalar) {
-                    dims_t rhs_dims = {1, 1};
-                    CHECK(memory_desc_init_by_tag(
-                            rhs_md, 2, rhs_dims, pop.rhs_dt, format_tag::ab));
-                } else {
-                    const int row_axis = stack_heads ? sdpa_pd_t::mask_h_index
-                                                     : sdpa_pd_t::mask_q_index;
-                    const dim_t rows = pop.rhs_dims[row_axis] == 1 ? 1 : M;
-
-                    constexpr int key_axis = sdpa_pd_t::mask_k_index;
-                    const dim_t cols
-                            = pop.rhs_dims[key_axis] == 1 ? 1 : full_tile_width;
-
-                    dims_t rhs_dims = {rows, cols};
-                    dims_t rhs_str = {pop.rhs_strides[row_axis],
-                            pop.rhs_strides[key_axis]};
-
-                    CHECK(memory_desc_init_by_strides(
-                            rhs_md, 2, rhs_dims, pop.rhs_dt, rhs_str));
-                }
-                CHECK(po.append_binary(pop.alg, &rhs_md));
-            }
-        }
-        if (select_as_postop) {
-            memory_desc_t fill_md;
-            dims_t fl_dims = {1, 1};
-            CHECK(memory_desc_init_by_tag(
-                    fill_md, 2, fl_dims, data_type::f32, format_tag::ab));
-
-            memory_desc_t cond_md;
-            dims_t cd_dims = {M, full_tile_width};
-            CHECK(memory_desc_init_by_tag(
-                    cond_md, 2, cd_dims, data_type::u8, format_tag::ab));
-
-            CHECK(po.append_binary(
-                    alg_kind::binary_select, &fill_md, &cond_md));
-        }
-
-        primitive_attr_t attr;
-        CHECK(attr.set_post_ops(po));
-
-        // LDC is the score tile's physical row stride. It equals full_tile_width
-        // when an mm1 binary post-op has a tensor RHS (e.g., the attention
-        // mask), or when select is folded into mm1 (see configure()).
-        memory_desc_t dst_md;
-        dims_t d_dims = {M, full_tile_width};
-        dims_t d_strides = {ldc, 1};
-        CHECK(memory_desc_init_by_strides(
-                dst_md, 2, d_dims, data_type::f32, d_strides));
-
-        CHECK(brgemm_desc_set_postops(&brg, &attr, &dst_md, /*LDD=*/ldc));
-    }
+    CHECK(set_mm1_post_ops(brg, M, full_tile_width, ldc, post_ops,
+            select_as_postop, stack_heads));
 
     const bool amx_vnni_k_tail = (brg.is_bf16_tmm || brg.is_f16_tmm)
             && K % data_type_vnni_granularity(dt) != 0;

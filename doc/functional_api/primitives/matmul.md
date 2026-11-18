@@ -219,8 +219,6 @@ run-time attributes in use.
   reused, it is best to force the primitive to use the same format as that used
   by the tensors.
 
-@anchor dev_guide_matmul_grouped_gemm
-
 ## Sparse Matrix Multiplication Support
 
 ### CSR encoding
@@ -305,6 +303,8 @@ calculated as `max(1024 * 512 * (1 - 0.99), 1)`.
 
 Refer to [Sparsity Advanced Topic](@ref dev_guide_sparsity) page for more
 information on sparse encoding.
+
+@anchor dev_guide_matmul_grouped_gemm
 
 ## Grouped GEMM Support
 

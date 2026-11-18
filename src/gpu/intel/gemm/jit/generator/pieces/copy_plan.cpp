@@ -3336,11 +3336,18 @@ void CopyPlan::legalizeRegions()
             if (!isFlat(i.src1)) {
                 if (isCommutative(i.op) && i.src0.kind == CopyOperand::GRF && isFlat(i.src0)) {
                     std::swap(i.src0, i.src1);
+                    std::swap(s0t, s1t);
                     std::swap(src0BO, src1BO);
                     std::swap(src0BS, src1BS);
                 } else
                     canSwizzle = false;
             }
+
+            /* For SIMD > 1, src regions must match dst. The swap above only
+               guarantees this for src1, so check src0 too. */
+            bool twoGRF = i.src0.kind == CopyOperand::GRF && i.src1.kind == CopyOperand::GRF;
+            if (i.simd > 1 && i.op != Opcode::mov && twoGRF && !isFlat(i.src0))
+                canSwizzle = false;
 
             if (hfIntConvert)
                 canSwizzle = false;

@@ -55,6 +55,10 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
                     val_mdw.is_plain(), dst_mdw.is_plain()),
             VERBOSE_UNSUPPORTED_TAG);
 
+    for (int d = 0; d < sdpa_pd_t::ndims; ++d)
+        VDISPATCH_SDPA(dst_mdw.dims()[d] == 1 || dst_mdw.strides()[d] != 0,
+                "dst must not have zero strides on non-unit dimensions");
+
     VDISPATCH_SDPA(qry_mdw.strides()[sdpa_pd_t::ndims - 1] == 1,
             "the query head-size axis must be contiguous");
     VDISPATCH_SDPA(key_mdw.strides()[sdpa_pd_t::ndims - 1] == 1

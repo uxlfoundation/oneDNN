@@ -937,17 +937,18 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // The per-head score/P/pv tiles of a work item are already consecutive
     // [1 x ld] rows. Every row-addressed operand must then use its head stride
     // as the row stride:
-    //  - Q and a direct output: head rows must not overlap;
+    //  - Q: head rows must not overlap (a broadcast Q has head stride 0);
     //  - a tensor mm1 RHS (mask) and a folded select condition: the binary
     //    injector addresses them with score-tile offsets, so they must either
     //    broadcast over heads or have a head stride equal to ld_scores.
+    // Output head rows never overlap: the memory descriptor checks non-zero
+    // strides, and the pd rejects zero dst strides on non-unit dimensions.
     constexpr int head_dim = 1;
     auto can_stack_heads = [&]() {
         if (!p_.allow_stack_heads || p_.seq_q != 1
                 || conf.query_heads_per_item == 1)
             return false;
         if (p_.q_strides[head_dim] < p_.hs_qk) return false;
-        if (mm2_direct && p_.o_strides[head_dim] < p_.hs_v) return false;
         for (const auto &pop : p_.mm1_post_ops) {
             if (!pop.is_binary || pop.rhs_is_scalar) continue;
             if (pop.rhs_dims[head_dim] != 1

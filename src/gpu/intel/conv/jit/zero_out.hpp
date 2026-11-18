@@ -106,6 +106,7 @@ public:
 
         generate_prologue();
 
+        ra().claim(r0);
         ra().claim(getLocalSize(0));
         ra().claim(getLocalID(0));
 

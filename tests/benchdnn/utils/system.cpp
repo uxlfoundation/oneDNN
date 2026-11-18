@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include <algorithm> // for std::find, std::any_of
+#include <cctype> // for std::tolower
 #include <climits> // for PATH_MAX
 #include <cstdio> // for snprintf
 #include <cstdlib> // for realpath
@@ -33,7 +34,7 @@
 #include "oneapi/dnnl/dnnl.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "oneapi/dnnl/dnnl_ocl.hpp"
-#include <CL/cl_ext.h>
+#include <CL/cl_ext.h> // for CL_DEVICE_PCI_BUS_INFO_KHR
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
 #include "oneapi/dnnl/dnnl_sycl.hpp"
@@ -220,6 +221,60 @@ int get_gpu_cache_size(size_t &cache_size) {
 #endif
     cache_size = _cache_size;
     return OK;
+}
+
+std::string get_gpu_pci_bdf() {
+    if (!is_gpu()) return std::string();
+
+    static std::string bdf;
+    static bool queried = false;
+    if (queried) return bdf;
+    queried = true;
+
+    uint32_t domain = 0, bus = 0, device = 0, function = 0;
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+    auto eng = dnnl::engine(get_test_engine(), true);
+    cl_device_id ocl_dev = dnnl::ocl_interop::get_device(eng);
+    cl_device_pci_bus_info_khr info {};
+    cl_int status = clGetDeviceInfo(
+            ocl_dev, CL_DEVICE_PCI_BUS_INFO_KHR, sizeof(info), &info, nullptr);
+    if (status != CL_SUCCESS) return bdf;
+    domain = info.pci_domain;
+    bus = info.pci_bus;
+    device = info.pci_device;
+    function = info.pci_function;
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
+#if defined(SYCL_EXT_INTEL_DEVICE_INFO) && SYCL_EXT_INTEL_DEVICE_INFO >= 2
+    auto eng = dnnl::engine(get_test_engine(), true);
+    auto sycl_dev = dnnl::sycl_interop::get_device(eng);
+    if (!sycl_dev.has(::sycl::aspect::ext_intel_pci_address)) return bdf;
+    // Already in the `DDDD:BB:DD.F` format.
+    bdf = sycl_dev.get_info<::sycl::ext::intel::info::device::pci_address>();
+    for (auto &c : bdf)
+        c = static_cast<char>(std::tolower(c));
+    return bdf;
+#else
+    return bdf;
+#endif
+#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
+    auto eng = dnnl::engine(get_test_engine(), true);
+    auto ze_dev = dnnl::ze_interop::get_device(eng);
+    ze_pci_ext_properties_t props {};
+    props.stype = ZE_STRUCTURE_TYPE_PCI_EXT_PROPERTIES;
+    if (zeDevicePciGetPropertiesExt(ze_dev, &props) != ZE_RESULT_SUCCESS)
+        return bdf;
+    domain = props.address.domain;
+    bus = props.address.bus;
+    device = props.address.device;
+    function = props.address.function;
+#else
+    return bdf;
+#endif
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%04x:%02x:%02x.%x", domain, bus, device,
+            function);
+    bdf = buf;
+    return bdf;
 }
 
 #ifdef __linux__
@@ -470,36 +525,6 @@ static bool report_cpu_perf_hints_impl() {
     }
 
     return any_hint;
-}
-
-// Returns "dddd:bb:dd.f" of the test engine's GPU, or "" if unknown.
-static std::string get_gpu_pci_bdf() {
-    char bdf[16] = {};
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    auto eng = dnnl::engine(get_test_engine(), true);
-    cl_device_pci_bus_info_khr p {};
-    if (clGetDeviceInfo(dnnl::ocl_interop::get_device(eng),
-                CL_DEVICE_PCI_BUS_INFO_KHR, sizeof(p), &p, nullptr)
-            != CL_SUCCESS)
-        return {};
-    snprintf(bdf, sizeof(bdf), "%04x:%02x:%02x.%x", p.pci_domain, p.pci_bus,
-            p.pci_device, p.pci_function);
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-    auto eng = dnnl::engine(get_test_engine(), true);
-    ze_pci_ext_properties_t p {};
-    p.stype = ZE_STRUCTURE_TYPE_PCI_EXT_PROPERTIES;
-    if (zeDevicePciGetPropertiesExt(dnnl::ze_interop::get_device(eng), &p)
-            != ZE_RESULT_SUCCESS)
-        return {};
-    snprintf(bdf, sizeof(bdf), "%04x:%02x:%02x.%x", p.address.domain,
-            p.address.bus, p.address.device, p.address.function);
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
-    auto eng = dnnl::engine(get_test_engine(), true);
-    auto dev = dnnl::sycl_interop::get_device(eng);
-    if (!dev.has(::sycl::aspect::ext_intel_pci_address)) return {};
-    return dev.get_info<::sycl::ext::intel::info::device::pci_address>();
-#endif
-    return bdf;
 }
 
 // An unpinned GPU frequency (min != max) may float during the run and skew

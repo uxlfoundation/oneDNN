@@ -18,6 +18,7 @@
 #define UTILS_TIMER_HPP
 
 #include "utils/bench_mode.hpp"
+#include "utils/gpu_freq.hpp"
 
 #include <cstdint>
 #include <string>
@@ -83,6 +84,12 @@ struct timer_t {
         return ticks_[mode] / (mode == avg ? times() : 1);
     }
 
+    // Average externally sampled frequency in MHz, `0` if unknown.
+    double freq_mhz() const { return freq_.avg; }
+    // Sets frequency from the samples within the share of the window kept by
+    // `filter_collection()`. Must be called after it.
+    void set_freq_samples(const std::vector<gpu_freq::sample_t> &samples);
+
     // Discards measurements from the collection based on heuristic. See details
     // inside the definition.
     void filter_collection();
@@ -94,6 +101,10 @@ struct timer_t {
     size_t times_;
     uint64_t ticks_[n_modes], ticks_start_;
     double ms_[n_modes], ms_start_;
+    gpu_freq::stats_t freq_;
+    // Share of the measured time kept after dropping the first half of
+    // executions in `filter_collection()`.
+    double kept_share_ = 1;
     // Per-sample (ms, ticks) measurements, kept together so filtering applies
     // to both consistently and frequency can be re-derived post-filter.
     struct sample_t {

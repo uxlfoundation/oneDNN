@@ -960,6 +960,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // place. V is handled the same way, so v_block is one panel when packed.
     conf.ldk = need_copy_k ? b_panel_n : p_.k_strides[row_dim];
     conf.ldv = need_copy_v ? b_panel_n : p_.v_strides[row_dim];
+    // BRGEMM requires ldb >= hs_v for unpacked V. When seq_kv == 1, V's row
+    // stride is unused, so a smaller stride can be raised to hs_v.
+    if (!need_copy_v && p_.seq_kv == 1) conf.ldv = nstl::max(conf.ldv, p_.hs_v);
     conf.v_block = need_copy_v ? nstl::min<dim_t>(p_.hs_v, b_panel_n) : p_.hs_v;
     conf.v_tail = p_.hs_v % conf.v_block;
 

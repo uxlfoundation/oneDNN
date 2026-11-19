@@ -3,6 +3,7 @@
 # Section A = 2Dx3D and Section B = 2Dx2D):
 # Section C = 2Dx2D scaled (fp8 with K-grouped scales)
 # Section D = layouts of grouped operands and row-wise 2Dx2D scales
+# Section E = 2Dx3D binary post-ops with dense tensors
 #
 # Grouped operands are 3D with the groups in dim 0, so masks are over src
 # {G, M, K} and wei {G, K, N} in both variants
@@ -111,3 +112,21 @@
 --bia-dt=undef,f32 --bia_mask=2
 --grouped=0:4:balanced
 32x128:4x128x64
+
+# --- Section E: 2Dx3D binary post-ops with dense tensors --------------------
+# Masks are over the 3D dst {G, M, N}: a dense tensor constant along M is per
+# tensor (0), per group (1), per column (4), or per group and column (5)
+--reset
+--dt=f32:f32:f32,bf16:bf16:bf16
+--attr-post-ops=mul:f32:0,mul:f32:1,mul:f32:4,mul:f32:5,mul:f32:5+mul:f32:7:grouped
+--grouped=0:4:balanced,0:4:16+0+40+8
+64x128:4x128x48
+
+# NVFP4-like per-tensor global scale and per group and column scales
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16
+--wtag=acb
+--attr-scales=src:3+wei:5
+--attr-post-ops=mul:f32:0,mul:f32:5
+--grouped=0:4:balanced
+32x64:4x64x32

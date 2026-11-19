@@ -69,9 +69,6 @@ static inline int bytesToElements(int b, ngen::DataType dt) {
     return (b * 8) >> getLog2Bits(dt);
 }
 
-// Move subregister to another pipe.
-void movePipes(ngen::Subregister &s, bool sizeCanChange = true);
-
 // Move subregister to integer pipe.
 void moveToIntPipe(ngen::Subregister &s);
 

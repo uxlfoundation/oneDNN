@@ -113,12 +113,6 @@ public:
         _end_
     };
 
-    enum class RemainderHandling {
-        Separate,           // Full remainder handling for both main and cooldown loops.
-        Unified,            // Combine main and cooldown loop remainder handling.
-        Ignore              // No remainder handling; assume loop count is multiple of unroll.
-    };
-
     enum Phase {
         PhaseWarmup,        // Warmup for main loop.
         PhaseMainLoop,      // Inside main loop.
@@ -126,7 +120,6 @@ public:
         PhaseMainPathEnd,   // End of main path.
         PhaseShortLoop,     // Short loop, if not enough iterations for main loop.
         PhaseShortLoopEnd,  // End of short loop.
-        PhaseRemainder,     // Unified remainder loop.
         PhaseFullyUnrolled, // Fully unrolled loop sequence.
     };
 
@@ -145,12 +138,10 @@ public:
     void materialize(int minLoops = 0, int maxLoops = -1);
 
     void setCallback(CallbackType type, Callback cb);
-    void setRemainderHandling(RemainderHandling handling);
     void setReverse(bool reverse_ = true) { reverse = reverse_; }
     void counterIsMultipleOf(int align) { counterAlign = align; }
 
     int getUnroll() const;
-    int getWarmup() const;
     int getCooldown() const;
     int getLoopBias() const;
 
@@ -167,7 +158,6 @@ protected:
     std::vector<Action> actions;
     std::array<Callback, static_cast<size_t>(CallbackType::_end_)> callbacks;
     std::vector<std::pair<int, int>> activeChecks;
-    RemainderHandling remainderHandling = RemainderHandling::Separate;
     int nextLabel = 0;
     int currentBias = 0;
 

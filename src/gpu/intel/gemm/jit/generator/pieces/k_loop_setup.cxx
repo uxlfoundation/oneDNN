@@ -94,7 +94,8 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
         state.modBarrierFence[q] = InstructionModifier{};
     }
 
-    if (strategy.needsKLoopBarrier() || strategy.xParallel)
+    bool barrierFenceToken = strategy.needsKLoopBarrier();
+    if (barrierFenceToken)
         state.tokenBarrierFence[0] = state.tokenAllocator.tryAlloc();
     if (nbM && nbN)
         state.tokenBarrierFence[1] = state.tokenAllocator.tryAlloc();

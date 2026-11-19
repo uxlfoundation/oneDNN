@@ -357,8 +357,6 @@ struct GEMMStrategy : public GEMMStrategyPOD
     int slmBBufSize(const GEMMProblem &problem)       const { return slmGEMMBBufSize(problem); }
     int slmSysgemmBlockSize()                         const { return 1152 * wg[LoopM] + 1536 * wg[LoopN]; }
     bool variableSLM()                                const { return kParallelLocal; }
-    int slmBarriersPerUnroll()                        const { return (std::max(slmBuffersA, slmBuffersB) == 0) ? 0 :
-                                                                     (std::max(slmBuffersA, slmBuffersB) == 1) ? 2 : 1; }
 
     int ka_inc() const { return slmA ? unrollKSLM : ka_load; }
     int kb_inc() const { return slmB ? unrollKSLM : kb_load; }
@@ -369,7 +367,6 @@ struct GEMMStrategy : public GEMMStrategyPOD
                                                        || namedBarriers[LoopM] || namedBarriers[LoopN] || (dpasw && !fixedSystolic) || (l3PrefetchA || l3PrefetchB); }
     bool needsKLocalIDs()     const { return kParallelLocal || persistentLoop(); }
     bool needsKLoopBarrier()  const { return (barrierFreq > 0) || (std::max(slmBuffersA, slmBuffersB) > 0); }
-    bool needsBarrier()       const { return needsKLoopBarrier() || xParallel || kParallelLocal || fuseBeta || fusePostOps; }
 
     bool needsUnnamedBarrier(const GEMMProblem &problem) const;
     bool needsNamedBarriersM(const GEMMProblem &problem) const;

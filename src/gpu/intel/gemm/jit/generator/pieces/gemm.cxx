@@ -357,8 +357,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (needH0 && state.h0.isInvalid())
         state.h0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
 
-    bool wgCheck = wgRemCheck(problem, strategy);
-    bool gemmtBarriers = problem.gemmt() && strategy.needsBarrier();
+    bool needWGIJ0 = wgRemCheck(problem, strategy);
 
     Subregister idM, idN, idK;
 
@@ -403,7 +402,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         mod(wgChunkRem, state.inputs.groupIDN, strategy.cInterleaveChunk(problem.Tc_ext), strategy, state);
     }
 
-    if (wgCheck || gemmtBarriers) {
+    if (needWGIJ0) {
         state.wgI0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
         state.wgJ0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp1, strategy));
 
@@ -557,7 +556,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         state.unclampedI0 = state.ra.alloc_sub<int32_t>();
         add(1, state.unclampedI0, state.i0, -shiftI0);
         mov(1 | sat, state.i0, state.unclampedI0);
-        if (wgCheck || gemmtBarriers) {
+        if (needWGIJ0) {
             add(1 | sat, state.wgI0, state.wgI0, -shiftI0);
         }
         state.ra.safeRelease(shiftI0);

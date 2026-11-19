@@ -257,7 +257,6 @@ struct GEMMProblem : public CommonProblem {
         return (Ta.real().isInt8() && Tb.real().isInt8() && Tc.real().paddedSize() == 4);
     }
 
-    bool gemmt() const { return false; }
     bool backward() const { return false; }
 
     bool hasAScalePtr() const { return (asPtrDims > -1); }

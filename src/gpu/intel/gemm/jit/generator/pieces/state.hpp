@@ -63,34 +63,6 @@ public:
     }
 };
 
-// A set of subregisters representing a value bit-shifted by some factor(s).
-class MultishiftSubregister {
-protected:
-    static constexpr int maxShift = 5;
-    ngen::Subregister regs[maxShift + 1] = {ngen::Subregister()};
-    bool neg = false;
-
-public:
-    MultishiftSubregister operator-() const {
-        auto copy = *this;
-        copy.neg = !copy.neg;
-        return copy;
-    }
-
-    ngen::Subregister operator>>(int shift) const {
-        ngen::RegData sub = ngen::Subregister{};
-        if (shift >= 0 && shift <= maxShift)
-            sub = regs[shift];
-        if (neg)
-            sub = -sub;
-        return *reinterpret_cast<ngen::Subregister *>(&sub);
-    }
-
-    void set(int shift, ngen::Subregister reg) {
-        regs[shift] = reg;
-    }
-};
-
 // Cached vector of leading dimension multiples (ld*0, ld*1, ld*2, etc.), for address setup.
 struct LDMultiples {
     ngen::RegisterRange range;
@@ -142,7 +114,6 @@ struct MaskAssignment {
 // State parameters shared between different kernel types.
 struct CommonState {
     ngen::RegisterAllocator ra;
-    ngen::GRF signChange, selectImag;
     GRFMultirange vflagStorage;
     std::array<VirtualFlag, 8> activeVFlags;
     VirtualFlagAllocator raVFlag;
@@ -165,19 +136,6 @@ struct CommonState {
     GRFMultirange indexVec;                         // uw
     int ivEntries = 0;
     int aqCopies = 1, bqCopies = 1;             // sub-GRF copies of repacked A/B scales/offsets (Xe3p+)
-    struct {
-        ngen::GRF zero, one;
-        ngen::GRFRange src1Storage;
-        ngen::GRF src1, srcR1, srcI1, r, d;
-        GRFMultirange mathTemp;
-        ngen::GRF temp;
-        std::array<ngen::FlagRegister, 2> tempFlags;
-        ngen::Subregister flagStore;                // ud
-        ngen::Label label;
-        int simd;
-        ngen::Subregister callStorageSub, callStorage;
-        bool use = false;
-    } invertSub;
 
     CommonState(ngen::HW hw) : ra(hw), raVFlag(hw), tokenAllocator(hw) {}
 
@@ -210,8 +168,7 @@ struct GEMMState : public CommonState {
         ngen::Subregister ldag, ldbg;                       // d
         ngen::Subregister ldaq, ldbq, ldcq;                 // d
         ngen::Subregister m, n, k, k0;                      // d
-        SubregisterPair alpha_real, alpha_imag;             // T_real
-        SubregisterPair beta_real, beta_imag;               // T_real
+        SubregisterPair alpha_real, beta_real;              // T_real
         ngen::Subregister alphaPtr, betaPtr;                // q
         ngen::Subregister groupIDM, groupIDN, groupIDK;     // ud
         ngen::Subregister groupIDMN;                        // ud
@@ -228,13 +185,11 @@ struct GEMMState : public CommonState {
         ngen::Subregister hilbertBail;                      // ud
         ngen::Subregister bslice, bthresh;                  // d
         ngen::Subregister flags;                            // ud
-        ngen::Subregister diagA, diagB, diagC;              // q
         ngen::Subregister statusBuffer;                     // q
         uint8_t surfaceA, surfaceAO, surfaceAScale;         // BTS indices
         uint8_t surfaceB, surfaceBO, surfaceBScale;         // BTS indices
         uint8_t surfaceAg, surfaceBg;                       // BTS
         uint8_t surfaceC[2], surfaceCO, surfaceTempC;       // BTS
-        uint8_t surfaceCScale;                              // BTS
         std::vector<ngen::Subregister> strideA;             // ud, used for strided batch.
         std::vector<ngen::Subregister> strideB;             // ud
         std::vector<ngen::Subregister> strideC;             // ud
@@ -262,7 +217,6 @@ struct GEMMState : public CommonState {
     } inputs;
     Type Ta_load, Tb_load;                                  // Current type to be loaded into A/B_regs.
     Type Tacc;                                              // Current type in accumulator registers.
-    ngen::Subregister persistentGroupID;                    // ud
     ngen::Subregister batchID[4];                           // ud
     ngen::Subregister offsetA, offsetB, offsetC[2];
     ngen::Subregister offsetAs, offsetBs, offsetCs;
@@ -280,7 +234,6 @@ struct GEMMState : public CommonState {
     std::vector<ngen::RegisterRange> A_addrs, B_addrs, C_addrs[2];
     std::vector<ngen::RegisterRange> A_addrsRem, B_addrsRem;
     std::vector<ngen::RegisterRange> A_addrsAlt, B_addrsAlt;
-    std::vector<ngen::RegisterRange> A_addrsAltRem, B_addrsAltRem;
     std::vector<ngen::RegisterRange> Ai_addrs, Bi_addrs;
     std::vector<std::vector<ngen::RegisterRange>> Ai_addrsK, Bi_addrsK;
     std::vector<ngen::RegisterRange> Ai_addrsRem, Bi_addrsRem;
@@ -326,7 +279,6 @@ struct GEMMState : public CommonState {
     ngen::Subregister remaindersWG[2];                      // d (TODO: w)
     ngen::Subregister remaindersCoop[3];                    // d
     ngen::Subregister remFusedStorage;                      // d
-    ngen::Subregister diagA, diagB, diagC;                  // d
     SubregisterPair lda, ldb;
     SubregisterPair ldao, ldbo, ldag, ldbg, ldaScale, ldbScale, ldcScale;
     LDIncrements ldaIncrements, ldbIncrements;              // Cached lda * ka, ldb * kb
@@ -337,14 +289,9 @@ struct GEMMState : public CommonState {
     ngen::Subregister k, K;                                 // d
     ngen::Subregister kNoBarrierStart, kNoBarrierEnd;       // d
     ngen::FlagRegister flagAP;
-    ngen::Subregister beta1;                                // d
     ngen::Subregister add64;                                // uw
     ngen::Subregister lidM, lidN, lidStorage;               // uw, uw, ud
     ngen::Subregister lidK, lszK, lidszKStorage;            // uw, uw, ud
-    ngen::Subregister ia0_slm, jb0_slm;                     // uw
-    ngen::Subregister postRemA, postRemB;                   // ud
-    ngen::Subregister postRemAi, postRemBi;                 // ud
-    ngen::Subregister postRemAo, postRemBo;                 // ud
     ngen::Subregister isCompute;                            // ud
     ngen::GRF sysSumAll1s;                                  // Ta/Tb
     ngen::GRF betaCheckReturn;
@@ -374,7 +321,6 @@ struct GEMMState : public CommonState {
     RegisterLayout A_layout, B_layout, C_layout;
     RegisterLayout A_layoutRem, B_layoutRem;
     RegisterLayout A_layoutAlt, B_layoutAlt;
-    RegisterLayout A_layoutAltRem, B_layoutAltRem;
     RegisterLayout Ar_layout, Br_layout;
     RegisterLayout Ai_layout, Bi_layout;
     std::vector<RegisterLayout> Ai_layoutK, Bi_layoutK;
@@ -422,8 +368,6 @@ struct GEMMState : public CommonState {
     bool firstKLoopSegment;
     bool isNested = false;
     int C_accCount;
-    bool cSwapActive = false;
-    bool haveCSwap = false;
     int C_count = 1;
     int C_buffers = 1;
     bool allocedAo = false, allocedBo = false;
@@ -441,7 +385,6 @@ struct GEMMState : public CommonState {
     bool slmRemaskA = false, slmRemaskB = false;
     bool slmASums = false, slmBSums = false;
     bool doLateExit = false;
-    bool needBRFallback = true;
     ngen::GRF emulate64TempSave[2];
     bool simd32KMasks = false;
     int lastThresh = 0;

@@ -72,11 +72,6 @@ void LoopSequencer::setCallback(CallbackType type, Callback cb)
     callbacks[static_cast<size_t>(type)] = std::move(cb);
 }
 
-void LoopSequencer::setRemainderHandling(RemainderHandling handling)
-{
-    remainderHandling = handling;
-}
-
 void LoopSequencer::callback(CallbackType type, int arg1, int arg2)
 {
     auto &cb = callbacks[static_cast<size_t>(type)];
@@ -128,12 +123,6 @@ int LoopSequencer::getUnroll() const
 {
     checkAnalyzed();
     return unroll;
-}
-
-int LoopSequencer::getWarmup() const
-{
-    checkAnalyzed();
-    return warmup;
 }
 
 int LoopSequencer::getCooldown() const
@@ -190,8 +179,6 @@ void LoopSequencer::materialize(int minLoops, int maxLoops)
     activeChecks.clear();
     currentBias = 0;
 
-    bool unifyRemainder = (remainderHandling != RemainderHandling::Separate)
-                       && (minCooldown >= unroll) && (unroll > 1);
     int loopBias = getLoopBias();
 
     int labelShort, labelUnite;
@@ -236,15 +223,11 @@ void LoopSequencer::materialize(int minLoops, int maxLoops)
 
         // Cooldown.
         //   - remaining loop count in interval [minCooldown, minCooldown + unroll)
-        //   - if unifying remainder, just do minCooldown loops here and leave the rest for remainder.
         adjustActionTriggers(-unroll);
         callback(CT::NotifyPhase, PhaseCooldown);
-        for (int l = 0; l < (unifyRemainder ? minCooldown : minCooldown + unroll); l++)
+        for (int l = 0; l < minCooldown + unroll; l++)
             run(l, minCooldown, minCooldown + unroll - 1, minCooldown);
         closeChecks();
-
-        if (minCooldown > 1 && unifyRemainder)
-            callback(CT::OffsetCounter, -minCooldown);
 
         callback(CT::NotifyPhase, PhaseMainPathEnd);
 
@@ -260,45 +243,12 @@ void LoopSequencer::materialize(int minLoops, int maxLoops)
         if (minCooldown > 1) {
             resetActions();
 
-            if (unifyRemainder) {
-                // If unifying remainder, group loops into chunks of size unroll.
-                for (int l = -warmup; l < 0; l++)
-                    run(l, 0, minCooldown - 1);
-
-                int labelNoChunks = nextLabel++;
-
-                for (int l0 = 0; l0 < (minCooldown - unroll); l0 += unroll) {
-                    int chunk = std::min(unroll, minCooldown - l0 - unroll);
-                    bool needCheck = precheck(chunk);
-
-                    if (needCheck)
-                        callback(CT::JumpIfLT, chunk, labelNoChunks);
-                    for (int l = 0; l < chunk; l++)
-                        run(l, chunk, minCooldown - 1 - l0);
-                    callback(CT::OffsetCounter, -chunk);
-                    adjustActionTriggers(-chunk);
-                    closeChecks();
-                }
-                if (minCooldown > unroll)
-                    callback(CT::JumpTarget, labelNoChunks);
-            } else {
-                for (int l = -warmup; l < minCooldown; l++)
-                    run(l, 0, minCooldown - 1);
-            }
+            for (int l = -warmup; l < minCooldown; l++)
+                run(l, 0, minCooldown - 1);
 
             closeChecks();
             callback(CT::NotifyPhase, PhaseShortLoopEnd);
             callback(CT::JumpTarget, labelUnite);
-        }
-
-        // Unified remainder handling. Loop count is unbiased on all paths.
-        // TODO: is it always safe to unify main/short remainders when there are actions
-        //   whose backups have different lookahead?
-        if (unifyRemainder && (remainderHandling != RemainderHandling::Ignore)) {
-            callback(CT::NotifyPhase, PhaseRemainder);
-            for (int l = 0; l < unroll - 1; l++)
-                run(l, 0, unroll - 1);
-            closeChecks();
         }
     }
 

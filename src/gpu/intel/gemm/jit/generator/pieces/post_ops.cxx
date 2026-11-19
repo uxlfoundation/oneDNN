@@ -64,16 +64,6 @@ void Generator<hw>::gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy
     auto beta = problem.beta;
     auto vbetar = state.inputs.beta_real;
 
-    if (state.beta1.isValid()) {
-        if (strategy.fused) {
-            cmp(16 | lt | state.flagAP, null.d(), state.beta1, int16_t(0));
-            goto12(16 | state.flagAP, labelBetaDone);
-        } else {
-            cmp(1 | lt | state.flagAP, null.d(), state.beta1, int16_t(0));
-            jmpi(1 | state.flagAP, labelBetaDone);
-        }
-    }
-
     gemmConvertC(problem.Ts, problem, strategy, state);
 
     if (beta != 1) {
@@ -100,8 +90,6 @@ void Generator<hw>::gemmBetaScale(const GEMMProblem &problem, const GEMMStrategy
 
     mark(labelBetaDone);
 
-    if (state.beta1.isValid() && strategy.fused)
-        join(16);
 }
 
 template <HW hw>

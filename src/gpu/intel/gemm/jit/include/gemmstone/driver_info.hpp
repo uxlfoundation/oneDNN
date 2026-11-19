@@ -54,7 +54,6 @@ enum WGType : uint8_t {
 enum DriverInfoFlags : uint64_t {
     FlagKRemainderHandling = 1,        // GEMM kernel performs k remainder handling
     FlagKParallel = 2,                 // GEMM kernel is parallelized in the k dimension.
-    FlagZParallel = 2,                 // Copy kernel is parallelized in the z dimension.
     FlagKParallelLocal = 4,            // GEMM kernel is parallelized in the k dimension inside a workgroup.
     FlagKParallelVariable = 8,         // GEMM kernel uses variable k-parallelization (see GEMMStrategy::kParallelVariable).
     FlagFusedBeta = 0x10,              // GEMM kernel does fused beta scaling + atomics.
@@ -109,7 +108,6 @@ struct CommonDriverInfo {
     int  threadsPerWG()       const { return wg[LoopM] * wg[LoopN] * wg[LoopK] * wgExpand; }
     bool kRemainderHandling() const { return flags & FlagKRemainderHandling; }
     bool kParallel()          const { return flags & FlagKParallel; }
-    bool zParallel()          const { return flags & FlagZParallel; }
     bool kParallelLocal()     const { return flags & FlagKParallelLocal; }
     bool kParallelVariable()  const { return flags & FlagKParallelVariable; }
     bool fusedBeta()          const { return flags & FlagFusedBeta; }
@@ -154,8 +152,6 @@ enum {
     FlagCORow = 0x8,
     FlagNonfinalKBlock = 0x10,
     FlagNoninitialKBlock = 0x80,
-    FlagLateFusedGEMMDone = 0x100,
-    FlagEarlyFusedGEMMDone = 0x200,
     FlagStoreSums = 0x400,
     FlagKSlicing = 0x1000,
     FlagLeader = 0x2000,

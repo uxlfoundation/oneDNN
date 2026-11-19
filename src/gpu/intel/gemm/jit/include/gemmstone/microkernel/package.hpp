@@ -92,7 +92,6 @@ struct Package {
     /* Identifiers */
     Protocol protocol; // Protocol implemented by microkernel
     uint64_t luid; // Unique package ID for use in catalog [*]
-    std::vector<uint8_t> providerID; // Optional free-form identifier for use by microkernel provider
 
     /* Code */
     std::vector<uint8_t> binary; // Raw binary blob

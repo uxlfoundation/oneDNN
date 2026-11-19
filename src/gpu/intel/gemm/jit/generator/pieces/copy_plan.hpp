@@ -304,7 +304,6 @@ protected:
     void planEmulatedHFToF4(CopyInstruction &i);
     void planE8M0ToF(CopyInstruction &i);
     void planBFNEmulation();
-    void emulateBooleanFunction();
     bool planShflUpconvertXe3p(CopyInstruction &i);
     void legalizeShfl();
     void legalizeBfImmediate(CopyInstruction &i1);

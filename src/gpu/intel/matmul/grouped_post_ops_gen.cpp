@@ -93,7 +93,8 @@ status_t check_post_op_chain(const primitive_attr_t &attr,
                 po_chain[i] = po_kind_t::binary_nvfp4_scale;
             } else {
                 if (po_mdw.is_grouped_desc()
-                        && po_mdw.dims()[1] == dst_desc.dims()[1]) {
+                        && po_mdw.dims()[po_mdw.ndims() - 1]
+                                == dst_desc.dims()[dst_desc.ndims() - 1]) {
                     // [total_tokens, N] grouped - element-wise multiply
                     VDISPATCH_MATMUL_IC(find_po_in_chain(po_chain,
                                                 po_kind_t::binary_grouped_scale)
@@ -114,7 +115,7 @@ status_t check_post_op_chain(const primitive_attr_t &attr,
                     const auto ndims = po_mdw.ndims();
                     // [total_tokens, 1] - dense scale with horizontal broadcast
                     if (ndims >= 2 && dims[ndims - 1] == 1
-                            && dims[ndims - 2] > 1) {
+                            && dims[ndims - 2] != 1) {
                         VDISPATCH_MATMUL_IC(
                                 find_po_in_chain(
                                         po_chain, po_kind_t::binary_dense_scale)

@@ -154,6 +154,9 @@ struct grouped_micro_gemm_t : public primitive_t {
         // Number of groups partitioning the grouped axis
         dim_t ngroups() const { return src_md()->dims[0]; }
 
+        // A src mask covering the variable dim covers the group dim too
+        int src_qmask_GM() const { return (1 << 0) | src_qmask_M(); }
+
         // Quantization of src and weights
         quantization_t src_quant() const {
             return quantization_t(attr(), src_md(), DNNL_ARG_SRC);

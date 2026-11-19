@@ -997,8 +997,9 @@ RegisterBlock RegisterBlock::trySlice(Type T, bool column, int x1, int x2, int x
             case AccessType::Block2DTranspose:
             case AccessType::Block2DVNNI: {
                 int crosspack = std::max(1, 4 / blockDst.ebytes);
-                if (x1 % crosspack || x2 % crosspack)
-                    return RegisterBlock();
+                if (x1 % crosspack) return RegisterBlock();
+                // Slicing is a view of the loaded registers; a partial VNNI group is a strided view.
+                if (x2 % crosspack && effAccessType != AccessType::Block2DVNNI) return RegisterBlock();
                 break;
             }
             case AccessType::CacheLine:
@@ -2252,6 +2253,7 @@ RegisterLayout RegisterLayout::trySlice(vector<RegisterRange> *subaddrs, vector<
     if (indices) indices->clear();
 
     bool sharedOK = true;
+    bool shrunk = false;
 
     for (int b = 0; b < blocks(); b++) {
         auto &block = list[b];
@@ -2274,11 +2276,25 @@ RegisterLayout RegisterLayout::trySlice(vector<RegisterRange> *subaddrs, vector<
             if (!ok)
                 return RegisterLayout();
 
+            shrunk |= (subblock.*nq != block.*nq);
             sublayout.list.push_back(subblock);
             if (subaddrs) subaddrs->push_back((*addrs)[b]);
             if (indices) indices->push_back(b);
         } else if (block.offsetAddr == 0)
             sharedOK = false;
+    }
+
+    // Array elements of a 2D block message are returned back to back. A shorter slice shrinks each
+    //  element, so reassign offsets.
+    if (shrunk && column && astrategy.accessType == AccessType::Block2DVNNI)
+        sublayout.finalize();
+    else if (shrunk && isBlock2D(astrategy.accessType)) {
+        // Other 2D block slices don't repack; reject rather than keep stale follower offsets.
+        bool seenLoad = false;
+        for (auto &block: sublayout.list) {
+            if (block.isLoadBlock()) seenLoad = true;
+            else if (seenLoad) return RegisterLayout();
+        }
     }
 
     return sublayout;

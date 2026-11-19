@@ -136,7 +136,9 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
     })
     /* Without a mask output, zero dropped entries in S directly. Entries
        past max_r/max_c are already zero or never stored. */
-#define DROPOUT_IN_PLACE (DROPOUT_GROUPED && !DROPOUT_OUTPUT_MASK)
+#define DROPOUT_IN_PLACE \
+    (DROPOUT_GROUPED && !DROPOUT_OUTPUT_MASK \
+            && !DROPOUT_VOLATILE_SCALE_WORKAROUND)
 #if DROPOUT_IN_PLACE
     s_tile_type s_tile = *tile;
 #define dropout_set(i0, j, keep) \
@@ -144,7 +146,12 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
             ? tile_access(s_tile, i0, j, SUBGROUP_SIZE, blk_r, blk_c, nblk_r) \
             : 0.f
 #else
+#if DROPOUT_VOLATILE_SCALE_WORKAROUND
+    // Xe-HPG only: volatile avoids an IGC miscompile but adds memory traffic.
     volatile s_tile_type keep_tile;
+#else
+    s_tile_type keep_tile;
+#endif
 #define dropout_set(i0, j, keep) \
     tile_access(keep_tile, i0, j, SUBGROUP_SIZE, blk_r, blk_c, nblk_r) \
             = (keep) ? 1.f : 0.f

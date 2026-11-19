@@ -58,6 +58,80 @@ DECLARE_2D_TILE_ATOMIC_OPS(ktq_tile_type, float, SUBGROUP_SIZE,
 
 #if WITH_DROPOUT
 #define dropout_mul(x, y) ((x) * (y))
+#define dropout_keep(_ph, _orow, _ocol) \
+    (((_orow) < max_r && (_ocol) < max_c) && ((_ph) > threshold) ? inv_q : 0.f)
+
+/* Consecutive indices run across lanes here: each lane makes the Philox
+   words for one of four columns and the lane quad exchanges them with
+   shuffles. This needs k to be a multiple of four, so that every lane quad
+   starts on a Philox block; other shapes use the per-element path. The
+   per-element path is also kept as a reference and can be forced with
+   SDPA_DROPOUT_PER_ELEMENT=1. */
+#define DROPOUT_GROUPED_SHAPE_OK(br, bc, nbr, nbc) \
+    (!DROPOUT_PER_ELEMENT && DROPOUT_K_ALIGNED && SUBGROUP_SIZE == 16 \
+            && (((br) * (nbr)) % 16) == 0 && (((bc) * (nbc)) & 3) == 0)
+
+/* Dropout values of the four consecutive indices idx & ~3 .. +3, as in
+   philox_4x32_dropout_w_offset() and philox_4x32_dropout(). */
+inline uint4 dropout_vec4(ulong idx, long offset, uint16 key0, uint4 key1) {
+#if DROPOUT_USE_OFFSET
+    const uint4 r = philox_4x32_vec4_ctr_w_keys(
+            philox_4x32_ctr_w_offset(idx & ~7UL, (ulong)offset), key0, key1);
+    const uint2 w = (idx & 4) ? r.s23 : r.s01;
+    return (uint4)(w.s0 << 16, w.s0 & 0xFFFF0000u, w.s1 << 16,
+            w.s1 & 0xFFFF0000u);
+#else
+    return (uint4)(philox_4x32_vec4_ctr_w_keys(
+            philox_4x32_ctr_legacy((uint)idx), key0, key1)
+                           .s2);
+#endif
+}
+
+#define DROPOUT_FILL_PROLOGUE \
+    const int _l = get_sub_group_local_id(); \
+    const int _w = _l & 3; \
+    const philox_key_schedule_t _ks = philox_4x32_key_schedule( \
+            DROPOUT_USE_OFFSET ? (ulong)seed : philox_4x32_legacy_seed(seed));
+
+#define DROPOUT_FILL_GROUPED(scale, br, bc, nbr, nbc) \
+    do { \
+        DROPOUT_FILL_PROLOGUE \
+        _Pragma("unroll") for (int j0 = 0; j0 < (bc) * (nbc); j0 += 4) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < (br) * (nbr); \
+                                   i0 += SUBGROUP_SIZE) { \
+                const uint4 _b = dropout_vec4(batch_head_base \
+                                + (ulong)(tile_offset_c + j0 + _w) \
+                                        * (ulong)k_stride \
+                                + (ulong)(tile_offset_r + i0 + (_l & ~3)), \
+                        offset, _ks.key0, _ks.key1); \
+                /* 4x4 word transpose over the lane quad: 4 shuffles. */ \
+                const uint _s0 = (_l & 2) ? _b.s0 : _b.s2; \
+                const uint _s1 = (_l & 2) ? _b.s1 : _b.s3; \
+                const uint _r0 = intel_sub_group_shuffle(_s0, _l ^ 2); \
+                const uint _r1 = intel_sub_group_shuffle(_s1, _l ^ 2); \
+                const uint _p0 = (_l & 2) ? _b.s2 : _b.s0; \
+                const uint _p1 = (_l & 2) ? _b.s3 : _b.s1; \
+                const uint _so = (_l & 1) ? _p0 : _p1; \
+                const uint _sq = (_l & 1) ? _r0 : _r1; \
+                const uint _ro = intel_sub_group_shuffle(_so, _l ^ 1); \
+                const uint _rq = intel_sub_group_shuffle(_sq, _l ^ 1); \
+                const uint _ko = (_l & 1) ? _p1 : _p0; \
+                const uint _kq = (_l & 1) ? _r1 : _r0; \
+                _Pragma("unroll") for (int jj = 0; jj < 4; jj++) { \
+                    const int _m = jj ^ _w; \
+                    const uint _v = _m == 0 ? _ko \
+                            : _m == 1       ? _ro \
+                            : _m == 2       ? _kq \
+                                            : _rq; \
+                    tile_access( \
+                            scale, i0, j0 + jj, SUBGROUP_SIZE, br, bc, nbr) \
+                            = dropout_keep(_v, tile_offset_r + i0 + _l, \
+                                    tile_offset_c + j0 + jj); \
+                } \
+            } \
+        } \
+    } while (0)
+
 #define dropout_predicate(offset_r, offset_c) \
     ({ \
         ulong _goff = batch_head_base + (ulong)offset_c * (ulong)k_stride \
@@ -77,10 +151,19 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
         uint threshold, float inv_q) {
 
     volatile s_tile_type scale_tile;
-    tile_predicated_select(scale_tile, tile_offset_r, tile_offset_c,
-            dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
-            ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
-            ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1);
+#if DROPOUT_GROUPED_SHAPE_OK(ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, \
+        ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1)
+    DROPOUT_FILL_GROUPED(scale_tile, ugemm_kq_c_type_block0,
+            ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+            ugemm_kq_c_type_nblock1);
+#else
+    {
+        tile_predicated_select(scale_tile, tile_offset_r, tile_offset_c,
+                dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
+                ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
+                ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1);
+    }
+#endif
 
     s_tile_type tmp = *tile;
     tile_binary(tmp, scale_tile, dropout_mul);
@@ -93,12 +176,21 @@ inline void apply_dropout_dP_tile(p_tile_type *tile, int tile_offset_r,
         int tile_offset_c, int max_r, int max_c, ulong batch_head_base,
         int k_stride, int use_dropout_offset, long seed, long offset,
         uint threshold, float inv_q) {
-
     volatile p_tile_type scale_p_tile;
-    tile_predicated_select(scale_p_tile, tile_offset_r, tile_offset_c,
-            dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
-            ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,
-            ugemm_vtdA_c_type_nblock0, ugemm_vtdA_c_type_nblock1);
+#if DROPOUT_GROUPED_SHAPE_OK(ugemm_vtdA_c_type_block0, \
+        ugemm_vtdA_c_type_block1, ugemm_vtdA_c_type_nblock0, \
+        ugemm_vtdA_c_type_nblock1)
+    DROPOUT_FILL_GROUPED(scale_p_tile, ugemm_vtdA_c_type_block0,
+            ugemm_vtdA_c_type_block1, ugemm_vtdA_c_type_nblock0,
+            ugemm_vtdA_c_type_nblock1);
+#else
+    {
+        tile_predicated_select(scale_p_tile, tile_offset_r, tile_offset_c,
+                dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
+                ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,
+                ugemm_vtdA_c_type_nblock0, ugemm_vtdA_c_type_nblock1);
+    }
+#endif
 
     p_tile_type tmp = *tile;
     tile_binary(tmp, scale_p_tile, dropout_mul);
@@ -107,6 +199,10 @@ inline void apply_dropout_dP_tile(p_tile_type *tile, int tile_offset_r,
 
 #undef dropout_mul
 #undef dropout_predicate
+#undef dropout_keep
+#undef DROPOUT_GROUPED_SHAPE_OK
+#undef DROPOUT_FILL_GROUPED
+#undef DROPOUT_FILL_PROLOGUE
 #endif
 
 #ifdef QRY_DT_F16

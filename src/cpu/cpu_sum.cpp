@@ -45,11 +45,7 @@ constexpr impl_list_item_t cpu_sum_impl_list[] = REG_SUM_P({
         SUM_INSTANCE_AVX2(jit_xf16_sum_t<bf16, f32, avx2_vnni_2>)
         SUM_INSTANCE_AVX2(jit_xf16_sum_t<f16, f16, avx2_vnni_2>)
         SUM_INSTANCE_AVX2(jit_xf16_sum_t<f16, f32, avx2_vnni_2>)
-        INSTANCE(simple_sum_t<f16>)
-        INSTANCE(simple_sum_t<f16, f32>)
-        INSTANCE(simple_sum_t<bf16>)
-        INSTANCE(simple_sum_t<bf16, f32>)
-        INSTANCE(simple_sum_t<f32>)
+        INSTANCE(simple_sum_t)
         INSTANCE(ref_sum_t)
         nullptr,
 });

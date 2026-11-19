@@ -35,7 +35,6 @@ struct sum_xf16_params_t {
     dim_t acc_loop_step_;
 };
 
-template <data_type_t src_data_type, data_type_t dst_data_type = src_data_type>
 struct simple_sum_t : public primitive_t {
     struct pd_t : public cpu_sum_pd_t {
         using cpu_sum_pd_t::cpu_sum_pd_t;
@@ -43,11 +42,18 @@ struct simple_sum_t : public primitive_t {
         DECLARE_SUM_PD_T("simple:any", simple_sum_t);
 
         status_t init(const engine_t *engine) {
+            using namespace data_type;
             const int n = n_inputs();
+            const data_type_t src_dt = src_md(0)->data_type;
+            const data_type_t dst_dt = dst_md()->data_type;
 
-            VDISPATCH_SUM(platform::has_data_type_support(src_data_type),
+            VDISPATCH_SUM(utils::one_of(src_dt, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SUM(platform::has_data_type_support(dst_data_type),
+            VDISPATCH_SUM(utils::one_of(dst_dt, src_dt, f32),
+                    VERBOSE_INCONSISTENT_DT, "src", "dst");
+            VDISPATCH_SUM(platform::has_data_type_support(src_dt),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SUM(platform::has_data_type_support(dst_dt),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SUM(cpu_sum_pd_t::init(engine) == status::success,
                     VERBOSE_BAD_ENGINE_KIND);
@@ -55,15 +61,12 @@ struct simple_sum_t : public primitive_t {
                     "number of inputs exceed max number of arrays");
 
             const memory_desc_wrapper o_d(dst_md());
-            VDISPATCH_SUM(o_d.data_type() == dst_data_type,
-                    VERBOSE_INCONSISTENT_DT, "o_d", "dst");
             VDISPATCH_SUM(o_d.is_dense(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             for (int i = 0; i < n; ++i) {
                 const memory_desc_wrapper i_d(src_md(i));
-                VDISPATCH_SUM(
-                        utils::everyone_is(src_data_type, i_d.data_type()),
-                        VERBOSE_UNSUPPORTED_DT);
+                VDISPATCH_SUM(i_d.data_type() == src_dt,
+                        VERBOSE_INCONSISTENT_DT, "src", "src");
                 VDISPATCH_SUM(o_d.similar_to(i_d, true, false, 0),
                         VERBOSE_INCONSISTENT_MDS, "o_d", "i_d");
                 VDISPATCH_SUM(i_d.is_dense(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
@@ -79,12 +82,12 @@ struct simple_sum_t : public primitive_t {
 
     private:
         void compute_blocking() {
+            const data_type_t src_dt = src_md(0)->data_type;
             const int block_size_bytes
-                    = utils::one_of(
-                              src_data_type, data_type::bf16, data_type::f16)
+                    = utils::one_of(src_dt, data_type::bf16, data_type::f16)
                     ? 16 * platform::get_cache_line_size()
                     : platform::get_per_core_cache_size(1) / 2;
-            block_size_ = block_size_bytes / (int)sizeof(src_data_type);
+            block_size_ = block_size_bytes / (int)sizeof(src_dt);
             const memory_desc_wrapper o_d(dst_md());
             nelems_ = o_d.nelems();
             blocks_number_ = nelems_ / block_size_;
@@ -92,9 +95,10 @@ struct simple_sum_t : public primitive_t {
         }
 
         void init_scratchpad() {
-            if (utils::one_of(src_data_type, data_type::bf16, data_type::f16)) {
+            if (utils::one_of(src_md(0)->data_type, data_type::bf16,
+                        data_type::f16)) {
                 const bool is_dst_xf16 = utils::one_of(
-                        dst_data_type, data_type::bf16, data_type::f16);
+                        dst_md()->data_type, data_type::bf16, data_type::f16);
                 xf16_params_.ws_cvt_elements_per_thread_
                         = platform::get_cache_line_size()
                         / (int)sizeof(acc_data_t);
@@ -124,8 +128,6 @@ struct simple_sum_t : public primitive_t {
     status_t execute(const exec_ctx_t &ctx) const override;
 
     enum { max_num_arrs = 16 };
-    using src_data_t = typename prec_traits_t<src_data_type>::type;
-    using dst_data_t = typename prec_traits_t<dst_data_type>::type;
     using acc_data_t = typename prec_traits_t<data_type::f32>::type;
 
 private:

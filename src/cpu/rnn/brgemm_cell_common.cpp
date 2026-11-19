@@ -49,8 +49,6 @@ template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_merged_layer_execution_sig((
         ref_rnn_fwd_t<src_type, weights_type, acc_type>::merged_layer_brgemm)) {
 #if DNNL_X64 || DNNL_AARCH64
-    using brgemm_merged_layer_t = brgemm_merged_layer_t<src_iter_t, weights_t,
-            scratch_t, gemm_acc_t>;
     const brgemm_merged_layer_t layer_calc(this->rnn_brgemm_, rnn,
             cell_position, src_layer_, w_layer_[0], scratch_gates_,
             gemm_acc_scratchpad, addr_batch_global);
@@ -84,15 +82,11 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
     const auto LDDic = rnn.dst_iter_c_ld(cell_position);
     const auto LDAic = rnn.src_iter_c_ld(cell_position);
 
-    using brgemm_dst_layer_iter_t = brgemm_dst_layer_iter_t<src_iter_t,
-            weights_t, scratch_t, gemm_acc_t>;
-
-    typename brgemm_dst_layer_iter_t::postgemm_fused_t fused_postgemm;
+    brgemm_dst_layer_iter_t::postgemm_fused_t fused_postgemm;
 
     if (!rnn.unfused_post_gemm) {
-        fused_postgemm = [&](dim_t m, dim_t n, dim_t nb_i,
-                                 const src_iter_t *Ai_m, scratch_t *C_n,
-                                 scratch_t *C_cell_n, dim_t block_step) {
+        fused_postgemm = [&](dim_t m, dim_t n, dim_t nb_i, const void *Ai_m,
+                                 void *C_n, void *C_cell_n, dim_t block_step) {
             const auto Dpg_n = (dst_postgemm != nullptr)
                     ? dst_postgemm + m * LDDl + n
                     : nullptr;
@@ -115,24 +109,23 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
             const auto augru_attention_m
                     = augru_attention_ ? augru_attention_ + m : nullptr;
             this->rnn_postgemm_->execute(rnn, cell_position, curr_ws_gates_,
-                    C_n, augru_attention_m, Dpg_n, Dic_n, Ai_m, Aic_n,
+                    static_cast<scratch_t *>(C_n), augru_attention_m, Dpg_n,
+                    Dic_n, static_cast<const src_iter_t *>(Ai_m), Aic_n,
                     diff_src_layer_, diff_augru_attention_, diff_src_iter_,
                     diff_src_iter_c_, diff_dst_layer_, diff_dst_iter_,
                     diff_dst_iter_c_, weights_peephole_n, bias_n, ws_grid_,
-                    C_cell_n, Di_n, weights_scales_n, block_step);
+                    static_cast<scratch_t *>(C_cell_n), Di_n, weights_scales_n,
+                    block_step);
         };
     }
 
     if (rnn.is_orig_gru) {
-        using brgemm_gru_t
-                = brgemm_gru_t<src_iter_t, weights_t, scratch_t, gemm_acc_t>;
-        typename brgemm_gru_t::postgemm_fused_t fused_postgemm_gru_part1,
+        brgemm_gru_t::postgemm_fused_t fused_postgemm_gru_part1,
                 fused_postgemm_gru_part2;
         if (!rnn.unfused_post_gemm) {
-            fused_postgemm_gru_part1
-                    = [&](dim_t m, dim_t n, dim_t nb_i, const src_iter_t *Ai_m,
-                              scratch_t *C_gates_n, scratch_t *C_cell_n,
-                              dim_t block_step) {
+            fused_postgemm_gru_part1 =
+                    [&](dim_t m, dim_t n, dim_t nb_i, const void *Ai_m,
+                            void *C_gates_n, void *C_cell_n, dim_t block_step) {
                 const auto Dpg_n = (dst_postgemm != nullptr)
                         ? dst_postgemm + m * LDDl + n
                         : nullptr;
@@ -152,16 +145,17 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                 const auto augru_attention_m
                         = augru_attention_ ? augru_attention_ + m : nullptr;
                 this->rnn_postgemm_->execute(rnn, cell_position, curr_ws_gates_,
-                        C_gates_n, augru_attention_m, Dpg_n, Dic_n, Ai_m, Aic_n,
-                        diff_src_layer_, diff_augru_attention_, diff_src_iter_,
-                        diff_src_iter_c_, diff_dst_layer_, diff_dst_iter_,
-                        nullptr, nullptr, bias_n, ws_grid_, C_cell_n, Di_n,
+                        static_cast<scratch_t *>(C_gates_n), augru_attention_m,
+                        Dpg_n, Dic_n, static_cast<const src_iter_t *>(Ai_m),
+                        Aic_n, diff_src_layer_, diff_augru_attention_,
+                        diff_src_iter_, diff_src_iter_c_, diff_dst_layer_,
+                        diff_dst_iter_, nullptr, nullptr, bias_n, ws_grid_,
+                        static_cast<scratch_t *>(C_cell_n), Di_n,
                         weights_scales_n, block_step);
             };
-            fused_postgemm_gru_part2
-                    = [&](dim_t m, dim_t n, dim_t nb_i, const src_iter_t *Ai_m,
-                              scratch_t *C_gates_n, scratch_t *C_cell_n,
-                              dim_t block_step) {
+            fused_postgemm_gru_part2 =
+                    [&](dim_t m, dim_t n, dim_t nb_i, const void *Ai_m,
+                            void *C_gates_n, void *C_cell_n, dim_t block_step) {
                 const auto Dpg_n = (dst_postgemm != nullptr)
                         ? dst_postgemm + m * LDDl + n
                         : nullptr;
@@ -181,12 +175,14 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                 const auto augru_attention_m
                         = augru_attention_ ? augru_attention_ + m : nullptr;
                 this->rnn_postgemm_->execute_part2(rnn, cell_position,
-                        curr_ws_gates_, C_gates_n, augru_attention_m, Dpg_n,
-                        Dic_n, Ai_m, Aic_n, diff_src_layer_,
-                        diff_augru_attention_, diff_src_iter_, diff_src_iter_c_,
-                        diff_dst_layer_, diff_dst_iter_, nullptr, nullptr,
-                        bias_n, ws_grid_, C_cell_n, Di_n, weights_scales_n,
-                        block_step);
+                        curr_ws_gates_, static_cast<scratch_t *>(C_gates_n),
+                        augru_attention_m, Dpg_n, Dic_n,
+                        static_cast<const src_iter_t *>(Ai_m), Aic_n,
+                        diff_src_layer_, diff_augru_attention_, diff_src_iter_,
+                        diff_src_iter_c_, diff_dst_layer_, diff_dst_iter_,
+                        nullptr, nullptr, bias_n, ws_grid_,
+                        static_cast<scratch_t *>(C_cell_n), Di_n,
+                        weights_scales_n, block_step);
             };
         }
 
@@ -229,13 +225,11 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         const int pmask
                 = this->pd_->attr()->rnn_weights_projection_qparams_.mask_;
 
-        using brgemm_dst_proj_t
-                = brgemm_dst_proj_t<ht_t, weights_t, gemm_acc_t>;
-        typename brgemm_dst_proj_t::postgemm_fused_t fused_postgemm_proj;
+        brgemm_dst_proj_t::postgemm_fused_t fused_postgemm_proj;
 
         if (!rnn.unfused_post_gemm) {
-            fused_postgemm_proj = [&](dim_t m, dim_t n, gemm_acc_t *Cp_n,
-                                          dim_t block_step) {
+            fused_postgemm_proj
+                    = [&](dim_t m, dim_t n, void *Cp_n, dim_t block_step) {
                 const auto weights_scales_n
                         = wscales_proj_postgemm + (pmask ? n : 0);
                 const auto Di_n = (dst_iter_ != nullptr)
@@ -246,10 +240,10 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                         : nullptr;
                 const auto Wp_comp_n = w_proj_comp + n;
                 this->rnn_postgemm_->execute_part2(rnn, cell_position, nullptr,
-                        Cp_n, nullptr, Dl_n, nullptr, nullptr, Wp_comp_n,
+                        static_cast<gemm_acc_t *>(Cp_n), nullptr, Dl_n, nullptr,
+                        nullptr, Wp_comp_n, nullptr, nullptr, nullptr, nullptr,
                         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                        nullptr, nullptr, nullptr, nullptr, nullptr, Di_n,
-                        weights_scales_n, block_step);
+                        nullptr, Di_n, weights_scales_n, block_step);
             };
         }
 
@@ -293,18 +287,12 @@ rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
             weights_peephole_, bias_[0], ws_grid_, scratch_cell_, dst_iter_,
             nullptr, 0);
 
-    using brgemm_diff_src_calc_t
-            = brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>;
-    using brgemm_diff_weights_calc_t
-            = brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t,
-                    scratch_t, gemm_acc_t>;
-
-    const brgemm_diff_src_calc_t diff_src_calc(this->rnn_brgemm_, rnn,
+    const brgemm_diff_src_layer_iter_t diff_src_calc(this->rnn_brgemm_, rnn,
             cell_position, scratch_gates_, w_iter_[0], w_layer_[0],
             diff_src_iter_, diff_src_layer_, gemm_acc_scratchpad,
             addr_batch_global);
-    const brgemm_diff_weights_calc_t diff_weights_calc(this->rnn_brgemm_, rnn,
-            cell_position, src_iter_, scratch_src_iter_, src_layer_,
+    const brgemm_diff_weights_layer_iter_t diff_weights_calc(this->rnn_brgemm_,
+            rnn, cell_position, src_iter_, scratch_src_iter_, src_layer_,
             scratch_src_layer_, scratch_gates_, scratch_gates_blocked_,
             diff_w_iter_, diff_w_layer_, diff_bias_, gemm_acc_scratchpad,
             addr_batch_global);
@@ -341,7 +329,6 @@ rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
     diff_weights_calc.execute();
 
     if (rnn.is_lstm_peephole) {
-        using brgemm_diff_wei_peep_t = brgemm_diff_wei_peep_t<scratch_t>;
         const brgemm_diff_wei_peep_t diff_wei_peep_calc(this->rnn_brgemm_, rnn,
                 cell_position, scratch_gates_, src_iter_c_, dst_iter_c_,
                 diff_weights_peephole_);

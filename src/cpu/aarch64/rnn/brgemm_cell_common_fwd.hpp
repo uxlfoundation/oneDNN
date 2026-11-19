@@ -29,20 +29,17 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
 class brgemm_dst_layer_iter_t {
 public:
     using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<prop_kind::forward>;
     using postgemm_fused_t = std::function<void(
-            dim_t, dim_t, dim_t, const src_t *, scratch_t *, scratch_t *, int)>;
+            dim_t, dim_t, dim_t, const void *, void *, void *, int)>;
 
     brgemm_dst_layer_iter_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
-            rnn_utils::cell_position_t cell_position, const src_t *src_iter,
-            const src_t *src_layer, weights_t *w_iter, weights_t *w_layer,
-            scratch_t *scratch_gates, scratch_t *scratch_cell_,
-            gemm_acc_t *gemm_acc_scratchpad,
+            rnn_utils::cell_position_t cell_position, const void *src_iter,
+            const void *src_layer, void *w_iter, void *w_layer,
+            void *scratch_gates, void *scratch_cell_, void *gemm_acc_scratchpad,
             brgemm_batch_element_t *addr_batch_global,
             const postgemm_fused_t &fused_postgemm);
 
@@ -55,20 +52,23 @@ private:
 
     const ref_rnn_brgemm_t &rnn_brgemm_;
     const rnn_utils::rnn_conf_t &rnn_;
+    const dim_t src_dt_size_;
+    const dim_t wei_dt_size_;
+    const dim_t scratch_dt_size_;
 
     const bool need_gemm_layer_;
 
     const dim_t layer_desc_idx_;
     const dim_t iter_desc_idx_;
 
-    const src_t *const A_layer_;
-    const src_t *const A_iter_;
+    const char *const A_layer_;
+    const char *const A_iter_;
 
-    const weights_t *const B_layer_;
-    const weights_t *const B_iter_;
+    const char *const B_layer_;
+    const char *const B_iter_;
 
-    scratch_t *const C_gates_;
-    scratch_t *const C_cell_;
+    char *const C_gates_;
+    char *const C_cell_;
 
     const dim_t LDA_layer_;
     const dim_t LDA_iter_;
@@ -100,7 +100,6 @@ private:
     const brgemm_kernel_t *const brgemm_kernel_layer_k_tail_;
     const brgemm_kernel_t *const brgemm_kernel_layer_nk_tail_;
 
-    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
     const postgemm_fused_t fused_postgemm_;
 
@@ -109,19 +108,16 @@ private:
     const int max_nthr_;
 };
 
-template <typename src_t, typename weights_t, typename gemm_acc_t>
 class brgemm_dst_proj_t {
 public:
     using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<prop_kind::forward>;
 
-    using postgemm_fused_t
-            = std::function<void(dim_t, dim_t, gemm_acc_t *, int)>;
+    using postgemm_fused_t = std::function<void(dim_t, dim_t, void *, int)>;
 
     brgemm_dst_proj_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
-            rnn_utils::cell_position_t cell_position, const src_t *proj_ht,
-            const weights_t *w_projection, gemm_acc_t *output,
-            gemm_acc_t *gemm_acc_scratchpad,
+            rnn_utils::cell_position_t cell_position, const void *proj_ht,
+            const void *w_projection, void *output, void *gemm_acc_scratchpad,
             brgemm_batch_element_t *addr_batch_global,
             const postgemm_fused_t &fused_postgemm);
 
@@ -132,21 +128,22 @@ private:
 
     const ref_rnn_brgemm_t &rnn_brgemm_;
     const rnn_utils::rnn_conf_t &rnn_;
+    const dim_t src_dt_size_;
+    const dim_t wei_dt_size_;
+    const dim_t acc_dt_size_;
 
     const int proj_desc_idx_;
 
-    const src_t *const A_;
-    const weights_t *const B_;
-    gemm_acc_t *const C_;
+    const char *const A_;
+    const char *const B_;
+    char *const C_;
 
     const dim_t LDC_;
     const dim_t max_nthr_;
     const int work_amount_proj_;
 
     const dim_t B_n_offset_;
-    const dim_t Bp_kb_offset_;
 
-    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 
     const brgemm_kernel_t *const brgemm_kernel_main_;
@@ -155,20 +152,18 @@ private:
     const postgemm_fused_t fused_postgemm_;
 };
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
 class brgemm_gru_t {
 public:
     using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<prop_kind::forward>;
     using postgemm_fused_t = std::function<void(
-            dim_t, dim_t, dim_t, const src_t *, scratch_t *, scratch_t *, int)>;
+            dim_t, dim_t, dim_t, const void *, void *, void *, int)>;
 
     brgemm_gru_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
-            rnn_utils::cell_position_t cell_position, const src_t *src_iter,
-            const src_t *src_layer, weights_t *w_iter, weights_t *w_iter1,
-            weights_t *w_layer, src_t *d_layer, scratch_t *scratch_gates,
-            scratch_t *scratch_cell, gemm_acc_t *gemm_acc_scratchpad,
+            rnn_utils::cell_position_t cell_position, const void *src_iter,
+            const void *src_layer, void *w_iter, void *w_iter1, void *w_layer,
+            void *d_layer, void *scratch_gates, void *scratch_cell,
+            void *gemm_acc_scratchpad,
             brgemm_batch_element_t *addr_batch_global,
             const postgemm_fused_t &fused_postgemm_part1,
             const postgemm_fused_t &fused_postgemm_part2);
@@ -180,6 +175,9 @@ private:
 
     const ref_rnn_brgemm_t &rnn_brgemm_;
     const rnn_utils::rnn_conf_t &rnn_;
+    const dim_t src_dt_size_;
+    const dim_t wei_dt_size_;
+    const dim_t scratch_dt_size_;
 
     const bool need_gemm_layer_;
 
@@ -187,16 +185,16 @@ private:
     const dim_t iter_desc_idx_;
     const dim_t iter_part2_desc_idx_;
 
-    const src_t *const A_layer_;
-    const src_t *const A_iter_;
+    const char *const A_layer_;
+    const char *const A_iter_;
 
-    const weights_t *const B_layer_;
-    const weights_t *const B_iter_;
-    const weights_t *const B_iter_part2_;
+    const char *const B_layer_;
+    const char *const B_iter_;
+    const char *const B_iter_part2_;
 
-    scratch_t *const C_gates_;
-    scratch_t *const C_cell_;
-    src_t *const D_layer_;
+    char *const C_gates_;
+    char *const C_cell_;
+    char *const D_layer_;
 
     const dim_t LDA_layer_;
     const dim_t LDA_iter_part1_;
@@ -211,12 +209,8 @@ private:
     const dim_t B_iter_n_offset_;
     const dim_t B_layer_g_offset_;
     const dim_t B_iter_g_offset_;
-    const dim_t A_layer_k_tail_offset_;
-    const dim_t A_iter_k_tail_offset_;
     const dim_t B_layer_kb_offset_;
     const dim_t B_iter_kb_offset_;
-    const dim_t B_layer_k_tail_offset_;
-    const dim_t B_iter_k_tail_offset_;
 
     const dim_t n_gates_;
 
@@ -235,26 +229,20 @@ private:
     const brgemm_kernel_t *const brgemm_kernel_layer_k_tail_;
     const brgemm_kernel_t *const brgemm_kernel_layer_nk_tail_;
 
-    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 
     const postgemm_fused_t fused_postgemm_part1_;
     const postgemm_fused_t fused_postgemm_part2_;
-
-    const bool is_fused_layer_iter_brgemm_;
 };
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
 class brgemm_merged_layer_t {
 public:
     using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<prop_kind::forward>;
 
     brgemm_merged_layer_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
-            rnn_utils::cell_position_t cell_position, const src_t *src_layer,
-            weights_t *w_layer, scratch_t *scratch_gates,
-            gemm_acc_t *gemm_acc_scratchpad,
+            rnn_utils::cell_position_t cell_position, const void *src_layer,
+            void *w_layer, void *scratch_gates, void *gemm_acc_scratchpad,
             brgemm_batch_element_t *addr_batch_global);
 
     void execute() const;
@@ -264,12 +252,15 @@ private:
 
     const ref_rnn_brgemm_t &rnn_brgemm_;
     const rnn_utils::rnn_conf_t &rnn_;
+    const dim_t src_dt_size_;
+    const dim_t wei_dt_size_;
+    const dim_t scratch_dt_size_;
 
     const dim_t layer_desc_idx_;
 
-    const src_t *const A_layer_;
-    const weights_t *const B_layer_;
-    scratch_t *const C_;
+    const char *const A_layer_;
+    const char *const B_layer_;
+    char *const C_;
 
     const dim_t LDA_layer_;
     const dim_t max_nthr_;
@@ -289,7 +280,6 @@ private:
     const brgemm_kernel_t *const brgemm_kernel_layer_k_tail_;
     const brgemm_kernel_t *const brgemm_kernel_layer_nk_tail_;
 
-    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 };
 

@@ -66,13 +66,13 @@ status_t ref_rnn_common_pd_t<aprop>::init_ref(const engine_t *engine,
 
     rnn_ = utils::zero<decltype(rnn_)>();
     rnn_.is_brgemm = false;
-    VDISPATCH_RNN(
-            rnn_utils::init_conf(rnn_, *this->desc(), *this->attr(), src_type,
-                    acc_type, scratch_type, this->src_md(0), this->src_md(1),
-                    this->src_md(2), this->weights_md(0), this->weights_md(1),
-                    this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
-                    this->dst_md(1), this->dst_md(2),
-                    this->arg_md(DNNL_ARG_BIAS)),
+    VDISPATCH_RNN(rnn_utils::init_conf(rnn_, *this->desc(), *this->attr(),
+                          src_type, weights_type, acc_type, scratch_type,
+                          this->src_md(0), this->src_md(1), this->src_md(2),
+                          this->weights_md(0), this->weights_md(1),
+                          this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
+                          this->dst_md(0), this->dst_md(1), this->dst_md(2),
+                          this->arg_md(DNNL_ARG_BIAS)),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "rnn");
 
     VDISPATCH_RNN(IMPLICATION(rnn_.is_f16_conf(), !rnn_.is_training),
@@ -341,13 +341,13 @@ status_t ref_rnn_common_pd_t<aprop>::init_brgemm(const engine_t *engine,
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
-    VDISPATCH_RNN(
-            rnn_utils::init_conf(rnn_, *this->desc(), *this->attr(), src_type,
-                    acc_type, scratch_type, this->src_md(0), this->src_md(1),
-                    this->src_md(2), this->weights_md(0), this->weights_md(1),
-                    this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
-                    this->dst_md(1), this->dst_md(2),
-                    this->arg_md(DNNL_ARG_BIAS)),
+    VDISPATCH_RNN(rnn_utils::init_conf(rnn_, *this->desc(), *this->attr(),
+                          src_type, weights_type, acc_type, scratch_type,
+                          this->src_md(0), this->src_md(1), this->src_md(2),
+                          this->weights_md(0), this->weights_md(1),
+                          this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
+                          this->dst_md(0), this->dst_md(1), this->dst_md(2),
+                          this->arg_md(DNNL_ARG_BIAS)),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "rnn");
 
     VDISPATCH_RNN(IMPLICATION(utils::one_of(this->desc()->prop_kind,

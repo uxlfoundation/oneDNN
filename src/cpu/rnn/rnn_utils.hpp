@@ -323,6 +323,9 @@ struct rnn_conf_t {
     execution_direction_t exec_dir;
     data_type_conf_t dt_conf;
     data_type_t cell_dt = data_type::undef; // The data type used by cell
+    data_type_t weights_dt = data_type::undef;
+    data_type_t acc_dt = data_type::undef;
+    data_type_t scratch_dt = data_type::undef;
     data_type_t bias_dt = data_type::undef;
     data_type_t src_iter_c_dt = data_type::undef;
     data_type_t dst_iter_c_dt = data_type::undef;
@@ -698,8 +701,8 @@ dim_t get_good_ld(dim_t dim, int sizeof_dt);
 
 bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
         const primitive_attr_t &attr, data_type_t src_type,
-        data_type_t acc_type, data_type_t scratch_type,
-        const memory_desc_wrapper &src_layer_d,
+        data_type_t weights_type, data_type_t acc_type,
+        data_type_t scratch_type, const memory_desc_wrapper &src_layer_d,
         const memory_desc_wrapper &src_iter_d,
         const memory_desc_wrapper &src_iter_c_d,
         const memory_desc_wrapper &weights_layer_d,

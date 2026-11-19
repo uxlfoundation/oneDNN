@@ -46,7 +46,6 @@ namespace aarch64 {
  * diff_src_iter = io (mb, rnn.sic)
  */
 
-template <typename weights_t, typename scratch_t, typename gemm_acc_t>
 class brgemm_diff_src_layer_iter_t {
 public:
     using ref_rnn_brgemm_t
@@ -54,9 +53,9 @@ public:
 
     brgemm_diff_src_layer_iter_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
-            rnn_utils::cell_position_t cell_position, scratch_t *scratch_gates,
-            weights_t *w_iter, weights_t *w_layer, gemm_acc_t *diff_src_iter,
-            gemm_acc_t *diff_src_layer, gemm_acc_t *gemm_acc_scratchpad,
+            rnn_utils::cell_position_t cell_position, void *scratch_gates,
+            void *w_iter, void *w_layer, void *diff_src_iter,
+            void *diff_src_layer, void *gemm_acc_scratchpad,
             brgemm_batch_element_t *addr_batch_global);
 
     void execute() const;
@@ -66,14 +65,17 @@ private:
 
     const ref_rnn_brgemm_t &rnn_brgemm_;
     const rnn_utils::rnn_conf_t &rnn_;
+    const dim_t wei_dt_size_;
+    const dim_t scratch_dt_size_;
+    const dim_t acc_dt_size_;
 
-    const scratch_t *const A_;
+    const char *const A_;
 
-    const weights_t *const B_wei_iter_;
-    const weights_t *const B_wei_layer_;
+    const char *const B_wei_iter_;
+    const char *const B_wei_layer_;
 
-    gemm_acc_t *const C_diff_iter_;
-    gemm_acc_t *const C_diff_layer_;
+    char *const C_diff_iter_;
+    char *const C_diff_layer_;
 
     const dim_t k_blocks_n_gates_;
     const dim_t k_blocks_;
@@ -110,7 +112,6 @@ private:
     const brgemm_kernel_t *const kernel_layer_k_tail_;
     const brgemm_kernel_t *const kernel_layer_nk_tail_;
 
-    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 };
 
@@ -134,8 +135,6 @@ private:
  * dff_weights_layer = igo (rnn.slc, rnn.n_gates, rnn.dhc)
  */
 
-template <typename src_layer_t, typename src_iter_t, typename scratch_t,
-        typename gemm_acc_t>
 class brgemm_diff_weights_layer_iter_t {
 public:
     using ref_rnn_brgemm_t
@@ -143,33 +142,32 @@ public:
 
     brgemm_diff_weights_layer_iter_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
-            rnn_utils::cell_position_t cell_position,
-            const src_layer_t *src_iter,
-            scratch_t *const A_iter_transposed_scratch,
-            const src_iter_t *src_layer,
-            scratch_t *const A_layer_transposed_scratch,
-            const scratch_t *scratch, scratch_t *scratch_gates_blocked,
-            gemm_acc_t *diff_weights_iter, gemm_acc_t *diff_weights_layer,
-            gemm_acc_t *diff_bias, gemm_acc_t *gemm_acc_scratchpad,
+            rnn_utils::cell_position_t cell_position, const void *src_iter,
+            void *const A_iter_transposed_scratch, const void *src_layer,
+            void *const A_layer_transposed_scratch, const void *scratch,
+            void *scratch_gates_blocked, void *diff_weights_iter,
+            void *diff_weights_layer, void *diff_bias,
+            void *gemm_acc_scratchpad,
             brgemm_batch_element_t *addr_batch_global);
 
     void execute() const;
 
 private:
-    const ref_rnn_brgemm_t &rnn_brgemm_;
     const rnn_utils::rnn_conf_t &rnn_;
+    const dim_t src_dt_size_;
+    const dim_t scratch_dt_size_;
+    const dim_t acc_dt_size_;
 
-    const src_iter_t *const A_iter_;
-    scratch_t *const A_iter_transposed_scratch_;
-    const src_layer_t *const A_layer_;
-    scratch_t *const A_layer_transposed_scratch_;
+    const char *const A_iter_;
+    char *const A_iter_transposed_scratch_;
+    const char *const A_layer_;
+    char *const A_layer_transposed_scratch_;
 
-    const scratch_t *const B_;
-    scratch_t *const B_blocked_scratch_;
+    const char *const B_;
+    char *const B_blocked_scratch_;
 
-    gemm_acc_t *const C_iter_;
-    gemm_acc_t *const C_layer_;
-    gemm_acc_t *const diff_bias_;
+    char *const C_iter_;
+    char *const C_layer_;
 
     const dim_t LDA_iter_;
     const dim_t LDA_layer_;
@@ -189,7 +187,6 @@ private:
     const dim_t A_k_iter_tail_offset_;
     const dim_t A_k_layer_tail_offset_;
     const dim_t B_kb_offset_;
-    const dim_t B_k_tail_offset_;
     const dim_t B_k_tail_offset_blocked_;
     const int work_amount_;
 
@@ -202,17 +199,13 @@ private:
     const brgemm_kernel_t *const kernel_layer_k_tail_;
     const brgemm_kernel_t *const kernel_layer_nk_tail_;
 
-    const rnn_utils::cell_position_t cell_position_;
-
-    gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 
     void kernel(const int ithr, const int nthr) const;
     void reorder_scratch_gates(
-            const scratch_t *src, scratch_t *dst, const bool do_n_tail) const;
+            const void *src, void *dst, const bool do_n_tail) const;
 };
 
-template <typename scratch_t>
 class brgemm_diff_wei_peep_t {
 public:
     using ref_rnn_brgemm_t
@@ -220,9 +213,9 @@ public:
 
     brgemm_diff_wei_peep_t(const ref_rnn_brgemm_t &rnn_brgemm,
             const rnn_utils::rnn_conf_t &rnn,
-            rnn_utils::cell_position_t cell_position,
-            const scratch_t *scratch_gates, const void *src_iter_c,
-            const void *dst_iter_c, float *diff_weights_peephole);
+            rnn_utils::cell_position_t cell_position, const void *scratch_gates,
+            const void *src_iter_c, const void *dst_iter_c,
+            float *diff_weights_peephole);
 
     void execute() const;
 
@@ -231,7 +224,7 @@ private:
 
     const int n_gates_ = 3;
     const rnn_utils::rnn_conf_t &rnn_;
-    const scratch_t *scratch_gates_;
+    const void *scratch_gates_;
     const void *src_iter_c_;
     const void *dst_iter_c_;
     float *diff_weights_peephole_;

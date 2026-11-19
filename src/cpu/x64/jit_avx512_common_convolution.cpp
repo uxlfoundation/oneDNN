@@ -27,10 +27,7 @@ namespace cpu {
 namespace x64 {
 
 DEFINE_PD_CREATE(jit_avx512_common_convolution_fwd_t::pd_t)
-template <data_type_t diff_dst_type, data_type_t wei_type,
-        data_type_t diff_src_type>
-DEFINE_PD_CREATE(jit_avx512_common_convolution_bwd_data_t<diff_dst_type,
-        wei_type, diff_src_type>::pd_t)
+DEFINE_PD_CREATE(jit_avx512_common_convolution_bwd_data_t::pd_t)
 template <data_type_t src_type, data_type_t diff_dst_type,
         data_type_t diff_weights_type>
 DEFINE_PD_CREATE(jit_avx512_common_convolution_bwd_weights_t<src_type,
@@ -659,13 +656,11 @@ void jit_avx512_common_convolution_fwd_t::execute_forward_3d(
     });
 }
 
-template <data_type_t diff_dst_type, data_type_t wei_type,
-        data_type_t diff_src_type>
-void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
-        diff_src_type>::execute_backward_data_1d(const exec_ctx_t &ctx) const {
-    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
+void jit_avx512_common_convolution_bwd_data_t::execute_backward_data_1d(
+        const exec_ctx_t &ctx) const {
+    auto diff_dst = CTX_IN_MEM(const float *, DNNL_ARG_DIFF_DST);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto diff_src = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SRC);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
@@ -776,13 +771,11 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
     });
 }
 
-template <data_type_t diff_dst_type, data_type_t wei_type,
-        data_type_t diff_src_type>
-void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
-        diff_src_type>::execute_backward_data_2d(const exec_ctx_t &ctx) const {
-    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
+void jit_avx512_common_convolution_bwd_data_t::execute_backward_data_2d(
+        const exec_ctx_t &ctx) const {
+    auto diff_dst = CTX_IN_MEM(const float *, DNNL_ARG_DIFF_DST);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto diff_src = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SRC);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
@@ -947,13 +940,11 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
     });
 }
 
-template <data_type_t diff_dst_type, data_type_t wei_type,
-        data_type_t diff_src_type>
-void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
-        diff_src_type>::execute_backward_data_3d(const exec_ctx_t &ctx) const {
-    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
+void jit_avx512_common_convolution_bwd_data_t::execute_backward_data_3d(
+        const exec_ctx_t &ctx) const {
+    auto diff_dst = CTX_IN_MEM(const float *, DNNL_ARG_DIFF_DST);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto diff_src = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SRC);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
@@ -1167,8 +1158,6 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
         }
     });
 }
-
-template struct jit_avx512_common_convolution_bwd_data_t<data_type::f32>;
 
 template <data_type_t src_type, data_type_t diff_dst_type,
         data_type_t diff_weights_type>

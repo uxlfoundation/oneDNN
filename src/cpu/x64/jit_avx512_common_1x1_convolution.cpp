@@ -28,13 +28,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
-DEFINE_PD_CREATE(jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
-        dst_type>::pd_t)
-template <data_type_t diff_dst_type, data_type_t wei_type,
-        data_type_t diff_src_type>
-DEFINE_PD_CREATE(jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type,
-        wei_type, diff_src_type>::pd_t)
+DEFINE_PD_CREATE(jit_avx512_common_1x1_convolution_fwd_t::pd_t)
+DEFINE_PD_CREATE(jit_avx512_common_1x1_convolution_bwd_data_t::pd_t)
 DEFINE_PD_CREATE(jit_avx512_common_1x1_convolution_bwd_weights_t::pd_t)
 
 using namespace dnnl::impl::status;
@@ -47,18 +42,17 @@ using namespace dnnl::impl::utils;
                                   : (f).blk_off(n, c, d, h, w)))
 /* convolution forward */
 
-template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
-void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
-        dst_type>::execute_forward(const exec_ctx_t &ctx) const {
+void jit_avx512_common_1x1_convolution_fwd_t::execute_forward(
+        const exec_ctx_t &ctx) const {
     const auto &jcp = kernel_->jcp;
-    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto bias = CTX_IN_MEM(const dst_data_t *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
+    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
     auto weights_dw = CTX_IN_MEM(
-            const wei_data_t *, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS);
+            const float *, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS);
     auto bias_dw = CTX_IN_MEM(
-            const dst_data_t *, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS);
+            const float *, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
     const auto &post_ops_binary_rhs_arg_vec_dw = pd()->dw_conv_pd_
@@ -71,8 +65,7 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     if (pd()->wants_padded_bias()) {
-        auto padded_bias
-                = scratchpad.template get<dst_data_t>(key_conv_padded_bias);
+        auto padded_bias = scratchpad.template get<float>(key_conv_padded_bias);
         utils::array_copy(padded_bias, bias, jcp.oc_without_padding);
         utils::array_set(padded_bias + jcp.oc_without_padding, 0.f,
                 jcp.oc - jcp.oc_without_padding);
@@ -88,13 +81,10 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
     if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
 }
 
-template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
-void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
-        dst_type>::execute_forward_thr(const int ithr, const int nthr,
-        const src_data_t *src, const wei_data_t *weights,
-        const dst_data_t *bias, const wei_data_t *weights_dw,
-        const dst_data_t *bias_dw, dst_data_t *dst,
-        const memory_tracking::grantor_t &scratchpad,
+void jit_avx512_common_1x1_convolution_fwd_t::execute_forward_thr(
+        const int ithr, const int nthr, const float *src, const float *weights,
+        const float *bias, const float *weights_dw, const float *bias_dw,
+        float *dst, const memory_tracking::grantor_t &scratchpad,
         const void *post_ops_binary_rhs_arg_vec,
         const void *post_ops_binary_rhs_arg_vec_dw) const {
     const memory_desc_wrapper src_d(pd()->src_md());
@@ -108,7 +98,7 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
 
     const auto &jcp = kernel_->jcp;
     auto rtus_space = pd()->rtus_.reduce_src_
-            ? scratchpad.get<src_data_t>(key_conv_rtus_space)
+            ? scratchpad.get<float>(key_conv_rtus_space)
             : nullptr;
 
     const int ndims = src_d.ndims();
@@ -148,10 +138,10 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
     // Begin: declare Variables needed for dw conv.
     memory_tracking::grantor_t dw_scratchpad(
             scratchpad, memory_tracking::names::prefix_fusion);
-    dst_data_t *pbuf;
+    float *pbuf;
     dim_t row_offset;
     const dim_t nb_buffer = jcp.nb_load_blocking;
-    std::vector<dst_data_t *> addrs;
+    std::vector<float *> addrs;
     // End
 
     auto init_bcast = [&](dim_t iwork, dim_t bcast_end, dim_t &n, dim_t &g,
@@ -395,8 +385,7 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
 
     auto conv_dw = [&]() {
         // Set variables
-        auto dw_conv_buffer
-                = dw_scratchpad.get<dst_data_t>(key_fusion_inout_buffer);
+        auto dw_conv_buffer = dw_scratchpad.get<float>(key_fusion_inout_buffer);
         auto &jcp_dw = pd()->dw_conv_pd_->jcp_;
 
         const dim_t dw_conv_buffer_size
@@ -459,17 +448,13 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
     }
 }
 
-REG_AVX512_ISA(template struct jit_avx512_common_1x1_convolution_fwd_t<
-        data_type::f32>);
 /* convolution backward wtr data */
 
-template <data_type_t diff_dst_type, data_type_t wei_type,
-        data_type_t diff_src_type>
-void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
-        diff_src_type>::execute_backward_data(const exec_ctx_t &ctx) const {
-    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
+void jit_avx512_common_1x1_convolution_bwd_data_t::execute_backward_data(
+        const exec_ctx_t &ctx) const {
+    auto diff_dst = CTX_IN_MEM(const float *, DNNL_ARG_DIFF_DST);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto diff_src = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SRC);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -477,7 +462,7 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
 
     const auto &jcp = kernel_->jcp;
     auto rtus_space = pd()->rtus_.reduce_src_
-            ? ctx.get_scratchpad_grantor().template get<diff_src_data_t>(
+            ? ctx.get_scratchpad_grantor().template get<float>(
                       key_conv_rtus_space)
             : nullptr;
 
@@ -611,9 +596,6 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
         }
     });
 }
-
-REG_AVX512_ISA(template struct jit_avx512_common_1x1_convolution_bwd_data_t<
-        data_type::f32>);
 
 /* convolution backward wtr weights */
 

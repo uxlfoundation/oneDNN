@@ -32,7 +32,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
 struct ref_lrn_fwd_t : public primitive_t {
     struct pd_t : public cpu_lrn_fwd_pd_t {
         using cpu_lrn_fwd_pd_t::cpu_lrn_fwd_pd_t;
@@ -46,10 +45,12 @@ struct ref_lrn_fwd_t : public primitive_t {
             const memory_desc_wrapper src_d(src_md());
             const memory_desc_wrapper dst_d(dst_md());
 
+            const data_type_t d_type = src_md()->data_type;
             VDISPATCH_LRN(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_LRN(utils::everyone_is(d_type, src_md()->data_type,
-                                  dst_md()->data_type),
+            VDISPATCH_LRN(utils::one_of(d_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LRN(
+                    d_type == dst_md()->data_type, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LRN(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LRN(
@@ -69,7 +70,6 @@ struct ref_lrn_fwd_t : public primitive_t {
     };
 
     ref_lrn_fwd_t(const pd_t *apd) : primitive_t(apd) {}
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         using namespace format_tag;
@@ -89,10 +89,6 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
-template <data_type_t d_type>
-DEFINE_PD_CREATE(ref_lrn_fwd_t<d_type>::pd_t)
-
-template <impl::data_type_t d_type>
 struct ref_lrn_bwd_t : public primitive_t {
     struct pd_t : public cpu_lrn_bwd_pd_t {
         using cpu_lrn_bwd_pd_t::cpu_lrn_bwd_pd_t;
@@ -106,10 +102,12 @@ struct ref_lrn_bwd_t : public primitive_t {
             const memory_desc_wrapper diff_src_d(diff_src_md());
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
 
+            const data_type_t d_type = src_md()->data_type;
             VDISPATCH_LRN(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_LRN(
-                    utils::everyone_is(d_type, src_md()->data_type,
-                            diff_src_md()->data_type, diff_dst_md()->data_type),
+            VDISPATCH_LRN(utils::one_of(d_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_LRN(utils::everyone_is(d_type, diff_src_md()->data_type,
+                                  diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LRN(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -130,7 +128,6 @@ struct ref_lrn_bwd_t : public primitive_t {
     };
 
     ref_lrn_bwd_t(const pd_t *apd) : primitive_t(apd) {}
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         using namespace format_tag;
@@ -149,9 +146,6 @@ private:
     status_t execute_backward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
-
-template <impl::data_type_t d_type>
-DEFINE_PD_CREATE(ref_lrn_bwd_t<d_type>::pd_t)
 
 } // namespace cpu
 } // namespace impl

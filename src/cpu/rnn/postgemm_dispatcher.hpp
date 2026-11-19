@@ -58,22 +58,9 @@ x64::jit_uni_rnn_postgemm_t *create_jit_postgemm(
 }
 #endif
 
-template <prop_kind_t aprop, impl::data_type_t src_type,
-        impl::data_type_t scratch_type, impl::data_type_t acc_type>
 struct rnn_postgemm_dispatcher_t {
-
-    using src_layer_t = typename prec_traits_t<src_type>::type;
-    using src_iter_t = typename prec_traits_t<src_type>::type;
-    using dst_layer_t = typename prec_traits_t<src_type>::type;
-    using dst_iter_t = typename prec_traits_t<src_type>::type;
-    using gemm_acc_t = typename prec_traits_t<acc_type>::type;
-    using scratch_t = typename prec_traits_t<scratch_type>::type;
-    using ht_t = typename prec_traits_t<src_type>::type;
-    using gates_t = typename prec_traits_t<src_type>::type;
-
-    using class_name = rnn_postgemm_dispatcher_t<aprop, src_type, scratch_type,
-            acc_type>;
-    using postgemm_f = void (class_name::*)(rnn_postgemm_sig_args) const;
+    using postgemm_f
+            = void (rnn_postgemm_dispatcher_t::*)(rnn_postgemm_sig_args) const;
 
     rnn_postgemm_dispatcher_t(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
@@ -90,23 +77,24 @@ struct rnn_postgemm_dispatcher_t {
 
         switch (pd->cell_kind()) {
             case alg_kind::vanilla_lstm:
-                postgemm_func = &class_name::lstm_postgemm;
+                postgemm_func = &rnn_postgemm_dispatcher_t::lstm_postgemm;
                 // used for int8 requantization after projection
                 postgemm_part2_func = pd->is_lstm_projection() && pd_->is_fwd()
-                        ? &class_name::lstm_projection_postgemm
+                        ? &rnn_postgemm_dispatcher_t::lstm_projection_postgemm
                         : nullptr;
                 break;
             case alg_kind::vanilla_rnn:
-                postgemm_func = &class_name::rnn_postgemm;
+                postgemm_func = &rnn_postgemm_dispatcher_t::rnn_postgemm;
                 break;
             case alg_kind::vanilla_gru:
             case alg_kind::vanilla_augru:
-                postgemm_func = &class_name::gru_part1_postgemm;
-                postgemm_part2_func = &class_name::gru_part2_postgemm;
+                postgemm_func = &rnn_postgemm_dispatcher_t::gru_part1_postgemm;
+                postgemm_part2_func
+                        = &rnn_postgemm_dispatcher_t::gru_part2_postgemm;
                 break;
             case alg_kind::lbr_gru:
             case alg_kind::lbr_augru:
-                postgemm_func = &class_name::gru_lbr_postgemm;
+                postgemm_func = &rnn_postgemm_dispatcher_t::gru_lbr_postgemm;
                 break;
             default: assert(!"Unsupported algorithm kind"); break;
         }
@@ -129,36 +117,34 @@ struct rnn_postgemm_dispatcher_t {
                 = rnn.ws_states_layer_nld * rnn.ws_states_layer_ld;
         const size_t gates_nelems
                 = rnn.scratch_gates_nld * rnn.scratch_gates_ld;
+        const size_t src_dt_size = types::data_type_size(rnn.cell_dt);
+        const size_t scratch_dt_size = types::data_type_size(rnn.scratch_dt);
+        const size_t acc_dt_size = types::data_type_size(rnn.acc_dt);
 
         if (pd_->is_fwd()) {
-            msan_unpoison(dst_layer_, sizeof(*dst_layer_) * states_nelems);
-            msan_unpoison(dst_iter_, sizeof(*dst_iter_) * states_nelems);
+            msan_unpoison(dst_layer_, src_dt_size * states_nelems);
+            msan_unpoison(dst_iter_, src_dt_size * states_nelems);
             if (rnn.is_training)
-                msan_unpoison(ws_gates_, sizeof(*ws_gates_) * gates_nelems);
+                msan_unpoison(ws_gates_, src_dt_size * gates_nelems);
         } else {
             msan_unpoison(diff_src_layer_,
-                    sizeof(*diff_src_layer_) * (rnn.n_iter + 1)
+                    acc_dt_size * (rnn.n_iter + 1)
                             * rnn.ws_diff_states_layer_nld
                             * rnn.ws_diff_states_layer_ld);
             msan_unpoison(diff_augru_attention_,
-                    sizeof(*diff_augru_attention_) * rnn.n_iter * rnn.mb
-                            * rnn.dhc);
+                    acc_dt_size * rnn.n_iter * rnn.mb * rnn.dhc);
             msan_unpoison(diff_src_iter_,
-                    sizeof(*diff_src_iter_) * (rnn.n_iter + 1)
-                            * rnn.ws_diff_states_iter_nld
+                    acc_dt_size * (rnn.n_iter + 1) * rnn.ws_diff_states_iter_nld
                             * rnn.ws_diff_states_iter_ld);
             msan_unpoison(diff_src_iter_c_,
-                    sizeof(*diff_src_iter_c_) * (rnn.n_iter + 1)
+                    acc_dt_size * (rnn.n_iter + 1)
                             * rnn.ws_diff_states_iter_c_nld
                             * rnn.ws_diff_states_iter_c_ld);
-            msan_unpoison(
-                    scratch_gates_, sizeof(*scratch_gates_) * gates_nelems);
-            msan_unpoison(
-                    scratch_cell_, sizeof(*scratch_cell_) * states_nelems);
+            msan_unpoison(scratch_gates_, scratch_dt_size * gates_nelems);
+            msan_unpoison(scratch_cell_, scratch_dt_size * states_nelems);
         }
     }
 
-    // template <typename src_data_t, typename acc_data_t>
     rnn_postgemm_sig(execute) {
         /* This block has an impact on performance in case it is executed
          * multiple times. Be careful when changing it.
@@ -192,7 +178,6 @@ struct rnn_postgemm_dispatcher_t {
                 block_step);
     }
 
-    // template <typename src_data_t, typename acc_data_t>
     rnn_postgemm_sig(execute_part2) {
         /* This block has an impact on performance in case it is executed
          * multiple times. Be careful when changing it.
@@ -250,16 +235,16 @@ protected:
 
         if (pd_->attr()->rnn_tparams_.test_mode_) return status::success;
 
-        constexpr bool jit_fwd = aprop == prop_kind::forward
-                && utils::one_of(src_type, data_type::f32, data_type::u8,
+        const bool jit_fwd = pd_->is_fwd()
+                && utils::one_of(rnn.cell_dt, data_type::f32, data_type::u8,
                         data_type::s8, data_type::bf16, data_type::f16);
-        constexpr bool jit_bwd = aprop == prop_kind::backward
-                && utils::one_of(src_type, data_type::f32, data_type::bf16,
+        const bool jit_bwd = !pd_->is_fwd()
+                && utils::one_of(rnn.cell_dt, data_type::f32, data_type::bf16,
                         data_type::f16);
 
         // Note: Using ref (no-jit) post-gemm for avx2_vnni_2 for now.
         // Implement jit version of post-gemm if perf becomes a concern.
-        if (utils::one_of(src_type, data_type::bf16, data_type::f16)
+        if (utils::one_of(rnn.cell_dt, data_type::bf16, data_type::f16)
                 && !mayiuse(avx512_core))
             return status::success;
         if (!mayiuse(avx2)) return status::success;
@@ -268,7 +253,7 @@ protected:
 // Can't put types into `()`:
 // error: expected type-specifier before ‘)’ token
 #define CREATE_WITH_DIR(k, ker_t) \
-    (k).reset(create_jit_postgemm<ker_t>(rnn, pd_, src_type, scratch_type))
+    (k).reset(create_jit_postgemm<ker_t>(rnn, pd_, rnn.cell_dt, rnn.scratch_dt))
 #define CREATE(k, ker_t) \
     do { \
         if (jit_fwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _fwd_t)); \
@@ -299,21 +284,8 @@ protected:
 #endif
 };
 
-template <impl::data_type_t src_type, impl::data_type_t scratch_type,
-        impl::data_type_t acc_type>
-struct rnn_postgemm_fwd_t : public rnn_postgemm_dispatcher_t<prop_kind::forward,
-                                    src_type, scratch_type, acc_type> {
-    using base_t = rnn_postgemm_dispatcher_t<prop_kind::forward, src_type,
-            scratch_type, acc_type>;
-    using base_t::base_t;
-    using src_layer_t = typename base_t::src_layer_t;
-    using src_iter_t = typename base_t::src_iter_t;
-    using dst_layer_t = typename base_t::dst_layer_t;
-    using dst_iter_t = typename base_t::dst_iter_t;
-    using gemm_acc_t = typename base_t::gemm_acc_t;
-    using scratch_t = typename base_t::scratch_t;
-    using ht_t = typename base_t::ht_t;
-    using gates_t = typename base_t::gates_t;
+struct rnn_postgemm_fwd_t : public rnn_postgemm_dispatcher_t {
+    using rnn_postgemm_dispatcher_t::rnn_postgemm_dispatcher_t;
 
     virtual rnn_postgemm_sig(rnn_postgemm) override;
     virtual rnn_postgemm_sig(lstm_postgemm) override;
@@ -321,27 +293,10 @@ struct rnn_postgemm_fwd_t : public rnn_postgemm_dispatcher_t<prop_kind::forward,
     virtual rnn_postgemm_sig(gru_part1_postgemm) override;
     virtual rnn_postgemm_sig(gru_part2_postgemm) override;
     virtual rnn_postgemm_sig(gru_lbr_postgemm) override;
-
-    using base_t::postgemm_func;
-    using base_t::postgemm_part2_func;
 };
 
-template <impl::data_type_t src_type, impl::data_type_t scratch_type,
-        impl::data_type_t acc_type>
-struct rnn_postgemm_bwd_t
-    : public rnn_postgemm_dispatcher_t<prop_kind::backward, src_type,
-              scratch_type, acc_type> {
-    using base_t = rnn_postgemm_dispatcher_t<prop_kind::backward, src_type,
-            scratch_type, acc_type>;
-    using base_t::base_t;
-    using src_layer_t = typename base_t::src_layer_t;
-    using src_iter_t = typename base_t::src_iter_t;
-    using dst_layer_t = typename base_t::dst_layer_t;
-    using dst_iter_t = typename base_t::dst_iter_t;
-    using gemm_acc_t = typename base_t::gemm_acc_t;
-    using scratch_t = typename base_t::scratch_t;
-    using ht_t = typename base_t::ht_t;
-    using gates_t = typename base_t::gates_t;
+struct rnn_postgemm_bwd_t : public rnn_postgemm_dispatcher_t {
+    using rnn_postgemm_dispatcher_t::rnn_postgemm_dispatcher_t;
 
     virtual rnn_postgemm_sig(rnn_postgemm) override;
     virtual rnn_postgemm_sig(lstm_postgemm) override;
@@ -349,30 +304,7 @@ struct rnn_postgemm_bwd_t
     virtual rnn_postgemm_sig(gru_part1_postgemm) override;
     virtual rnn_postgemm_sig(gru_part2_postgemm) override;
     virtual rnn_postgemm_sig(gru_lbr_postgemm) override;
-
-    using base_t::postgemm_func;
-    using base_t::postgemm_part2_func;
 };
-
-using rnn_postgemm_fwd_f32_t
-        = rnn_postgemm_fwd_t<data_type::f32, data_type::f32, data_type::f32>;
-using rnn_postgemm_bwd_f32_t
-        = rnn_postgemm_bwd_t<data_type::f32, data_type::f32, data_type::f32>;
-
-using rnn_postgemm_fwd_bf16_t
-        = rnn_postgemm_fwd_t<data_type::bf16, data_type::f32, data_type::f32>;
-using rnn_postgemm_bwd_bf16_t
-        = rnn_postgemm_bwd_t<data_type::bf16, data_type::bf16, data_type::f32>;
-
-using rnn_postgemm_fwd_f16_t
-        = rnn_postgemm_fwd_t<data_type::f16, data_type::f32, data_type::f32>;
-using rnn_postgemm_bwd_f16_t
-        = rnn_postgemm_bwd_t<data_type::f16, data_type::f16, data_type::f32>;
-
-using rnn_postgemm_fwd_u8_t
-        = rnn_postgemm_fwd_t<data_type::u8, data_type::s32, data_type::s32>;
-using rnn_postgemm_fwd_s8_t
-        = rnn_postgemm_fwd_t<data_type::s8, data_type::s32, data_type::s32>;
 
 } // namespace cpu
 } // namespace impl

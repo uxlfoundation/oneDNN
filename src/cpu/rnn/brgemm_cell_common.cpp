@@ -109,13 +109,11 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
             const auto augru_attention_m
                     = augru_attention_ ? augru_attention_ + m : nullptr;
             this->rnn_postgemm_->execute(rnn, cell_position, curr_ws_gates_,
-                    static_cast<scratch_t *>(C_n), augru_attention_m, Dpg_n,
-                    Dic_n, static_cast<const src_iter_t *>(Ai_m), Aic_n,
+                    C_n, augru_attention_m, Dpg_n, Dic_n, Ai_m, Aic_n,
                     diff_src_layer_, diff_augru_attention_, diff_src_iter_,
                     diff_src_iter_c_, diff_dst_layer_, diff_dst_iter_,
                     diff_dst_iter_c_, weights_peephole_n, bias_n, ws_grid_,
-                    static_cast<scratch_t *>(C_cell_n), Di_n, weights_scales_n,
-                    block_step);
+                    C_cell_n, Di_n, weights_scales_n, block_step);
         };
     }
 
@@ -145,12 +143,10 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                 const auto augru_attention_m
                         = augru_attention_ ? augru_attention_ + m : nullptr;
                 this->rnn_postgemm_->execute(rnn, cell_position, curr_ws_gates_,
-                        static_cast<scratch_t *>(C_gates_n), augru_attention_m,
-                        Dpg_n, Dic_n, static_cast<const src_iter_t *>(Ai_m),
-                        Aic_n, diff_src_layer_, diff_augru_attention_,
-                        diff_src_iter_, diff_src_iter_c_, diff_dst_layer_,
-                        diff_dst_iter_, nullptr, nullptr, bias_n, ws_grid_,
-                        static_cast<scratch_t *>(C_cell_n), Di_n,
+                        C_gates_n, augru_attention_m, Dpg_n, Dic_n, Ai_m, Aic_n,
+                        diff_src_layer_, diff_augru_attention_, diff_src_iter_,
+                        diff_src_iter_c_, diff_dst_layer_, diff_dst_iter_,
+                        nullptr, nullptr, bias_n, ws_grid_, C_cell_n, Di_n,
                         weights_scales_n, block_step);
             };
             fused_postgemm_gru_part2 =
@@ -175,14 +171,12 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                 const auto augru_attention_m
                         = augru_attention_ ? augru_attention_ + m : nullptr;
                 this->rnn_postgemm_->execute_part2(rnn, cell_position,
-                        curr_ws_gates_, static_cast<scratch_t *>(C_gates_n),
-                        augru_attention_m, Dpg_n, Dic_n,
-                        static_cast<const src_iter_t *>(Ai_m), Aic_n,
-                        diff_src_layer_, diff_augru_attention_, diff_src_iter_,
-                        diff_src_iter_c_, diff_dst_layer_, diff_dst_iter_,
-                        nullptr, nullptr, bias_n, ws_grid_,
-                        static_cast<scratch_t *>(C_cell_n), Di_n,
-                        weights_scales_n, block_step);
+                        curr_ws_gates_, C_gates_n, augru_attention_m, Dpg_n,
+                        Dic_n, Ai_m, Aic_n, diff_src_layer_,
+                        diff_augru_attention_, diff_src_iter_, diff_src_iter_c_,
+                        diff_dst_layer_, diff_dst_iter_, nullptr, nullptr,
+                        bias_n, ws_grid_, C_cell_n, Di_n, weights_scales_n,
+                        block_step);
             };
         }
 
@@ -240,10 +234,10 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                         : nullptr;
                 const auto Wp_comp_n = w_proj_comp + n;
                 this->rnn_postgemm_->execute_part2(rnn, cell_position, nullptr,
-                        static_cast<gemm_acc_t *>(Cp_n), nullptr, Dl_n, nullptr,
-                        nullptr, Wp_comp_n, nullptr, nullptr, nullptr, nullptr,
+                        Cp_n, nullptr, Dl_n, nullptr, nullptr, Wp_comp_n,
                         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                        nullptr, Di_n, weights_scales_n, block_step);
+                        nullptr, nullptr, nullptr, nullptr, nullptr, Di_n,
+                        weights_scales_n, block_step);
             };
         }
 

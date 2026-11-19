@@ -39,16 +39,24 @@
 
 #define rnn_postgemm_sig_args \
     const rnn_utils::rnn_conf_t &rnn, \
-            rnn_utils::cell_position_t cell_position, gates_t *ws_gates_, \
-            scratch_t *scratch_gates_, const dst_layer_t *augru_attention_, \
-            dst_layer_t *dst_layer_, void *dst_iter_c_, \
-            const src_iter_t *src_iter_, const void *src_iter_c_, \
-            gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_augru_attention_, \
-            gemm_acc_t *diff_src_iter_, gemm_acc_t *diff_src_iter_c_, \
-            gemm_acc_t *diff_dst_layer_, gemm_acc_t *diff_dst_iter_, \
-            gemm_acc_t *diff_dst_iter_c_, const float *weights_peephole_, \
-            const void *bias_, gates_t *ws_grid_, scratch_t *scratch_cell_, \
-            dst_iter_t *dst_iter_, float *weights_scales_, dim_t block_step
+            rnn_utils::cell_position_t cell_position, void *ws_gates_, \
+            void *scratch_gates_, const void *augru_attention_, \
+            void *dst_layer_, void *dst_iter_c_, const void *src_iter_, \
+            const void *src_iter_c_, void *diff_src_layer_, \
+            void *diff_augru_attention_, void *diff_src_iter_, \
+            void *diff_src_iter_c_, void *diff_dst_layer_, \
+            void *diff_dst_iter_, void *diff_dst_iter_c_, \
+            const float *weights_peephole_, const void *bias_, void *ws_grid_, \
+            void *scratch_cell_, void *dst_iter_, float *weights_scales_, \
+            dim_t block_step
+
+#define rnn_postgemm_args \
+    rnn, cell_position, ws_gates_, scratch_gates_, augru_attention_, \
+            dst_layer_, dst_iter_c_, src_iter_, src_iter_c_, diff_src_layer_, \
+            diff_augru_attention_, diff_src_iter_, diff_src_iter_c_, \
+            diff_dst_layer_, diff_dst_iter_, diff_dst_iter_c_, \
+            weights_peephole_, bias_, ws_grid_, scratch_cell_, dst_iter_, \
+            weights_scales_, block_step
 
 #define rnn_postgemm_sig(f) void f(rnn_postgemm_sig_args) const
 

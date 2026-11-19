@@ -152,8 +152,7 @@ struct ref_rnn_common_t : public primitive_t {
     using impl_t = typename utils::conditional<aprop == prop_kind::forward,
             fwd_t, bwd_t>::type;
     using postgemm_t = typename utils::conditional<aprop == prop_kind::forward,
-            rnn_postgemm_fwd_t<src_type, scratch_type, acc_type>,
-            rnn_postgemm_bwd_t<src_type, scratch_type, acc_type>>::type;
+            rnn_postgemm_fwd_t, rnn_postgemm_bwd_t>::type;
 
     /* These types are defined for each element in the cell execution */
     using src_layer_t = typename prec_traits_t<src_type>::type;

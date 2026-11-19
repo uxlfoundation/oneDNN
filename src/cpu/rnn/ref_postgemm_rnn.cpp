@@ -60,17 +60,17 @@ constexpr float linear(float s, float alpha, float clipping) {
     return alpha * s;
 }
 
-template <typename T, typename src_data_t, typename scratch_data_t>
+template <typename src_data_t, typename scratch_data_t, typename T>
 void rnn_fwd_postgemm_template(T func1, const float *scales, float alpha,
         const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position, src_data_t *ws_gates_,
-        scratch_data_t *scratch_gates_, src_data_t *dst_layer_,
-        src_data_t *dst_iter_, const src_data_t *src_iter_, const void *bias_,
-        dim_t block_step) {
+        rnn_utils::cell_position_t cell_position, void *ws_gates_,
+        void *scratch_gates_, void *dst_layer_, void *dst_iter_,
+        const void *src_iter_, const void *bias_, dim_t block_step) {
 
-    const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
+    const ws_gates_aoc_t<src_data_t> ws_gates(
+            rnn, static_cast<src_data_t *>(ws_gates_));
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
-            rnn, scratch_gates_);
+            rnn, static_cast<scratch_data_t *>(scratch_gates_));
     const auto bias_aoc = rnn_utils::make_raw_aoc(
             bias_, types::data_type_size(rnn.bias_dt), rnn.n_bias, rnn.dhc);
     const auto bias = [&](int gate_id, dim_t dhc_id) {
@@ -79,9 +79,9 @@ void rnn_fwd_postgemm_template(T func1, const float *scales, float alpha,
     const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
     const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
     const ws_states_layer_aoc_t<src_data_t> dst_layer(
-            rnn, dst_layer_, dst_layer_ld);
+            rnn, static_cast<src_data_t *>(dst_layer_), dst_layer_ld);
     const ws_states_iter_aoc_t<src_data_t> dst_iter(
-            rnn, dst_iter_, dst_iter_ld);
+            rnn, static_cast<src_data_t *>(dst_iter_), dst_iter_ld);
 
     if (scales != nullptr) alpha = scales[0];
 
@@ -104,55 +104,59 @@ void rnn_fwd_postgemm_template(T func1, const float *scales, float alpha,
         parallel_nd(rnn.mb, postgemm_call);
 }
 
-template <data_type_t src_type, data_type_t scratch_type, data_type_t acc_type>
-rnn_postgemm_sig(
-        (rnn_postgemm_fwd_t<src_type, scratch_type, acc_type>::rnn_postgemm)) {
-    const float *scales = this->pd_->attr()->rnn_tparams_.scales_;
-    const auto act_f = [this](float a, float alpha, float clipping) {
-        return gates_t(activation(this->pd_->activation_kind(),
-                this->pd_->get_prop_kind(), a, alpha, clipping));
+namespace {
+template <typename gates_t>
+void rnn_fwd_postgemm(const rnn_pd_t *pd, rnn_postgemm_sig_args) {
+    const float *scales = pd->attr()->rnn_tparams_.scales_;
+    const auto act_f = [pd](float a, float alpha, float clipping) {
+        return gates_t(activation(pd->activation_kind(), pd->get_prop_kind(), a,
+                alpha, clipping));
     };
     const auto linear_f = [](float a, float alpha, float clipping) {
         return gates_t(linear(a, alpha, clipping));
     };
-    const auto alpha = this->pd_->desc()->alpha;
-    if (!this->pd_->attr()->rnn_tparams_.test_mode_)
-        rnn_fwd_postgemm_template(act_f, nullptr, alpha, rnn, cell_position,
-                ws_gates_, scratch_gates_, dst_layer_, dst_iter_, src_iter_,
-                bias_, block_step);
+    const auto alpha = pd->desc()->alpha;
+    if (!pd->attr()->rnn_tparams_.test_mode_)
+        rnn_fwd_postgemm_template<gates_t, float>(act_f, nullptr, alpha, rnn,
+                cell_position, ws_gates_, scratch_gates_, dst_layer_, dst_iter_,
+                src_iter_, bias_, block_step);
     else
-        rnn_fwd_postgemm_template(linear_f, scales, alpha, rnn, cell_position,
-                ws_gates_, scratch_gates_, dst_layer_, dst_iter_, src_iter_,
-                bias_, block_step);
+        rnn_fwd_postgemm_template<gates_t, float>(linear_f, scales, alpha, rnn,
+                cell_position, ws_gates_, scratch_gates_, dst_layer_, dst_iter_,
+                src_iter_, bias_, block_step);
+}
+} // namespace
+
+rnn_postgemm_sig(rnn_postgemm_fwd_t::rnn_postgemm) {
+    switch (rnn.cell_dt) {
+        case data_type::f32:
+            rnn_fwd_postgemm<float>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::bf16:
+            rnn_fwd_postgemm<bfloat16_t>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::f16:
+            rnn_fwd_postgemm<float16_t>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::u8:
+        case data_type::s8: assert(!"VANILLA RNN int8 is not supported"); break;
+        default: assert(!"unsupported data type");
+    }
 }
 
-template rnn_postgemm_sig(rnn_postgemm_fwd_f32_t::rnn_postgemm);
-template rnn_postgemm_sig(rnn_postgemm_fwd_bf16_t::rnn_postgemm);
-template rnn_postgemm_sig(rnn_postgemm_fwd_f16_t::rnn_postgemm);
-
-template <>
-rnn_postgemm_sig(rnn_postgemm_fwd_u8_t::rnn_postgemm) {
-    assert(!"VANILLA RNN int8 is not supported");
-}
-
-template <>
-rnn_postgemm_sig(rnn_postgemm_fwd_s8_t::rnn_postgemm) {
-    assert(!"VANILLA RNN int8 is not supported");
-}
-
-template <typename T1, typename T2, typename src_data_t, typename acc_data_t,
-        typename scratch_data_t>
+template <typename src_data_t, typename acc_data_t, typename scratch_data_t,
+        typename T1, typename T2>
 void rnn_bwd_postgemm_template(T1 func1, T2 to_src, const float *scales,
-        float alpha, const rnn_utils::rnn_conf_t &rnn, src_data_t *ws_gates_,
-        scratch_data_t *scratch_gates_, acc_data_t *diff_dst_iter_,
-        acc_data_t *diff_dst_layer_) {
-    const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
+        float alpha, const rnn_utils::rnn_conf_t &rnn, void *ws_gates_,
+        void *scratch_gates_, void *diff_dst_iter_, void *diff_dst_layer_) {
+    const ws_gates_aoc_t<src_data_t> ws_gates(
+            rnn, static_cast<src_data_t *>(ws_gates_));
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
-            rnn, scratch_gates_);
+            rnn, static_cast<scratch_data_t *>(scratch_gates_));
     const ws_diff_states_iter_aoc_t<acc_data_t> diff_dst_iter(
-            rnn, diff_dst_iter_);
+            rnn, static_cast<acc_data_t *>(diff_dst_iter_));
     const ws_diff_states_layer_aoc_t<acc_data_t> diff_dst_layer(
-            rnn, diff_dst_layer_);
+            rnn, static_cast<acc_data_t *>(diff_dst_layer_));
     if (scales != nullptr) alpha = scales[0];
 
     parallel_nd(rnn.mb, [&](dim_t i) {
@@ -166,30 +170,44 @@ void rnn_bwd_postgemm_template(T1 func1, T2 to_src, const float *scales,
     });
 }
 
-template <data_type_t src_type, data_type_t scratch_type, data_type_t acc_type>
-rnn_postgemm_sig(
-        (rnn_postgemm_bwd_t<src_type, scratch_type, acc_type>::rnn_postgemm)) {
-    const float *scales = this->pd_->attr()->rnn_tparams_.scales_;
-    const auto act_f = [this](float a, float alpha, float clipping) {
-        return activation(this->pd_->activation_kind(),
-                this->pd_->get_prop_kind(), a, alpha, 0);
+namespace {
+template <typename gates_t>
+void rnn_bwd_postgemm(const rnn_pd_t *pd, rnn_postgemm_sig_args) {
+    const float *scales = pd->attr()->rnn_tparams_.scales_;
+    const auto act_f = [pd](float a, float alpha, float clipping) {
+        return activation(
+                pd->activation_kind(), pd->get_prop_kind(), a, alpha, 0);
     };
     const auto linear_f = [](float a, float alpha, float clipping) {
         return linear(a, alpha, 0);
     };
     const auto to_src = [&](float a) { return gates_t(a); };
-    const auto alpha = this->pd_->desc()->alpha;
-    if (!this->pd_->attr()->rnn_tparams_.test_mode_)
-        rnn_bwd_postgemm_template(act_f, to_src, nullptr, alpha, rnn, ws_gates_,
-                scratch_gates_, diff_dst_iter_, diff_dst_layer_);
+    const auto alpha = pd->desc()->alpha;
+    if (!pd->attr()->rnn_tparams_.test_mode_)
+        rnn_bwd_postgemm_template<gates_t, float, gates_t>(act_f, to_src,
+                nullptr, alpha, rnn, ws_gates_, scratch_gates_, diff_dst_iter_,
+                diff_dst_layer_);
     else
-        rnn_bwd_postgemm_template(linear_f, to_src, scales, alpha, rnn,
-                ws_gates_, scratch_gates_, diff_dst_iter_, diff_dst_layer_);
+        rnn_bwd_postgemm_template<gates_t, float, gates_t>(linear_f, to_src,
+                scales, alpha, rnn, ws_gates_, scratch_gates_, diff_dst_iter_,
+                diff_dst_layer_);
 }
+} // namespace
 
-template rnn_postgemm_sig(rnn_postgemm_bwd_f32_t::rnn_postgemm);
-template rnn_postgemm_sig(rnn_postgemm_bwd_bf16_t::rnn_postgemm);
-template rnn_postgemm_sig(rnn_postgemm_bwd_f16_t::rnn_postgemm);
+rnn_postgemm_sig(rnn_postgemm_bwd_t::rnn_postgemm) {
+    switch (rnn.cell_dt) {
+        case data_type::f32:
+            rnn_bwd_postgemm<float>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::bf16:
+            rnn_bwd_postgemm<bfloat16_t>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::f16:
+            rnn_bwd_postgemm<float16_t>(pd_, rnn_postgemm_args);
+            break;
+        default: assert(!"unsupported data type");
+    }
+}
 
 } // namespace cpu
 } // namespace impl

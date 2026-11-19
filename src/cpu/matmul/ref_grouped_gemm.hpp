@@ -129,8 +129,14 @@ struct ref_grouped_t : public primitive_t {
             // Only plain dst is supported
             VDISPATCH_MATMUL(dst_d.is_plain(), VERBOSE_UNSUPPORTED_TAG);
 
-            VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
-                            && utils::one_of(src_type, f32, bf16, f16),
+            // Supported data types: f32/bf16/f16 for all tensors, or fp8 src
+            // and wei with f32/bf16/f16 dst
+            const bool is_f8_src = utils::one_of(src_type, f8_e5m2, f8_e4m3);
+            const bool is_f8_wei = utils::one_of(wei_type, f8_e5m2, f8_e4m3);
+            VDISPATCH_MATMUL(utils::one_of(dst_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL((is_f8_src && is_f8_wei)
+                            || utils::everyone_is(dst_type, src_type, wei_type),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -138,9 +144,6 @@ struct ref_grouped_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
                     VERBOSE_UNSUPPORTED_DT);
-
-            VDISPATCH_MATMUL(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
             return status::success;
         }

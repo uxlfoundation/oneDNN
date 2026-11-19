@@ -132,12 +132,16 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const auto &po = pd()->attr()->post_ops_;
 
     // Validate runtime group offsets: the tensor split along with src and
-    // grouped binary post-op tensors must share the src offsets
+    // grouped binary post-op tensors must share the src offsets, and 2Dx2D
+    // groups must align with the coarsest scales K-group
     const dim_t src_total = src_d.grouped_total();
+    const dim_t k_align
+            = is_2dby2d ? std::max(src_scale_group_k, wei_scale_group_k) : 1;
     for (dim_t group_id = 0; group_id < group_count; ++group_id) {
         const dim_t start = (group_id == 0) ? 0 : src_offsets[group_id - 1];
         const dim_t end = src_offsets[group_id];
-        if (end < start || end > src_total || partner_offsets[group_id] != end)
+        if (end < start || end > src_total || partner_offsets[group_id] != end
+                || end % k_align != 0)
             return status::invalid_arguments;
 
         for (int po_idx = 0; po_idx < po.len(); ++po_idx) {

@@ -58,11 +58,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_RV64(jit_uni_pooling_fwd_t<zvfh>)
             CPU_INSTANCE_RV64(jit_uni_pooling_fwd_t<zvfbfwma>)
             CPU_INSTANCE(nchw_pooling_fwd_t)
-            CPU_INSTANCE(nhwc_pooling_fwd_t<bf16>)
-            CPU_INSTANCE(nhwc_pooling_fwd_t<f32>)
-            CPU_INSTANCE(nhwc_pooling_fwd_t<f16>)
-            CPU_INSTANCE(nhwc_pooling_fwd_t<f8_e5m2>)
-            CPU_INSTANCE(nhwc_pooling_fwd_t<f8_e4m3>)
+            CPU_INSTANCE(nhwc_pooling_fwd_t)
             /* int */
             CPU_INSTANCE_X64(jit_uni_i8i8_pooling_fwd_t<avx512_core>)
             CPU_INSTANCE_X64(jit_uni_i8i8_pooling_fwd_t<avx2>)
@@ -80,9 +76,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_RV64(jit_uni_pooling_bwd_t<zvfh>)
             CPU_INSTANCE_RV64(jit_uni_pooling_bwd_t<zvfbfwma>)
             CPU_INSTANCE(nchw_pooling_bwd_t)
-            CPU_INSTANCE(nhwc_pooling_bwd_t<bf16>)
-            CPU_INSTANCE(nhwc_pooling_bwd_t<f32>)
-            CPU_INSTANCE(nhwc_pooling_bwd_t<f16>)
+            CPU_INSTANCE(nhwc_pooling_bwd_t)
             CPU_INSTANCE(ref_pooling_bwd_t)
             nullptr,
         })},

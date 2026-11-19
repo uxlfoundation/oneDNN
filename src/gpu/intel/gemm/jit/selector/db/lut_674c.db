@@ -1,0 +1,20 @@
+/*******************************************************************************
+* Copyright 2022 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+/*@kcatalog@*/
+auto _CATALOG_ = kcatalog::toArray({
+{{'I', "gemm", {"H", "H", "S"}, {"T", "N", "N"}}, {-1, -1, {64, 5921, 64}, {64, 23176, 64}, {64, 5921, 64}, {64, 23176, 64}, {4, 4, 1}, "ABIJ"}, "at64+m64@48 am32+m32@64 aB wg 2x8 sys kc2 xaf st k64 grf512 sm sn vav di sr bf cc li pt nmk sb64 np", {16, (LoopType) 255, 512, {(LoopType) 225, (LoopType) 255, (LoopType) 255}, {524288, 393216, 16777216}, {524288, 393216, 16777216}, {32, 24, 64}, {2, 8, 1}, 1, (WGType) 1, 257, 0, 0, {4, 4, 4}, {true, true, true}}, {'W', 1, {-1}}},
+});

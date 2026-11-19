@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <functional>
 #include <stdexcept>
 
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
@@ -57,13 +58,20 @@ std::string ms_hint(double score, int eu_count, int freq_mhz) {
     return b;
 }
 
-SelectionObserver make_entry_observer(int eu_count, int freq_mhz) {
-    return [eu_count, freq_mhz](const kcatalog::Entry *entry, double score,
-                   EvaluateAuxOutput) {
-        gpu_debug() << "[" << lpad(entry - catalog().entries, 4)
-                    << "] consider score:" << score
-                    << ms_hint(score, eu_count, freq_mhz) << " "
-                    << entry->str();
+SelectionObserver make_entry_observer(int eu_count, int freq_mhz,
+        std::function<std::string(const kcatalog::Entry *)> resolve = nullptr) {
+    return [eu_count, freq_mhz, resolve](const kcatalog::Entry *entry,
+                   double score, EvaluateAuxOutput) {
+        auto row = [&]() {
+            if (!resolve) return entry->str();
+            auto r = resolve(entry);
+            return r.empty() ? std::string("(unresolved)") : r;
+        };
+        gpu_debug() << "[" << catalog_ref(entry) << "] consider score:" << score
+                    << (entry->model.id == 'G'
+                                       ? ""
+                                       : ms_hint(score, eu_count, freq_mhz))
+                    << " " << row();
     };
 }
 
@@ -136,6 +144,14 @@ std::string kernel_str(const GEMMProblem &problem, int unroll_m, int unroll_n,
     if (!astr.empty()) astr += ' ';
     return problem.toString() + ' ' + std::to_string(unroll_m) + ' '
             + std::to_string(unroll_n) + ' ' + astr + strategy;
+}
+
+// The PCI device id the LUT and GBR tiers dispatch on; GEMM_DEVICE_ID
+// (dev mode, e.g. 0x674f) overrides it.
+uint32_t device_id(const compute::device_info_t &dev_info) {
+    auto s = gpu_utils::dev_getenv("GEMM_DEVICE_ID", std::string());
+    return s.empty() ? dev_info.device_id()
+                     : static_cast<uint32_t>(std::stoul(s, nullptr, 0));
 }
 
 } // anonymous namespace
@@ -303,7 +319,13 @@ status_t gen_desc_t::finalize(
     };
     problem_.CO.setAlignment(problem_.Tco.paddedSize());
 
-    const auto *base = entry_;
+    kcatalog::Entry bare = {};
+    bare.selector.hw = catalog_hw_;
+    bare.selector.kernelType = bare.selector.precisions[0]
+            = bare.selector.precisions[1] = bare.selector.precisions[2]
+            = bare.selector.layouts[0] = bare.selector.layouts[1]
+            = bare.selector.layouts[2] = "";
+    const auto *base = entry_ ? entry_ : &bare;
     std::string str = kernel_override_;
     int row_wg_k = 0;
     try {
@@ -582,6 +604,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     /* Reuse PVC strategies for legacy mode on Xe3p */
     if (hw_ == ngen::HW::Xe3p && !efficient_64b_)
         base.selector.hw = kcatalog::HWTagXeHPC;
+    catalog_hw_ = base.selector.hw;
 
     // By default gemmstone assumes that the accumulation type must be at least
     // as wide as the output type. For oneDNN this restriction is not needed.
@@ -728,6 +751,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     eval_params_.alpha = alpha;
     eval_params_.beta = beta;
     eval_params_.product = product_;
+    eval_params_.deviceId = device_id(dev_info);
     eval_params_.postOps = !problem.postOps.empty();
     eval_params_.cConvert = (problem.Tc != problem.Tc_ext);
     eval_params_.euCount = dev_info.eu_count();
@@ -735,22 +759,32 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     eval_params_.deterministic = (mode & mode_deterministic);
     eval_params_.Tc_ext = problem.Tc_ext;
 
+    auto resolve = [this, &problem](const kcatalog::Entry *entry) {
+        gen_nocopy_desc_t d = *this;
+        d.set_kernel_override("");
+        d.set_entry(entry);
+        d.set_problem(problem);
+        return d.finalize() == status::success ? d.resolved_str_
+                                               : std::string();
+    };
     SelectionObserver observer = make_entry_observer(
-            dev_info.eu_count(), dev_info.max_clock_mhz());
+            dev_info.eu_count(), dev_info.max_clock_mhz(), resolve);
     tags_ = match_params[0].tags;
     k_chunk_beta_ = true;
     Ts_ = problem.Ts;
     beta_ = problem.beta;
 
-    // Entries from both catalogs are concatenated so kernel creation
-    // failures fall back to the next tier.
-    //   GEMM_LUT: try the exact-size LUT catalog first (default on).
+    // The tiers' entries are concatenated so kernel creation failures fall
+    // back to the next tier.
+    //   GEMM_LUT: try the device's exact-size LUT catalog first (default on).
+    //   GEMM_GBR: try the ranked fixed kernels next (default on).
     int npat = static_cast<int>(match_params.size());
     std::vector<const kcatalog::Entry *> entries;
     auto append = [&](const std::vector<const kcatalog::Entry *> &v) {
         entries.insert(entries.end(), v.begin(), v.end());
     };
-    if (gpu_utils::dev_getenv("GEMM_LUT", true)) {
+    auto *lut = lut_catalog(eval_params_.deviceId);
+    if (lut && gpu_utils::dev_getenv("GEMM_LUT", true)) {
         // LUT entries require a direct precision match: f32 -> SSS, tf32 -> TTS.
         MatchParams lut_match = base;
         if (fpmath_tf32 && problem.Ta_ext == Type::f32
@@ -758,9 +792,14 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
             lut_match.selector.precisions[0] = "T";
             lut_match.selector.precisions[1] = "T";
         }
-        append(select(lut_catalog(), 1, &lut_match, eval_params_, aux_params_,
-                &observer));
+        append(select(
+                *lut, 1, &lut_match, eval_params_, aux_params_, &observer));
     }
+
+    if (gbrSupported(problem, eval_params_)
+            && gpu_utils::dev_getenv("GEMM_GBR", true))
+        append(select(gbr_catalog(), npat, match_params.data(), eval_params_,
+                aux_params_, &observer));
 
     append(select(catalog(), npat, match_params.data(), eval_params_,
             aux_params_, &observer));
@@ -770,6 +809,16 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
 
 status_t gen_nocopy_desc_t::finalize() {
     // Update A/B/C types from entry.
+    if (entry_) update_types();
+    problem_.Ts = Ts_;
+
+    if (problem_.Ts == Type::invalid) problem_.Ts = problem_.Tc;
+
+    problem_.beta = beta_;
+    return gen_desc_t::finalize(tags_.c_str(), eval_params_);
+}
+
+void gen_nocopy_desc_t::update_types() {
     Type Ta_new, Ta_ext_new, Tb_new, Tb_ext_new, Tc_new;
     parsePrecisions(entry_->selector.precisions[0], Ta_ext_new, Ta_new);
     parsePrecisions(entry_->selector.precisions[1], Tb_ext_new, Tb_new);
@@ -798,12 +847,6 @@ status_t gen_nocopy_desc_t::finalize() {
     };
     use_tf32(problem_.Ta_ext, Ta_ext_new);
     use_tf32(problem_.Tb_ext, Tb_ext_new);
-    problem_.Ts = Ts_;
-
-    if (problem_.Ts == Type::invalid) problem_.Ts = problem_.Tc;
-
-    problem_.beta = beta_;
-    return gen_desc_t::finalize(tags_.c_str(), eval_params_);
 }
 
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(

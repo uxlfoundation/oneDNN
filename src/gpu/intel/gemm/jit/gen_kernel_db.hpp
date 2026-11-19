@@ -17,6 +17,9 @@
 #ifndef GPU_INTEL_GEMM_JIT_GEN_KERNEL_DB_HPP
 #define GPU_INTEL_GEMM_JIT_GEN_KERNEL_DB_HPP
 
+#include <cstdint>
+#include <string>
+
 #include "gemmstone/kernel_catalog.hpp"
 
 namespace dnnl {
@@ -27,7 +30,11 @@ namespace gemm {
 namespace jit {
 
 gemmstone::kcatalog::Catalog catalog();
-gemmstone::kcatalog::Catalog lut_catalog();
+// The device's LUT (by PCI device id); nullptr: none.
+const gemmstone::kcatalog::Catalog *lut_catalog(uint32_t device_id);
+gemmstone::kcatalog::Catalog gbr_catalog();
+// A row's log id: "TIER:ROW" (ROW = its index in the tier).
+std::string catalog_ref(const gemmstone::kcatalog::Entry *entry);
 
 } // namespace jit
 } // namespace gemm

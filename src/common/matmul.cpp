@@ -40,6 +40,54 @@ using namespace dnnl::impl::types;
             status::unimplemented, msg, ##__VA_ARGS__);
 
 namespace {
+// Quantization modes of the weights scales and zero-points, common to the
+// regular and the grouped matmul.
+status_t matmul_wei_quant_mode_check(const primitive_attr_t *attr) {
+    using namespace quantization_mode;
+
+    const auto &sc = attr->scales_;
+    if (!sc.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const auto wei_sc_qmode = sc.get_quantization_mode(DNNL_ARG_WEIGHTS);
+        VCHECK_MATMUL_UNIMPL(
+                utils::one_of(wei_sc_qmode, static_sazp, static_sbzp),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+        // static_sbzp scales are floating-point values, f16 or bf16.
+        VCHECK_MATMUL_UNIMPL(
+                IMPLICATION(wei_sc_qmode == static_sbzp,
+                        utils::one_of(sc.get_data_type(DNNL_ARG_WEIGHTS),
+                                data_type::bf16, data_type::f16)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+        // static_sbzp is a weight-only quantization mode.
+        VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_sc_qmode == static_sbzp,
+                                     attr->fpmath_.apply_to_int_),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+    }
+
+    const auto &zp = attr->zero_points_;
+    if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
+        const auto wei_zp_qmode = zp.get_quantization_mode(DNNL_ARG_WEIGHTS);
+        VCHECK_MATMUL_UNIMPL(
+                utils::one_of(wei_zp_qmode, static_sazp, static_sbzp),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+        // static_sbzp zero-points are floating-point values, f16 or bf16.
+        VCHECK_MATMUL_UNIMPL(
+                IMPLICATION(wei_zp_qmode == static_sbzp,
+                        utils::one_of(zp.get_data_type(DNNL_ARG_WEIGHTS),
+                                data_type::bf16, data_type::f16)),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+        // Weights scales and zero-points must share the quantization mode.
+        // Unset scales have the default mode, so static_sbzp zero-points
+        // also require static_sbzp scales.
+        // TODO: (postponed till more similar places appear) consolidate
+        // cross-argument checks in a common space.
+        VCHECK_MATMUL_UNIMPL(wei_zp_qmode
+                        == attr->scales_.get_quantization_mode(
+                                DNNL_ARG_WEIGHTS),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
+    return status::success;
+}
+
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 // Currently grouped matmul specific validation function is separated
 // as the coverage of grouped gemm is experimental and limited
@@ -424,6 +472,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
     VCHECK_MATMUL_UNIMPL(attr->has_default_values(attr_mask, dst_dt),
             VERBOSE_UNSUPPORTED_ATTR);
+    CHECK(matmul_wei_quant_mode_check(attr));
 
     const int ndims_src = desc.src_desc.ndims;
     const int ndims_wei = desc.weights_desc.ndims;
@@ -512,22 +561,6 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         dim_t wei_scale_group_k = 1;
         dim_t wei_scale_group_n = 1;
         if (!sc.has_default_values(DNNL_ARG_WEIGHTS)) {
-            const auto wei_sc_qmode
-                    = sc.get_quantization_mode(DNNL_ARG_WEIGHTS);
-            VCHECK_MATMUL_UNIMPL(
-                    utils::one_of(wei_sc_qmode, static_sazp, static_sbzp),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-            // static_sbzp scales are floating-point values, f16 or bf16.
-            VCHECK_MATMUL_UNIMPL(
-                    IMPLICATION(wei_sc_qmode == static_sbzp,
-                            utils::one_of(sc.get_data_type(DNNL_ARG_WEIGHTS),
-                                    data_type::bf16, data_type::f16)),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-            // static_sbzp is a weights decompression mode.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_sc_qmode == static_sbzp,
-                                         attr->fpmath_.apply_to_int_),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-
             const int mask_wei = sc.get_mask(DNNL_ARG_WEIGHTS);
 
             VCHECK_MATMUL(mask_fits_ndims(mask_wei, ndims_wei),
@@ -699,27 +732,6 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         dim_t wei_zp_group_k = 1;
         dim_t wei_zp_group_n = 1;
         if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
-            const auto wei_zp_qmode
-                    = zp.get_quantization_mode(DNNL_ARG_WEIGHTS);
-            VCHECK_MATMUL_UNIMPL(
-                    utils::one_of(wei_zp_qmode, static_sazp, static_sbzp),
-                    VERBOSE_UNSUPPORTED_ZP_CFG);
-            // static_sbzp zero-points are floating-point values, f16 or bf16.
-            VCHECK_MATMUL_UNIMPL(
-                    IMPLICATION(wei_zp_qmode == static_sbzp,
-                            utils::one_of(zp.get_data_type(DNNL_ARG_WEIGHTS),
-                                    data_type::bf16, data_type::f16)),
-                    VERBOSE_UNSUPPORTED_ZP_CFG);
-            // Weights scales and zero-points must share the quantization mode.
-            // Unset scales have the default mode, so static_sbzp zero-points
-            // also require static_sbzp scales.
-            // TODO: (postponed till more similar places appear) consolidate
-            // cross-argument checks in a common space.
-            VCHECK_MATMUL_UNIMPL(wei_zp_qmode
-                            == attr->scales_.get_quantization_mode(
-                                    DNNL_ARG_WEIGHTS),
-                    VERBOSE_UNSUPPORTED_ZP_CFG);
-
             // Zero points are a quantization property and are only meaningful
             // for a quantized weights data type.
             VCHECK_MATMUL_UNIMPL(wei_is_int || wei_is_fp8 || wei_is_fp4,

@@ -156,6 +156,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     if (with_src_scales) {
         arg_list.set(
                 arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC));
+        arg_list.set(arg_idx++, src_scale_strides[0]);
         arg_list.set(arg_idx++, src_scale_strides[1]);
         arg_list.set(arg_idx++, src_scale_strides[2]);
         arg_list.set(arg_idx++, src_scale_group_k);

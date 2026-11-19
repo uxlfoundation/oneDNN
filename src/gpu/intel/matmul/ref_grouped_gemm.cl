@@ -38,7 +38,8 @@
 // Supported:
 //  f32/f16/bf16
 // For 2Dx2D:
-//  f8 src and wei with K-grouped scales, a grid over total_K
+//  f8 src and wei with row/col-wise, K-grouped or KxN-grouped (wei) scales,
+//  the K-grouped ones are a grid over total_K
 // For 2Dx3D only:
 //  u8/s8 src, u8/s8/s4/u4/f8/f4 wei (incl. WOQ)
 //  row/col-wise, K-grouped or KxN-grouped (wei) scales & zero-points
@@ -62,8 +63,8 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
 #if WITH_SRC_SCALES
         ,
         __global const SRC_SCALES_DATA_T *src_scales,
-        const long src_scale_stride_m, const long src_scale_stride_k,
-        const long src_scale_group_k
+        const long src_scale_stride_g, const long src_scale_stride_m,
+        const long src_scale_stride_k, const long src_scale_group_k
 #endif
 #if WITH_WEI_SCALES
         ,
@@ -164,7 +165,8 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         FLT_ACC_DATA_T src_scale = 1.f;
         FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
-        src_scale = SRC_SCALES_TO_REF(src_scales[m_abs * src_scale_stride_m
+        src_scale = SRC_SCALES_TO_REF(src_scales[group_id * src_scale_stride_g
+                + m_abs * src_scale_stride_m
                 + k_group_start / src_scale_group_k * src_scale_stride_k]);
 #endif
 #if WITH_WEI_SCALES

@@ -63,13 +63,15 @@ DECLARE_2D_TILE_ATOMIC_OPS(ktq_tile_type, float, SUBGROUP_SIZE,
 
 /* Consecutive indices run across lanes here: each lane makes the Philox
    words for one of four columns and the lane quad exchanges them with
-   shuffles. This needs k to be a multiple of four, so that every lane quad
-   starts on a Philox block; other shapes use the per-element path. The
-   per-element path is also kept as a reference and can be forced with
+   shuffles. When k or the tile start is not a multiple of four, a quad's
+   indices straddle two Philox blocks: the second one is the next quad's
+   block (shuffle_down), and past the last row a per-column tail block made
+   once per tile. The loop body has no branches so that it fully unrolls.
+   The per-element path is kept as a reference and can be forced with
    SDPA_DROPOUT_PER_ELEMENT=1. */
 #define DROPOUT_GROUPED_SHAPE_OK(br, bc, nbr, nbc) \
-    (!DROPOUT_PER_ELEMENT && DROPOUT_K_ALIGNED && SUBGROUP_SIZE == 16 \
-            && (((br) * (nbr)) % 16) == 0 && (((bc) * (nbc)) & 3) == 0)
+    (!DROPOUT_PER_ELEMENT && SUBGROUP_SIZE == 16 && (((br) * (nbr)) % 16) == 0 \
+            && (((bc) * (nbc)) & 3) == 0)
 
 /* Dropout values of the four consecutive indices idx & ~3 .. +3, as in
    philox_4x32_dropout_w_offset() and philox_4x32_dropout(). */
@@ -87,12 +89,36 @@ inline uint4 dropout_vec4(ulong idx, long offset, uint16 key0, uint4 key1) {
 #endif
 }
 
+/* Words sh..sh+3 of the eight words (a, b), sh in [0, 3]. */
+inline uint4 dropout_shift_words(uint4 a, uint4 b, uint sh) {
+    const uint4 lo = (sh & 2) ? (uint4)(a.s23, b.s01) : a;
+    const uint nx = (sh & 2) ? b.s2 : b.s0;
+    return (sh & 1) ? (uint4)(lo.s123, nx) : lo;
+}
+
+inline uint4 dropout_shuffle4(uint4 v, int lane) {
+    return (uint4)(intel_sub_group_shuffle(v.s0, lane),
+            intel_sub_group_shuffle(v.s1, lane),
+            intel_sub_group_shuffle(v.s2, lane),
+            intel_sub_group_shuffle(v.s3, lane));
+}
+
+inline uint4 dropout_shuffle_down4(uint4 cur, uint4 next, uint d) {
+    return (uint4)(intel_sub_group_shuffle_down(cur.s0, next.s0, d),
+            intel_sub_group_shuffle_down(cur.s1, next.s1, d),
+            intel_sub_group_shuffle_down(cur.s2, next.s2, d),
+            intel_sub_group_shuffle_down(cur.s3, next.s3, d));
+}
+
 #define DROPOUT_FILL_PROLOGUE \
     const int _l = get_sub_group_local_id(); \
     const int _w = _l & 3; \
     const philox_key_schedule_t _ks = philox_4x32_key_schedule( \
             DROPOUT_USE_OFFSET ? (ulong)seed : philox_4x32_legacy_seed(seed));
 
+/* The fill is picked at JIT time: a runtime alignment branch keeps IGC from
+   unrolling the loops, and a rolled loop spills the tile. */
+#if DROPOUT_K_ALIGNED
 #define DROPOUT_FILL_GROUPED(scale, br, bc, nbr, nbc) \
     do { \
         DROPOUT_FILL_PROLOGUE \
@@ -131,6 +157,69 @@ inline uint4 dropout_vec4(ulong idx, long offset, uint16 key0, uint4 key1) {
             } \
         } \
     } while (0)
+#else
+#define DROPOUT_FILL_GROUPED(scale, br, bc, nbr, nbc) \
+    do { \
+        DROPOUT_FILL_PROLOGUE \
+        uint4 _tail[((bc) * (nbc) + 15) / 16]; \
+        _Pragma("unroll") for (int t = 0; t < ((bc) * (nbc) + 15) / 16; t++) { \
+            _tail[t] = dropout_vec4(batch_head_base \
+                            + (ulong)(tile_offset_c + t * 16 + _l) \
+                                    * (ulong)k_stride \
+                            + (ulong)(tile_offset_r + (br) * (nbr)), \
+                    offset, _ks.key0, _ks.key1); \
+        } \
+        _Pragma("unroll") for (int j0 = 0; j0 < (bc) * (nbc); j0 += 4) { \
+            const ulong _cb = batch_head_base \
+                    + (ulong)(tile_offset_c + j0 + _w) * (ulong)k_stride \
+                    + (ulong)(tile_offset_r + (_l & ~3)); \
+            const uint _sh = (uint)_cb & 3u; \
+            uint4 _a[((br) * (nbr)) / SUBGROUP_SIZE]; \
+            _Pragma("unroll") for (int ii = 0; \
+                                   ii < ((br) * (nbr)) / SUBGROUP_SIZE; \
+                                   ii++) { \
+                _a[ii] = dropout_vec4(_cb + (ulong)(ii * SUBGROUP_SIZE), \
+                        offset, _ks.key0, _ks.key1); \
+            } \
+            const uint4 _tl \
+                    = dropout_shuffle4(_tail[j0 / 16], (j0 & 15) + _w); \
+            _Pragma("unroll") for (int ii = 0; \
+                                   ii < ((br) * (nbr)) / SUBGROUP_SIZE; \
+                                   ii++) { \
+                const int i0 = ii * SUBGROUP_SIZE; \
+                const uint4 _nx = (ii + 1 < ((br) * (nbr)) / SUBGROUP_SIZE) \
+                        ? _a[(ii + 1) % (((br) * (nbr)) / SUBGROUP_SIZE)] \
+                        : _tl; \
+                const uint4 _b = dropout_shift_words( \
+                        _a[ii], dropout_shuffle_down4(_a[ii], _nx, 4), _sh); \
+                /* 4x4 word transpose over the lane quad: 4 shuffles. */ \
+                const uint _s0 = (_l & 2) ? _b.s0 : _b.s2; \
+                const uint _s1 = (_l & 2) ? _b.s1 : _b.s3; \
+                const uint _r0 = intel_sub_group_shuffle(_s0, _l ^ 2); \
+                const uint _r1 = intel_sub_group_shuffle(_s1, _l ^ 2); \
+                const uint _p0 = (_l & 2) ? _b.s2 : _b.s0; \
+                const uint _p1 = (_l & 2) ? _b.s3 : _b.s1; \
+                const uint _so = (_l & 1) ? _p0 : _p1; \
+                const uint _sq = (_l & 1) ? _r0 : _r1; \
+                const uint _ro = intel_sub_group_shuffle(_so, _l ^ 1); \
+                const uint _rq = intel_sub_group_shuffle(_sq, _l ^ 1); \
+                const uint _ko = (_l & 1) ? _p1 : _p0; \
+                const uint _kq = (_l & 1) ? _r1 : _r0; \
+                _Pragma("unroll") for (int jj = 0; jj < 4; jj++) { \
+                    const int _m = jj ^ _w; \
+                    const uint _v = _m == 0 ? _ko \
+                            : _m == 1       ? _ro \
+                            : _m == 2       ? _kq \
+                                            : _rq; \
+                    tile_access( \
+                            scale, i0, j0 + jj, SUBGROUP_SIZE, br, bc, nbr) \
+                            = dropout_keep(_v, tile_offset_r + i0 + _l, \
+                                    tile_offset_c + j0 + jj); \
+                } \
+            } \
+        } \
+    } while (0)
+#endif
 
 #define dropout_predicate(offset_r, offset_c) \
     ({ \

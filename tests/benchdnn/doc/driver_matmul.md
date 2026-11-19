@@ -76,8 +76,12 @@ where *matmul-knobs* are:
             Example: `--grouped=0:64:balanced:512 512x512:64x512x256`
             Example: `--grouped=0:32:hot.80 256x512:32x512x256`
             Example: `--grouped=0:16:decode 8x512:16x512x256`
-            Note: binary post-ops are not supported with `--grouped` yet,
-            such problems are skipped.
+            Masks of binary post-ops are over the 3D destination `{G, M, N}`:
+            e.g., `mul:f32:1` multiplies by one value per group. A tensor
+            varying along `M` takes `grouped` in the tag position to follow
+            the destination groups: `mul:f32:3:grouped` for one value per
+            row, `mul:f32:7:grouped` for one value per element. Masks without
+            `M` don't take `grouped`.
  - `--gpu-kernel=STR` -- GPU kernel override, passed via a primitive
             attribute. `N` runs the Nth candidate after sort (rank); `A-B` and
             `all` run ranks `A` through `B` or every rank, clamped to the

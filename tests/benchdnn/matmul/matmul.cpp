@@ -227,9 +227,14 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
         }
     }
 
+    // Binary post-op masks for a grouped dst are over its 3D dims {G, M, N}
     attr_args_t attr_args;
-    DNN_SAFE_STATUS(attr_args.prepare_post_ops_mds(
-            prb->attr, prb->ndims, prb->dst_dims.data()));
+    const bool grouped_dst = prb->sparse_options.is_grouped(DNNL_ARG_DST);
+    const dnnl_dims_t grouped_dst_dims
+            = {prb->sparse_options.get_group_count(), prb->m, prb->n};
+    DNN_SAFE_STATUS(attr_args.prepare_post_ops_mds(prb->attr,
+            grouped_dst ? 3 : prb->ndims,
+            grouped_dst ? grouped_dst_dims : prb->dst_dims.data()));
 
     const auto overload_quant_mask = [&](policy_t policy, int arg) {
         // Overload PER_OC/PER_OCIC mask definition for batched cases.
@@ -790,14 +795,26 @@ void prb_t::skip_invalid(res_t *res) const {
         }
     }
 
-    // Grouped binary post-op operands are not created by benchdnn yet
-    if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
-            && prb->attr.post_ops.binary_index() != -1) {
-        BENCHDNN_PRINT(2, "[SKIP][%s:%d]: %s\n", __FILE__, __LINE__,
-                "Binary post-ops with grouped memory are not supported yet.");
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
+    // Over a grouped dst, a binary tensor is grouped exactly when it varies
+    // along M
+    if (prb->sparse_options.is_grouped(DNNL_ARG_DST)) {
+        const auto &po = prb->attr.post_ops;
+        const auto po_masks = po.get_po_masks(3);
+        for (int idx = 0; idx < po.len(); ++idx) {
+            const int arg
+                    = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
+            for (const auto &arg_mask : po_masks) {
+                if (arg_mask.first != arg) continue;
+                const bool varies_along_m = arg_mask.second & (1 << 1);
+                if (po.entry[idx].binary.grouped == varies_along_m) continue;
+                BENCHDNN_PRINT(2, "[INVALID][%s:%d]: %s\n", __FILE__, __LINE__,
+                        "Grouped binary post-op tensors must vary along M, "
+                        "dense ones must not.");
+                res->state = SKIPPED;
+                res->reason = reason_t::invalid;
+                return;
+            }
+        }
     }
 }
 

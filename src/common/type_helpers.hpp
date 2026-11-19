@@ -520,9 +520,9 @@ inline bool sparse_desc_is_equal(
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     if (lhs.encoding == sparse_encoding::grouped) {
-        ok = ok && lhs.grouped_desc.group_count == rhs.grouped_desc.group_count
-                && lhs.grouped_desc.variable_dim_idx
-                        == rhs.grouped_desc.variable_dim_idx;
+        ok = ok
+                && utils::array_cmp(lhs.grouped_desc.strides,
+                        rhs.grouped_desc.strides, DNNL_MAX_NDIMS);
         if (!ok) return false;
     }
 #endif

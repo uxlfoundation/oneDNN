@@ -1006,21 +1006,22 @@ TEST(iface_grouped_test_t, TestBinaryPostOpDenseShapes) {
     auto dst_md = memory::desc::grouped(
             {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, total_m);
 
-    // A dense operand is supported per group
-    {
+    // A dense operand is supported if it does not vary along the variable dim:
+    // per tensor, per column, per group, per group and column
+    for (const auto &bin_dims : {memory::dims {1, 1, 1}, memory::dims {1, 1, N},
+                 memory::dims {ngroups, 1, 1}, memory::dims {ngroups, 1, N}}) {
         post_ops po;
         po.append_binary(algorithm::binary_mul,
-                memory::desc({ngroups, 1, 1}, dt::f32, tag::abc));
+                memory::desc(bin_dims, dt::f32, tag::abc));
         primitive_attr attr;
         attr.set_post_ops(po);
         EXPECT_NO_THROW(
                 matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
     }
 
-    // A per-tensor operand is not supported, varying along the variable dim
-    // takes a grouped operand, and 2D operands don't match the dst rank
-    for (const auto &bin_md : {memory::desc({1, 1, 1}, dt::f32, tag::abc),
-                 memory::desc({1, total_m, 1}, dt::f32, tag::abc),
+    // Varying along the variable dim takes a grouped operand, and 2D operands
+    // don't match the dst rank
+    for (const auto &bin_md : {memory::desc({1, total_m, 1}, dt::f32, tag::abc),
                  memory::desc({ngroups, 1}, dt::f32, tag::ab)}) {
         post_ops po;
         po.append_binary(algorithm::binary_mul, bin_md);

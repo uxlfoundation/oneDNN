@@ -283,8 +283,8 @@ status_t grouped_matmul_attr_check(
             "wei_zp_group_k", (int)wei_zp_gK);
 
     // Post-ops: only eltwise and binary_mul are supported. src1 is 3D as dst:
-    // dense per group [G, 1, 1], otherwise grouped with dst's groups and
-    // default layout
+    // dense when constant along the variable dim, e.g., [G, 1, 1] or
+    // [1, 1, N], otherwise grouped with dst's groups and default layout
     const memory_desc_wrapper dst_d(&desc.dst_desc);
     const auto &po = attr->post_ops_;
     for (int i = 0; i < po.len(); ++i) {
@@ -313,8 +313,8 @@ status_t grouped_matmul_attr_check(
             VCHECK_MATMUL_UNIMPL(src1_d.strides()[2] == 1,
                     VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "binary post-op");
         } else {
-            VCHECK_MATMUL_UNIMPL(src1_d.dims()[0] == G && src1_d.dims()[1] == 1
-                            && bin_N == 1,
+            VCHECK_MATMUL_UNIMPL(utils::one_of(src1_d.dims()[0], 1, G)
+                            && src1_d.dims()[1] == 1,
                     VERBOSE_INCONSISTENT_MDS, "binary post-op", "dst");
             VCHECK_MATMUL_UNIMPL(src1_d.format_any() || src1_d.is_plain(),
                     VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "binary post-op");

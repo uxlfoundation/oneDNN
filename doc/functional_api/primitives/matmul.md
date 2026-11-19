@@ -471,7 +471,8 @@ grouped memory descriptors. A tensor that varies along the variable dimension
 is grouped, `{num_groups, *, N}` or `{num_groups, *, 1}`, with the default
 layout. It has the destination total and is addressed like the destination,
 so its offsets must be equal to the destination offsets. A dense tensor is
-per group, `[num_groups, 1, 1]`.
+constant along the variable dimension: `[num_groups, 1, N]`, or with
+`num_groups` or `N` replaced by 1.
 
 SiLU and element-wise matrix multiplication as post-op:
 ~~~cpp
@@ -574,7 +575,7 @@ The following are supported:
   `eltwise_gelu_tanh` / `eltwise_gelu_erf` (GELU) for the gate activation,
   `binary_mul` with a grouped `{num_groups, *, N}` or `{num_groups, *, 1}`
   tensor, and a dense `[num_groups, 1, 1]` tensor for a per-group global scale
-  (e.g. NVFP4).
+  (e.g. NVFP4). Dense tensors must be constant along the variable dimension.
   For grouped binary tensors, the total and the per-group offsets must match
   the grouped dst, and the layout must be the default one.
 

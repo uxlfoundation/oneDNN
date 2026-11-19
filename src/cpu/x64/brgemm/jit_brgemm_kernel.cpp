@@ -1925,7 +1925,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_src_scales_per_k(int bd_block,
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::apply_scales(
         int bd_block, int ld_block2, bool is_ld_tail) {
-    assert(brg.has_per_k_scales());
+    assert(brg.has_per_call_acc());
     const bool dq2ps_required = brg.is_int8;
     bool dq2ps_cvt_done = false;
 
@@ -1957,7 +1957,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(int bd_block,
             = brg.beta == 1.f && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
     const bool dq2ps_required = brg.is_int8
             && IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd)
-            && !brg.has_per_k_scales();
+            && !brg.has_per_call_acc();
     // vmulps with memory op is supported only with avx512 + f32 dt.
     const bool has_ptr_b_support = is_superset(brg.isa_impl, avx512_core)
             && brg.dt_src_scales == data_type::f32;
@@ -1966,7 +1966,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(int bd_block,
     // done only once despite all scales and bias applications requiring it.
     // TODO: perform conversion in a dedicated loop if it is required as it is
     // done in brgemm_post_ops kernel?
-    bool dq2ps_cvt_done = brg.has_per_k_scales();
+    bool dq2ps_cvt_done = brg.has_per_call_acc();
 
     if (brg.with_src_scales && !brg.is_per_k_src_scales) {
         reg_src_scales.restoreTo(reg_aux_src_scales);
@@ -2646,7 +2646,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
             L_aligned(label_store_without_comp);
         }
 
-        if (brg.has_per_k_scales())
+        if (brg.has_per_call_acc())
             apply_scales(bd_block, ld_block2, is_ld_tail);
 
         if (need_to_apply_alpha_beta)

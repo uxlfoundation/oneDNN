@@ -766,7 +766,7 @@ bool jit_brgemm_amx_uker_t::may_load_accumulators(const brgemm_desc_t &brg) {
     const auto tile_acc_dt = brg.is_int8 ? data_type::s32 : data_type::f32;
     return one_of(brg.alpha, 0.f, 1.f) && brg.beta == 1.f && !brg.is_ace()
             && brg.dt_c == tile_acc_dt && brg.dt_c == brg.dt_d
-            && !brg.has_per_k_scales()
+            && !brg.has_per_call_acc()
             && IMPLICATION(brg.is_input_convert(), brg.is_fp8_via_convert())
             && brg.brgattr.bd_mask_level == 0;
 }
@@ -786,7 +786,7 @@ bool jit_brgemm_amx_uker_t::store_by_vectors(
             = !one_of(brg.dt_c, data_type::f32, data_type::s32);
     return need_to_apply_alpha_beta(brg)
             || (brg.are_post_ops_applicable() && apply_post_ops)
-            || brg.brgattr.bd_mask_level != 0 || brg.has_per_k_scales()
+            || brg.brgattr.bd_mask_level != 0 || brg.has_per_call_acc()
             || c_dt_needs_cvt;
 }
 
@@ -1902,7 +1902,7 @@ void jit_brgemm_amx_uker_t::process_output_range(
         // For K-scales (wei and/or src), convert int32->float and apply the
         // current K-group's scales BEFORE alpha_beta accumulation. Non-integer
         // accumulators (e.g. fp8/bf16 TMUL) are already f32.
-        if (brg.has_per_k_scales() && !bi.skip_accumulation) {
+        if (brg.has_per_call_acc() && !bi.skip_accumulation) {
             if (brg.is_int8) vcvtdq2ps(zmm, zmm);
 
             const Xbyak::Zmm scaled_zmm = vmm_mask(zmm, true, false, k_mask);
@@ -1955,7 +1955,7 @@ void jit_brgemm_amx_uker_t::process_output_range(
         if (!bi.apply_postops) continue;
 
         // When K-scales are used, dq2ps already applied above.
-        if (dq2ps_required && !brg.has_per_k_scales()) vcvtdq2ps(zmm, zmm);
+        if (dq2ps_required && !brg.has_per_call_acc()) vcvtdq2ps(zmm, zmm);
 
         if (brg.req_comp_pads_with_bcast)
             apply_comp_pad_to_vector(bi, bdb, bd, ldb, zmm.getIdx());
@@ -3970,7 +3970,7 @@ void jit_brgemm_amx_uker_t::init(brgemm_iteration_t &bi) {
                 = brg.alpha != 1.0f || brg.beta != 0.f;
         const bool beta_uses_vadd = brg.beta == 1.f
                 && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
-        dt_requires_saturation_ = brg.is_int8 && !brg.has_per_k_scales()
+        dt_requires_saturation_ = brg.is_int8 && !brg.has_per_call_acc()
                 && !IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
     }
     use_sat_cvt_ = dt_requires_saturation_

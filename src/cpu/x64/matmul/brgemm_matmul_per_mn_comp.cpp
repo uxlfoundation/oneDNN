@@ -15,6 +15,8 @@
 *******************************************************************************/
 
 #include <algorithm>
+#include <utility>
+#include <initializer_list>
 
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
@@ -212,7 +214,7 @@ private:
 
 // One U/V row per brgemm K call is needed when the raw sum over A is offset
 // by a src zero point or by the s8 -> u8 shift of the kernel.
-static bool has_call_rows(const brgemm_matmul_conf_t &bgmmc) {
+static bool has_src_rows(const brgemm_matmul_conf_t &bgmmc) {
     return bgmmc.has_zero_point_a || bgmmc.s8s8_compensation_required;
 }
 
@@ -221,21 +223,29 @@ static bool has_wei_rows(const brgemm_matmul_conf_t &bgmmc) {
     return bgmmc.has_zero_point_b || bgmmc.int8_b_shift() != 0;
 }
 
+// gcd of the active per-K group sizes, or K when there is none.
+static dim_t gcd_gsize(const brgemm_matmul_conf_t &bgmmc,
+        std::initializer_list<std::pair<bool, dim_t>> groups) {
+    dim_t gsize = 0;
+    for (const auto &g : groups)
+        if (g.first && g.second > 0)
+            gsize = gsize ? math::gcd(gsize, g.second) : g.second;
+    return gsize ? nstl::min(gsize, bgmmc.K) : bgmmc.K;
+}
+
 bool brgemm_matmul_per_mn_comp_t::init_conf(brgemm_matmul_conf_t &bgmmc) {
-    const bool per_k_scales_in_kernel = bgmmc.is_src_scale_per_k
-            || (bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b);
+    const bool wei_scales_in_kernel
+            = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b;
     // The S term reads column sums of B: plain N-contiguous, or VNNI-blocked
-    // int4 ([n / wei_n_blk][k / 4][wei_n_blk][4]) with K calls aligned to 4.
+    // int4 ([n / wei_n_blk][k / 4][wei_n_blk][4]).
     const bool B_plain = !bgmmc.blocked_B && !bgmmc.transposed_B
             && bgmmc.B_strides[0] == bgmmc.b_dt_sz;
     const bool B_blocked_int4 = bgmmc.blocked_B && bgmmc.is_int4_weights
             && bgmmc.B_strides[1]
-                    == bgmmc.b_dt_sz * bgmmc.wei_k_blk * bgmmc.wei_n_blk
-            && bgmmc.K_blk % 4 == 0;
-    const bool ok = per_k_scales_in_kernel && bgmmc.use_buffer_c
-            && !bgmmc.is_c_buf_dst_dt && !bgmmc.is_gemv && !bgmmc.is_runtime_M
-            && !bgmmc.is_runtime_N && !bgmmc.is_runtime_K
-            && !is_runtime_value(bgmmc.batch)
+                    == bgmmc.b_dt_sz * bgmmc.wei_k_blk * bgmmc.wei_n_blk;
+    const bool ok = bgmmc.use_buffer_c && !bgmmc.is_c_buf_dst_dt
+            && !bgmmc.is_gemv && !bgmmc.is_runtime_M && !bgmmc.is_runtime_N
+            && !bgmmc.is_runtime_K && !is_runtime_value(bgmmc.batch)
             && is_superset(bgmmc.isa, avx512_core)
             && (bgmmc.is_amx || bgmmc.N_blk <= bgmmc.LDC)
             // Row sums of A are read from plain, K-contiguous src.
@@ -243,22 +253,24 @@ bool brgemm_matmul_per_mn_comp_t::init_conf(brgemm_matmul_conf_t &bgmmc) {
             && bgmmc.A_strides[0] == bgmmc.a_dt_sz
             // Blocked int8 weights carry their compensation in the md.
             && IMPLICATION(bgmmc.blocked_B, bgmmc.is_int4_weights)
-            && IMPLICATION(has_call_rows(bgmmc), B_plain || B_blocked_int4);
+            && IMPLICATION(has_src_rows(bgmmc), B_plain || B_blocked_int4);
     if (!ok) return false;
 
-    dim_t gsize = 0;
-    auto fold = [&](bool active, dim_t g) {
-        if (active && g > 0) gsize = gsize ? math::gcd(gsize, g) : g;
-    };
-    fold(bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b,
-            bgmmc.wei_scales_k_gsize);
-    fold(bgmmc.is_wei_zp_per_k, bgmmc.wei_zp_k_gsize);
-    bgmmc.per_mn_comp_wei_gsize = gsize ? gsize : bgmmc.K;
+    bgmmc.per_mn_comp_wei_gsize = gcd_gsize(bgmmc,
+            {{wei_scales_in_kernel, bgmmc.wei_scales_k_gsize},
+                    {bgmmc.is_wei_zp_per_k, bgmmc.wei_zp_k_gsize}});
     bgmmc.per_mn_comp_wei_rows = has_wei_rows(bgmmc)
             ? utils::div_up(bgmmc.K, bgmmc.per_mn_comp_wei_gsize)
             : 0;
-    bgmmc.per_mn_comp_K = bgmmc.per_mn_comp_wei_rows
-            + (has_call_rows(bgmmc) ? bgmmc.num_K_blocks + 1 : 0);
+    bgmmc.per_mn_comp_src_gsize = gcd_gsize(bgmmc,
+            {{wei_scales_in_kernel, bgmmc.wei_scales_k_gsize},
+                    {bgmmc.is_src_scale_per_k, bgmmc.src_scales_k_gsize},
+                    {bgmmc.is_src_zp_per_k, bgmmc.src_zp_k_gsize}});
+    bgmmc.per_mn_comp_src_rows = has_src_rows(bgmmc)
+            ? utils::div_up(bgmmc.K, bgmmc.per_mn_comp_src_gsize)
+            : 0;
+    bgmmc.per_mn_comp_K
+            = bgmmc.per_mn_comp_wei_rows + bgmmc.per_mn_comp_src_rows;
     // V is read in LDC-wide stripes starting anywhere in [0, N).
     bgmmc.per_mn_comp_ldv = bgmmc.N + bgmmc.LDC;
     return true;
@@ -303,7 +315,7 @@ status_t brgemm_matmul_per_mn_comp_t::create_kernels(
         CHECK(brgemm_kernel_create(&ker, descs[i_M]));
         CHECK(safe_ptr_assign(kernels_[i_M], ker));
     }
-    if (has_call_rows(bgmmc)) {
+    if (has_src_rows(bgmmc)) {
         CHECK(safe_ptr_assign(col_sum_kernel_,
                 new jit_col_sum_kernel_t(bgmmc.orig_wei_dt, bgmmc.blocked_B)));
         CHECK(col_sum_kernel_->create_kernel());
@@ -423,50 +435,53 @@ static void column_sums_blocked_int4(const brgemm_matmul_conf_t &bgmmc,
 
 void brgemm_matmul_per_mn_comp_t::prepare(
         const brgemm_matmul_conf_t &bgmmc, const ctx_t &ctx) const {
-    const dim_t num_calls = bgmmc.num_K_blocks + 1;
     const dim_t wei_rows = bgmmc.per_mn_comp_wei_rows;
     const dim_t wei_gsize = bgmmc.per_mn_comp_wei_gsize;
-    const bool call_rows = has_call_rows(bgmmc);
+    const dim_t src_gsize = bgmmc.per_mn_comp_src_gsize;
+    const bool src_rows = has_src_rows(bgmmc);
     const bool wei_rows_used = has_wei_rows(bgmmc);
     const float b_shift = static_cast<float>(bgmmc.int8_b_shift());
     const bool src_signed = bgmmc.orig_src_dt == s8;
     const float shift = bgmmc.s8s8_compensation_required ? 128.f : 0.f;
-    const bool sa_per_call = bgmmc.is_src_scale_per_k;
-    const bool sb_per_call
+    const bool sa_per_k = bgmmc.is_src_scale_per_k;
+    const bool sb_per_k
             = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b;
 
+    // sa and za are constant over a K range of this size, which lies within
+    // one wei row and one src row.
+    const dim_t a_gsize
+            = wei_rows_used ? math::gcd(wei_gsize, src_gsize) : src_gsize;
     parallel_nd(bgmmc.batch, bgmmc.M, [&](dim_t b, dim_t m) {
         const char *row = ctx.A_batch(b) + m * bgmmc.A_strides[1];
         float *u = U_ptr(bgmmc, ctx.U, b, m);
         std::fill_n(u, wei_rows, 0.f);
-        for (dim_t c = 0; c < num_calls; ++c) {
-            dim_t k0 = 0, len = 0;
-            ctx.call_range(c, k0, len);
+        for (dim_t k0 = 0; k0 < bgmmc.K; k0 += a_gsize) {
+            const dim_t len = nstl::min(a_gsize, bgmmc.K - k0);
             int32_t t = 0;
             for (dim_t k = k0; k < k0 + len; ++k)
                 t += src_signed ? static_cast<int8_t>(row[k])
                                 : static_cast<uint8_t>(row[k]);
             float za = 0.f;
-            if (bgmmc.has_zero_point_a && len > 0) {
+            if (bgmmc.has_zero_point_a) {
                 int nibble = 0;
                 const void *zp = ctx.src_zp(b, k0, m, &nibble);
                 za = io::load_float_value(bgmmc.src_zp_dt, zp, nibble);
             }
-            const float sa = sa_per_call && len > 0
+            const float sa = sa_per_k
                     ? io::load_float_value(
                               bgmmc.src_scales_dt, ctx.src_scales(b, k0, m), 0)
                     : 1.f;
-            if (wei_rows_used && len > 0)
+            if (wei_rows_used)
                 u[k0 / wei_gsize] += sa
                         * (static_cast<float>(t)
                                 - static_cast<float>(len) * za);
-            if (call_rows) u[wei_rows + c] = sa * (za + shift);
+            if (src_rows) u[wei_rows + k0 / src_gsize] = sa * (za + shift);
         }
     });
 
     // The AMX ukernel applies a common src scale in every per-K call, the
     // other kernels apply it once with the post-ops.
-    const float src_common_scale = sb_per_call && bgmmc.with_src_scales
+    const float src_common_scale = sb_per_k && bgmmc.with_src_scales
                     && !bgmmc.is_src_scale_per_k
                     && bgmmc.per_mn_comp_src_scale_per_call
             ? io::load_float_value(
@@ -478,14 +493,16 @@ void brgemm_matmul_per_mn_comp_t::prepare(
     parallel_nd(bgmmc.batch, bgmmc.per_mn_comp_K, num_n_chunks,
             [&](dim_t b, dim_t r, dim_t nc) {
         const bool is_wei_row = r < wei_rows;
-        dim_t k0 = r * wei_gsize, len = 0;
-        if (!is_wei_row) ctx.call_range(r - wei_rows, k0, len);
+        const dim_t k0
+                = is_wei_row ? r * wei_gsize : (r - wei_rows) * src_gsize;
+        const dim_t len
+                = nstl::min(is_wei_row ? wei_gsize : src_gsize, bgmmc.K - k0);
         const dim_t n0 = nc * n_chunk;
         const dim_t n_len = nstl::min(n_chunk, ldv - n0);
         float *v = V_ptr(bgmmc, ctx.V, b, r) + n0;
         std::fill_n(v, n_len, 0.f);
         const dim_t nv = nstl::min(n_len, bgmmc.N - n0);
-        if ((!is_wei_row && len == 0) || nv <= 0) return;
+        if (nv <= 0) return;
 
         if (is_wei_row) {
             if (bgmmc.has_zero_point_b)
@@ -507,7 +524,7 @@ void brgemm_matmul_per_mn_comp_t::prepare(
             for (dim_t i = 0; i < nv; ++i)
                 v[i] += static_cast<float>(len) * b_shift;
         }
-        if (sb_per_call) {
+        if (sb_per_k) {
             float sb[max_n_chunk];
             load_row(bgmmc.wei_scales_dt, ctx.wei_scales(b, k0),
                     bgmmc.is_wei_scale_per_n ? n0 : 0, bgmmc.is_wei_scale_per_n,

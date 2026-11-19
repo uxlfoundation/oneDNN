@@ -330,6 +330,11 @@ struct brgemm_desc_t {
     bool has_per_k_scales() const {
         return is_per_k_wei_scales || is_per_k_src_scales;
     }
+    // Int8: accumulate in f32, converting the int32 result of every call.
+    bool req_f32_acc = false;
+    // The result of every call is scaled and/or converted before it is
+    // accumulated into C.
+    bool has_per_call_acc() const { return has_per_k_scales() || req_f32_acc; }
 
     bool with_wei_scales = false;
     // `dst_scales` passed as a bare pointer making kernel change multiplication
@@ -556,9 +561,9 @@ struct brgemm_desc_t {
 
     // Determines if the accumulator dt is integer.
     //
-    // When the per-k scales are present, need to accumulate in f32 due to
-    // precision loss.
-    bool is_integer_acc() const { return is_int8 && !has_per_k_scales(); }
+    // When the per-k scales are present or f32 accumulation is requested,
+    // need to accumulate in f32 due to precision loss.
+    bool is_integer_acc() const { return is_int8 && !has_per_call_acc(); }
 
     // Determines if the DQ2PS conversion is needed for the accumulator.
     bool do_dq2ps_cvt() const {

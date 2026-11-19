@@ -36,31 +36,35 @@ namespace matmul {
 // Zero-point compensation of the grouped int8 matmul.
 //
 // The int8 brgemm accumulates sum_k A'[m][k] * B'[k][n] of raw (uncentered)
-// values with the per-K-group scales sa (per row) and sb (per column) applied
-// call by call, where A' = A + 128 when an s8 src has to be shifted to u8
-// (no native s8 x s8 and no unsigned B) and B' = B + int8_b_shift. Relative
-// to the exact sum_k sa * sb * (A - za) * (B - zb), every brgemm K call c
-// over k in [k0, k0 + len) adds, with T[m] = sum_k A[m][k], S[n] = sum_k B[k][n]
-// and zb' = zb + int8_b_shift:
+// values in f32, where A' = A + 128 when an s8 src has to be shifted to u8
+// (no native s8 x s8 and no unsigned B) and B' = B + int8_b_shift. Per-K
+// scales sa (per row) and sb (per column), if applied in the kernel, scale
+// every brgemm K call. Relative to the exact sum_k sa * sb * (A - za) * (B - zb)
+// the accumulated sum carries, over every K range g where sa, sb, za and zb
+// are constant, with T[m] = sum_k A[m][k], S[n] = sum_k B[k][n] and
+// zb' = zb + int8_b_shift, the extra
 //
-//     sa * sb * ( zb'[n] * (T[m] - len * za[m]) + (za[m] + shift) * S[n] )
+//     sa * sb * ( zb'[n] * (T[m] - |g| * za[m]) + (za[m] + shift) * S[n] )
 //
 // Each term is rank-1 in (m, n), so the whole-K correction of a tile is one
 // small f32 product that initializes the accumulation buffer:
 //
-//           K' = G wei zp groups [+ C brgemm K calls]
-//       U (M x K')                         V (K' x N)
-//       U[m][g]   = sum_{c in g} sa * (T[m] - len * za[m])
-//                                          V[g][n]   = sb * zb'[n]
-//       U[m][G+c] = sa * (za[m] + shift)   V[G+c][n] = sb * S[n]
+//           K' = G wei rows [+ R src rows]
+//       U (M x K')                            V (K' x N)
+//       U[m][g]   = sum_{k in g} sa * (A[m][k] - za[m])
+//                                             V[g][n]   = sb * zb'[n]
+//       U[m][G+r] = sa * (za[m] + shift)      V[G+r][n] = sb * S_r[n]
 //
 //       buffer C (M_blk x N_blk, f32)  =  -U[m block] * V[.., n block]
 //       buffer C                      +=  int8 brgemm, K call by K call
 //
-// U and V are prepared once per execution into the scratchpad (batch x M x K'
-// and batch x K' x ldv floats; K' is a few tens of rows), the f32 brgemm runs
-// once per output tile. The C calls rows need a pass over B (column sums by
-// an AVX-512 kernel) and exist only with a src zero point or the src shift.
+// The wei rows g partition K by the gcd of the wei scale (if in the kernel)
+// and wei zp groups, the src rows r by the gcd of the wei scale, src scale
+// and src zp groups; both are independent of the brgemm K blocking. U and V
+// are prepared once per execution into the scratchpad (batch x M x K' and
+// batch x K' x ldv floats; K' is a few tens of rows), the f32 brgemm runs
+// once per output tile. The src rows need a pass over B (column sums by an
+// AVX-512 kernel) and exist only with a src zero point or the src shift.
 struct brgemm_matmul_per_mn_comp_t {
     // Fills the per_mn_comp_* fields of bgmmc. False when the compensation
     // cannot be computed this way; must run after the blocking is set up.
@@ -76,8 +80,6 @@ struct brgemm_matmul_per_mn_comp_t {
     // What prepare() reads from the matmul execution context.
     struct ctx_t {
         std::function<const char *(dim_t b)> A_batch, B_batch;
-        // K range of brgemm call c; c == num_K_blocks is the K tail.
-        std::function<void(dim_t c, dim_t &k0, dim_t &len)> call_range;
         std::function<const void *(dim_t b, dim_t k, dim_t m)> src_scales;
         std::function<const void *(dim_t b, dim_t k, dim_t m, int *nibble)>
                 src_zp;

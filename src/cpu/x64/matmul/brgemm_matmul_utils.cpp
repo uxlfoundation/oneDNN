@@ -1735,6 +1735,9 @@ dim_t compute_k_group(const brgemm_matmul_conf_t &bgmmc) {
             bgmmc.wei_scales_k_gsize);
     fold_group(bgmmc.is_src_scale_per_k, bgmmc.src_scales_k_gsize);
 
+    // The per-(M, N) compensation handles the zero points of whole K groups
+    // independently of the brgemm calls.
+    if (bgmmc.with_per_mn_compensation) return k_group;
     const bool wei_zp_folded_into_buffer_b = bgmmc.with_wei_decompression
             && !bgmmc.with_int8_grouped_quantization;
     fold_group(bgmmc.is_wei_zp_per_k && !wei_zp_folded_into_buffer_b,
@@ -2419,6 +2422,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.has_zero_point_a = bgmmc.src_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
+    bgmmc.with_per_mn_compensation = bgmmc.with_int8_grouped_quantization
+            && (bgmmc.has_zero_point_a || bgmmc.has_zero_point_b
+                    || bgmmc.s8s8_compensation_required
+                    || bgmmc.int8_b_shift() != 0);
     // Non-default src zero points (per-tensor, common, host_scalar) with
     // int8 grouped quantization: the per-(M,N) compensation tile (set via
     // bgmmc.with_per_mn_compensation later in init) covers the remaining
@@ -2821,6 +2828,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // - nthr_K
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils, dst_d, attr),
             VERBOSE_BLOCKING_FAIL, "");
+
+    // The per-(M, N) compensation initializes the f32 buffer C of every tile.
+    if (bgmmc.with_per_mn_compensation) bgmmc.use_buffer_c = true;
 
     // Parallel reduction (nthr_k > 1) keeps one C buffer per K-thread without
     // a batch dimension, so it supports non-batched problems only.
@@ -3319,10 +3329,6 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
             ? dst_d.blocking_desc().strides[0] * bgmmc.c_dt_sz
             : 0;
 
-    bgmmc.with_per_mn_compensation = bgmmc.with_int8_grouped_quantization
-            && (bgmmc.has_zero_point_a || bgmmc.has_zero_point_b
-                    || bgmmc.s8s8_compensation_required
-                    || bgmmc.int8_b_shift() != 0);
     bgmmc.post_ops_applicable = one_of(true, bgmmc.with_sum, bgmmc.with_bias,
             bgmmc.with_src_scales,
             bgmmc.with_wei_scales && !bgmmc.apply_scales_in_buffer_b,

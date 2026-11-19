@@ -405,10 +405,10 @@ For more details on how to set attributes, refer to the @ref dev_guide_attribute
 Scales and zero points for grouped GEMM follow the same API as regular matmul.
 Tensors must use dense memory descriptors.
 Masks are over the 3D source `{num_groups, M, K}` and weights
-`{num_groups, K, N}`. A mask that covers the variable dimension covers the
-group dimension too, and the data in the scales/zero points tensor then
-follows the same flat concatenated order as the grouped source/weights along
-that dimension.
+`{num_groups, K, N}` in both variants. A mask that covers the variable
+dimension covers the group dimension too, and the data in the scales/zero
+points tensor then follows the same flat concatenated order as the grouped
+source/weights along that dimension.
 
 Row-wise source scales:
 ~~~cpp
@@ -439,6 +439,18 @@ attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 1) | (1 << 2),
 // Groups are 2D {gK, gN} and are applied to the last two dimensions of the tensor
 // Scale tensor: [num_groups, K/32, N] - dense 3D tensor
 // Layout: standard abc layout
+~~~
+
+K-grouped source and weight scales for the variable-K variant (e.g., MXFP8
+with block size 32):
+~~~cpp
+// Source {num_groups, M, *} and weights {num_groups, *, N} are grouped along K
+attr.set_scales(DNNL_ARG_SRC, (1 << 0) | (1 << 1) | (1 << 2), {1, 32},
+    memory::data_type::e8m0);
+attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 1) | (1 << 2), {32, 1},
+    memory::data_type::e8m0);
+// Scale tensors: [M, total_K/32] and [total_K/32, N] - dense 2D tensors
+// Layout: standard ab layout, blocks run over the concatenated K dimension
 ~~~
 
 Bias per expert:
@@ -530,10 +542,19 @@ The following are supported:
     (`mask = (1 << 0) | (1 << 1) | (1 << 2)`) with group specification are
     supported. The scale tensor follows the same concatenated layout as src:
     `[total_M]` or `[total_M, K/gK]`.
+    For the variable-K variant, only K-grouped scales are supported. The
+    scale tensor is `[M, total_K/gK]`, covering all groups along K.
   - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
     K-grouped or K- and N-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`)
     with group specification are supported. The scale tensor has size
     `[num_groups, N]` or `[num_groups, K/gK, N/gN]`.
+    For the variable-K variant, only K-grouped or K- and N-grouped scales are
+    supported. The scale tensor is `[total_K/gK, N/gN]`, covering all groups
+    along K.
+
+    @warning For the variable-K variant, every group size must be a multiple of
+    the source and weights scales K group sizes.
+
   - Supported scales and tensor data type combinations:
 
     | Tensor data type           | Scale data type           |
@@ -572,6 +593,9 @@ The following combinations of data types for source, destination, weights, and b
 | f4_e2m1          | f4_e2m1                | f32, bf16, f16 |                |
 | f32, bf16, f16   | u8, s8, s4, u4, u3 (1) | f32, bf16, f16 | f32, bf16, f16 |
 | u8, s8           | u8, s8, s4, u4         | f32, bf16, f16 | f32, bf16, f16 |
+
+The variable-K variant supports the first two rows only, with source,
+weights, and destination of the same type in the first row, and no bias.
 
 Footnotes:
 1. Weight-Only Quantization (WOQ): floating-point source with integer weights

@@ -1,4 +1,4 @@
-# u3 wei decompression, grouped GEMM (2Dx3D): variable M, weights 3D [G, K, N]
+# u3 wei decompression, grouped GEMM with variable M, weights 3D [G, K, N]
 --reset
 --allow-enum-tags-only=0
 --dt=f16:u3:f16

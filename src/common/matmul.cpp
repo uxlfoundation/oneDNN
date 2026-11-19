@@ -44,12 +44,12 @@ namespace {
 // Currently grouped matmul specific validation function is separated
 // as the coverage of grouped gemm is experimental and limited
 // Supported:
-//     2Dx3D (variable M): src 2D grouped [total_M, K] (idx=0, row-major),
-//                         wei dense 3D [G, K, N],
-//                         dst 2D grouped [total_M, N] (idx=0, row-major)
-//     2Dx2D (variable K): src 2D grouped [M, total_K] (idx=1, col-major),
-//                         wei 2D grouped [total_K, N] (idx=0, row-major),
-//                         dst dense 3D [G, M, N]
+//     variable M: src 2D grouped [total_M, K] (idx=0, row-major),
+//                 wei dense 3D [G, K, N],
+//                 dst 2D grouped [total_M, N] (idx=0, row-major)
+//     variable K: src 2D grouped [M, total_K] (idx=1, col-major),
+//                 wei 2D grouped [total_K, N] (idx=0, row-major),
+//                 dst dense 3D [G, M, N]
 status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc) {
@@ -77,21 +77,20 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
     VCHECK_MATMUL_UNIMPL(
             src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-    const bool is_2dby3d = dst_d.is_grouped_desc() && !wei_d.is_grouped_desc();
-    const bool is_2dby2d = wei_d.is_grouped_desc() && !dst_d.is_grouped_desc();
+    const bool is_var_M = dst_d.is_grouped_desc() && !wei_d.is_grouped_desc();
+    const bool is_var_K = wei_d.is_grouped_desc() && !dst_d.is_grouped_desc();
 
-    VCHECK_MATMUL_UNIMPL(
-            is_2dby3d || is_2dby2d, VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    VCHECK_MATMUL_UNIMPL(is_var_M || is_var_K, VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     const auto &src_grouped = src_d.sparse_desc().grouped_desc;
     const dim_t group_count = src_grouped.group_count;
 
     // Check variable dim indices/group count for consistency
-    const memory_desc_wrapper &variant_d = is_2dby3d ? dst_d : wei_d;
-    const char *variant_name = is_2dby3d ? "dst" : "weights";
+    const memory_desc_wrapper &variant_d = is_var_M ? dst_d : wei_d;
+    const char *variant_name = is_var_M ? "dst" : "weights";
     const auto &variant_grouped = variant_d.sparse_desc().grouped_desc;
 
-    VCHECK_MATMUL_UNIMPL(src_grouped.variable_dim_idx == (is_2dby3d ? 0 : 1)
+    VCHECK_MATMUL_UNIMPL(src_grouped.variable_dim_idx == (is_var_M ? 0 : 1)
                     && variant_grouped.variable_dim_idx == 0,
             VERBOSE_INCONSISTENT_DIM, "src_variable_dim_idx",
             (int)src_grouped.variable_dim_idx, variant_name,
@@ -110,8 +109,8 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
     const int ndims_src = src_d.ndims();
     const int ndims_wei = wei_d.ndims();
     const int ndims_dst = dst_d.ndims();
-    const int expected_ndims_wei = is_2dby3d ? 3 : 2;
-    const int expected_ndims_dst = is_2dby3d ? 2 : 3;
+    const int expected_ndims_wei = is_var_M ? 3 : 2;
+    const int expected_ndims_dst = is_var_M ? 2 : 3;
     VCHECK_MATMUL_UNIMPL(ndims_src == 2, VERBOSE_BAD_NDIMS, "src", ndims_src);
     VCHECK_MATMUL_UNIMPL(ndims_wei == expected_ndims_wei, VERBOSE_BAD_NDIMS,
             "weights", ndims_wei);
@@ -119,9 +118,9 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
             "dst", ndims_dst);
 
     // Check dims for consistency
-    const dim_t group_dim = is_2dby3d ? wei_d.dims()[0] : dst_d.dims()[0];
+    const dim_t group_dim = is_var_M ? wei_d.dims()[0] : dst_d.dims()[0];
     VCHECK_MATMUL_UNIMPL(group_dim == group_count, VERBOSE_INCONSISTENT_DIM,
-            is_2dby3d ? "weights_dim[0]" : "dst_dim[0]", (int)group_dim,
+            is_var_M ? "weights_dim[0]" : "dst_dim[0]", (int)group_dim,
             "src_group_count", (int)group_count);
     VCHECK_MATMUL_UNIMPL(src_d.dims()[0] == dst_d.dims()[dst_d.ndims() - 2],
             VERBOSE_INCONSISTENT_DIM, "src", 0, "dst", dst_d.ndims() - 2);
@@ -132,7 +131,7 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
             VERBOSE_INCONSISTENT_DIM, "dst", dst_d.ndims() - 1, "weights",
             wei_d.ndims() - 1);
 
-    if (is_2dby3d) {
+    if (is_var_M) {
         // Bias supported with shape [G, N]
         const bool with_bias = op_d.bias_desc.ndims != 0;
         if (with_bias) {
@@ -150,7 +149,7 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
                     (int)bia_d.dims()[0], "dst_group_count", (int)group_count);
         }
     } else {
-        // Bias is not supported for the 2Dx2D
+        // Bias is not supported for variable K
         VCHECK_MATMUL_UNIMPL(
                 op_d.bias_desc.ndims == 0, VERBOSE_UNSUPPORTED_BIAS_CFG);
     }
@@ -167,7 +166,7 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
 // Separated from regular matmul as grouped gemm coverage is experimental
 // and limited
 //
-// Note: 2Dx2D supports only default attribues for now
+// Note: variable K supports only default attributes for now
 status_t grouped_matmul_attr_check(
         const matmul_desc_t &desc, const primitive_attr_t *attr) {
     using smask_t = primitive_attr_t::skip_mask_t;
@@ -184,11 +183,11 @@ status_t grouped_matmul_attr_check(
         return status::success;
     }
 
-    // Reject 2Dx2D as no support so far
+    // Reject variable K as no support so far
     const memory_desc_wrapper src_d(&desc.src_desc);
     const memory_desc_wrapper wei_d(&desc.weights_desc);
-    const bool is_2dby2d = src_d.is_grouped_desc() && wei_d.is_grouped_desc();
-    VCHECK_MATMUL_UNIMPL(!is_2dby2d, VERBOSE_UNSUPPORTED_ATTR);
+    const bool is_var_K = src_d.is_grouped_desc() && wei_d.is_grouped_desc();
+    VCHECK_MATMUL_UNIMPL(!is_var_K, VERBOSE_UNSUPPORTED_ATTR);
 
     // Grouped matmul supports scales, zero points, woq, and post-ops
     auto allowed_mask = smask_t::scales_data_type | smask_t::scales_groups

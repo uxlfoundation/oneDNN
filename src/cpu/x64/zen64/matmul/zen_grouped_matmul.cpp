@@ -71,7 +71,7 @@ status_t zen_grouped_matmul_t::pd_t::init(const engine_t *engine) {
     const memory_desc_wrapper src_d(src_md(0));
     const memory_desc_wrapper dst_d(dst_md(0));
 
-    // Grouped src/dst selects the 2Dx3D pattern.
+    // Grouped src/dst selects the variable M pattern.
     VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 

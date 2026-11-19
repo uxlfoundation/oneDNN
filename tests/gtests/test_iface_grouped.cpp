@@ -447,13 +447,13 @@ TEST(iface_grouped_test_t, TestGroupedMatmulPatterns) {
             dnnl::error);
 }
 
-TEST(iface_grouped_test_t, TestGrouped2Dby2DUnsupportedAttr) {
+TEST(iface_grouped_test_t, TestGroupedVarKUnsupportedAttr) {
     engine eng = get_test_engine();
 
     const int ngroups = 2;
     const int M = 4, K = 8, N = 6;
 
-    // Valid 2Dx2D config: grouped(varK) * grouped(varK) -> dense 3D
+    // Valid variable K config: grouped(varK) * grouped(varK) -> dense 3D
     auto src_md = memory::desc::grouped({M, K}, dt::f32, 1, ngroups);
     auto wei_md = memory::desc::grouped({K, N}, dt::f32, 0, ngroups);
     auto dst_md
@@ -462,7 +462,7 @@ TEST(iface_grouped_test_t, TestGrouped2Dby2DUnsupportedAttr) {
     // Default attributes are supported
     EXPECT_NO_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md));
 
-    // 2Dx2D supports only default attributes
+    // Variable K supports only default attributes
     // Scales
     {
         primitive_attr attr;

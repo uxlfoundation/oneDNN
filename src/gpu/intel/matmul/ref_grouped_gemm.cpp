@@ -60,15 +60,15 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper bia_d(pd()->weights_md(1));
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
-    const bool is_2dby2d = pd()->is_2dby2d();
+    const bool is_var_K = pd()->is_var_K();
 
     const dim_t group_count = pd()->group_count_;
     const dim_t N = pd()->N();
     const dim_t total_tokens = src_d.dims()[0];
 
     // Note, that below are constants for specific patterns
-    const dim_t M_fixed = is_2dby2d ? src_d.dims()[0] : 0; // 2Dx2D
-    // K for 2Dx3D or total_K for 2Dx2D, the extent the K-groups divide
+    const dim_t M_fixed = is_var_K ? src_d.dims()[0] : 0; // variable K
+    // K, or total_K for variable K: the extent the K-groups divide
     const dim_t K_total = pd()->K();
 
     dims_t src_strides {}, wei_strides {}, bia_strides {}, dst_strides {};
@@ -120,15 +120,15 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, src_data);
     arg_list.set(arg_idx++, src_offsets);
     arg_list.set(arg_idx++, wei_data);
-    // Tensor sharing src split: wei (2Dx2D) or dst (2Dx3D)
-    if (is_2dby2d) {
+    // Tensor sharing src split: wei (variable K) or dst (variable M)
+    if (is_var_K) {
         arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_WEIGHTS, 1));
     } else {
         arg_list.set(arg_idx++, CTX_OUT_STORAGE(DNNL_ARG_DST, 1));
     }
     arg_list.set(arg_idx++, dst_data);
     arg_list.set(arg_idx++, (int)group_count);
-    arg_list.set(arg_idx++, (int)is_2dby2d);
+    arg_list.set(arg_idx++, (int)is_var_K);
     arg_list.set(arg_idx++, M_fixed);
     arg_list.set(arg_idx++, K_total);
     arg_list.set(arg_idx++, N);
@@ -181,7 +181,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         arg_list.set(arg_idx++, attr_zps.get_group(DNNL_ARG_WEIGHTS, -1));
     }
 
-    // Post-ops apply to the 2Dx3D pattern only (grouped dst)
+    // Post-ops apply to variable M only (grouped dst)
     arg_idx = append_post_ops_to_arg_list(
             ctx, arg_list, arg_idx, pd()->generic_po_, pd()->group_po_dst_md_);
 

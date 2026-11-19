@@ -51,13 +51,13 @@ namespace matmul {
 // Helper to create grouped memory descriptor
 //
 // Supported configurations:
-//  2Dx3D:
+//  variable M:
 //   --grouped=0:G:size_0+...+size_{G-1} total_MxK:GxKxN
 //   src [total_M, K] (dim 0 variable)
 //   wei is dense 3D [G, K, N]
 //   dst [total_M, N] (dim 0 variable)
 //
-//  2Dx2D:
+//  variable K:
 //   --grouped=1:G:size_0+...+size_{G-1} Mxtotal_K:total_KxN
 //   src [M, total_K] (dim 1 variable, col-major implicit)
 //   wei [total_K, N] (dim 0 variable, row-major)
@@ -76,8 +76,8 @@ static dnnl_status_t create_grouped_md(
     const int64_t group_count = prb->sparse_options.get_group_count();
 
     dnnl_dims_t dims_2d;
-    // 2Dx3D: src [m, k], wei dense, dst [m, n]
-    // 2Dx2D: src [m, k], wei [k, n], dst dense
+    // variable M: src [m, k], wei dense, dst [m, n]
+    // variable K: src [m, k], wei [k, n], dst dense
     if (arg == DNNL_ARG_SRC) {
         dims_2d[0] = prb->m;
         dims_2d[1] = prb->k;
@@ -181,10 +181,10 @@ dnnl_status_t create_md(benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> &md,
 
         // Special grouped matmul handling for dst
         if (prb->sparse_options.is_grouped(DNNL_ARG_DST)) {
-            // For 2Dx3D, dst is 2D grouped [total_M, N]
+            // For variable M, dst is 2D grouped [total_M, N]
             return create_grouped_md(md, prb, DST, dt);
-        } else if (prb->sparse_options.is_2dby2d()) {
-            // For 2Dx2D, dst is dense 3D [G, M, N]
+        } else if (prb->sparse_options.is_var_K()) {
+            // For variable K, dst is dense 3D [G, M, N]
             const int64_t group_count = prb->sparse_options.get_group_count();
             dnnl_dims_t dims_3d = {group_count, prb->m, prb->n};
             return dnn_mem_t::init_md(
@@ -578,8 +578,7 @@ static int fill_grouped_offsets(
     return OK;
 }
 
-// Fill grouped values for SRC (2Dx3D and 2Dx2D variants) or WEI (2Dx2D variant
-// only)
+// Fill grouped values for SRC (both variants) or WEI (variable K only)
 static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     if (kind != SRC && kind != WEI) {
@@ -902,8 +901,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             }
         } else {
             if (prb->sparse_options.is_grouped(exec_arg)) {
-                // Grouped args (SRC, DST for 2Dx3D; SRC, WEI for 2Dx2D) use
-                // grouped f32 ref memory with the same layout
+                // Grouped args (SRC, DST for variable M; SRC, WEI for
+                // variable K) use grouped f32 ref memory with the same layout
                 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> grouped_fp_md;
                 DNN_SAFE(create_md(grouped_fp_md, prb,
                                  exec_arg2data_kind(exec_arg), dnnl_f32),

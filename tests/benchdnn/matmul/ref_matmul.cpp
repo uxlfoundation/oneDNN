@@ -408,11 +408,11 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
 // Per group g, computes dst[g] = src[g] * wei[g]. Two layouts are supported,
 // selected by which argument is grouped alongside src:
 //
-//   variable M (2Dx3D): src+dst grouped. M_g varies per group; K, N fixed.
+//   variable M: src+dst grouped. M_g varies per group; K, N fixed.
 //     src/dst are concatenated buffers [total_M, K] / [total_M, N];
 //     wei is per-group dense [G, K, N]. Supports a per-group bias [G, N].
 //
-//   variable K (2Dx2D): src+wei grouped. K_g varies per group; M, N fixed.
+//   variable K: src+wei grouped. K_g varies per group; M, N fixed.
 //     src [M, total_K] and wei [total_K, N] are concatenated along K,
 //     dst is dense [G, M, N]. No bias.
 //

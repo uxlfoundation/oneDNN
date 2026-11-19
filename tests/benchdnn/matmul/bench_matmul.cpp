@@ -191,10 +191,10 @@ int verify_input(const settings_t &s, const settings_t &def) {
 // Validate input consistency for grouped encoding
 //
 // Two configurations are supported:
-//  - 2Dx3D with variable_dim_idx=0: src is [total_M, K] with dim 0
+//  - variable M with variable_dim_idx=0: src is [total_M, K] with dim 0
 //    variable (row-major), wei is dense 3D [G, K, N],
 //    dst is [total_M, N] with dim 0 variable,
-//  - 2Dx2D with variable_dim_idx=1: src is [M, total_K] with dim 1
+//  - variable K with variable_dim_idx=1: src is [M, total_K] with dim 1
 //    variable (col-major), wei is [total_K, N] with dim 0
 //    variable (row-major), dst is dense 3D [G, M, N]
 int verify_grouped_input(const settings_t &s) {
@@ -205,8 +205,8 @@ int verify_grouped_input(const settings_t &s) {
 
     if (variable_dim_idx != 0 && variable_dim_idx != 1) {
         BENCHDNN_PRINT(0,
-                "ERROR: grouped encoding supports dim 0 (2Dx3D) or "
-                "dim 1 (2Dx2D , got dim %d\n",
+                "ERROR: grouped encoding supports dim 0 (variable M) or "
+                "dim 1 (variable K), got dim %d\n",
                 variable_dim_idx);
         SAFE_V(FAIL);
     }
@@ -214,19 +214,19 @@ int verify_grouped_input(const settings_t &s) {
     // The variable dim is encoded in the src tensor at variable_dim_idx
     const auto &src_dims = s.prb_vdims.vdims[0];
 
-    // The 2Dx2D variant additionally requires wei dim 0 == src dim 1
+    // The variable K variant additionally requires wei dim 0 == src dim 1
     // (i.e., shared contraction dim)
     if (variable_dim_idx == 1) {
         const auto &wei_dims = s.prb_vdims.vdims[1];
         if (wei_dims.size() != 2) {
             BENCHDNN_PRINT(0, "%s\n",
-                    "ERROR: 2Dx2D variant (variable_dim_idx=1) requires 2D "
-                    "weights with shape [total_K, N]");
+                    "ERROR: variable K variant (variable_dim_idx=1) requires "
+                    "2D weights with shape [total_K, N]");
             SAFE_V(FAIL);
         }
         if (wei_dims[0] != src_dims[1]) {
             BENCHDNN_PRINT(0,
-                    "ERROR: 2Dx2D variant wei dim 0 (%lld) must match src "
+                    "ERROR: variable K variant wei dim 0 (%lld) must match src "
                     "dim 1 (%lld)\n",
                     (long long)wei_dims[0], (long long)src_dims[1]);
             SAFE_V(FAIL);

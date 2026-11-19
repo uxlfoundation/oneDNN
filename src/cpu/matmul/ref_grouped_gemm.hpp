@@ -44,25 +44,25 @@ struct ref_grouped_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref_grouped:any", ref_grouped_t);
 
-        bool is_2dby2d() const { return is_2dby2d_; }
+        bool is_var_K() const { return is_var_K_; }
 
         status_t init(const engine_t *engine) {
             memory_desc_wrapper src_d(src_md());
             memory_desc_wrapper wei_d(weights_md(0));
 
-            // Detect pattern (2Dx3D vs 2Dx2D) and initialize
+            // Detect pattern (variable M or K) and initialize
             VDISPATCH_MATMUL(
                     src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            is_2dby2d_ = wei_d.is_grouped_desc();
+            is_var_K_ = wei_d.is_grouped_desc();
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
-            return is_2dby2d_ ? init_2dby2d(engine) : init_2dby3d(engine);
+            return is_var_K_ ? init_var_K(engine) : init_var_M(engine);
         }
 
     private:
-        bool is_2dby2d_ = false;
+        bool is_var_K_ = false;
 
-        status_t init_2dby3d(const engine_t *engine) {
+        status_t init_var_M(const engine_t *engine) {
             using namespace data_type;
             const auto src_type = src_md(0)->data_type;
             const auto wei_type = weights_md(0)->data_type;
@@ -118,7 +118,7 @@ struct ref_grouped_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_2dby2d(const engine_t *engine) {
+        status_t init_var_K(const engine_t *engine) {
             using namespace data_type;
             const auto src_type = src_md(0)->data_type;
             const auto wei_type = weights_md(0)->data_type;

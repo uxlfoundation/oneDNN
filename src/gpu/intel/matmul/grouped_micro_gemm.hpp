@@ -44,7 +44,7 @@ namespace matmul {
 // Which axis of the problem is partitioned by the grouped offsets array.
 //   m_axis: src [total_M, K] and dst [total_M, N] grouped, wei dense 3D
 //           [G, K, N]. The token count varies per expert (MoE forward).
-//           Called 2Dx3D by the common layer.
+//           Called variable M by the common layer.
 //   k_axis: src [M, total_K] and wei [total_K, N] grouped with the same
 //           partition, dst dense 3D [G, M, N]. The contraction dim varies
 //           per group (MoE backward).

@@ -46,10 +46,10 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper bia_d(pd()->weights_md(1));
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
-    const bool is_2dby2d = pd()->is_2dby2d();
+    const bool is_var_K = pd()->is_var_K();
 
     const dim_t group_count = src_d.sparse_desc().grouped_desc.group_count;
-    // M is total_M for 2Dx3D, K is total_K for 2Dx2D
+    // M is total_M for variable M, K is total_K for variable K
     const dim_t M = pd()->M();
     const dim_t K = pd()->K();
     const dim_t N = pd()->N();
@@ -65,8 +65,8 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const void *wei_data = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS, 0);
     const void *bias_data = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     void *dst_data = CTX_OUT_MEM(void *, DNNL_ARG_DST, 0);
-    // Query second offsets: wei for 2Dx2D or dst for 2Dx3D
-    const int32_t *partner_offsets = is_2dby2d
+    // Query second offsets: wei for variable K or dst for variable M
+    const int32_t *partner_offsets = is_var_K
             ? CTX_IN_MEM(const int32_t *, DNNL_ARG_WEIGHTS, 1)
             : CTX_OUT_MEM(const int32_t *, DNNL_ARG_DST, 1);
 
@@ -165,7 +165,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         // Logical indices of the elements, K and N are set below
         dims_t src_dims_idx {}, wei_dims_idx {}, dst_dims_idx {};
         dim_t group_id, k_start = 0, K_g = K;
-        if (is_2dby2d) {
+        if (is_var_K) {
             // src [M, total_K] and wei [total_K, N] are split along K, dst is
             // [G, M, N]
             group_id = row / M;

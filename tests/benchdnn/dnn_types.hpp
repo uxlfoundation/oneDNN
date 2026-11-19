@@ -755,7 +755,7 @@ struct sparse_options_t {
     }
 
     // Check for grouped SRC by grouped WEI into dense DST
-    bool is_2dby2d() const {
+    bool is_var_K() const {
         return is_grouped(DNNL_ARG_SRC) && is_grouped(DNNL_ARG_WEIGHTS)
                 && get_variable_dim_idx(DNNL_ARG_SRC) == 1;
     }

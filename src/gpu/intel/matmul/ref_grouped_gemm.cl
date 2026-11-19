@@ -19,7 +19,8 @@
 
 // Grouped GEMM OCL reference kernel
 //
-// Per group g: C[g] = A[g] * B[g] (+ bias / scales / zero-points for 2Dx3D)
+// Per group g: C[g] = A[g] * B[g] (+ bias / scales / zero-points for
+// variable M)
 //
 // 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
 // partner_offsets buffer is dst_offsets
@@ -37,7 +38,7 @@
 //
 // Supported:
 //  f32/f16/bf16
-// For 2Dx3D only:
+// For variable M only:
 //  u8/s8 src, u8/s8/s4/u4/f8/f4 wei (incl. WOQ)
 //  row/col-wise, K-grouped or KxN-grouped (wei) scales & zero-points
 //  common wei zero-point (u3 wei), incl. host-side scalar
@@ -45,7 +46,7 @@
 __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         __global const int *src_offsets, __global const WEI_DATA_T *wei,
         __global const int *partner_offsets, __global DST_DATA_T *dst,
-        const int group_count, const int is_2dby2d, const long m_fixed,
+        const int group_count, const int is_var_K, const long m_fixed,
         const long k_total, const long N, const long k_block,
         const long src_total, const long src_stride_m, const long src_stride_k,
         const long wei_stride_g, const long wei_stride_k,
@@ -106,12 +107,11 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
             || (group_id > 0 && partner_offsets[group_id - 1] != start))
         return;
 
-    // The group starts at `start` along the variable dim: M for 2Dx3D or K
-    // for 2Dx2D
-    const long M_g = is_2dby2d ? m_fixed : end - start;
-    const long K_g = is_2dby2d ? end - start : k_total;
-    const long m_abs = is_2dby2d ? m : start + m;
-    const long k_start = is_2dby2d ? start : 0;
+    // The group starts at `start` along the variable dim (M or K)
+    const long M_g = is_var_K ? m_fixed : end - start;
+    const long K_g = is_var_K ? end - start : k_total;
+    const long m_abs = is_var_K ? m : start + m;
+    const long k_start = is_var_K ? start : 0;
 
     if (m >= M_g) return;
 
@@ -175,7 +175,7 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
     acc += BIA_TO_REF(bias[group_id * bia_stride_g + n * bia_stride_n]);
 #endif
 
-    // Post-ops apply to the 2Dx3D pattern only
+    // Post-ops apply to variable M only
     POST_OP_DATA_T po_acc = acc;
     POST_OP_DATA_T sum_src = 0;
     APPLY_POST_OPS_SERIAL(po_acc, sum_src, group_id, m_abs, n, 0, 0, 0);

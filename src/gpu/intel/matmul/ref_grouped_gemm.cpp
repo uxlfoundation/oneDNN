@@ -18,6 +18,8 @@
 
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
+#include <algorithm>
+
 #include "common/c_types_map.hpp"
 #include "common/math_utils.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -106,8 +108,11 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         if (group_k > 1) k_block = math::gcd(k_block, group_k);
 
     // Runtime group offsets are checked in the kernel against the src total
-    // size along the variable dim
+    // size along the variable dim, and 2Dx2D groups must align with the
+    // coarsest scales K-group
     const dim_t src_total = src_d.grouped_total();
+    const dim_t k_align
+            = is_2dby2d ? std::max(src_scale_group_k, wei_scale_group_k) : 1;
 
     const auto &src_data = CTX_IN_STORAGE(DNNL_ARG_SRC, 0);
     const auto &src_offsets = CTX_IN_STORAGE(DNNL_ARG_SRC, 1);
@@ -133,6 +138,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, N);
     arg_list.set(arg_idx++, k_block);
     arg_list.set(arg_idx++, src_total);
+    arg_list.set(arg_idx++, k_align);
     arg_list.set(arg_idx++, src_strides[1]);
     arg_list.set(arg_idx++, src_strides[2]);
     arg_list.set(arg_idx++, wei_strides[0]);

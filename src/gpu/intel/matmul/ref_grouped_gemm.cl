@@ -19,7 +19,7 @@
 
 // Grouped GEMM OCL reference kernel
 //
-// Per group g: C[g] = A[g] * B[g] (+ bias / scales / zero-points for 2Dx3D)
+// Per group g: C[g] = A[g] * B[g] (+ scales, and bias / zero-points for 2Dx3D)
 //
 // grouped src {G, *, K} x dense wei [G, K, N] -> grouped dst {G, *, N}
 // partner_offsets buffer is dst_offsets
@@ -37,6 +37,8 @@
 //
 // Supported:
 //  f32/f16/bf16
+// For 2Dx2D:
+//  f8 src and wei with K-grouped scales, a grid over total_K
 // For 2Dx3D only:
 //  u8/s8 src, u8/s8/s4/u4/f8/f4 wei (incl. WOQ)
 //  row/col-wise, K-grouped or KxN-grouped (wei) scales & zero-points
@@ -47,10 +49,11 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         __global const int *partner_offsets, __global DST_DATA_T *dst,
         const int group_count, const int is_2dby2d, const long m_fixed,
         const long k_total, const long N, const long k_block,
-        const long src_total, const long src_stride_m, const long src_stride_k,
-        const long wei_stride_g, const long wei_stride_k,
-        const long wei_stride_n, const long dst_stride_g,
-        const long dst_stride_m, const long dst_stride_n
+        const long src_total, const long k_align, const long src_stride_m,
+        const long src_stride_k, const long wei_stride_g,
+        const long wei_stride_k, const long wei_stride_n,
+        const long dst_stride_g, const long dst_stride_m,
+        const long dst_stride_n
 #if WITH_BIAS
         ,
         __global const BIA_DATA_T *bias, // Bias [group_count, 1, N]
@@ -98,11 +101,12 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
     if (n >= N) return;
 
     // Groups with invalid offsets are skipped: the tensor split along with src
-    // shares the src offsets
+    // shares the src offsets, and 2Dx2D groups align with the coarsest scales
+    // K-group
     const long start = (group_id == 0) ? 0 : src_offsets[group_id - 1];
     const long end = src_offsets[group_id];
-    if (start < 0 || end < start || end > src_total
-            || partner_offsets[group_id] != end
+    if (start < 0 || end < start || end > src_total || start % k_align != 0
+            || end % k_align != 0 || partner_offsets[group_id] != end
             || (group_id > 0 && partner_offsets[group_id - 1] != start))
         return;
 

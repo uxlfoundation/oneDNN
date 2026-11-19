@@ -92,6 +92,7 @@ scaling factor in a floating-point format, \f$zp_{x}\f$ is a zero
 point (typically in integral format), and \f$[:]\f$ is used to denote
 element-wise application of the formula to the arrays.
 
+@anchor dgaq_sbzp
 #### Scales Applied Before Zero-Points
 
 Some weight quantization formats define the dequantized value as the scaled

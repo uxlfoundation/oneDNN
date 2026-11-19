@@ -32,16 +32,13 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
-DEFINE_PD_CREATE(ncsp_batch_normalization_fwd_t<d_type>::pd_t)
-template <data_type_t d_type>
-DEFINE_PD_CREATE(ncsp_batch_normalization_bwd_t<d_type>::pd_t)
+DEFINE_PD_CREATE(ncsp_batch_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(ncsp_batch_normalization_bwd_t::pd_t)
 
 using namespace memory_tracking::names;
 using namespace data_type;
 
-template <data_type_t d_type>
-status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
+status_t ncsp_batch_normalization_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
 
     const bool calculate_stats = !pd()->stats_is_src();
@@ -54,7 +51,11 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
 
     const dim_t C = pd()->C();
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
+    const data_type_t d_type = pd()->src_md()->data_type;
+    const bool is_xf16 = utils::one_of(d_type, bf16, f16);
+    const size_t dt_size = types::data_type_size(d_type);
+
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SHIFT);
 
@@ -77,7 +78,7 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
         }
     }
 
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(uint8_t *, DNNL_ARG_WORKSPACE);
     acc_data_t *src_cvt_wsp
             = scratchpad.template get<acc_data_t>(key_bnorm_cvt);
@@ -92,7 +93,7 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
 
     const int nthr = pd()->nthr_;
     size_t l3_size_ = platform::get_per_core_cache_size(3) * nthr / 2;
-    size_t data_size = N * C * SP * sizeof(data_t);
+    size_t data_size = N * C * SP * dt_size;
     bool do_blocking = (data_size >= l3_size_ / 2 && l3_size_ > 0);
 
     parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
@@ -108,7 +109,7 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
         int64_t iters = 1;
 
         if (do_blocking) {
-            size_t working_set_size = N * SP * sizeof(data_t);
+            size_t working_set_size = N * SP * dt_size;
             bnorm_utils::cache_balance(
                     working_set_size, C, N, nthr, C_blks_per_iter, iters);
         } else
@@ -155,19 +156,19 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
                     for (dim_t n = N_s; n < N_e; ++n) {
                         const acc_data_t *scr_fp32;
                         size_t soff = off + n * C * SP;
-                        if (utils::one_of(d_type, bf16, f16)) {
+                        if (is_xf16) {
                             acc_data_t *tmp_src
                                     = src_cvt_wsp + ithr * SP_cl_align;
                             /*TODO: remove this conversion if performance
                             doesn't degrade, since xfloat16_t supports +=
                             operator with implicit conversions from xf16 to
                             float */
-                            types::cvt_to_float(
-                                    tmp_src + S_s, src + soff + S_s, S_chunk);
+                            types::cvt_to_float(d_type, tmp_src + S_s,
+                                    src + (soff + S_s) * dt_size, S_chunk);
                             scr_fp32 = tmp_src;
                         } else {
                             scr_fp32 = reinterpret_cast<const acc_data_t *>(
-                                    src + soff);
+                                    src + soff * dt_size);
                         }
                         PRAGMA_OMP_SIMD(reduction(+ : sum))
                         for (dim_t sp = S_s; sp < S_e; ++sp) {
@@ -196,19 +197,19 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
                     for (dim_t n = N_s; n < N_e; ++n) {
                         const acc_data_t *_src;
                         size_t soff = off * SP + n * C * SP;
-                        if (utils::one_of(d_type, bf16, f16)) {
+                        if (is_xf16) {
                             acc_data_t *tmp_src
                                     = src_cvt_wsp + ithr * SP_cl_align;
                             /*TODO: remove this conversion if performance
                             doesn't degrade, since xfloat16_t supports +=
                             operator with implicit conversions from xf16 to
                             float */
-                            types::cvt_to_float(
-                                    tmp_src + S_s, src + soff + S_s, S_chunk);
+                            types::cvt_to_float(d_type, tmp_src + S_s,
+                                    src + (soff + S_s) * dt_size, S_chunk);
                             _src = tmp_src;
                         } else {
                             _src = reinterpret_cast<const acc_data_t *>(
-                                    src + soff);
+                                    src + soff * dt_size);
                         }
                         PRAGMA_OMP_SIMD(reduction(+ : sum))
                         for (dim_t sp = S_s; sp < S_e; ++sp) {
@@ -246,7 +247,7 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
                     acc_data_t *_dst;
                     const acc_data_t *_src;
                     size_t s_off = off * SP + n * C * SP;
-                    if (utils::one_of(d_type, bf16, f16)) {
+                    if (is_xf16) {
                         // store dst to f32 buffer
                         _dst = src_cvt_wsp + ithr * SP_cl_align;
                         // convert src from bf16 to f32
@@ -256,13 +257,14 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
                         doesn't degrade, since xfloat16_t supports +=
                         operator with implicit conversions from xf16 to
                         float */
-                        types::cvt_to_float(
-                                tmp_src + S_s, src + s_off + S_s, S_chunk);
+                        types::cvt_to_float(d_type, tmp_src + S_s,
+                                src + (s_off + S_s) * dt_size, S_chunk);
                         _src = tmp_src;
                     } else {
-                        _dst = reinterpret_cast<acc_data_t *>(dst + s_off);
+                        _dst = reinterpret_cast<acc_data_t *>(
+                                dst + s_off * dt_size);
                         _src = reinterpret_cast<const acc_data_t *>(
-                                src + s_off);
+                                src + s_off * dt_size);
                     }
 #if CLANG_WA_02_SAFE_TO_USE_OMP_SIMD
                     PRAGMA_OMP_SIMD()
@@ -282,10 +284,11 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
                                 ? math::relu_fwd(bn_res, pd()->alpha())
                                 : bn_res;
                     }
-                    if (utils::one_of(d_type, bf16, f16)) {
+                    if (is_xf16) {
                         // convert dst from f32 to xf16
-                        types::cvt_from_float(
-                                dst + s_off + S_s, _dst + S_s, S_chunk);
+                        types::cvt_from_float(d_type,
+                                dst + (s_off + S_s) * dt_size, _dst + S_s,
+                                S_chunk);
                     }
                 }
             }
@@ -295,24 +298,23 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
     return status::success;
 }
 
-template struct ncsp_batch_normalization_fwd_t<f32>;
-template struct ncsp_batch_normalization_fwd_t<bf16>;
-template struct ncsp_batch_normalization_fwd_t<f16>;
-
-template <data_type_t d_type>
-status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
+status_t ncsp_batch_normalization_bwd_t::execute_backward(
         const exec_ctx_t &ctx) const {
 
     const auto use_scale = pd()->use_scale();
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
+    const data_type_t d_type = pd()->src_md()->data_type;
+    const bool is_xf16 = utils::one_of(d_type, bf16, f16);
+    const size_t dt_size = types::data_type_size(d_type);
+
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto mean = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN);
     auto variance = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE);
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
     auto ws = CTX_IN_MEM(const uint8_t *, DNNL_ARG_WORKSPACE);
 
-    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
+    auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
     auto diff_scale = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SCALE);
     auto diff_shift = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SHIFT);
 
@@ -338,7 +340,7 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
 
     const int nthr = pd()->nthr_;
     size_t l3_size_ = platform::get_per_core_cache_size(3) * nthr / 2;
-    size_t data_size = N * C * SP * sizeof(data_t);
+    size_t data_size = N * C * SP * dt_size;
     bool do_blocking = (data_size >= l3_size_ / 2 && l3_size_ > 0);
 
     parallel(nthr, [=](const int ithr, const int nthr) {
@@ -354,7 +356,7 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
         int64_t iters = 1;
 
         if (do_blocking) {
-            size_t working_set_size = 2 * N * SP * sizeof(data_t);
+            size_t working_set_size = 2 * N * SP * dt_size;
             bnorm_utils::cache_balance(
                     working_set_size, C, N, nthr, C_blks_per_iter, iters);
         } else
@@ -403,24 +405,24 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
                     const acc_data_t *_diff_dst;
                     const acc_data_t *_src;
                     dim_t s_off = off * SP + n * C * SP;
-                    if (utils::one_of(d_type, bf16, f16)) {
+                    if (is_xf16) {
                         // convert diff_dst to f32
                         acc_data_t *tmp_diff_dst
                                 = tmp_data_ + ithr * SP_cl_align;
-                        types::cvt_to_float(tmp_diff_dst + S_s,
-                                diff_dst + s_off + S_s, S_chunk);
+                        types::cvt_to_float(d_type, tmp_diff_dst + S_s,
+                                diff_dst + (s_off + S_s) * dt_size, S_chunk);
                         _diff_dst = tmp_diff_dst;
                         // convert src to f32
                         acc_data_t *tmp_src
                                 = tmp_data_ + (nthr + ithr) * SP_cl_align;
-                        types::cvt_to_float(
-                                tmp_src + S_s, src + s_off + S_s, S_chunk);
+                        types::cvt_to_float(d_type, tmp_src + S_s,
+                                src + (s_off + S_s) * dt_size, S_chunk);
                         _src = tmp_src;
                     } else {
                         _diff_dst = reinterpret_cast<const acc_data_t *>(
-                                diff_dst + s_off);
+                                diff_dst + s_off * dt_size);
                         _src = reinterpret_cast<const acc_data_t *>(
-                                src + s_off);
+                                src + s_off * dt_size);
                     }
 #if CLANG_WA_02_SAFE_TO_USE_OMP_SIMD
                     PRAGMA_OMP_SIMD(reduction(+ : diff_gamma, diff_beta))
@@ -473,31 +475,31 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
                     const acc_data_t *_diff_dst;
                     const acc_data_t *_src;
                     dim_t s_off = off * SP + n * C * SP;
-                    if (utils::one_of(d_type, bf16, f16)) {
+                    if (is_xf16) {
                         // store diff_src to f32 buffer
                         _diff_src = tmp_data_ + ithr * SP_cl_align;
                         acc_data_t *tmp_diff_dst
                                 = tmp_data_ + ithr * SP_cl_align;
-                        types::cvt_to_float(tmp_diff_dst + S_s,
-                                diff_dst + s_off + S_s, S_chunk);
+                        types::cvt_to_float(d_type, tmp_diff_dst + S_s,
+                                diff_dst + (s_off + S_s) * dt_size, S_chunk);
                         _diff_dst = tmp_diff_dst;
                         if (calculate_diff_stats) {
                             // convert src to f32
                             acc_data_t *tmp_src = tmp_data_
                                     + (2 * nthr + ithr) * SP_cl_align;
-                            types::cvt_to_float(
-                                    tmp_src + S_s, src + s_off + S_s, S_chunk);
+                            types::cvt_to_float(d_type, tmp_src + S_s,
+                                    src + (s_off + S_s) * dt_size, S_chunk);
                             _src = tmp_src;
                         } else
                             _src = nullptr; // to avoid compiler warning w/
                                     // gcc483
                     } else {
                         _diff_src = reinterpret_cast<acc_data_t *>(
-                                diff_src + s_off);
+                                diff_src + s_off * dt_size);
                         _diff_dst = reinterpret_cast<const acc_data_t *>(
-                                diff_dst + s_off);
+                                diff_dst + s_off * dt_size);
                         _src = reinterpret_cast<const acc_data_t *>(
-                                src + s_off);
+                                src + s_off * dt_size);
                     }
 #if CLANG_WA_02_SAFE_TO_USE_OMP_SIMD
                     PRAGMA_OMP_SIMD()
@@ -517,9 +519,10 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
                         v_diff_src *= gamma * sqrt_variance;
                         _diff_src[sp] = v_diff_src;
                     }
-                    if (utils::one_of(d_type, bf16, f16)) {
+                    if (is_xf16) {
                         // convert diff_src from f32
-                        types::cvt_from_float(diff_src + s_off + S_s,
+                        types::cvt_from_float(d_type,
+                                diff_src + (s_off + S_s) * dt_size,
                                 _diff_src + S_s, S_chunk);
                     }
                 }
@@ -529,9 +532,6 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
     return status::success;
 }
 
-template struct ncsp_batch_normalization_bwd_t<f32>;
-template struct ncsp_batch_normalization_bwd_t<bf16>;
-template struct ncsp_batch_normalization_bwd_t<f16>;
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

@@ -261,11 +261,13 @@ struct brgemm_matmul_conf_t {
     // Zero-point / s8-shift compensation of the grouped int8 path, computed by
     // brgemm_matmul_per_mn_comp_t as C = -U * V, U (M x K'), V (K' x N).
     bool with_per_mn_compensation = false;
-    // K' = per_mn_comp_wei_rows + (src zp or s8 shift ? num_K_blocks + 1 : 0).
-    // The wei zp term has one row per group of wei scales/zp along K, the
-    // src term one row per brgemm K call.
+    // K' = per_mn_comp_wei_rows + per_mn_comp_src_rows: the wei zp term has
+    // one row per group of per_mn_comp_wei_gsize K values, the src term
+    // (src zp or s8 shift) one row per per_mn_comp_src_gsize K values.
     dim_t per_mn_comp_wei_gsize = 0;
     dim_t per_mn_comp_wei_rows = 0;
+    dim_t per_mn_comp_src_gsize = 0;
+    dim_t per_mn_comp_src_rows = 0;
     dim_t per_mn_comp_K = 0;
     dim_t per_mn_comp_ldv = 0; // padded N of V
     // The AMX ukernel applies a common src scale in every per-K call, the

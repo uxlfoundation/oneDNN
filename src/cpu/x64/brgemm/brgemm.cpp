@@ -686,7 +686,7 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
             && brg->type != brgemm_static_offs && !brg->brgattr.var_bs
             && utils::one_of(brg->dt_c, data_type::f32, data_type::s32)
             && brg->brgattr.bd_mask_level == 0 && !brg->fused_copy_a
-            && !brg->has_per_k_scales() && brg->LDA2 == brg->LDA
+            && !brg->has_per_call_acc() && brg->LDA2 == brg->LDA
             && brg->LDC2_M == brg->LDC
             && IMPLICATION(brg->load_dim > brg->LDC, brg->LDC2_N == brg->LDC)
             && max_vpad == 0 && base_ker_d_stride_ok()
@@ -731,7 +731,7 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     // Per-K (block-wise) scales and per-(M,N) compensation are applied to the
     // partial result of every brgemm call. Only the AMX uker implements that
     // for tile accumulators; the base kernel would silently drop them.
-    if (brg->is_tmm && !brg->can_dispatch_uker() && brg->has_per_k_scales())
+    if (brg->is_tmm && !brg->can_dispatch_uker() && brg->has_per_call_acc())
         return status::unimplemented;
 
     if (!brg->can_dispatch_uker() && !base_ker_d_stride_ok())

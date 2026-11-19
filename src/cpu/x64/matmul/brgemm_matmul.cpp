@@ -407,8 +407,9 @@ status_t brgemm_matmul_base_t::pd_t::init(
         brg.int8_b_as_unsigned = bgmmc_.int8_b_as_unsigned;
         brg.int8_b_shift = bgmmc_.int8_b_shift();
         // The zero points and the s8 shift are compensated by
-        // brgemm_matmul_per_mn_comp_t.
+        // brgemm_matmul_per_mn_comp_t, which initializes the f32 buffer C.
         if (bgmmc_.with_per_mn_compensation) {
+            brg.req_f32_acc = true;
             brg.skip_zp_a_compensation = true;
             brg.skip_zp_b_compensation = true;
         }
@@ -1544,17 +1545,6 @@ struct brgemm_matmul_base_t::brg_matmul_exec_ctx_t {
                 bgmmc_, per_mn_comp_v_ptr_, b_idx, kk);
     }
 
-    // K range of the main (or K-tail) brgemm call of K block k_blk_idx.
-    void get_k_call_range(
-            dim_t k_blk_idx, bool is_tail, dim_t &k_start, dim_t &k_len) const {
-        const dim_t batch_size = get_brgemm_batch_size(k_blk_idx);
-        k_start = k_blk_idx * bgmmc_.K_blk * bgmmc_.brgemm_batch_size
-                + (is_tail ? batch_size * bgmmc_.K_blk : 0);
-        k_len = nstl::max<dim_t>(0,
-                nstl::min(is_tail ? bgmmc_.K_tail : batch_size * bgmmc_.K_blk,
-                        bgmmc_.K - k_start));
-    }
-
     const void *get_wei_zp_base() const { return wei_zp_ptr_; }
     // Element index of the wei zero point for (b_idx, k, n).
     dim_t get_wei_zp_elem_idx(dim_t b_idx, dim_t k, dim_t n) const {
@@ -2421,10 +2411,6 @@ void brgemm_matmul_base_t::prepare_per_mn_comp(
     brgemm_matmul_per_mn_comp_t::ctx_t ctx;
     ctx.A_batch = [&](dim_t b) { return brgmm_ctx.get_data_A_batch_ptr(b); };
     ctx.B_batch = [&](dim_t b) { return brgmm_ctx.get_data_B_batch_ptr(b); };
-    ctx.call_range = [&](dim_t c, dim_t &k0, dim_t &len) {
-        const bool is_tail = c == bgmmc.num_K_blocks;
-        brgmm_ctx.get_k_call_range(is_tail ? c - 1 : c, is_tail, k0, len);
-    };
     ctx.src_scales = [&](dim_t b, dim_t k, dim_t m) {
         return brgmm_ctx.get_src_scales_ptr(b, k, m);
     };

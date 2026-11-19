@@ -1213,7 +1213,7 @@ status_t init_output_conf(output_conf_t &output, compute_path_kind_t kind,
     // Scales are f32 values the kernel broadcasts or loads per N register:
     // src and dst scales are common, the weights scale common or per-N.
     VCONDCHECK_BRGEMM_IR(
-            !brg.has_per_k_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            !brg.has_per_call_acc(), VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMM_IR(
             IMPLICATION(brg.with_src_scales, brg.dt_src_scales == f32),
             VERBOSE_UNSUPPORTED_SCALES_CFG);

@@ -27,28 +27,26 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
+template <cpu_isa_t isa>
 struct jit_uni_lstm_cell_postgemm_bwd_t
     : public jit_uni_rnn_postgemm_t,
       public jit_uni_lstm_cell_postgemm_t<isa> {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lstm_cell_postgemm_bwd_t)
 
-    jit_uni_lstm_cell_postgemm_bwd_t(
-            const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
-        : jit_uni_rnn_postgemm_t(rnn, pd, jit_name())
+    jit_uni_lstm_cell_postgemm_bwd_t(const rnn_utils::rnn_conf_t &rnn,
+            const rnn_pd_t *pd, data_type_t src_dt, data_type_t scratch_dt)
+        : jit_uni_rnn_postgemm_t(rnn, pd, src_dt, scratch_dt, jit_name())
         , jit_uni_lstm_cell_postgemm_t<isa>(this, 11 /*tmp_id_begin*/,
                   // usage of jit_uni_rnn_postgemm_t::bf16_emu_ to identify bf16
                   // emulation case is illegal here, it's created in
                   // jit_uni_rnn_postgemm_t::init(), not in constructor, so
                   // jit_uni_rnn_postgemm_t::bf16_emu_ = nullptr always on this
                   // stage
-                  src_data_t == data_type::bf16 && !mayiuse(avx512_core_bf16)) {
-    }
+                  src_dt_ == data_type::bf16 && !mayiuse(avx512_core_bf16)) {}
 
     ~jit_uni_lstm_cell_postgemm_bwd_t() override = default;
 
-    status_t init(data_type_t sdt) override;
+    status_t init() override;
 
 protected:
     using injector_t = typename jit_uni_lstm_cell_postgemm_t<isa>::injector_t;
@@ -67,11 +65,11 @@ protected:
 
     const int vlen_scratch_ = vlen_
             / static_cast<int>(
-                    sizeof(float) / types::data_type_size(scratch_data_t));
+                    sizeof(float) / types::data_type_size(scratch_dt_));
     const int gate_dt_size_
-            = static_cast<int>(types::data_type_size(scratch_data_t));
+            = static_cast<int>(types::data_type_size(scratch_dt_));
     const int scratch_dt_size_
-            = static_cast<int>(types::data_type_size(scratch_data_t));
+            = static_cast<int>(types::data_type_size(scratch_dt_));
 
     void generate() override;
 };

@@ -21,11 +21,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-status_t jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t, scratch_data_t>::init(
-        data_type_t sdt) {
-    CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
+template <cpu_isa_t isa>
+status_t jit_uni_rnn_cell_postgemm_fwd_t<isa>::init() {
+    CHECK(jit_uni_rnn_postgemm_t::init());
     // we use rax for constant tables
     injector_ = utils::make_unique<injector_t>(this, pd_->activation_kind(),
             pd_->desc()->alpha, pd_->desc()->beta, 1.0f, data_type::f32, true,
@@ -33,10 +31,8 @@ status_t jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t, scratch_data_t>::init(
     return create_kernel();
 }
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-void jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t,
-        scratch_data_t>::generate() {
+template <cpu_isa_t isa>
+void jit_uni_rnn_cell_postgemm_fwd_t<isa>::generate() {
     using namespace Xbyak;
 
     const int mask = pd_->attr()->rnn_weights_qparams_.mask_;
@@ -104,7 +100,7 @@ void jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t,
         uni_vmovups(G, sg_addr);
 
         // dequantize the gates from s32 to f32 if needed
-        deq_w(src_data_t, G, tmp1_vmm, tmp2_vmm, 0, mask, vlen);
+        deq_w(src_dt_, G, tmp1_vmm, tmp2_vmm, 0, mask, vlen);
 
         // add biases
         to_float(tmp1_vmm, B_addr, rnn_.bias_dt, vlen);
@@ -114,9 +110,9 @@ void jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t,
         injector_->compute_vector(G.getIdx());
 
         // if training we write back the gates
-        if (is_training) to_src(wg_addr, G, src_data_t, vlen);
+        if (is_training) to_src(wg_addr, G, src_dt_, vlen);
 
-        to_src(ptr[addr_states_t_l_reg], G, src_data_t, vlen);
+        to_src(ptr[addr_states_t_l_reg], G, src_dt_, vlen);
         // if states_t_l_copy is a non null ptr, we write the output to both
         // tensors
         cmp(addr_states_t_l_copy_reg, rnn_.dhc * hstate_dt_size);
@@ -124,7 +120,7 @@ void jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t,
         // As to_src is called with write_only=true it's important for xf16
         // src_dt to execute just after to_src method with write_only=false
         // for the same Vmm
-        to_src(ptr[addr_states_t_l_copy_reg], G, src_data_t, vlen, true);
+        to_src(ptr[addr_states_t_l_copy_reg], G, src_dt_, vlen, true);
 
         // increment address pointers
         L(vector_loop_inc_regs);
@@ -156,7 +152,7 @@ void jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t,
         uni_vmovss(Gs, sg_addr);
 
         // dequantize the gates from s32 to f32 if needed
-        deq_w(src_data_t, G, tmp1_vmm, tmp2_vmm, 0, mask, scratch_dt_size);
+        deq_w(src_dt_, G, tmp1_vmm, tmp2_vmm, 0, mask, scratch_dt_size);
 
         // add biases
         to_float(tmp1_vmm, B_addr, rnn_.bias_dt,
@@ -167,9 +163,9 @@ void jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t,
         injector_->compute_vector(Gs.getIdx());
 
         // if training we write back the gates
-        if (is_training) to_src(wg_addr, G, src_data_t, scratch_dt_size);
+        if (is_training) to_src(wg_addr, G, src_dt_, scratch_dt_size);
 
-        to_src(ptr[addr_states_t_l_reg], G, src_data_t, scratch_dt_size);
+        to_src(ptr[addr_states_t_l_reg], G, src_dt_, scratch_dt_size);
         // if states_t_l_copy is a non null ptr, we write the output to both
         // tensors
         cmp(addr_states_t_l_copy_reg, rnn_.dhc * hstate_dt_size);
@@ -177,7 +173,7 @@ void jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t,
         // As to_src is called with write_only=true it's important for xf16
         // src_dt to execute just after to_src method with write_only=false
         // for the same Vmm
-        to_src(ptr[addr_states_t_l_copy_reg], G, src_data_t, scratch_dt_size,
+        to_src(ptr[addr_states_t_l_copy_reg], G, src_dt_, scratch_dt_size,
                 true);
 
         // increment address pointers
@@ -203,26 +199,8 @@ void jit_uni_rnn_cell_postgemm_fwd_t<isa, src_data_t,
     init_table(vlen);
 }
 
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx512_core, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx512_core, data_type::bf16,
-        data_type::f32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx512_core, data_type::f16,
-        data_type::f32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx512_core, data_type::u8,
-        data_type::s32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx512_core, data_type::s8,
-        data_type::s32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx2, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx2, data_type::bf16,
-        data_type::f32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx2, data_type::f16,
-        data_type::f32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx2, data_type::u8,
-        data_type::s32>;
-template struct jit_uni_rnn_cell_postgemm_fwd_t<avx2, data_type::s8,
-        data_type::s32>;
+template struct jit_uni_rnn_cell_postgemm_fwd_t<avx512_core>;
+template struct jit_uni_rnn_cell_postgemm_fwd_t<avx2>;
 
 } // namespace x64
 } // namespace cpu

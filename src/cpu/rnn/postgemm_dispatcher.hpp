@@ -48,32 +48,14 @@ float activation(alg_kind_t alg_kind, prop_kind_t prop_kind, float s,
         float alpha, float cliping);
 
 #if DNNL_X64
-// A plain `if` on a constant condition still instantiates the kernel in the
-// discarded branch. Specializing on `enable` keeps kernels of combinations
-// that can't occur out of the build (no `if constexpr` in C++11).
-template <bool enable>
-struct jit_postgemm_creator_t {
-    template <template <x64::cpu_isa_t, impl::data_type_t, impl::data_type_t>
-              class ker_t,
-            impl::data_type_t src_type, impl::data_type_t scratch_type>
-    static x64::jit_uni_rnn_postgemm_t *create(
-            const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd) {
-        if (x64::mayiuse(x64::avx512_core))
-            return new ker_t<x64::avx512_core, src_type, scratch_type>(rnn, pd);
-        return new ker_t<x64::avx2, src_type, scratch_type>(rnn, pd);
-    }
-};
-
-template <>
-struct jit_postgemm_creator_t<false> {
-    template <template <x64::cpu_isa_t, impl::data_type_t, impl::data_type_t>
-              class ker_t,
-            impl::data_type_t src_type, impl::data_type_t scratch_type>
-    static x64::jit_uni_rnn_postgemm_t *create(
-            const rnn_utils::rnn_conf_t &, const rnn_pd_t *) {
-        return nullptr;
-    }
-};
+template <template <x64::cpu_isa_t> class ker_t>
+x64::jit_uni_rnn_postgemm_t *create_jit_postgemm(
+        const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd,
+        data_type_t src_dt, data_type_t scratch_dt) {
+    if (x64::mayiuse(x64::avx512_core))
+        return new ker_t<x64::avx512_core>(rnn, pd, src_dt, scratch_dt);
+    return new ker_t<x64::avx2>(rnn, pd, src_dt, scratch_dt);
+}
 #endif
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
@@ -285,15 +267,12 @@ protected:
 //NOLINTBEGIN(bugprone-macro-parentheses)
 // Can't put types into `()`:
 // error: expected type-specifier before ‘)’ token
-#define CREATE_WITH_DIR(k, ker_t, enable) \
-    do { \
-        (k).reset(jit_postgemm_creator_t<enable>::template create<ker_t, \
-                src_type, scratch_type>(rnn, pd_)); \
-    } while (0)
+#define CREATE_WITH_DIR(k, ker_t) \
+    (k).reset(create_jit_postgemm<ker_t>(rnn, pd_, src_type, scratch_type))
 #define CREATE(k, ker_t) \
     do { \
-        if (jit_fwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _fwd_t), jit_fwd); \
-        if (jit_bwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _bwd_t), jit_bwd); \
+        if (jit_fwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _fwd_t)); \
+        if (jit_bwd) CREATE_WITH_DIR((k), CONCAT2(ker_t, _bwd_t)); \
     } while (0)
         //NOLINTEND(bugprone-macro-parentheses)
 
@@ -313,8 +292,8 @@ protected:
 #undef CREATE
 #undef CREATE_WITH_DIR
 
-        if (rnn_postgemm_) CHECK(rnn_postgemm_->init(src_type));
-        if (rnn_postgemm_part2_) CHECK(rnn_postgemm_part2_->init(src_type));
+        if (rnn_postgemm_) CHECK(rnn_postgemm_->init());
+        if (rnn_postgemm_part2_) CHECK(rnn_postgemm_part2_->init());
         return status::success;
     }
 #endif

@@ -21,12 +21,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-status_t
-jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t, scratch_data_t>::init(
-        data_type_t sdt) {
-    CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
+template <cpu_isa_t isa>
+status_t jit_uni_lstm_cell_postgemm_fwd_t<isa>::init() {
+    CHECK(jit_uni_rnn_postgemm_t::init());
     // we use rax for both constant tables and load correspondent label
     // into it when calling correspondent injector.
     sigmoid_injector_
@@ -38,10 +35,8 @@ jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t, scratch_data_t>::init(
     return create_kernel();
 }
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
-        scratch_data_t>::generate() {
+template <cpu_isa_t isa>
+void jit_uni_lstm_cell_postgemm_fwd_t<isa>::generate() {
     using namespace Xbyak;
 
     const auto is_training
@@ -164,13 +159,13 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
                         G2(G2_idx(ur_idx)), G3(G3_idx(ur_idx)),
                         tmp_c_states(c_states_idx(ur_idx));
                 // load G0 G1 G2 G3
-                load(G0, sg_addr(0, ur_idx), scratch_data_t, current_vlen);
-                load(G1, sg_addr(1, ur_idx), scratch_data_t, current_vlen);
-                load(G2, sg_addr(2, ur_idx), scratch_data_t, current_vlen);
-                load(G3, sg_addr(3, ur_idx), scratch_data_t, current_vlen);
+                load(G0, sg_addr(0, ur_idx), scratch_dt_, current_vlen);
+                load(G1, sg_addr(1, ur_idx), scratch_dt_, current_vlen);
+                load(G2, sg_addr(2, ur_idx), scratch_dt_, current_vlen);
+                load(G3, sg_addr(3, ur_idx), scratch_dt_, current_vlen);
 
                 // dequantize the gates from s32 to f32 if needed, add bias
-                deq_w(src_data_t, G0, this->get_next_tmp_vmm(),
+                deq_w(src_dt_, G0, this->get_next_tmp_vmm(),
                         this->get_next_tmp_vmm(), scale_off(0, ur_idx), mask,
                         current_vlen);
                 const auto bias_g0_vmm = this->get_next_tmp_vmm();
@@ -178,7 +173,7 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
                         current_vlen);
                 compute_vaddps(G0, G0, bias_g0_vmm, current_vlen);
 
-                deq_w(src_data_t, G1, this->get_next_tmp_vmm(),
+                deq_w(src_dt_, G1, this->get_next_tmp_vmm(),
                         this->get_next_tmp_vmm(), scale_off(1, ur_idx), mask,
                         current_vlen);
                 const auto bias_g1_vmm = this->get_next_tmp_vmm();
@@ -186,7 +181,7 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
                         current_vlen);
                 compute_vaddps(G1, G1, bias_g1_vmm, current_vlen);
 
-                deq_w(src_data_t, G2, this->get_next_tmp_vmm(),
+                deq_w(src_dt_, G2, this->get_next_tmp_vmm(),
                         this->get_next_tmp_vmm(), scale_off(2, ur_idx), mask,
                         current_vlen);
                 const auto bias_g2_vmm = this->get_next_tmp_vmm();
@@ -194,7 +189,7 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
                         current_vlen);
                 compute_vaddps(G2, G2, bias_g2_vmm, current_vlen);
 
-                deq_w(src_data_t, G3, this->get_next_tmp_vmm(),
+                deq_w(src_dt_, G3, this->get_next_tmp_vmm(),
                         this->get_next_tmp_vmm(), scale_off(3, ur_idx), mask,
                         current_vlen);
                 const auto bias_g3_vmm = this->get_next_tmp_vmm();
@@ -226,13 +221,13 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
 
             if (is_training) {
                 for (int ur_idx = 0; ur_idx < current_unroll_len; ur_idx++) {
-                    to_src(wg_addr(0, ur_idx), Vmm(G0_idx(ur_idx)), src_data_t,
+                    to_src(wg_addr(0, ur_idx), Vmm(G0_idx(ur_idx)), src_dt_,
                             current_vlen);
-                    to_src(wg_addr(1, ur_idx), Vmm(G1_idx(ur_idx)), src_data_t,
+                    to_src(wg_addr(1, ur_idx), Vmm(G1_idx(ur_idx)), src_dt_,
                             current_vlen);
                     if (!rnn_.is_lstm_peephole)
-                        to_src(wg_addr(3, ur_idx), Vmm(G3_idx(ur_idx)),
-                                src_data_t, current_vlen);
+                        to_src(wg_addr(3, ur_idx), Vmm(G3_idx(ur_idx)), src_dt_,
+                                current_vlen);
                 }
             }
             for (int ur_idx = 0; ur_idx < current_unroll_len; ur_idx++) {
@@ -246,7 +241,7 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
                 const Vmm G0(G0_idx(ur_idx)), G1(G1_idx(ur_idx)),
                         G2(G2_idx(ur_idx)), tmp_c_states(c_states_idx(ur_idx));
                 if (is_training) {
-                    to_src(wg_addr(2, ur_idx), G2, src_data_t, current_vlen);
+                    to_src(wg_addr(2, ur_idx), G2, src_dt_, current_vlen);
                 }
 
                 // compute c_states_t_l = G1 * c_tm1_l + G0 * G2
@@ -274,8 +269,8 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
                 if (is_training) {
                     for (int ur_idx = 0; ur_idx < current_unroll_len;
                             ur_idx++) {
-                        to_src(wg_addr(3, ur_idx), Vmm(G3_idx(ur_idx)),
-                                src_data_t, current_vlen);
+                        to_src(wg_addr(3, ur_idx), Vmm(G3_idx(ur_idx)), src_dt_,
+                                current_vlen);
                     }
                 }
             }
@@ -303,12 +298,12 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
             for (int ur_idx = 0; ur_idx < current_unroll_len; ur_idx++) {
                 const Vmm tmp_c_states(c_states_idx(ur_idx));
                 to_src(ptr[addr_states_t_l_reg + ur_idx * vlen_dst_],
-                        tmp_c_states, src_data_t, current_vlen);
+                        tmp_c_states, src_dt_, current_vlen);
                 // As to_src is called with write_only=true it's important
                 // for xf16 src_dt to execute just after to_src method with
                 // write_only=false for the same Vmm
                 to_src(ptr[addr_states_t_l_copy_reg + ur_idx * vlen_dst_],
-                        tmp_c_states, src_data_t, current_vlen, true);
+                        tmp_c_states, src_dt_, current_vlen, true);
             }
             const dim_t hstate_shift = current_vlen < vlen_
                     ? hstate_dt_size_
@@ -320,7 +315,7 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
             L_aligned(update_single_states_tensor_only_label);
             for (int ur_idx = 0; ur_idx < current_unroll_len; ur_idx++) {
                 to_src(ptr[addr_states_t_l_reg + ur_idx * vlen_dst_],
-                        Vmm(c_states_idx(ur_idx)), src_data_t, current_vlen);
+                        Vmm(c_states_idx(ur_idx)), src_dt_, current_vlen);
             }
 
             // increment address pointers
@@ -389,26 +384,8 @@ void jit_uni_lstm_cell_postgemm_fwd_t<isa, src_data_t,
     init_table(vlen_);
 }
 
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx512_core, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx512_core, data_type::bf16,
-        data_type::f32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx512_core, data_type::f16,
-        data_type::f32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx512_core, data_type::u8,
-        data_type::s32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx512_core, data_type::s8,
-        data_type::s32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx2, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx2, data_type::bf16,
-        data_type::f32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx2, data_type::f16,
-        data_type::f32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx2, data_type::u8,
-        data_type::s32>;
-template struct jit_uni_lstm_cell_postgemm_fwd_t<avx2, data_type::s8,
-        data_type::s32>;
+template struct jit_uni_lstm_cell_postgemm_fwd_t<avx512_core>;
+template struct jit_uni_lstm_cell_postgemm_fwd_t<avx2>;
 
 } // namespace x64
 } // namespace cpu

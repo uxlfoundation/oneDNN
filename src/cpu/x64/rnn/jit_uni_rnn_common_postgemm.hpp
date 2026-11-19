@@ -37,10 +37,12 @@ namespace x64 {
 struct jit_uni_rnn_postgemm_t : public jit_generator_t {
 
     jit_uni_rnn_postgemm_t(const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd,
-            const char *name)
+            data_type_t src_dt, data_type_t scratch_dt, const char *name)
         : jit_generator_t(name)
         , rnn_(rnn)
         , pd_(pd)
+        , src_dt_(src_dt)
+        , scratch_dt_(scratch_dt)
         , projection_(false)
         , bias_dt_size_(static_cast<int>(types::data_type_size(rnn.bias_dt)))
         , cstate_dt_size_(
@@ -67,10 +69,10 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
 
     bool is_projection() const { return projection_; }
 
-    virtual status_t init(data_type_t src_data_t) {
+    virtual status_t init() {
         // no need to check as bf16 is guarded for avx512 and above in rnn primtive
         using namespace Xbyak;
-        if (src_data_t == data_type::bf16 && !mayiuse(avx512_core_bf16)) {
+        if (src_dt_ == data_type::bf16 && !mayiuse(avx512_core_bf16)) {
             bf16_emu_ = new bf16_emulation_t(this, bf16_reg1, bf16_reg2,
                     bf16_reg3, bf16_reg4, bf16_reg5);
 
@@ -870,6 +872,8 @@ protected:
 
     const rnn_utils::rnn_conf_t &rnn_;
     const rnn_pd_t *pd_;
+    const data_type_t src_dt_;
+    const data_type_t scratch_dt_;
     bool projection_;
     bf16_emulation_t *bf16_emu_ = nullptr;
     const int bias_dt_size_;

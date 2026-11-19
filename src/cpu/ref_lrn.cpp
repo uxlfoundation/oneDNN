@@ -21,11 +21,15 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 
+#include "cpu/ref_io_helper.hpp"
 #include "cpu/ref_lrn.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
+
+DEFINE_PD_CREATE(ref_lrn_fwd_t::pd_t)
+DEFINE_PD_CREATE(ref_lrn_bwd_t::pd_t)
 
 namespace {
 
@@ -55,19 +59,19 @@ inline acc_data_t fast_negative_powf(acc_data_t omega, acc_data_t beta) {
 // k, a(alpha), b(beta), n(local_size) - lrn hyperparameters;
 // j - kernel points, j in [i - n/2, i + n/2] for ACROSS, 2d-shape for WITHIN;
 
-template <impl::data_type_t d_type>
 template <impl::format_tag_t tag>
-status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
+status_t ref_lrn_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     using namespace alg_kind;
     using namespace format_tag;
 
     status_t status = status::success;
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
+    auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
 
     const memory_desc_wrapper data_d(pd()->src_md());
+    const auto dt = data_d.data_type();
 
     const dim_t C = pd()->C();
     const dim_t D = pd()->D();
@@ -113,15 +117,16 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
     };
 
     // pass by value due to icc170 and icc180 problem on KNL
-    auto ker
-            = [=](data_t *d, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
+    auto ker = [=](dim_t dst_off, dim_t mb, dim_t oc, dim_t od, dim_t oh,
+                       dim_t ow) {
         acc_data_t sum = 0;
         if (across_channels) {
             const dim_t c_st = nstl::max(oc - half_size + 0, (dim_t)0);
             const dim_t c_en = nstl::min(oc + half_size + 1, C);
 
             for (dim_t c = c_st; c < c_en; ++c) {
-                const acc_data_t s = src[data_off(mb, c, od, oh, ow)];
+                const acc_data_t s = io::load_float_value(
+                        dt, src, data_off(mb, c, od, oh, ow));
                 sum += s * s;
             }
         } else {
@@ -134,13 +139,16 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
             for_(dim_t d = d_st; d < d_en; ++d)
             for_(dim_t h = h_st; h < h_en; ++h)
             for (dim_t w = w_st; w < w_en; ++w) {
-                const acc_data_t s = src[data_off(mb, oc, d, h, w)];
+                const acc_data_t s = io::load_float_value(
+                        dt, src, data_off(mb, oc, d, h, w));
                 sum += s * s;
             }
         }
         sum = k + alpha * sum / summands;
-        const acc_data_t s = src[data_off(mb, oc, od, oh, ow)];
-        d[0] = static_cast<data_t>(s * fast_negative_powf(sum, beta));
+        const acc_data_t s
+                = io::load_float_value(dt, src, data_off(mb, oc, od, oh, ow));
+        io::store_float_value(
+                dt, s * fast_negative_powf(sum, beta), dst, dst_off);
     };
 
     const dim_t MB = pd()->MB();
@@ -152,18 +160,18 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
                     = mb * stride_mb + c * H * W + (h * W + w) * blksize;
             PRAGMA_OMP_SIMD()
             for (dim_t cc = 0; cc < nstl::min(blksize, C - c); ++cc)
-                ker(&dst[off + cc], mb, c + cc, 0, h, w);
+                ker(off + cc, mb, c + cc, 0, h, w);
         });
     } else if (tag == nhwc) {
         parallel_nd(MB, H, W, C, [=](dim_t mb, dim_t h, dim_t w, dim_t c) {
             const dim_t off = mb * stride_mb + h * W * C + w * C + c;
-            ker(&dst[off], mb, c, 0, h, w);
+            ker(off, mb, c, 0, h, w);
         });
     } else {
         parallel_nd(MB, C, D, H, W,
                 [=](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) {
             const dim_t off = data_off(mb, c, d, h, w);
-            ker(&dst[off], mb, c, d, h, w);
+            ker(off, mb, c, d, h, w);
         });
     }
     return status::success;
@@ -181,20 +189,20 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
 // z_i = Sum:k [dd_k * dy_k/dx_j] = A - B (code variables) =
 //     = dd_i * O(i)^-b - 2*a*b/n * x_i * Sum:k {O(k)^-b / O(k) * x_k * dd_k};
 
-template <impl::data_type_t d_type>
 template <dnnl_format_tag_t tag>
-status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
+status_t ref_lrn_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     using namespace alg_kind;
     using namespace format_tag;
 
     status_t status = status::success;
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
-    auto diff_src = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DIFF_SRC, status);
+    auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
+    auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
+    auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
     CHECK(status);
 
     const memory_desc_wrapper data_d(pd()->src_md());
+    const auto dt = data_d.data_type();
 
     const dim_t C = pd()->C();
     const dim_t D = pd()->D();
@@ -247,7 +255,8 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
             const dim_t c_en = nstl::min(oc + half_size + 1, C);
 
             for (dim_t c = c_st; c < c_en; ++c) {
-                const acc_data_t s = src[data_off(mb, c, od, oh, ow)];
+                const acc_data_t s = io::load_float_value(
+                        dt, src, data_off(mb, c, od, oh, ow));
                 sum += s * s;
             }
         } else {
@@ -260,7 +269,8 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
             for_(dim_t d = d_st; d < d_en; ++d)
             for_(dim_t h = h_st; h < h_en; ++h)
             for (dim_t w = w_st; w < w_en; ++w) {
-                const acc_data_t s = src[data_off(mb, oc, d, h, w)];
+                const acc_data_t s = io::load_float_value(
+                        dt, src, data_off(mb, oc, d, h, w));
                 sum += s * s;
             }
         }
@@ -268,8 +278,8 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
     };
 
     // pass by value due to icc170 and icc180 problem on KNL
-    auto ker
-            = [=](data_t *d, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
+    auto ker = [=](dim_t diff_src_off, dim_t mb, dim_t oc, dim_t od, dim_t oh,
+                       dim_t ow) {
         acc_data_t A = 0, B = 0;
         if (across_channels) {
             const dim_t c_st = nstl::max(oc - half_size + 0, (dim_t)0);
@@ -280,10 +290,10 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
                 const acc_data_t omega = get_omega(mb, c, od, oh, ow);
                 const acc_data_t omega_in_beta
                         = fast_negative_powf(omega, beta);
-                const acc_data_t tmp
-                        = omega_in_beta * (acc_data_t)diff_dst[off];
+                const acc_data_t tmp = omega_in_beta
+                        * io::load_float_value(dt, diff_dst, off);
                 if (c == oc) A = tmp;
-                B += (src[off] * tmp / omega);
+                B += (io::load_float_value(dt, src, off) * tmp / omega);
             }
         } else {
             dim_t d_st = nstl::max(od - half_size + 0, (dim_t)0);
@@ -299,15 +309,16 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
                 const acc_data_t omega = get_omega(mb, oc, d, h, w);
                 const acc_data_t omega_in_beta
                         = fast_negative_powf(omega, beta);
-                const acc_data_t tmp
-                        = omega_in_beta * (acc_data_t)diff_dst[off];
+                const acc_data_t tmp = omega_in_beta
+                        * io::load_float_value(dt, diff_dst, off);
                 if (d == od && h == oh && w == ow) A = tmp;
-                B += (src[off] * tmp / omega);
+                B += (io::load_float_value(dt, src, off) * tmp / omega);
             }
         }
         const auto off = data_off(mb, oc, od, oh, ow);
-        B *= (2.0f * alpha * beta * src[off] / summands);
-        *d = static_cast<data_t>(A - B);
+        B *= (2.0f * alpha * beta * io::load_float_value(dt, src, off)
+                / summands);
+        io::store_float_value(dt, A - B, diff_src, diff_src_off);
     };
 
     const dim_t MB = pd()->MB();
@@ -319,114 +330,42 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
                     = mb * stride_mb + c * H * W + (h * W + w) * blksize;
             PRAGMA_OMP_SIMD()
             for (dim_t cc = 0; cc < nstl::min(blksize, C - c); ++cc)
-                ker(&diff_src[off + cc], mb, c + cc, 0, h, w);
+                ker(off + cc, mb, c + cc, 0, h, w);
         });
     } else if (tag == nhwc) {
         parallel_nd(MB, H, W, C, [=](dim_t mb, dim_t h, dim_t w, dim_t c) {
             const dim_t off = mb * stride_mb + h * W * C + w * C + c;
-            ker(&diff_src[off], mb, c, 0, h, w);
+            ker(off, mb, c, 0, h, w);
         });
     } else {
         parallel_nd(MB, C, D, H, W,
                 [=](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) {
             const dim_t off = data_off(mb, c, d, h, w);
-            ker(&diff_src[off], mb, c, d, h, w);
+            ker(off, mb, c, d, h, w);
         });
     }
     return status::success;
 }
 
-template status_t
-ref_lrn_fwd_t<data_type::f32>::execute_forward<format_tag::nChw16c>(
+template status_t ref_lrn_fwd_t::execute_forward<format_tag::nChw16c>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::f32>::execute_forward<format_tag::nChw8c>(
+template status_t ref_lrn_fwd_t::execute_forward<format_tag::nChw8c>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::f32>::execute_forward<format_tag::nchw>(
+template status_t ref_lrn_fwd_t::execute_forward<format_tag::nchw>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::f32>::execute_forward<format_tag::nhwc>(
+template status_t ref_lrn_fwd_t::execute_forward<format_tag::nhwc>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::f32>::execute_forward<format_tag::any>(
+template status_t ref_lrn_fwd_t::execute_forward<format_tag::any>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f32>::execute_backward<format_tag::nChw16c>(
+template status_t ref_lrn_bwd_t::execute_backward<format_tag::nChw16c>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f32>::execute_backward<format_tag::nChw8c>(
+template status_t ref_lrn_bwd_t::execute_backward<format_tag::nChw8c>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f32>::execute_backward<format_tag::nchw>(
+template status_t ref_lrn_bwd_t::execute_backward<format_tag::nchw>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f32>::execute_backward<format_tag::nhwc>(
+template status_t ref_lrn_bwd_t::execute_backward<format_tag::nhwc>(
         const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f32>::execute_backward<format_tag::any>(
-        const exec_ctx_t &ctx) const;
-
-template status_t
-ref_lrn_fwd_t<data_type::bf16>::execute_forward<format_tag::nChw16c>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::bf16>::execute_forward<format_tag::nChw8c>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::bf16>::execute_forward<format_tag::nchw>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::bf16>::execute_forward<format_tag::nhwc>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::bf16>::execute_forward<format_tag::any>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::bf16>::execute_backward<format_tag::nChw16c>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::bf16>::execute_backward<format_tag::nChw8c>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::bf16>::execute_backward<format_tag::nchw>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::bf16>::execute_backward<format_tag::nhwc>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::bf16>::execute_backward<format_tag::any>(
-        const exec_ctx_t &ctx) const;
-
-template status_t
-ref_lrn_fwd_t<data_type::f16>::execute_forward<format_tag::nChw16c>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::f16>::execute_forward<format_tag::nChw8c>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::f16>::execute_forward<format_tag::nchw>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::f16>::execute_forward<format_tag::nhwc>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_fwd_t<data_type::f16>::execute_forward<format_tag::any>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f16>::execute_backward<format_tag::nChw16c>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f16>::execute_backward<format_tag::nChw8c>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f16>::execute_backward<format_tag::nchw>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f16>::execute_backward<format_tag::nhwc>(
-        const exec_ctx_t &ctx) const;
-template status_t
-ref_lrn_bwd_t<data_type::f16>::execute_backward<format_tag::any>(
+template status_t ref_lrn_bwd_t::execute_backward<format_tag::any>(
         const exec_ctx_t &ctx) const;
 
 } // namespace cpu

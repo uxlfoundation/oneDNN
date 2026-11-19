@@ -537,7 +537,19 @@ The following are supported:
   - The masks must match the scales mask. The exception is a common weights
     zero point (`mask = 0`), which is supported for `u3` weights only.
   - Source zero points data types include `u8`, `s8`, `s32`
-  - Weights zero points data types include `u8`, `s8`, `u4`, `s4`, `s32`
+  - Weights zero points data types include `u8`, `s8`, `u4`, `s4`, `s32`, and
+    `f16`, `bf16` with the `static_sbzp` quantization mode
+- Quantization modes: source scales and zero points use the default mode.
+  Weights scales and zero points also support
+  [scales applied before zero-points](@ref dgaq_sbzp) (`static_sbzp`) for
+  weight-only quantization (variable-M variant only), with:
+  - `f16` or `bf16` scales and zero points; a common weights zero point is not
+    supported in this mode
+  - a floating-point (`f32`, `bf16`, `f16`) source, integer weights, and
+    `fpmath` mode with `apply_to_int` enabled
+
+  @warning The weights scales and zero points must use the same quantization
+  mode.
 - Post-ops (variable-M variant only): eltwise and binary multiplication
   post-ops are supported. Binary post-op
   tensors accept both dense and grouped memory descriptors.

@@ -528,7 +528,7 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
     if (doC && problem.sumA) eaddScaled(1, offsetCO, offsetCO, i0, Tco, strategy, state);
     if (doC && problem.sumB) eaddScaled(1, offsetCO, offsetCO, j0, Tco, strategy, state);
 
-    // When k blocking (or certain triangular source kernels)
+    // When k blocking
     //   A += h0 * lda (N) h0 (T) h0 * mb (Pc)
     //   B += h0 (N) h0 * ldb (T) h0 * nb (Pr)
     if (!h0.isInvalid()) {
@@ -738,7 +738,7 @@ void Generator<hw>::gemmFoldOffsets(const GEMMProblem &problem, const GEMMStrate
     foldOrSave(strategy.A, state.inputs.A, state.offsetA, state.inputs.offsetA, state.saveOffsetA, deduplicateAB);
     foldOrSave(strategy.B, state.inputs.B, state.offsetB, state.inputs.offsetB, state.saveOffsetB);
     for (int q = 0; q < state.C_count; q++)
-        foldOrSave(strategy.C, state.inputs.C[q], state.offsetC[q], state.inputs.offsetC[q], state.saveOffsetC[q]); // TODO: Init for hpl.
+        foldOrSave(strategy.C, state.inputs.C[q], state.offsetC[q], state.inputs.offsetC[q], state.saveOffsetC[q]);
     if (problem.usesCOPtr())
         foldOrSave(strategy.CO, state.inputs.coPtr, state.offsetCO, state.inputs.offsetCO, state.saveOffsetCO);
 
@@ -880,16 +880,6 @@ void Generator<hw>::gemmGetBatchIDs(const GEMMProblem &problem, const GEMMStrate
         }
     }
     state.ra.safeRelease(div);
-}
-
-template <HW hw>
-void Generator<hw>::gemmReleaseBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
-{
-    if (problem.batch != BatchMode::Strided) return;
-    if (problem.batchDims == 1 && state.r0_info == r0) return;
-    if (problem.hasBinaryPostOp()) return;
-    for (int b = 0; b < problem.batchDims; b++)
-        state.ra.safeRelease(state.batchID[b]);
 }
 
 // Convert leading dimension and offset inputs to bytes.
@@ -2391,7 +2381,6 @@ void Generator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMMStrategy &
     }
 
     // Restore A/B addresses and strategies that were modified by SLM copies.
-
     if (strategy.slmA) {
         state.ra.safeRelease(state.effA);
         state.ra.safeRelease(state.effAo);
@@ -2634,7 +2623,7 @@ void Generator<hw>::makeSLMBaseRelative(Subregister addr, const GEMMState &state
 
 // Initialize the interface.
 template <HW hw>
-void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
+void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     Subregister localSize[3];
     GRF localID[3];
@@ -2757,7 +2746,6 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     }
     if (problem.hasCMXScale()) {
         state.inputs.cScalePtr = interface.getArgumentIfExists("c_scale_ptr");
-        state.inputs.surfaceCScale = interface.getArgumentSurfaceIfExists("c_scale_ptr");
     }
     if (problem.needsSeparateASums()) {
         state.inputs.agPtr = interface.getArgumentIfExists("ag_ptr");
@@ -2848,9 +2836,6 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.inputs.incr_alpha = interface.getArgumentIfExists("incr_alpha");
         state.inputs.incr_beta = interface.getArgumentIfExists("incr_beta");
     }
-    state.inputs.diagA = interface.getArgumentIfExists("diag_A");
-    state.inputs.diagB = interface.getArgumentIfExists("diag_B");
-    state.inputs.diagC = interface.getArgumentIfExists("diag_C");
     state.inputs.flags = interface.getArgumentIfExists("flags");
     state.inputs.slmBase = interface.getArgumentIfExists("slm_base");
 
@@ -2951,7 +2936,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     for (auto &off: state.inputs.binaryOffsets)
         off = off.d();
 
-    // For now, reinterpret m/n/k/ld/diag variables to 32-bit if they are 64-bit.
+    // For now, reinterpret m/n/k/ld variables to 32-bit if they are 64-bit.
     state.inputs.m = state.inputs.m.d();
     state.inputs.n = state.inputs.n.d();
     state.inputs.k = state.inputs.k.d();
@@ -2962,9 +2947,6 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     state.inputs.ldao = state.inputs.ldao.ud();
     state.inputs.ldbo = state.inputs.ldbo.ud();
     state.inputs.ldco = state.inputs.ldco.ud();
-    state.inputs.diagA = state.inputs.diagA.d();
-    state.inputs.diagB = state.inputs.diagB.d();
-    state.inputs.diagC = state.inputs.diagC.d();
 
     // Claim registers.
     auto claimIfValid = [&](Subregister s) {
@@ -3067,7 +3049,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     else if (problem.beta.pointer())
         state.ra.claim(state.inputs.betaPtr);
 
-    if (!inSK) {
+    {
         state.ra.claim(state.inputs.localIDM);
         state.ra.claim(state.inputs.localIDN);
         if (!strategy.fixedWG(problem)) {
@@ -3179,7 +3161,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 
 // Initialize the state structure.
 template <HW hw>
-void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
+void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
     auto Tc = problem.Tc;
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
@@ -3188,7 +3170,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
 
     {
         initState(problem, strategy, state);
-        gemmInitInterface(problem, strategy, state, inSK);
+        gemmInitInterface(problem, strategy, state);
         state.isNested |= strategy.fused;
         state.isNested |= strategy.persistentLoop();
     }

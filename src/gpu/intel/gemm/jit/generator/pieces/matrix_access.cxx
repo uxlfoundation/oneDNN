@@ -515,7 +515,7 @@ void Generator<hw>::loadLoadStoreDescriptors(bool load, bool store, RegisterBloc
 
             uint32_t underlyingSIMD = std::max<uint32_t>(block.simdSize, uint32_t(maxScatteredSIMD(hw, astrategy)) >> 1);
             int log2GRFs = ilog2(underlyingSIMD * block.ebytes) - GRF::log2Bytes(hw);
-            int log2Components = int(block.splitComplex);
+            int log2Components = 0;
 
             if (channel) mov(1, t2, 0x1000 << log2Components);
             mul(1, t1, state.lsDescConstant[log2GRFs + log2Components], count.uw());
@@ -541,7 +541,7 @@ void Generator<hw>::loadLoadStoreDescriptors(bool load, bool store, RegisterBloc
             exdescStore.parts.extMessageLen = 0;     //
             descLoad.parts.responseLen = 0;
 
-            int log2Components = int(block.splitComplex);
+            int log2Components = 0;
             int shift = int(block.simdSize == 16) + log2Components;
             auto bitmask = uint16_t(0x0F00 << log2Components);
 

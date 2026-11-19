@@ -19,7 +19,6 @@
 
 #include <array>
 #include <bitset>
-#include <complex>
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -240,7 +239,7 @@ protected:
     void padding();
 
     void allocVFlagStorage(const CommonStrategy &strategy, CommonState &state, bool saveCurrent = true);
-    void deallocVFlagStorage(CommonState &state, bool saveCurrent = true);
+    void deallocVFlagStorage(CommonState &state);
     ngen::FlagRegister getPhysicalFlag(VirtualFlag vflag, CommonState &state);
 
     ngen::Subregister copySubregister(const ngen::Subregister &reg, CommonState &state, ngen::Bundle hint = ngen::Bundle(ngen::Bundle::any, 0));
@@ -282,7 +281,6 @@ protected:
     void copyRegisters(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
     void copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
     void copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
-    void copyRegisters(Type Ts, Type Td, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const Scalar &alpha, const SubregisterPair &alpha_real, const SubregisterPair &alpha_imag, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
     void copyExecute(CopyPlan &&plan, CommonState &state);
     void overlappedCopy(const GRFMultirange &src, const GRFMultirange &dst, CommonState &state);
 

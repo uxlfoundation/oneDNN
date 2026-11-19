@@ -347,7 +347,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     //                         64-bit emulation > r0 header storage.
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW;
     if (moveR0 == MoveR0::Acc)
-        if (cAccumulators || emulateNeedsAcc || xParallel || (kChain > 1) || barrierFreq || fuseBeta)
+        if (cAccumulators || emulateNeedsAcc || (kChain > 1) || barrierFreq || fuseBeta)
             moveR0 = MoveR0::None;
 
     // SIMT control flow is used by jump tables, (emulated) atomics, and double masking.

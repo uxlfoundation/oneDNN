@@ -123,8 +123,7 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     //   - ld scaling
     //   - i0/j0/h0 calculations (inside WG)
     //   - A/B/C offsets
-    bool wgCheck = wgRemCheck(problem, strategy);
-    bool gemmtBarriers = problem.gemmt() && strategy.needsBarrier();
+    bool needWGIJ0 = wgRemCheck(problem, strategy);
 
     auto &k = state.inputs.k;
     auto &k0 = state.inputs.k0;
@@ -134,7 +133,7 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
 
     gemmScaleInputs(problem, strategy, state);
 
-    if (wgCheck || gemmtBarriers) {
+    if (needWGIJ0) {
         state.wgI0 = copySubregister(state.i0, state);
         state.wgJ0 = copySubregister(state.j0, state);
     }

@@ -97,7 +97,7 @@ bool Generator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &strategy, GE
 
     // Scale by alpha now if alpha and beta are both nontrivial. Todo: move above beta = 0 check,
     //  handle double precision correctly (load alpha to register first).
-    // Also scale if atomically updating C or for split-complex.
+    // Also scale if atomically updating C.
     bool nontrivialAlpha = !problem.alpha1() && !problem.alphaM1();
     bool forceScale = !problem.alpha1() && strategy.C.atomic;
 
@@ -171,7 +171,8 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
     block2DCRemainder |= block2DCFull;
     block2DCRemainder &= !strategy.C.atomic;
     block2DCFull &= !strategy.C.atomic;
-    bool altCRemainder = strategy.altCRemainder && !strategy.C.padded && (remainderM || remainderN || problem.gemmt());
+    bool altCCheck = remainderM || remainderN;
+    bool altCRemainder = strategy.altCRemainder && !strategy.C.padded && altCCheck;
     bool stdCRemainder = !(altCRemainder && (strategy.remHandling[LoopM] == RemainderHandling::KnownRemainder)
                                          && (strategy.remHandling[LoopN] == RemainderHandling::KnownRemainder));
 
@@ -247,10 +248,7 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
     };
 
     if (stdCRemainder) {
-        // Check to see if we should jump to alternate C remainder handling path, when enabled:
-        //  - if this a remainder kernel
-        //  - for triangular updates, if the diagonal crosses this block.
-        //       When fusing, check diagonal for thread 0 for (fused in n) upper/m lower, thread 1 for n lower/m upper.
+        // Check to see if we should jump to alternate C remainder handling path, when enabled, for remainder kernels.
         if (block2DCFull)
             jmpi(1, labelBlock2DCRemainder);
         else if (altCRemainder || block2DCRemainder) {
@@ -532,7 +530,6 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
     // Decide if we need to create special paths for beta = 0 or beta = 1 cases.
     bool checkBeta0 =  problem.checkBeta0 && !beta.fixed();
     bool checkBeta1 = strategy.checkBeta1 && !beta.fixed();
-    bool checkTRMMBeta1 = state.beta1.isValid();
 
     bool fuseCheckBeta0 = false;
     bool fuseCheckBeta1 = false;
@@ -554,7 +551,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
             checkBeta0 = checkBeta1 = false;
     }
 
-    if (checkTRMMBeta1 && (checkBeta0 || checkBeta1)) stub();
+    bool beta1Path = checkBeta1;
 
     // Decide if we need special paths for L1-uncached/cached cases.
     bool checkUC = strategy.altFusedBeta && strategy.kParallelVariable && !strategy.fusePostOps && strategy.C.newDP;
@@ -568,7 +565,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
         setCCachingW(strategy, state, C_l1UCW, Ce_l1UCW, strategy.C.atomic);
 
     // Generate the various paths needed.
-    if (!checkBeta0 && !checkBeta1 && !checkTRMMBeta1 && !checkUC) {
+    if (!checkBeta0 && !beta1Path && !checkUC) {
         if (!gemmUpdateC(problem, strategy, state)) return false;
     } else {
         Label labelBeta0, labelBeta1, labelCached, labelBeta0Cached, labelBetaDone;
@@ -625,7 +622,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
         if (checkBeta0 && !fuseCheckBeta1)
             jmpi(mod0, labelBeta0);
 
-        if (checkBeta1 || checkTRMMBeta1) {
+        if (beta1Path) {
             simtCF1 ?  if_(mod1, labelBeta1, labelBetaDone)
                     : jmpi(mod1, labelBeta1);
         }
@@ -654,7 +651,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
                        : epilogue(strategy, state);
 
         // beta = 1 update.
-        if (checkBeta1 || checkTRMMBeta1) {
+        if (beta1Path) {
             status << "Special path: beta = 1" << status_stream::endl;
             mark(labelBeta1);
 
@@ -751,7 +748,6 @@ template <HW hw>
 void Generator<hw>::updateC(const GRFMultirange &C_acc, const GRFMultirange &C_accSwap, const GRFMultirange &C_load,
                             const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    auto Ts = problem.Ts;
     auto &alpha = problem.alpha;
     auto &beta = problem.beta;
     auto valphar = state.inputs.alpha_real;
@@ -791,9 +787,9 @@ void Generator<hw>::updateC(const GRFMultirange &C_acc, const GRFMultirange &C_a
             if (!beta1) {
                 if (betaM1)
                     neg = true;
-                else if (!beta.fixed() && !Ts.isComplex())
+                else if (!beta.fixed()) {
                     FOR_EACH_C(mul(esize, loaded, loaded, vbetar.getRegAvoiding(hw, acc)));
-                else
+                } else
                     stub();
             }
             if (alpha.fixed())
@@ -884,7 +880,6 @@ void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const Registe
     // Prepare for late C conversion.
     bool lateCConvert = (!loadOnly && !atomicUpdate && problem.needsTsConvert() && state.Tacc != Ts);
     bool copyCLoad = needLoad && (copyC || lateCConvert);
-    if (lateCConvert && Tc.isComplex()) stub();
 
     // Load as much of C as is possible at a time, given register space.
     for (int lstart = 0; lstart < nblocks;) {
@@ -934,7 +929,7 @@ void Generator<hw>::updateCLayout(const RegisterLayout &layoutExt, const Registe
             }
 
             auto blockExt = layoutExt[lend];
-            bool origin = (blockExt.offsetR == 0 && blockExt.offsetC == 0 && blockExt.cxComponent <= 0);
+            bool origin = (blockExt.offsetR == 0 && blockExt.offsetC == 0);
             if (blockExt.offsetAddr == 0)
                 initOA = 0, lanchor = lend;
             else {
@@ -2194,13 +2189,11 @@ template <HW hw>
 bool Generator<hw>::gemmConvertC(Type Tnew, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto Told = state.Tacc;
-    int ncomp = (problem.Tc.isComplex() && state.haveCSwap && state.cSwapActive) ? 2 : 1;
 
     if (Tnew.bits() != Told.bits())
         return false;
 
-    for (int comp = 0; comp < ncomp; comp++)
-        convert(state.C_regs[comp], Told, Tnew, strategy, state);
+    convert(state.C_regs[0], Told, Tnew, strategy, state);
 
     state.setTacc(Tnew);
 

@@ -153,7 +153,6 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
     auto alpha  = saveData[0].ud(6).reinterpret(0, problem.Ts.ngen());
     auto beta   = saveData[0].ud(7).reinterpret(0, problem.Ts.ngen());
     auto remFusedStorage = saveData[1].ud(0);
-    auto diagC  = saveData[1].ud(1);
     auto effCO  = saveData[1].uq(1);
     auto ldco   = saveData[1].ud(5);
     auto effAs  = saveData[1].uq(2).reinterpret(0, state.effA.getType());
@@ -188,8 +187,6 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
     shr(1, kLoops, kLoops, ilog2(params.ksys));
     if (state.remFusedStorage.isValid())
         mov(1, remFusedStorage, state.remFusedStorage);
-    if (state.diagC.isValid())
-        mov(1, diagC, state.diagC);
     if (state.effCO.isValid()) {
         effCO = effCO.reinterpret(0, state.effCO.getType());
         emov(1, effCO, state.effCO, strategy, state);
@@ -197,7 +194,6 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
             mov(1, ldco, state.inputs.ldco);
     }
     if (problem.hasBinaryPostOp()) {
-        if (state.diagC.isValid()) stub();
         if (state.effCO.isValid() && effCO.getBytes() > 4) stub();
         mov(1, saveI0, state.i0);
         mov(1, saveJ0, state.j0);
@@ -226,7 +222,6 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
     state.ra.release(state.inputs.alpha_real);
     state.ra.release(state.inputs.beta_real);
     state.ra.release(state.remFusedStorage);
-    state.ra.release(state.diagC);
     state.ra.release(state.effCO);
     state.ra.release(state.inputs.ldco);
 
@@ -281,8 +276,6 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
         state.remaindersFused[LoopN] = state.remainders[LoopN];
         state.remaindersFused[strategy.fusedLoop] = remFusedStorage;
     }
-    if (state.diagC.isValid())
-        state.diagC = diagC;
     if (state.effCO.isValid())
         state.effCO = effCO;
     if (state.inputs.ldco.isValid())
@@ -317,8 +310,6 @@ inline void sysgemmSetupCLayouts(HW hw, const GRFMultirange &C_regs, int accStri
             RegisterBlock block;
             block.hw = hw;
             block.colMajor = true;
-            block.splitComplex = false;
-            block.cxComponent = RegisterBlock::Interleaved;
             block.nr = block.ld = 8;
             block.nc = 4;
             block.component = 0;
@@ -1519,7 +1510,6 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
     auto alpha  = saveData[0].ud(6).reinterpret(0, problem.Ts.ngen());
     auto beta   = saveData[0].ud(7).reinterpret(0, problem.Ts.ngen());
     auto remFusedStorage = saveData[1].ud(0);
-    auto diagC  = saveData[1].ud(1);
     auto effCO  = saveData[1].uq(1);
     auto C_ptr  = saveData[1].uq(2);
     auto ldco   = saveData[1].ud(7);
@@ -1556,8 +1546,6 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
     shr(1, kLoops, kLoops, ilog2(params.ksys));
     if (state.remFusedStorage.isValid())
         mov(1, remFusedStorage, state.remFusedStorage);
-    if (state.diagC.isValid())
-        mov(1, diagC, state.diagC);
     if (state.effCO.isValid()) {
         effCO = effCO.reinterpret(0, state.effCO.getType());
         emov(1, effCO, state.effCO, strategy, state);
@@ -1565,7 +1553,6 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
             mov(1, ldco, state.inputs.ldco);
     }
     if (problem.hasBinaryPostOp()) {
-        if (state.diagC.isValid()) stub();
         if (state.effCO.isValid() && effCO.getBytes() > 4) stub();
         mov(1, saveI0, state.i0);
         mov(1, saveJ0, state.j0);
@@ -1603,7 +1590,6 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
     state.ra.release(state.inputs.alpha_real);
     state.ra.release(state.inputs.beta_real);
     state.ra.release(state.remFusedStorage);
-    state.ra.release(state.diagC);
     state.ra.release(state.effCO);
     state.ra.release(state.inputs.ldco);
 
@@ -1656,8 +1642,6 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
         state.remaindersFused[LoopN] = state.remainders[LoopN];
         state.remaindersFused[strategy.fusedLoop] = remFusedStorage;
     }
-    if (state.diagC.isValid())
-        state.diagC = diagC;
     if (state.effCO.isValid())
         state.effCO = effCO;
     if (state.inputs.ldco.isValid())

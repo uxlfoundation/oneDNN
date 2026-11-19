@@ -329,18 +329,18 @@ void Generator<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td, const Registe
         int srcMN = alongR ? layoutSrc.rows() : layoutSrc.cols();
         // Compact copy: loaded value g lands in lane g. Then expand each lane over its bcast lanes,
         // high-to-low so lane g is read before a lower group's expansion overwrites it.
-        copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, 0, 0, false, strategy, state);
+        copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, 0, 0, strategy, state);
         for (int g = srcMN - 1; g >= 0; g--) {
             auto lane = layoutDst.slice(alongC, g, g + 1, false);
             for (int t = (g == 0 ? 1 : 0); t < bcast; t++) {
                 int doff = g * (bcast - 1) + t;
-                copyRegisters(Td, Td, lane, layoutDst, dst, dst, alongR ? doff : 0, alongC ? doff : 0, false, strategy, state);
+                copyRegisters(Td, Td, lane, layoutDst, dst, dst, alongR ? doff : 0, alongC ? doff : 0, strategy, state);
             }
         }
     } else {
         for (int doffR = 0; doffR < layoutDst.rows(); doffR += layoutSrc.rows())
             for (int doffC = 0; doffC < layoutDst.cols(); doffC += layoutSrc.cols())
-                copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, doffR, doffC, false, strategy, state);
+                copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, doffR, doffC, strategy, state);
     }
 
     // BDPAS: duplicate scale data to the upper half of each GRF for the second pass.
@@ -351,7 +351,7 @@ void Generator<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td, const Registe
             auto upperLayout = layoutDst;
             for (auto &block : upperLayout)
                 block.offsetBytes += bdpasTileMN;
-            copyRegisters(Td, Td, layoutDst, upperLayout, dst, dst, 0, 0, false, strategy, state);
+            copyRegisters(Td, Td, layoutDst, upperLayout, dst, dst, 0, 0, strategy, state);
         }
     }
 
@@ -648,7 +648,7 @@ void Generator<hw>::dequantizeSubByteInt(bool doA, const RegisterLayout& layoutS
         dequantizeSubByteIntShift(Tsrc, src, strategy);
 
     // 2) Copy u4/2 -> u16 data.
-    copyRegisters(Tsrc.asUnsigned(), Type::u16, layoutSrc, *effLayoutDst, src, *effDst, offR, offC, false, strategy, state);
+    copyRegisters(Tsrc.asUnsigned(), Type::u16, layoutSrc, *effLayoutDst, src, *effDst, offR, offC, strategy, state);
 
     // 3) Reinterpret u16 data as denormal f16, scale into normal range and subtract (rescaled) offsets if available.
     //     The required rescaling factor (2^24) is necessarily outside f16 range,
@@ -677,7 +677,7 @@ void Generator<hw>::dequantizeSubByteInt(bool doA, const RegisterLayout& layoutS
 
     // 6) Convert to dst type if needed.
     if (f32 || bf16) {
-        copyRegisters(Type::f16, Tdst, layoutDstF16, layoutDst, dstF16, dst, offR, offC, false, strategy, state);
+        copyRegisters(Type::f16, Tdst, layoutDstF16, layoutDst, dstF16, dst, offR, offC, strategy, state);
         safeReleaseRanges(dstF16, state);
     }
 
@@ -749,7 +749,7 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
                        strategy, state, s4Shift);
     } else {
         if (copy)
-            copyRegisters(Tsrc, Tx_int, layoutSrc, layoutDst, src, dst, offR, offC, false, strategy, state);
+            copyRegisters(Tsrc, Tx_int, layoutSrc, layoutDst, src, dst, offR, offC, strategy, state);
         else if (Tsrc.asSigned() != Tx_int.asSigned())
             convert(src, Tsrc, Tx_int, strategy, state);
 
@@ -770,7 +770,7 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
     }
 
     if (ms < md || ns < nd) {
-        copyRegisters(Tdst, Tdst, layoutDst, layoutDst0, dst, dst0, offR0, offC0, false, strategy, state);
+        copyRegisters(Tdst, Tdst, layoutDst, layoutDst0, dst, dst0, offR0, offC0, strategy, state);
         safeReleaseRanges(dst, state);
     }
 }

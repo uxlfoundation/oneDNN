@@ -110,32 +110,6 @@ void Generator<hw>::deduplicateScalar(SubregisterPair &val, CommonState &state)
     }
 }
 
-// Create multiple versions of the input subregister reg, shifted by amounts specified by the shifts bitmask.
-// The input subregister is used for one of the versions.
-template <HW hw>
-MultishiftSubregister Generator<hw>::multishift(const Subregister &reg, unsigned int shifts,
-                                                const CommonStrategy &strategy, CommonState &state, Bundle hint)
-{
-    MultishiftSubregister ms;
-
-    while (shifts != 0) {
-        int shift = bsr(shifts);
-        shifts &= ~(1 << shift);
-
-        if (shifts != 0) {
-            Subregister s = state.ra.alloc_sub(reg.getType(), hint);
-            ms.set(shift, s);
-            eshr(1, s, reg, shift, strategy, state);
-        } else {
-            ms.set(shift, reg);
-            if (shift > 0)
-                eshr(1, reg, reg, shift, strategy, state);
-        }
-    }
-
-    return ms;
-}
-
 template <HW hw>
 FlagRegister Generator<hw>::getPhysicalFlag(VirtualFlag vflag, CommonState &state)
 {
@@ -185,12 +159,12 @@ void Generator<hw>::allocVFlagStorage(const CommonStrategy &strategy, CommonStat
 }
 
 template <HW hw>
-void Generator<hw>::deallocVFlagStorage(CommonState &state, bool saveCurrent)
+void Generator<hw>::deallocVFlagStorage(CommonState &state)
 {
     if (state.vflagStorage.empty())
         return;
 
-    if (saveCurrent) for (int i = 0; i < FlagRegister::subcount(hw); i++) {
+    for (int i = 0; i < FlagRegister::subcount(hw); i++) {
         auto flag = FlagRegister::createFromIndex(i);
         if ((i & 1) == 0 && !state.raVFlag.isLocked(VirtualFlag(i, 2))) {
             mov(1, flag.ud(), state.vflagStorage[0].ud(i >> 1));

@@ -93,12 +93,10 @@ struct RegisterBlock {
     uint16_t ld;                // Leading dimension, in elements.
     uint16_t offsetR, offsetC;  // Row and column offset within matrix block.
     uint8_t colMajor : 1;       // Is this block column-major? (columns stored consecutively inside each register)
-    uint8_t splitComplex : 1;   // True if complex data split into successive real and imaginary parts.
     uint8_t byteGlue : 1;       // True if strided sub-byte data is unit stride within each byte.
     uint8_t : 5;
     uint8_t crosspack;          // Crosspack for this block (1 if none).
     uint8_t component;          // Component # for this block.
-    int8_t cxComponent;         // Complex component # for this block (-1 if not complex or interleaved).
     uint16_t bytes;             // # of bytes in this block.
     uint16_t offsetBytes;       // Byte offset within register block.
     ngen::HW hw;                // GPU architecture.
@@ -134,8 +132,6 @@ struct RegisterBlock {
     MaskInfo colMask;           // Column mask for this block.
 
     int32_t offsetAddr;         // Address offset, for sharing address registers. For 2D addressing, contains x/y offsets in low/high words.
-
-    static constexpr int8_t Interleaved = -1;     // Value for cxComponent indicating interleaved real/imaginary data.
 
     // Constructors.
     RegisterBlock() {}
@@ -194,12 +190,9 @@ struct RegisterBlock {
     int nregs() const;
     int offsetReg() const;
 
-    bool isSplitComplex() const { return (splitComplex || cxComponent != Interleaved); }
-
     /* Mask handling */
     bool hasFlag() const     { return flag[0] || flag[1]; }
     void clearFlag()         { flag[0].clear(); flag[1].clear(); flagAll = flagAny = flagInvert = false; }
-    void eraseMask()         { clearFlag(); rowMask = MaskInfo(); colMask = MaskInfo(); }
 
     /* Address offset handling */
     ngen::Offset2D offset2D() const { return ngen::Offset2D(int16_t(offsetAddr & 0xFFFF), int16_t(offsetAddr >> 16)); }

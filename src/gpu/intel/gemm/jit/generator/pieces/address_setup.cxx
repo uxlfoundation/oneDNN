@@ -37,12 +37,6 @@ Generator<hw>::startShift(const BO &ptr, int shift, CommonState &state)
 }
 
 template <HW hw>
-Subregister Generator<hw>::startShift(const MultishiftSubregister &ptr, int shift, CommonState &state)
-{
-    return ptr >> shift;
-}
-
-template <HW hw>
 SubregisterPair Generator<hw>::startShift(const SubregisterPair &ptr, int shift, CommonState &state)
 {
     if (shift == 0)
@@ -134,7 +128,7 @@ static inline int getPartialCrosspack(Type T, const MatrixAddressing &atype, con
 }
 
 // Output code for setting up address/header GRFs for a single block, given
-//  the base pointer (a Subregister, MultishiftSubregister or integer) and leading dimension.
+//  the base pointer (a Subregister or integer) and leading dimension.
 template <HW hw>
 template <typename BO>
 void Generator<hw>::setupAddr(Type T, const RegisterRange &addr, const BO &ptr, const RegisterBlock &block, const Subregister &bld,
@@ -557,7 +551,7 @@ static inline int findBaseBlock(const RegisterBlock &block, const RegisterLayout
 }
 
 // Output code for initializing address/header GRFs for an entire register layout.
-//  ptr is an integer, Subregister, or MultishiftSubregister holding the base pointer/offset.
+//  ptr is an integer or Subregister holding the base pointer/offset.
 template <HW hw>
 template <typename BO>
 void Generator<hw>::setupAddr(const vector<RegisterRange> &addr, const BO &ptr, const RegisterLayout &layout, const Subregister &ld,
@@ -620,7 +614,7 @@ void Generator<hw>::setupAddr(const vector<RegisterRange> &addr, const BO &ptr, 
 
 
 // Output code for incrementing the pointers for a given block by a specified # of bytes.
-// The amount may be an immediate, Subregister, or MultishiftSubregister.
+// The amount may be an immediate or Subregister.
 template <HW hw>
 template <typename I, typename Ir, typename Ic>
 void Generator<hw>::incAddr(const RegisterRange &addrDst, const RegisterRange &addrSrc, I inc, Ir incR, Ic incC,
@@ -782,7 +776,7 @@ template <> struct NegativeType<int>         { using type = int32_t; };
 template <> struct NegativeType<int64_t>     { using type = int32_t; };
 
 // Output code for incrementing or decrementing all pointers for a register layout by a specified # of bytes.
-// The amount may be an immediate or a MultishiftSubregister.
+// The amount may be an immediate or Subregister.
 template <HW hw>
 template <typename A, typename I, typename Ir, typename Ic>
 void Generator<hw>::incDecAddr(const A &addr, I inc, Ir incR, Ic incC, const RegisterLayout &layout,

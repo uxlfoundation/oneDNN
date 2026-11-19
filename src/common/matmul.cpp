@@ -221,9 +221,8 @@ status_t grouped_matmul_attr_check(
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     // Masks are over src {G, M, K} and wei {G, K, N} in both patterns: src
-    // per row or per K-group, wei per column or per K-group, 2Dx2D K-grouped
-    // only. A mask covering the variable dim covers G too, groups go with the
-    // K-grouped masks only
+    // per row or per K-group, wei per column or per K-group. A mask covering
+    // the variable dim covers G too, groups go with the K-grouped masks only
     const int src_rowwise = (1 << 0) | (1 << 1);
     const int src_k_grouped = src_rowwise | (1 << 2);
     const int wei_colwise = (1 << 0) | (1 << 2);
@@ -231,7 +230,6 @@ status_t grouped_matmul_attr_check(
     if (!sc.has_default_values(DNNL_ARG_SRC)) {
         const int mask = sc.get_mask(DNNL_ARG_SRC);
         VCHECK_MATMUL_UNIMPL(utils::one_of(mask, src_rowwise, src_k_grouped)
-                        && IMPLICATION(is_2dby2d, mask == src_k_grouped)
                         && (mask == src_k_grouped
                                         ? src_gK > 1
                                         : sc.has_default_groups(DNNL_ARG_SRC)),
@@ -240,7 +238,6 @@ status_t grouped_matmul_attr_check(
     if (!sc.has_default_values(DNNL_ARG_WEIGHTS)) {
         const int mask = sc.get_mask(DNNL_ARG_WEIGHTS);
         VCHECK_MATMUL_UNIMPL(utils::one_of(mask, wei_colwise, wei_k_grouped)
-                        && IMPLICATION(is_2dby2d, mask == wei_k_grouped)
                         && (mask == wei_k_grouped ? wei_gK > 1
                                                   : sc.has_default_groups(
                                                             DNNL_ARG_WEIGHTS)),

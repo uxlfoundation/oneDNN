@@ -582,9 +582,8 @@ TEST(iface_grouped_test_t, TestGroupedMatmulScales) {
                 : memory::desc::grouped(
                           {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::bf16, M);
 
-        // Row-wise src and column-wise wei scales (FP8 row-wise), variable M
-        // only
-        if (!var_k) {
+        // Row-wise src and column-wise wei scales (FP8 row-wise)
+        {
             primitive_attr attr;
             attr.set_scales_mask(DNNL_ARG_SRC, src_rowwise);
             attr.set_scales_mask(DNNL_ARG_WEIGHTS, wei_colwise);

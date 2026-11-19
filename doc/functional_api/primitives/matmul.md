@@ -542,15 +542,14 @@ The following are supported:
     (`mask = (1 << 0) | (1 << 1) | (1 << 2)`) with group specification are
     supported. The scale tensor follows the same concatenated layout as src:
     `[total_M]` or `[total_M, K/gK]`.
-    For the variable-K variant, only K-grouped scales are supported. The
-    scale tensor is `[M, total_K/gK]`, covering all groups along K.
+    For the variable-K variant, the scale tensor is `[num_groups, M]` or
+    `[M, total_K/gK]`, the latter covering all groups along K.
   - Weight Scales: column-wise (`mask = (1 << 0) | (1 << 2)`) and
     K-grouped or K- and N-grouped (`mask = (1 << 0) | (1 << 1) | (1 << 2)`)
     with group specification are supported. The scale tensor has size
     `[num_groups, N]` or `[num_groups, K/gK, N/gN]`.
-    For the variable-K variant, only K-grouped or K- and N-grouped scales are
-    supported. The scale tensor is `[total_K/gK, N/gN]`, covering all groups
-    along K.
+    For the variable-K variant, the K-grouped scale tensor is
+    `[total_K/gK, N/gN]`, covering all groups along K.
 
     @warning For the variable-K variant, every group size must be a multiple of
     the source and weights scales K group sizes.

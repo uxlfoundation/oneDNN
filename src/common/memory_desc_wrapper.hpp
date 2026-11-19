@@ -459,14 +459,6 @@ struct memory_desc_wrapper {
         }
     }
 
-    /** returns the true if some dim is broadcasted (stride == 0) */
-    bool has_broadcast() const {
-        const auto &bd = blocking_desc();
-        for (int d = 0; d < ndims(); d++)
-            if (bd.strides[d] == 0) return true;
-        return false;
-    }
-
     /** returns true if number of non unit dims is <= `n`. */
     bool count_non_unit_dims(int n) const {
         int non_unit_dims = 0;
@@ -479,8 +471,8 @@ struct memory_desc_wrapper {
     /** returns the index of the innermost (most densely packed) logical
      * dimension, i.e. the one that varies fastest in memory. When the format
      * has inner blocks, it is the dimension of the last block; otherwise it is
-     * the dimension with the smallest stride, excluding unit and broadcast dims
-     * whose strides would otherwise tie with and mask the real packed axis
+     * the dimension with the smallest stride, excluding unit dims whose
+     * strides would otherwise tie with and mask the real packed axis
      * (e.g. dims [1, N] with a `ba` layout has strides [1, 1], yet dim 1 is the
      * packed axis). */
     int innermost_dim() const {
@@ -491,7 +483,7 @@ struct memory_desc_wrapper {
         int inner_dim = ndims() - 1;
         dim_t min_stride = 0;
         for (int d = 0; d < ndims(); d++) {
-            if (dims()[d] == 1 || bd.strides[d] == 0) continue;
+            if (dims()[d] == 1) continue;
             if (min_stride == 0 || bd.strides[d] < min_stride) {
                 min_stride = bd.strides[d];
                 inner_dim = d;
@@ -504,7 +496,7 @@ struct memory_desc_wrapper {
     bool is_dense(bool with_padding = false) const {
         if (utils::one_of(format_kind(), format_kind::undef, format_kind::any))
             return false;
-        if (has_runtime_dims_or_strides() || has_broadcast()) return false;
+        if (has_runtime_dims_or_strides()) return false;
         return types::elements_to_bytes(data_type(), nelems(with_padding))
                 == size(0, /* include_additional_size = */ false);
     }

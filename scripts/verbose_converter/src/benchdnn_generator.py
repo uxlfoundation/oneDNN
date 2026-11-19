@@ -679,13 +679,28 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
         var_idx = 0 if self._is_grouped("dst") else 1
         src_dims = self.entry.shapes.split(":")[0].split("x")
         count, total_dim = int(src_dims[0]), int(src_dims[var_idx + 1])
-        # verbose omits per-group sizes, so split the src dim evenly
-        group_size, remainder = divmod(total_dim, count)
-        sizes = [group_size] * count
+        # verbose omits per-group sizes, so split the src dim evenly, for
+        # variable K in units of the scales K group that every size must
+        # be a multiple of
+        unit = self._scales_k_group() if var_idx == 1 else 1
+        if total_dim % unit:
+            unit = 1
+        group_units, remainder = divmod(total_dim // unit, count)
+        sizes = [group_units * unit] * count
         for i in range(remainder):
-            sizes[i] += 1
+            sizes[i] += unit
         group_sizes = "+".join(map(str, sizes))
         return f"--grouped={var_idx}:{count}:{group_sizes}"
+
+    def _scales_k_group(self) -> int:
+        # the coarsest K group of src (MxK groups) and wei (KxN groups) scales
+        unit = 1
+        for arg, scale in (self.entry.exts.scales or {}).items():
+            if not scale.groups:
+                continue
+            groups = [int(g) for g in scale.groups.split("x")]
+            unit = max(unit, groups[-1] if arg.startswith("src") else groups[0])
+        return unit
 
     @property
     def shapes(self):

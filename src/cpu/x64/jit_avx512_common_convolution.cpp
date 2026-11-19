@@ -26,9 +26,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
-DEFINE_PD_CREATE(
-        jit_avx512_common_convolution_fwd_t<src_type, wei_type, dst_type>::pd_t)
+DEFINE_PD_CREATE(jit_avx512_common_convolution_fwd_t::pd_t)
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type>
 DEFINE_PD_CREATE(jit_avx512_common_convolution_bwd_data_t<diff_dst_type,
@@ -180,29 +178,26 @@ void jit_conv_3d_ker_bwd_w_pipeline(const jit_conv_ker_t ker,
     (pd()->with_groups() ? (d).blk_off((g), __VA_ARGS__) \
                          : (d).blk_off(__VA_ARGS__))
 
-template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
-void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
-        dst_type>::prepare_padded_bias(const dst_data_t *&bias,
+void jit_avx512_common_convolution_fwd_t::prepare_padded_bias(
+        const float *&bias,
         const memory_tracking::grantor_t &scratchpad) const {
     if (!pd()->wants_padded_bias()) return;
 
-    auto padded_bias
-            = scratchpad.template get<dst_data_t>(key_conv_padded_bias);
+    auto padded_bias = scratchpad.template get<float>(key_conv_padded_bias);
     utils::array_copy(padded_bias, bias, pd()->jcp_.oc_without_padding);
-    utils::array_set(padded_bias + pd()->jcp_.oc_without_padding, (dst_data_t)0,
+    utils::array_set(padded_bias + pd()->jcp_.oc_without_padding, 0.f,
             pd()->jcp_.oc - pd()->jcp_.oc_without_padding);
     bias = padded_bias;
 }
 
-template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
-void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
-        dst_type>::execute_forward_1d(const exec_ctx_t &ctx) const {
+void jit_avx512_common_convolution_fwd_t::execute_forward_1d(
+        const exec_ctx_t &ctx) const {
     const auto *jcp_ptr = &pd()->jcp_;
 
-    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto bias = CTX_IN_MEM(const dst_data_t *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
+    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(jcp_ptr->post_ops, ctx);
 
@@ -324,15 +319,14 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     });
 }
 
-template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
-void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
-        dst_type>::execute_forward_2d(const exec_ctx_t &ctx) const {
+void jit_avx512_common_convolution_fwd_t::execute_forward_2d(
+        const exec_ctx_t &ctx) const {
 
     const auto *jcp_ptr = &pd()->jcp_;
-    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto bias = CTX_IN_MEM(const dst_data_t *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
+    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(jcp_ptr->post_ops, ctx);
 
@@ -492,14 +486,13 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     });
 }
 
-template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
-void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
-        dst_type>::execute_forward_3d(const exec_ctx_t &ctx) const {
+void jit_avx512_common_convolution_fwd_t::execute_forward_3d(
+        const exec_ctx_t &ctx) const {
     const auto *jcp_ptr = &pd()->jcp_;
-    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto bias = CTX_IN_MEM(const dst_data_t *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
+    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(jcp_ptr->post_ops, ctx);
 
@@ -665,8 +658,6 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
         }
     });
 }
-
-template struct jit_avx512_common_convolution_fwd_t<data_type::f32>;
 
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type>

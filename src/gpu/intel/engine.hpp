@@ -132,6 +132,19 @@ public:
         return device_info_->has(ext);
     }
 
+    // Returns `success` if the device supports the data type and
+    // `data_type_not_supported` otherwise. Used by OpenCL implementations;
+    // JIT implementations keep their own checks.
+    status_t has_data_type_support(data_type_t dt) const {
+        switch (dt) {
+            case data_type::f64:
+                return mayiuse(compute::device_ext_t::khr_fp64)
+                        ? status::success
+                        : status::data_type_not_supported;
+            default: return status::success;
+        }
+    }
+
     bool is_xe_lp() const {
         return device_info_->gpu_arch() == compute::gpu_arch_t::xe_lp;
     }

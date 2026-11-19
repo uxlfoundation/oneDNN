@@ -63,6 +63,9 @@ struct ref_fwd_t : public primitive_t {
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_ELTWISE_SC(
+                    intel_engine->has_data_type_support(src_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
 
@@ -80,10 +83,6 @@ struct ref_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_ELTWISE_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f64,
-                                      intel_engine->mayiuse(
-                                              compute::device_ext_t::khr_fp64)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f16,
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
@@ -137,6 +136,9 @@ struct ref_bwd_t : public primitive_t {
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_ELTWISE_SC(
+                    intel_engine->has_data_type_support(data_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_ELTWISE(memory_desc_ndims_ok(data_md(), diff_dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "data_md",
                     "diff_dst_md", data_md()->ndims, diff_dst_md()->ndims);
@@ -150,11 +152,6 @@ struct ref_bwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_ELTWISE(
-                    IMPLICATION(data_md()->data_type == data_type::f64,
-                            intel_engine->mayiuse(
-                                    compute::device_ext_t::khr_fp64)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_ELTWISE(

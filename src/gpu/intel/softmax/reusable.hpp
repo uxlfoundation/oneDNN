@@ -106,6 +106,10 @@ struct reusable_fwd_t : public primitive_t {
 
             using namespace data_type;
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_SOFTMAX_SC(intel_engine->has_data_type_support(dst_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_SOFTMAX_SC(intel_engine->has_data_type_support(src_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
 
             VDISPATCH_SOFTMAX(
                     utils::one_of(src_dt, f64, f32, f16, bf16, u8, s8),
@@ -124,11 +128,6 @@ struct reusable_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_SOFTMAX(
-                    IMPLICATION(utils::one_of(data_type::f64, dst_dt, src_dt),
-                            intel_engine->mayiuse(
-                                    compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(attr()->has_default_values(
                                       primitive_attr_t::skip_mask_t::scales),

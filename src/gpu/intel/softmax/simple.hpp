@@ -74,6 +74,12 @@ struct simple_fwd_t : public primitive_t {
                     = src_md()->format_desc.blocking.inner_nblks != num_blocks;
 
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_SOFTMAX_SC(
+                    intel_engine->has_data_type_support(dst_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_SOFTMAX_SC(
+                    intel_engine->has_data_type_support(src_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_SOFTMAX(
                     utils::one_of(src_dt, f64, f32, f16, bf16, u8, s8),
                     VERBOSE_UNSUPPORTED_DT);
@@ -83,12 +89,6 @@ struct simple_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f64,
-                                                  dst_md()->data_type,
-                                                  src_md()->data_type),
-                                      intel_engine->mayiuse(
-                                              compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(subgroup_size),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
@@ -245,18 +245,18 @@ struct simple_bwd_t : public primitive_t {
 
             using namespace data_type;
             VDISPATCH_SOFTMAX(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_SOFTMAX_SC(intel_engine->has_data_type_support(
+                                         diff_dst_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_SOFTMAX_SC(intel_engine->has_data_type_support(
+                                         diff_src_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_SOFTMAX(
                     utils::one_of(diff_src_d.data_type(), f64, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(
                     utils::one_of(diff_dst_d.data_type(), f64, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f64,
-                                                  diff_dst_md()->data_type,
-                                                  diff_src_md()->data_type),
-                                      intel_engine->mayiuse(
-                                              compute::device_ext_t::khr_fp64)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f16,
                                                   diff_dst_md()->data_type,
                                                   diff_src_md()->data_type),

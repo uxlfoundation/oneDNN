@@ -65,6 +65,15 @@ struct ref_fwd_t : public primitive_t {
                                    prop_kind::forward_training,
                                    prop_kind::forward_inference),
                     VERBOSE_BAD_PROPKIND);
+            VDISPATCH_CONV_SC(
+                    intel_engine->has_data_type_support(src_md_.data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_CONV_SC(
+                    intel_engine->has_data_type_support(weights_md_.data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_CONV_SC(
+                    intel_engine->has_data_type_support(dst_md_.data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
 
             VDISPATCH_CONV(IMPLICATION(utils::one_of(f16, src_md_.data_type,
                                                weights_md_.data_type,
@@ -72,13 +81,10 @@ struct ref_fwd_t : public primitive_t {
                                    intel_engine->mayiuse(
                                            compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_CONV(
-                    IMPLICATION(
-                            utils::one_of(f64, src_md_.data_type,
-                                    weights_md_.data_type, dst_md_.data_type),
-                            intel_engine->mayiuse(
-                                    compute::device_ext_t::khr_fp64)
-                                    && attr()->post_ops_.has_default_values()),
+            VDISPATCH_CONV(IMPLICATION(utils::one_of(f64, src_md_.data_type,
+                                               weights_md_.data_type,
+                                               dst_md_.data_type),
+                                   attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_CONV(
@@ -185,13 +191,17 @@ struct ref_bwd_data_t : public primitive_t {
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(desc()->alg_kind == alg_kind::convolution_direct,
                     VERBOSE_BAD_PROPKIND);
+            VDISPATCH_CONV_SC(intel_engine->has_data_type_support(
+                                      diff_src_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_CONV_SC(
+                    intel_engine->has_data_type_support(dst_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
 
             VDISPATCH_CONV(
                     IMPLICATION(utils::one_of(f64, diff_src_md()->data_type,
                                         dst_md()->data_type),
-                            intel_engine->mayiuse(
-                                    compute::device_ext_t::khr_fp64)
-                                    && attr()->post_ops_.has_default_values()),
+                            attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_CONV(memory_desc_ndims_ok(diff_src_md(), diff_dst_md()),
@@ -288,6 +298,12 @@ struct ref_bwd_weights_t : public primitive_t {
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
+            VDISPATCH_CONV_SC(intel_engine->has_data_type_support(
+                                      desc()->src_desc.data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_CONV_SC(intel_engine->has_data_type_support(
+                                      desc()->diff_dst_desc.data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
 
             VDISPATCH_CONV(
                     IMPLICATION(utils::one_of(f16, desc()->src_desc.data_type,
@@ -299,9 +315,7 @@ struct ref_bwd_weights_t : public primitive_t {
             VDISPATCH_CONV(
                     IMPLICATION(utils::one_of(f64, desc()->src_desc.data_type,
                                         desc()->diff_dst_desc.data_type),
-                            intel_engine->mayiuse(
-                                    compute::device_ext_t::khr_fp64)
-                                    && attr()->post_ops_.has_default_values()),
+                            attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_CONV(memory_desc_ndims_ok(src_md(), diff_dst_md()),

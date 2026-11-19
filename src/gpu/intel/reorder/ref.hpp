@@ -53,6 +53,15 @@ struct ref_t : public primitive_t {
                     src_md()->ndims, dst_md()->ndims);
             VDISPATCH_REORDER(src_engine->kind() == engine_kind::gpu,
                     VERBOSE_BAD_ENGINE_KIND);
+
+            const auto *intel_engine = utils::downcast<const intel::engine_t *>(
+                    dst_engine->kind() == engine_kind::gpu ? dst_engine
+                                                           : src_engine);
+
+            VDISPATCH_REORDER_SC(intel_engine->has_data_type_support(sdt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_REORDER_SC(intel_engine->has_data_type_support(ddt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_REORDER(
                     attr()->has_default_values(smask_t::scales_data_type
                             | smask_t::scales_groups
@@ -83,10 +92,6 @@ struct ref_t : public primitive_t {
                             f4_e2m1, e8m0, s32, s8, u8, s4, u4, u2, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
-            const auto *intel_engine = utils::downcast<const intel::engine_t *>(
-                    dst_engine->kind() == engine_kind::gpu ? dst_engine
-                                                           : src_engine);
-
             VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
@@ -98,8 +103,7 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_REORDER(
                     IMPLICATION(utils::one_of(data_type::f64, sdt, ddt),
-                            intel_engine->mayiuse(device_ext_t::khr_fp64)
-                                    && attr()->post_ops_.has_default_values()),
+                            attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_REORDER(
                     IMPLICATION(

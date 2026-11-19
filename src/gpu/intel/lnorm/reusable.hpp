@@ -93,16 +93,16 @@ struct reusable_fwd_t : public primitive_t {
             data_type_t dst_dt = dst_md()->data_type;
 
             const bool uses_f16 = utils::one_of(f16, src_dt, dst_dt);
-            const bool uses_f64 = utils::one_of(f64, src_dt, dst_dt);
 
             const bool f16_ok = IMPLICATION(uses_f16,
                     intel_engine->mayiuse(compute::device_ext_t::khr_fp16));
-            const bool f64_ok = IMPLICATION(uses_f64,
-                    intel_engine->mayiuse(compute::device_ext_t::khr_fp64));
 
             VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(src_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(dst_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_LNORM(f16_ok, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "fp16");
-            VDISPATCH_LNORM(f64_ok, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "fp64");
             VDISPATCH_LNORM(check_scale_shift_data_type({f32, bf16, f16}),
                     VERBOSE_UNSUPPORTED_DT);
 
@@ -167,16 +167,16 @@ struct reusable_bwd_t : public primitive_t {
             data_type_t dst_dt = diff_dst_md()->data_type;
 
             const bool uses_f16 = utils::one_of(f16, src_dt, dst_dt);
-            const bool uses_f64 = utils::one_of(f64, src_dt, dst_dt);
 
             const bool f16_ok = IMPLICATION(uses_f16,
                     intel_engine->mayiuse(compute::device_ext_t::khr_fp16));
-            const bool f64_ok = IMPLICATION(uses_f64,
-                    intel_engine->mayiuse(compute::device_ext_t::khr_fp64));
 
             VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(src_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(dst_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_LNORM(f16_ok, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "fp16");
-            VDISPATCH_LNORM(f64_ok, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "fp64");
             VDISPATCH_LNORM(check_scale_shift_data_type({f32, bf16, f16}),
                     VERBOSE_UNSUPPORTED_DT);
 

@@ -57,6 +57,12 @@ struct xe_fwd_t : public primitive_t {
                     != format_tag::undef);
 
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_SOFTMAX_SC(
+                    intel_engine->has_data_type_support(dst_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_SOFTMAX_SC(
+                    intel_engine->has_data_type_support(src_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_SOFTMAX(
                     IMPLICATION(is_blocked, axis_size() % buffer_size == 0),
                     VERBOSE_BAD_AXIS);
@@ -75,12 +81,6 @@ struct xe_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f64,
-                                                  dst_md()->data_type,
-                                                  src_md()->data_type),
-                                      intel_engine->mayiuse(
-                                              compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales),
                     VERBOSE_UNSUPPORTED_ATTR);
@@ -262,6 +262,12 @@ struct xe_bwd_t : public primitive_t {
 
             using namespace data_type;
             VDISPATCH_SOFTMAX(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_SOFTMAX_SC(intel_engine->has_data_type_support(
+                                         diff_dst_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_SOFTMAX_SC(intel_engine->has_data_type_support(
+                                         diff_src_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_SOFTMAX(axis_size() % buffer_size == 0, VERBOSE_BAD_AXIS);
             VDISPATCH_SOFTMAX(memory_desc_ndims_ok(
                                       dst_md(), diff_src_md(), diff_dst_md()),
@@ -277,12 +283,6 @@ struct xe_bwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(subgroup_size),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
-            VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f64,
-                                                  diff_dst_md()->data_type,
-                                                  diff_src_md()->data_type),
-                                      intel_engine->mayiuse(
-                                              compute::device_ext_t::khr_fp64)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f16,
                                                   diff_dst_md()->data_type,
                                                   diff_src_md()->data_type),

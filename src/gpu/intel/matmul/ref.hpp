@@ -54,8 +54,12 @@ struct ref_t : public primitive_t {
             const auto *intel_engine
                     = utils::downcast<const intel::engine_t *>(engine);
 
-            auto dev_info_ = intel_engine->device_info();
-
+            VDISPATCH_MATMUL_SC(intel_engine->has_data_type_support(src_dt_),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_MATMUL_SC(intel_engine->has_data_type_support(wei_dt_),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_MATMUL_SC(intel_engine->has_data_type_support(dst_dt_),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_MATMUL(
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
             VDISPATCH_MATMUL(
@@ -119,10 +123,6 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(post_ops_with_binary_ok(attr(), *dst_md(), 6),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(utils::one_of(f64, src_dt_, wei_dt_, dst_dt_),
-                            dev_info_->has_native(f64)),
-                    VERBOSE_UNSUPPORTED_DT);
             CHECK(dropout_ok());
             CHECK(pack_desc_.init(*dst_md(0)));
             dynamic_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_dynamic();

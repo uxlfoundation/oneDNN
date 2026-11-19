@@ -56,6 +56,12 @@ struct ref_fwd_t : public primitive_t {
                                       pooling_avg_include_padding,
                                       pooling_avg_exclude_padding),
                     VERBOSE_BAD_ALGORITHM);
+            VDISPATCH_POOLING_SC(
+                    intel_engine->has_data_type_support(src_data_t),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_POOLING_SC(
+                    intel_engine->has_data_type_support(dst_data_t),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_POOLING(
                     IMPLICATION(utils::one_of(src_data_t, s8, u8, s32),
                             desc()->prop_kind == forward_inference),
@@ -88,11 +94,6 @@ struct ref_fwd_t : public primitive_t {
                     IMPLICATION(utils::one_of(f16, src_data_t, dst_data_t),
                             intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_POOLING(
-                    IMPLICATION(utils::one_of(f64, src_data_t, dst_data_t),
-                            intel_engine->mayiuse(
-                                    compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_POOLING(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
@@ -163,6 +164,12 @@ struct ref_bwd_t : public primitive_t {
                                       pooling_avg_include_padding,
                                       pooling_avg_exclude_padding),
                     VERBOSE_BAD_ALGORITHM);
+            VDISPATCH_POOLING_SC(intel_engine->has_data_type_support(
+                                         diff_dst_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_POOLING_SC(intel_engine->has_data_type_support(
+                                         diff_src_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_POOLING(
                     (utils::everyone_is(data_type::f32,
                              diff_dst_md()->data_type, diff_src_md()->data_type)
@@ -174,11 +181,9 @@ struct ref_bwd_t : public primitive_t {
                                         diff_src_md()->data_type)
                                     && intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16))
-                            || (utils::everyone_is(data_type::f64,
-                                        diff_dst_md()->data_type,
-                                        diff_src_md()->data_type)
-                                    && intel_engine->mayiuse(
-                                            compute::device_ext_t::khr_fp64))),
+                            || utils::everyone_is(data_type::f64,
+                                    diff_dst_md()->data_type,
+                                    diff_src_md()->data_type)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

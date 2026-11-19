@@ -48,14 +48,14 @@ struct simple_fwd_t : public primitive_t {
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
             bool uses_f16 = utils::one_of(f16, src_dt, dst_dt);
-            bool uses_f64 = utils::one_of(f64, src_dt, dst_dt);
             VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(src_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(dst_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_LNORM(IMPLICATION(uses_f16,
                                     intel_engine->mayiuse(
-                                            compute::device_ext_t::khr_fp16))
-                            && IMPLICATION(uses_f64,
-                                    intel_engine->mayiuse(
-                                            compute::device_ext_t::khr_fp64)),
+                                            compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LNORM(memory_desc_ndims_ok(src_md(), dst_md(), stat_md()),
                     VERBOSE_INCONSISTENT_NDIMS, "src, dst", "stat");
@@ -127,16 +127,17 @@ struct simple_bwd_t : public primitive_t {
 
             bool uses_f16
                     = utils::one_of(f16, src_dt, diff_dst_dt, diff_src_dt);
-            bool uses_f64
-                    = utils::one_of(f64, src_dt, diff_dst_dt, diff_src_dt);
 
             VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(src_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(diff_dst_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
+            VDISPATCH_LNORM_SC(intel_engine->has_data_type_support(diff_src_dt),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_LNORM(IMPLICATION(uses_f16,
                                     intel_engine->mayiuse(
-                                            compute::device_ext_t::khr_fp16))
-                            && IMPLICATION(uses_f64,
-                                    intel_engine->mayiuse(
-                                            compute::device_ext_t::khr_fp64)),
+                                            compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
                     stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT_CFG);

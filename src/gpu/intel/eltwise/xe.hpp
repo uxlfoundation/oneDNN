@@ -68,6 +68,9 @@ struct xe_fwd_t : public primitive_t {
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_ELTWISE_SC(
+                    intel_engine->has_data_type_support(src_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
             VDISPATCH_ELTWISE(
@@ -80,10 +83,6 @@ struct xe_fwd_t : public primitive_t {
             VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f16,
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f64,
-                                      intel_engine->mayiuse(
-                                              compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(intel_engine->mayiuse_sub_group(16),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
@@ -126,6 +125,9 @@ struct xe_bwd_t : public primitive_t {
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_ELTWISE_SC(
+                    intel_engine->has_data_type_support(data_md()->data_type),
+                    VERBOSE_DEVICE_DT_MISMATCH);
             VDISPATCH_ELTWISE(
                     utils::one_of(data_md()->data_type, data_type::f32,
                             data_type::bf16, data_type::f16, data_type::f64),
@@ -142,11 +144,6 @@ struct xe_bwd_t : public primitive_t {
                     IMPLICATION(data_md()->data_type == data_type::f16,
                             intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_ELTWISE(
-                    IMPLICATION(data_md()->data_type == data_type::f64,
-                            intel_engine->mayiuse(
-                                    compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(memory_desc_wrapper(diff_dst_md())
                             == memory_desc_wrapper(diff_src_md()),

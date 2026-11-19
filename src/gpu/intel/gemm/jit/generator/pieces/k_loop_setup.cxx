@@ -433,7 +433,15 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
             if (kq > 0) groups = std::min(groups, kq);
             if (anyLate) {
                 // Late remainder steps cover a single group; not supported if multiple groups are required.
-                if (kRemGran(isA) > groupK) stub("Late quantization remainder spanning multiple groups is not supported");
+                //  Late parameters are loaded/applied per group independently of the data loads, so matrix
+                //  alignment does not matter here. The indivisible K step is the outer product step, or the
+                //  crosspack when K is not the contiguous dimension (VNNI layouts cannot be sliced below it).
+                auto &X = isA ? problem.A : problem.B;
+                auto &L = isA ? state.A_layout : state.B_layout;
+                bool kLeading = (isColMajor(X.layout) != isA);
+                int lateGran = std::max<int>(minOPCount, kLeading ? 1 : L.crosspack());
+                if (lateGran > groupK || groupK % lateGran != 0)
+                    stub("Late quantization remainder spanning multiple groups is not supported");
                 groups = 1;
             }
             return groups;

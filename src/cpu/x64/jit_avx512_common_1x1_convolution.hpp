@@ -299,8 +299,8 @@ struct jit_avx512_common_1x1_convolution_fwd_t : public primitive_t {
                     static_cast<size_t>(dw_conv_buffer_size),
                     types::data_type_size(dw_conv_pd_->src_md()->data_type));
 
-            jit_uni_dw_conv_fwd_kernel_t<avx512_core,
-                    data_type::f32>::init_scratchpad(dw_scratchpad, jcp_dw);
+            jit_uni_dw_conv_fwd_kernel_t<avx512_core>::init_scratchpad(
+                    dw_scratchpad, jcp_dw);
 
             return status::success;
         }

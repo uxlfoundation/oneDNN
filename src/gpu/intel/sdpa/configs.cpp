@@ -787,6 +787,14 @@ static std::vector<bwd_config_record_t> sorted_bwd_configs = []() {
         {{compute::gpu_arch_t::xe_hpc,  64, f32 | fma},  { 16, 32, 16, 16, 16, 32, 4, 4, 4, 4, 4, 4 }},
         {{compute::gpu_arch_t::xe_hpc, 128, f32 | fma},  { 16, 16, 16, 32, 32, 32, 2, 4, 8, 1, 4, 2 }},
 
+        // xe_hpg
+        {{compute::gpu_arch_t::xe_hpg, 32},       { 8,  8,  8,  8,  8,  8, 4, 4, 4, 4, 4, 4 }},
+
+        {{compute::gpu_arch_t::xe_hpg, 64},       { 8, 16, 16,  8,  8, 32, 4, 4, 4, 4, 8, 2 }},
+        {{compute::gpu_arch_t::xe_hpg, 64, 128},  { 8,  8,  8,  8,  8, 16, 4, 8, 8, 4, 8, 4 }},
+
+        {{compute::gpu_arch_t::xe_hpg, 128},      { 8,  8, 32,  8, 32,  8, 4, 4, 4, 4, 4, 4 }},
+
         // xe2
         {{compute::gpu_arch_t::xe2, 32},       { 32, 32, 16, 32, 16, 32, 2, 2, 2, 2, 2, 2 }},
         {{compute::gpu_arch_t::xe2, 32, 128},  { 16, 32, 16, 16, 16, 16, 4, 2, 2, 4, 2, 4 }},

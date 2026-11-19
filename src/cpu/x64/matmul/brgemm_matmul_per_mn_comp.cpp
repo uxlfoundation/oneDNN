@@ -41,73 +41,129 @@ static constexpr dim_t max_n_chunk = 512;
 
 // Column sums of B over K for one block of columns. The values are summed as
 // unsigned (s4 / s8 are flipped to u4 / u8), the caller subtracts the bias.
-// Plain B: 128 (int4) or 64 (int8) columns of one row per K step. Blocked
-// int4 ([n / n_blk][k / 4][n_blk][4]): 32 columns, 4 K values each, per step.
-struct jit_col_sum_kernel_t : public jit_generator_t {
+// Plain B: 2 * vlen (int4) or vlen (int8) columns of one row per K step.
+// Blocked int4 ([n / n_blk][k / 4][n_blk][4], AVX-512 only): 32 columns, 4 K
+// values each, per step. dst accumulates in int32 and is converted at the end.
+struct col_sum_kernel_t : public jit_generator_t {
     struct call_params_t {
         const void *src; // B at the first (k, n) of the block
         float *dst; // n_cols sums
         dim_t k_iters; // K steps (rows, or k quads of the blocked layout)
         dim_t src_stride; // bytes between K steps
-        dim_t n_cols; // <= block_cols()
+        dim_t n_cols; // <= block_cols(), multiple of col_granularity()
     };
+    using jit_generator_t::jit_generator_t;
+    virtual int block_cols() const = 0;
+    virtual int col_granularity() const = 0;
+};
 
+template <typename Vmm>
+struct jit_col_sum_kernel_t : public col_sum_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_col_sum_kernel_t)
 
     jit_col_sum_kernel_t(data_type_t dt, bool blocked)
-        : jit_generator_t("per_mn_comp_col_sum", avx512_core)
+        : col_sum_kernel_t("per_mn_comp_col_sum", is_zmm ? avx512_core : avx2)
         , is_int4_(utils::one_of(dt, u4, s4))
         , is_signed_(utils::one_of(dt, s4, s8))
-        , blocked_(blocked) {}
+        , blocked_(blocked) {
+        assert(IMPLICATION(blocked_, is_zmm));
+    }
 
-    int block_cols() const { return blocked_ ? 32 : is_int4_ ? 128 : 64; }
+    int block_cols() const override {
+        return blocked_ ? vlen / 2 : is_int4_ ? 2 * vlen : vlen;
+    }
+    // Loads are masked per byte (AVX-512) or per dword (AVX2).
+    int col_granularity() const override {
+        return is_zmm ? 1 : is_int4_ ? 8 : 4;
+    }
 
 private:
+    static constexpr bool is_zmm = std::is_same<Vmm, Zmm>::value;
+    static constexpr int vlen = is_zmm ? 64 : 32;
+    static constexpr int k_chunk = 128; // 16-bit sums of nibbles / bytes
+    using Half = typename utils::conditional<is_zmm, Ymm, Xmm>::type;
+
     const bool is_int4_, is_signed_, blocked_;
-    // One 64-byte load per K step feeds this many word / dword accumulators.
+    // Word accumulators: bytes of one load widened in halves.
     int num_w() const { return blocked_ ? 1 : is_int4_ ? 4 : 2; }
+    int num_out() const { return block_cols() * 4 / vlen; }
+    // First column of the dword vector v of the output.
+    int out_col(int v) const {
+        if (!is_int4_ || blocked_) return v * vlen / 4;
+        // W(i): i / 2 picks A / B of the interleave below (columns [32j, +16)
+        // / [32j + 16, +16) of lane j), i % 2 the half of the load; a dword
+        // vector covers one 128-bit lane (zmm) or half of it (ymm).
+        const int i = v / 2, h = v % 2;
+        const int lane = (i % 2) * (vlen / 32) + (is_zmm ? h : 0);
+        return 32 * lane + 16 * (i / 2) + (is_zmm ? 0 : 8 * h);
+    }
 
     const Reg64 reg_src = r8, reg_dst = r9, reg_k = r10, reg_stride = r11,
                 reg_n = r12, reg_cnt = r13, reg_tmp = rax, reg_tmp2 = rcx;
     const Opmask k_load = k1, k_store = k2;
-    Opmask k_cols(int i) const {
-        return Opmask(3 + i);
-    } // columns [64i, 64i+64)
-    const Zmm zmm_nib = zmm0, zmm_flip = zmm1, zmm_ones = zmm2, zmm_ld = zmm3,
-              zmm_lo = zmm4, zmm_hi = zmm5, zmm_tmp = zmm6, zmm_idx_lo = zmm7,
-              zmm_idx_hi = zmm8;
-    Zmm W(int i) const { return Zmm(9 + i); }
-    Zmm D(int i) const { return Zmm(13 + i); }
+    Opmask k_cols(int i) const { return Opmask(3 + i); } // columns [64i, +64)
+    const Vmm vmm_nib = Vmm(0), vmm_flip = Vmm(1), vmm_ones = Vmm(2),
+              vmm_ld = Vmm(3), vmm_lo = Vmm(4), vmm_hi = Vmm(5),
+              vmm_tmp = Vmm(6), vmm_idx = Vmm(7), vmm_mask = Vmm(8);
+    const Vmm vmm_ldmask = vmm_ones; // AVX2 only (no blocked layout there)
+    Vmm W(int i) const { return Vmm(9 + i); }
 
-    void widen_add(const Zmm &lo, const Zmm &hi, const Zmm &src, bool words) {
-        auto ext = [&](const Zmm &dst, const Ymm &s) {
+    void bcast_imm(const Vmm &dst, uint32_t imm) {
+        mov(reg_tmp.cvt32(), imm);
+        vmovd(Xmm(dst.getIdx()), reg_tmp.cvt32());
+        vpbroadcastd(dst, Xmm(dst.getIdx()));
+    }
+    void extract_high(const Half &dst, const Vmm &src) {
+        if (is_zmm)
+            vextracti64x4(Ymm(dst.getIdx()), Zmm(src.getIdx()), 1);
+        else
+            vextracti128(Xmm(dst.getIdx()), Ymm(src.getIdx()), 1);
+    }
+    // Widens the two halves of src and adds them to lo and hi.
+    void widen_add(const Vmm &lo, const Vmm &hi, const Vmm &src, bool words) {
+        auto ext = [&](const Vmm &dst, const Half &s) {
             words ? vpmovzxwd(dst, s) : vpmovzxbw(dst, s);
         };
-        auto add = [&](const Zmm &acc) {
-            words ? vpaddd(acc, acc, zmm_tmp) : vpaddw(acc, acc, zmm_tmp);
+        auto add = [&](const Vmm &acc) {
+            words ? vpaddd(acc, acc, vmm_tmp) : vpaddw(acc, acc, vmm_tmp);
         };
-        ext(zmm_tmp, Ymm(src.getIdx()));
+        ext(vmm_tmp, Half(src.getIdx()));
         add(lo);
-        vextracti64x4(Ymm(zmm_tmp.getIdx()), src, 1);
-        ext(zmm_tmp, Ymm(zmm_tmp.getIdx()));
+        extract_high(Half(vmm_tmp.getIdx()), src);
+        ext(vmm_tmp, Half(vmm_tmp.getIdx()));
         add(hi);
     }
 
-    // k = low max(0, n_cols - base) bits (all 64 when >= 64).
-    void cols_mask(const Opmask &k, int base) {
-        mov(reg_tmp, reg_n);
-        sub(reg_tmp, base);
-        xor_(reg_tmp2, reg_tmp2);
-        cmp(reg_tmp, 0);
-        cmovl(reg_tmp, reg_tmp2);
-        mov(reg_tmp2, -1);
-        bzhi(reg_tmp2, reg_tmp2, reg_tmp);
-        kmovq(k, reg_tmp2);
+    // Mask of the dwords [0, (n_cols - base) / 4) for AVX2, or the k-mask of
+    // the columns [base, +vlen / 4) for AVX-512.
+    void out_mask(int v) {
+        if (is_zmm) {
+            const int c = out_col(v);
+            kshiftrq(k_store, k_cols(c / 64), c % 64);
+        } else {
+            lea(reg_tmp, ptr[reg_n - out_col(v)]);
+            vmovd(Xmm(vmm_mask.getIdx()), reg_tmp.cvt32());
+            vpbroadcastd(vmm_mask, Xmm(vmm_mask.getIdx()));
+            vpcmpgtd(vmm_mask, vmm_mask, vmm_idx);
+        }
+    }
+    // dst[out_col(v)..] (op)= src with the mask of out_mask(v).
+    void store_out(int v, const Vmm &src) {
+        const auto addr = ptr[reg_dst + 4 * out_col(v)];
+        if (is_zmm)
+            vmovdqu32(addr | k_store, src);
+        else
+            vpmaskmovd(addr, vmm_mask, src);
+    }
+    void load_out(int v, const Vmm &dst) {
+        const auto addr = ptr[reg_dst + 4 * out_col(v)];
+        if (is_zmm)
+            vmovdqu32(dst | k_store | T_z, addr);
+        else
+            vpmaskmovd(dst, vmm_mask, addr);
     }
 
     void generate() override {
-        // Word accumulators take at most 255 per step, flush every 128 steps.
-        constexpr int k_chunk = 128;
         preamble();
         mov(reg_src, ptr[param1 + offsetof(call_params_t, src)]);
         mov(reg_dst, ptr[param1 + offsetof(call_params_t, dst)]);
@@ -124,90 +180,108 @@ private:
             inc(reg_tmp);
             shr(reg_tmp, 1);
         }
-        mov(reg_tmp2, -1);
-        bzhi(reg_tmp2, reg_tmp2, reg_tmp);
-        kmovq(k_load, reg_tmp2);
-        for (int i = 0; i < utils::div_up(block_cols(), 64); ++i)
-            cols_mask(k_cols(i), 64 * i);
-
-        mov(reg_tmp.cvt32(), 0x0F0F0F0F);
-        vpbroadcastd(zmm_nib, reg_tmp.cvt32());
-        mov(reg_tmp.cvt32(), is_int4_ ? 0x88888888 : 0x80808080);
-        vpbroadcastd(zmm_flip, reg_tmp.cvt32());
-        mov(reg_tmp.cvt32(), 0x01010101);
-        vpbroadcastd(zmm_ones, reg_tmp.cvt32());
-        for (int i = 0; i < 2 * num_w(); ++i)
-            vpxord(D(i), D(i), D(i));
+        Label l_idx;
+        if (is_zmm) {
+            mov(reg_tmp2, -1);
+            bzhi(reg_tmp2, reg_tmp2, reg_tmp);
+            kmovq(k_load, reg_tmp2);
+            for (int i = 0; i < utils::div_up(block_cols(), 64); ++i) {
+                lea(reg_tmp2, ptr[reg_n - 64 * i]);
+                xor_(reg_tmp, reg_tmp);
+                cmp(reg_tmp2, 0);
+                cmovl(reg_tmp2, reg_tmp);
+                mov(reg_tmp, -1);
+                bzhi(reg_tmp, reg_tmp, reg_tmp2);
+                kmovq(k_cols(i), reg_tmp);
+            }
+        } else {
+            // vmm_idx = 4 * [0 .. 7]: the mask of the dwords below `bytes`.
+            mov(reg_tmp2, l_idx);
+            vmovdqu(vmm_idx, ptr[reg_tmp2]);
+            vmovd(Xmm(vmm_ldmask.getIdx()), reg_tmp.cvt32());
+            vpbroadcastd(vmm_ldmask, Xmm(vmm_ldmask.getIdx()));
+            vpcmpgtd(vmm_ldmask, vmm_ldmask, vmm_idx);
+            vpsrld(vmm_idx, vmm_idx, 2); // [0 .. 7] for the output masks
+        }
+        bcast_imm(vmm_nib, 0x0F0F0F0F);
+        bcast_imm(vmm_flip, is_int4_ ? 0x88888888 : 0x80808080);
+        if (blocked_) bcast_imm(vmm_ones, 0x01010101);
+        uni_vpxor(vmm_tmp, vmm_tmp, vmm_tmp);
+        for (int v = 0; v < num_out(); ++v) {
+            out_mask(v);
+            store_out(v, vmm_tmp);
+        }
 
         Label l_chunk, l_step, l_done;
         L(l_chunk);
         test(reg_k, reg_k);
         jz(l_done, T_NEAR);
         for (int i = 0; i < num_w(); ++i)
-            vpxord(W(i), W(i), W(i));
+            uni_vpxor(W(i), W(i), W(i));
         mov(reg_cnt, k_chunk);
         cmp(reg_k, k_chunk);
         cmovb(reg_cnt, reg_k);
         sub(reg_k, reg_cnt);
 
         L(l_step);
-        vmovdqu8(zmm_ld | k_load | T_z, ptr[reg_src]);
-        if (is_signed_) vpxord(zmm_ld, zmm_ld, zmm_flip);
+        if (is_zmm)
+            vmovdqu8(vmm_ld | k_load | T_z, ptr[reg_src]);
+        else
+            vpmaskmovd(vmm_ld, vmm_ldmask, ptr[reg_src]);
+        if (is_signed_) uni_vpxor(vmm_ld, vmm_ld, vmm_flip);
         if (is_int4_) {
-            vpandd(zmm_lo, zmm_ld, zmm_nib);
-            vpsrlw(zmm_hi, zmm_ld, 4);
-            vpandd(zmm_hi, zmm_hi, zmm_nib);
+            uni_vpand(vmm_lo, vmm_ld, vmm_nib);
+            vpsrlw(vmm_hi, vmm_ld, 4);
+            uni_vpand(vmm_hi, vmm_hi, vmm_nib);
         }
         if (blocked_) {
             // The 4 nibbles of a column form one word.
-            vpaddb(zmm_lo, zmm_lo, zmm_hi);
-            vpmaddubsw(zmm_lo, zmm_lo, zmm_ones);
-            vpaddw(W(0), W(0), zmm_lo);
+            vpaddb(vmm_lo, vmm_lo, vmm_hi);
+            vpmaddubsw(vmm_lo, vmm_lo, vmm_ones);
+            vpaddw(W(0), W(0), vmm_lo);
         } else if (is_int4_) {
-            // Even columns are the low nibbles, odd ones the high nibbles.
-            widen_add(W(0), W(1), zmm_lo, false);
-            widen_add(W(2), W(3), zmm_hi, false);
+            // Interleave the even (low nibble) and odd (high nibble) columns
+            // within every 128-bit lane: A = columns [32j, +16) of lane j,
+            // B = columns [32j + 16, +16).
+            vpunpcklbw(vmm_ld, vmm_lo, vmm_hi);
+            vpunpckhbw(vmm_hi, vmm_lo, vmm_hi);
+            widen_add(W(0), W(1), vmm_ld, false);
+            widen_add(W(2), W(3), vmm_hi, false);
         } else
-            widen_add(W(0), W(1), zmm_ld, false);
+            widen_add(W(0), W(1), vmm_ld, false);
         add(reg_src, reg_stride);
         dec(reg_cnt);
         jnz(l_step, T_NEAR);
 
-        for (int i = 0; i < num_w(); ++i)
-            widen_add(D(2 * i), D(2 * i + 1), W(i), true);
+        // Flush the word sums into the dword sums in dst.
+        for (int i = 0; i < num_w(); ++i) {
+            uni_vpxor(vmm_lo, vmm_lo, vmm_lo);
+            uni_vpxor(vmm_hi, vmm_hi, vmm_hi);
+            widen_add(vmm_lo, vmm_hi, W(i), true);
+            for (int h = 0; h < 2; ++h) {
+                const int v = 2 * i + h;
+                out_mask(v);
+                load_out(v, vmm_tmp);
+                vpaddd(vmm_tmp, vmm_tmp, h ? vmm_hi : vmm_lo);
+                store_out(v, vmm_tmp);
+            }
+        }
         jmp(l_chunk, T_NEAR);
         L(l_done);
 
-        Label l_idx;
-        if (!blocked_ && is_int4_) {
-            // Interleave the even (D0..3) and odd (D4..7) column sums.
-            mov(reg_tmp, l_idx);
-            vmovdqu32(zmm_idx_lo, ptr[reg_tmp]);
-            vmovdqu32(zmm_idx_hi, ptr[reg_tmp + 64]);
-            for (int j = 0; j < 4; ++j) {
-                vmovdqa32(W(j), D(j));
-                vpermt2d(D(j), zmm_idx_lo, D(4 + j)); // out[2j]
-                vpermt2d(W(j), zmm_idx_hi, D(4 + j)); // out[2j + 1]
-                vmovdqa32(D(4 + j), W(j));
-            }
-        }
-        const int num_out = utils::div_up(block_cols(), 16);
-        for (int v = 0; v < num_out; ++v) {
-            const int d
-                    = !blocked_ && is_int4_ ? (v % 2 ? 4 + v / 2 : v / 2) : v;
-            kshiftrq(k_store, k_cols(v / 4), 16 * (v % 4));
-            vcvtdq2ps(D(d), D(d));
-            vmovups(ptr[reg_dst + 64 * v] | k_store, D(d));
+        for (int v = 0; v < num_out(); ++v) {
+            out_mask(v);
+            load_out(v, vmm_tmp);
+            vcvtdq2ps(vmm_tmp, vmm_tmp);
+            store_out(v, vmm_tmp);
         }
         postamble();
 
-        if (!blocked_ && is_int4_) {
-            align(64);
+        if (!is_zmm) {
+            align(32);
             L(l_idx);
-            for (int i = 0; i < 16; ++i) {
-                dd(i);
-                dd(16 + i);
-            }
+            for (int i = 0; i < 8; ++i)
+                dd(4 * i);
         }
     }
 };
@@ -246,8 +320,9 @@ bool brgemm_matmul_per_mn_comp_t::init_conf(brgemm_matmul_conf_t &bgmmc) {
     const bool ok = bgmmc.use_buffer_c && !bgmmc.is_c_buf_dst_dt
             && !bgmmc.is_gemv && !bgmmc.is_runtime_M && !bgmmc.is_runtime_N
             && !bgmmc.is_runtime_K && !is_runtime_value(bgmmc.batch)
-            && is_superset(bgmmc.isa, avx512_core)
-            && (bgmmc.is_amx || bgmmc.N_blk <= bgmmc.LDC)
+            && is_superset(bgmmc.isa, avx2)
+            // Buffer C of a tile is read in LDC-wide stripes.
+            && (bgmmc.is_amx || nstl::min(bgmmc.N_blk, bgmmc.N) <= bgmmc.LDC)
             // Row sums of A are read from plain, K-contiguous src.
             && !bgmmc.transposed_A
             && bgmmc.A_strides[0] == bgmmc.a_dt_sz
@@ -290,12 +365,14 @@ void brgemm_matmul_per_mn_comp_t::book_scratchpad(
 
 status_t brgemm_matmul_per_mn_comp_t::init_brgemm_descs(
         brgemm_desc_t (&descs)[2], const brgemm_matmul_conf_t &bgmmc) {
+    const cpu_isa_t isa
+            = is_superset(bgmmc.isa, avx512_core) ? avx512_core : avx2;
     for (int i_M = 0; i_M < 2; i_M++) {
         const dim_t vM = i_M ? bgmmc.M_tail : bgmmc.M_blk;
         if (vM == 0) continue;
         brgemm_desc_t &brg = descs[i_M];
-        CHECK(brgemm_desc_init(&brg, avx512_core, brgemm_addr, f32, f32, false,
-                false, brgemm_row_major, -1.0f, 0.0f, bgmmc.per_mn_comp_K,
+        CHECK(brgemm_desc_init(&brg, isa, brgemm_addr, f32, f32, false, false,
+                brgemm_row_major, -1.0f, 0.0f, bgmmc.per_mn_comp_K,
                 bgmmc.per_mn_comp_ldv, bgmmc.LDC, vM,
                 nstl::min(bgmmc.LDC, bgmmc.N_blk), bgmmc.per_mn_comp_K,
                 nullptr));
@@ -316,8 +393,12 @@ status_t brgemm_matmul_per_mn_comp_t::create_kernels(
         CHECK(safe_ptr_assign(kernels_[i_M], ker));
     }
     if (has_src_rows(bgmmc)) {
-        CHECK(safe_ptr_assign(col_sum_kernel_,
-                new jit_col_sum_kernel_t(bgmmc.orig_wei_dt, bgmmc.blocked_B)));
+        col_sum_kernel_t *ker = is_superset(bgmmc.isa, avx512_core)
+                ? static_cast<col_sum_kernel_t *>(new jit_col_sum_kernel_t<Zmm>(
+                          bgmmc.orig_wei_dt, bgmmc.blocked_B))
+                : new jit_col_sum_kernel_t<Ymm>(
+                          bgmmc.orig_wei_dt, bgmmc.blocked_B);
+        CHECK(safe_ptr_assign(col_sum_kernel_, ker));
         CHECK(col_sum_kernel_->create_kernel());
     }
     return status::success;
@@ -361,43 +442,47 @@ static void load_row(data_type_t dt, const void *base, dim_t idx0, bool per_n,
     }
 }
 
-// S[n0 .. n0 + nv) over k in [k0, k0 + len) of plain B.
+// S[n0 .. n0 + nv) over k in [k0, k0 + len) of plain B. The kernel takes the
+// columns up to its granularity, the rest is summed here.
 static void column_sums_plain(const brgemm_matmul_conf_t &bgmmc,
-        const jit_col_sum_kernel_t *ker, const char *B, dim_t k0, dim_t len,
+        const col_sum_kernel_t *ker, const char *B, dim_t k0, dim_t len,
         dim_t n0, dim_t nv, float *S) {
     const auto dt = bgmmc.orig_wei_dt;
     const bool is_int4 = utils::one_of(dt, u4, s4);
+    dim_t n_ker = 0;
     // Int4 rows must start on a byte boundary for the kernel.
     if (ker
             && IMPLICATION(
                     is_int4, bgmmc.B_strides[1] % 2 == 0 && n0 % 2 == 0)) {
         const int bits = is_int4 ? 4 : 8;
         const int bias = dt == s4 ? 8 : dt == s8 ? 128 : 0;
-        for (dim_t n = 0; n < nv; n += ker->block_cols()) {
-            jit_col_sum_kernel_t::call_params_t p;
+        n_ker = nv - nv % ker->col_granularity();
+        for (dim_t n = 0; n < n_ker; n += ker->block_cols()) {
+            col_sum_kernel_t::call_params_t p;
             p.src = B + ((k0 * bgmmc.B_strides[1] + n0 + n) * bits >> 3);
             p.dst = S + n;
             p.k_iters = len;
             p.src_stride = bgmmc.B_strides[1] * bits >> 3;
-            p.n_cols = nstl::min<dim_t>(ker->block_cols(), nv - n);
+            p.n_cols = nstl::min<dim_t>(ker->block_cols(), n_ker - n);
             (*ker)(&p);
         }
-        for (dim_t i = 0; i < nv; ++i)
+        for (dim_t i = 0; i < n_ker; ++i)
             S[i] -= static_cast<float>(bias * len);
-        return;
     }
+    if (n_ker == nv) return;
     float row[max_n_chunk];
     for (dim_t k = k0; k < k0 + len; ++k) {
-        load_row(dt, B, k * bgmmc.B_strides[1] + n0, true, nv, row);
-        for (dim_t i = 0; i < nv; ++i)
-            S[i] += row[i];
+        load_row(dt, B, k * bgmmc.B_strides[1] + n0 + n_ker, true, nv - n_ker,
+                row);
+        for (dim_t i = n_ker; i < nv; ++i)
+            S[i] += row[i - n_ker];
     }
 }
 
 // Same for VNNI-blocked int4 B ([n / wei_n_blk][k / 4][wei_n_blk][4]); the
 // kernel takes the full k quads, the remaining k values are summed here.
 static void column_sums_blocked_int4(const brgemm_matmul_conf_t &bgmmc,
-        const jit_col_sum_kernel_t *ker, const char *B, dim_t k0, dim_t len,
+        const col_sum_kernel_t *ker, const char *B, dim_t k0, dim_t len,
         dim_t n0, dim_t nv, float *S) {
     const auto *p0 = reinterpret_cast<const uint8_t *>(B);
     const bool is_s4 = bgmmc.orig_wei_dt == s4;
@@ -413,7 +498,7 @@ static void column_sums_blocked_int4(const brgemm_matmul_conf_t &bgmmc,
                     + ((nb * bgmmc.B_strides[0] + k * n_blk + (n % n_blk) * 4)
                             >> 1);
         };
-        jit_col_sum_kernel_t::call_params_t p;
+        col_sum_kernel_t::call_params_t p;
         p.src = at(k0);
         p.dst = s;
         p.k_iters = k_quads;
@@ -512,7 +597,7 @@ void brgemm_matmul_per_mn_comp_t::prepare(
             for (dim_t i = 0; i < nv; ++i)
                 v[i] += b_shift;
         } else {
-            const auto *ker = static_cast<const jit_col_sum_kernel_t *>(
+            const auto *ker = static_cast<const col_sum_kernel_t *>(
                     col_sum_kernel_.get());
             if (bgmmc.blocked_B)
                 column_sums_blocked_int4(

@@ -1,6 +1,7 @@
 # Grouped GEMM MoE / frameworks harness (nightly)
 # grouped_mm:        bf16/f16, mat2 row-major (abc) and col-major (acb)
-# scaled_grouped_mm: mat2 col-major (acb), mat1 row-major (default stag)
+# scaled_grouped_mm: 2Dx3D mat2 col-major (acb), mat1 row-major (default stag),
+#                    2Dx2D default grouped layouts (mat1 col-major, mat2 row-major)
 
 --reset
 
@@ -65,6 +66,29 @@
 --attr-scales=src:7:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
 --attr-post-ops=mul:f32:1
 --batch=shapes_grouped_moe
+
+########################################
+# scaled_grouped_mm 2Dx2D (wgrad):     #
+# MxFP8                                #
+# scale_a: e8m0 block (M, total_K/32)  #
+# scale_b: e8m0 block (total_K/32, N)  #
+########################################
+
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16
+--attr-scales=src:7:e8m0:1x32+wei:7:e8m0:32x1
+--batch=shapes_grouped_moe_k_axis
+
+########################################
+# DeepSeek Wgrad (2Dx2D):              #
+# scale_a: f32 block (M, total_K/128)  #
+# scale_b: f32 block (total_K/128, N)  #
+########################################
+
+--reset
+--dt=f8_e4m3:f8_e4m3:f32
+--attr-scales=src:7:f32:1x128+wei:7:f32:128x1
+--batch=shapes_grouped_moe_k_axis
 
 ########################################
 # WoQ F16/U4/F16                       #

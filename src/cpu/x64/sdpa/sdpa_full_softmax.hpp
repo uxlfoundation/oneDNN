@@ -107,7 +107,7 @@ struct sdpa_full_softmax_params_t {
     // the transposed-K buffer and P (mm2's A operand) are materialised in this
     // type, and the softmax runs on the f32 scores.
     dnnl::impl::data_type_t mm_dt = dnnl::impl::data_type::f32;
-    // SDPA output (result) data type; the f32 pv tile is down-converted to it.
+    // SDPA output (result) data type; f32 accumulators are converted to it.
     dnnl::impl::data_type_t out_dt = dnnl::impl::data_type::f32;
 
     // Derived source layout metadata used while configuring BRGEMM and packing.
@@ -260,7 +260,7 @@ struct sdpa_full_softmax_conf_t {
     // gets one contiguous range of work items.
     bool interleave_items = false;
     // BRGEMM row strides: mm1_lda for Q and mm2_ldc for mm2's C. The user
-    // output uses out_ld when mm2 writes to it directly or scatters.
+    // output uses out_ld for direct stores, epilogue conversion or scattering.
     dim_t mm1_lda = 0, mm2_ldc = 0;
     dim_t out_ld = 0;
     // mm1 writes the score tile in mm1_n_block-wide column blocks,
@@ -272,6 +272,9 @@ struct sdpa_full_softmax_conf_t {
     float mm2_beta = 0.0f;
     // mm2 writes its f32 result directly into the user output (no pv+scatter).
     bool mm2_direct = false;
+    // The final mm2 K block converts to bf16/f16 and writes the user output.
+    // Multi-chunk split_kv and strided output columns keep pv+scatter.
+    bool mm2_postops = false;
     bool mm1_needs_vnni_b = false;
     bool mm2_needs_vnni_b = false;
     // K / V are packed for BRGEMM; kv_packing tells where.

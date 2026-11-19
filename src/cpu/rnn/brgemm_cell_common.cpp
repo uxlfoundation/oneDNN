@@ -45,9 +45,7 @@ namespace cpu {
 using namespace rnn_utils;
 using namespace dnnl::impl::utils;
 
-template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_merged_layer_execution_sig((
-        ref_rnn_fwd_t<src_type, weights_type, acc_type>::merged_layer_brgemm)) {
+rnn_merged_layer_execution_sig(ref_rnn_fwd_t::merged_layer_brgemm) {
 #if DNNL_X64 || DNNL_AARCH64
     const brgemm_merged_layer_t layer_calc(this->rnn_brgemm_, rnn,
             cell_position, src_layer_, w_layer_[0], scratch_gates_,
@@ -58,18 +56,7 @@ rnn_merged_layer_execution_sig((
     return dnnl_success;
 }
 
-template rnn_merged_layer_execution_sig(ref_rnn_fwd_f32_t::merged_layer_brgemm);
-template rnn_merged_layer_execution_sig(
-        ref_rnn_fwd_bf16_t::merged_layer_brgemm);
-template rnn_merged_layer_execution_sig(ref_rnn_fwd_f16_t::merged_layer_brgemm);
-template rnn_merged_layer_execution_sig(
-        ref_rnn_fwd_u8s8_t::merged_layer_brgemm);
-template rnn_merged_layer_execution_sig(
-        ref_rnn_fwd_s8s8_t::merged_layer_brgemm);
-
-template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
-        acc_type>::cell_execution_brgemm)) {
+rnn_cell_execution_sig(ref_rnn_fwd_t::cell_execution_brgemm) {
 #if DNNL_X64 || DNNL_AARCH64
 
     const auto weights_scales = this->pd_->attr()->rnn_weights_qparams_.scales_;
@@ -88,17 +75,17 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         fused_postgemm = [&](dim_t m, dim_t n, dim_t nb_i, const void *Ai_m,
                                  void *C_n, void *C_cell_n, dim_t block_step) {
             const auto Dpg_n = (dst_postgemm != nullptr)
-                    ? dst_postgemm + m * LDDl + n
+                    ? inc_ptr(dst_postgemm, rnn.cell_dt, m * LDDl + n)
                     : nullptr;
             const auto Di_n = (dst_iter_postgemm != nullptr)
-                    ? dst_iter_postgemm + m * LDDi + n
+                    ? inc_ptr(dst_iter_postgemm, rnn.cell_dt, m * LDDi + n)
                     : nullptr;
             const auto Dic_n = (dst_iter_c_ != nullptr)
                     ? inc_ptr(dst_iter_c_, rnn.dst_iter_c_dt, m * LDDic + n)
                     : nullptr;
 
-            const auto curr_ws_gates_
-                    = ws_gates_ + (m * rnn.ws_gates_ld) + nb_i * rnn.n_block;
+            const auto curr_ws_gates_ = inc_ptr(ws_gates_, rnn.cell_dt,
+                    m * rnn.ws_gates_ld + nb_i * rnn.n_block);
             const float *weights_peephole_n = weights_peephole_
                     ? weights_peephole_ + n
                     : weights_peephole_;
@@ -106,8 +93,9 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
             const auto Aic_n
                     = inc_ptr(src_iter_c_, rnn.src_iter_c_dt, m * LDAic + n);
             const auto bias_n = inc_ptr(bias_[0], rnn.bias_dt, n);
-            const auto augru_attention_m
-                    = augru_attention_ ? augru_attention_ + m : nullptr;
+            const auto augru_attention_m = augru_attention_
+                    ? inc_ptr(augru_attention_, rnn.cell_dt, m)
+                    : nullptr;
             this->rnn_postgemm_->execute(rnn, cell_position, curr_ws_gates_,
                     C_n, augru_attention_m, Dpg_n, Dic_n, Ai_m, Aic_n,
                     diff_src_layer_, diff_augru_attention_, diff_src_iter_,
@@ -125,23 +113,24 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                     [&](dim_t m, dim_t n, dim_t nb_i, const void *Ai_m,
                             void *C_gates_n, void *C_cell_n, dim_t block_step) {
                 const auto Dpg_n = (dst_postgemm != nullptr)
-                        ? dst_postgemm + m * LDDl + n
+                        ? inc_ptr(dst_postgemm, rnn.cell_dt, m * LDDl + n)
                         : nullptr;
                 const auto Di_n = (dst_iter_postgemm != nullptr)
-                        ? dst_iter_postgemm + m * LDDi + n
+                        ? inc_ptr(dst_iter_postgemm, rnn.cell_dt, m * LDDi + n)
                         : nullptr;
                 const auto Dic_n = (dst_iter_c_ != nullptr)
                         ? inc_ptr(dst_iter_c_, rnn.dst_iter_c_dt, m * LDDic + n)
                         : nullptr;
 
-                const auto curr_ws_gates_ = ws_gates_ + (m * rnn.ws_gates_ld)
-                        + nb_i * rnn.n_block;
+                const auto curr_ws_gates_ = inc_ptr(ws_gates_, rnn.cell_dt,
+                        m * rnn.ws_gates_ld + nb_i * rnn.n_block);
                 const auto Aic_n = inc_ptr(
                         src_iter_c_, rnn.src_iter_c_dt, m * LDAic + n);
                 const auto bias_n = inc_ptr(bias_[0], rnn.bias_dt, n);
                 auto weights_scales_n = weights_scales + (mask ? n : 0);
-                const auto augru_attention_m
-                        = augru_attention_ ? augru_attention_ + m : nullptr;
+                const auto augru_attention_m = augru_attention_
+                        ? inc_ptr(augru_attention_, rnn.cell_dt, m)
+                        : nullptr;
                 this->rnn_postgemm_->execute(rnn, cell_position, curr_ws_gates_,
                         C_gates_n, augru_attention_m, Dpg_n, Dic_n, Ai_m, Aic_n,
                         diff_src_layer_, diff_augru_attention_, diff_src_iter_,
@@ -153,23 +142,24 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                     [&](dim_t m, dim_t n, dim_t nb_i, const void *Ai_m,
                             void *C_gates_n, void *C_cell_n, dim_t block_step) {
                 const auto Dpg_n = (dst_postgemm != nullptr)
-                        ? dst_postgemm + m * LDDl + n
+                        ? inc_ptr(dst_postgemm, rnn.cell_dt, m * LDDl + n)
                         : nullptr;
                 const auto Di_n = (dst_iter_postgemm != nullptr)
-                        ? dst_iter_postgemm + m * LDDi + n
+                        ? inc_ptr(dst_iter_postgemm, rnn.cell_dt, m * LDDi + n)
                         : nullptr;
                 const auto Dic_n = (dst_iter_c_ != nullptr)
                         ? inc_ptr(dst_iter_c_, rnn.dst_iter_c_dt, m * LDDic + n)
                         : nullptr;
 
-                const auto curr_ws_gates_ = ws_gates_ + (m * rnn.ws_gates_ld)
-                        + nb_i * rnn.n_block;
+                const auto curr_ws_gates_ = inc_ptr(ws_gates_, rnn.cell_dt,
+                        m * rnn.ws_gates_ld + nb_i * rnn.n_block);
                 const auto Aic_n = inc_ptr(
                         src_iter_c_, rnn.src_iter_c_dt, m * LDAic + n);
                 const auto bias_n = inc_ptr(bias_[0], rnn.bias_dt, n);
                 auto weights_scales_n = weights_scales + (mask ? n : 0);
-                const auto augru_attention_m
-                        = augru_attention_ ? augru_attention_ + m : nullptr;
+                const auto augru_attention_m = augru_attention_
+                        ? inc_ptr(augru_attention_, rnn.cell_dt, m)
+                        : nullptr;
                 this->rnn_postgemm_->execute_part2(rnn, cell_position,
                         curr_ws_gates_, C_gates_n, augru_attention_m, Dpg_n,
                         Dic_n, Ai_m, Aic_n, diff_src_layer_,
@@ -206,15 +196,13 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                 diff_src_iter_, diff_src_iter_c_, diff_dst_layer_,
                 diff_dst_iter_, diff_dst_iter_c_, weights_peephole_, bias_[0],
                 ws_grid_, scratch_cell_, dst_iter_postgemm, wscales_postgemm,
-                rnn.dhc * sizeof(scratch_t));
+                rnn.dhc * types::data_type_size(rnn.scratch_dt));
     }
 
     if (rnn.is_lstm_projection) {
         const auto wscales_proj_postgemm
                 = this->pd_->attr()->rnn_weights_projection_qparams_.scales_;
-        gemm_acc_t *const Cp = (rnn.dt_conf == all_f32)
-                ? reinterpret_cast<gemm_acc_t *>(dst_layer_)
-                : scratch_gates_;
+        void *const Cp = (rnn.dt_conf == all_f32) ? dst_layer_ : scratch_gates_;
         const dim_t pLDDl = rnn.dst_layer_ld(cell_position, true);
         const int pmask
                 = this->pd_->attr()->rnn_weights_projection_qparams_.mask_;
@@ -227,10 +215,10 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                 const auto weights_scales_n
                         = wscales_proj_postgemm + (pmask ? n : 0);
                 const auto Di_n = (dst_iter_ != nullptr)
-                        ? dst_iter_ + m * LDDi + n
+                        ? inc_ptr(dst_iter_, rnn.cell_dt, m * LDDi + n)
                         : nullptr;
                 const auto Dl_n = (dst_layer_ != nullptr)
-                        ? dst_layer_ + m * pLDDl + n
+                        ? inc_ptr(dst_layer_, rnn.cell_dt, m * pLDDl + n)
                         : nullptr;
                 const auto Wp_comp_n = w_proj_comp + n;
                 this->rnn_postgemm_->execute_part2(rnn, cell_position, nullptr,
@@ -249,13 +237,14 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         dst_proj_calc.execute();
 
         if (rnn.unfused_post_gemm) {
-            // we have to downconvert the output to dst_layer_t and copy to
+            // we have to downconvert the output to dst_layer dt and copy to
             // dst_iter if needed
             this->rnn_postgemm_->execute_part2(rnn, cell_position, nullptr, Cp,
                     nullptr, dst_layer_, nullptr, nullptr, w_proj_comp, nullptr,
                     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
                     nullptr, nullptr, nullptr, nullptr, dst_iter_,
-                    wscales_proj_postgemm, rnn.dlc * sizeof(dst_layer_t));
+                    wscales_proj_postgemm,
+                    rnn.dlc * types::data_type_size(rnn.cell_dt));
         }
     }
 
@@ -263,15 +252,7 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
     return dnnl_success;
 }
 
-template rnn_cell_execution_sig(ref_rnn_fwd_f32_t::cell_execution_brgemm);
-template rnn_cell_execution_sig(ref_rnn_fwd_bf16_t::cell_execution_brgemm);
-template rnn_cell_execution_sig(ref_rnn_fwd_f16_t::cell_execution_brgemm);
-template rnn_cell_execution_sig(ref_rnn_fwd_u8s8_t::cell_execution_brgemm);
-template rnn_cell_execution_sig(ref_rnn_fwd_s8s8_t::cell_execution_brgemm);
-
-template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
-rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
-        acc_type>::cell_execution_brgemm)) {
+rnn_cell_execution_sig(ref_rnn_bwd_t::cell_execution_brgemm) {
 
 #if DNNL_X64 || DNNL_AARCH64
     this->rnn_postgemm_->execute(rnn, cell_position, ws_gates_, scratch_gates_,
@@ -301,15 +282,17 @@ rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
         const auto src_iter_ld = rnn.src_iter_ld(cell_position);
         const auto src_layer_ld_nb = rnn.layer_brgemm_desc(cell_position);
         const auto src_iter_ld_nb = rnn.iter_brgemm_desc(cell_position);
-        const auto rnd_up_size = x64::data_type_vnni_granularity(src_type);
+        const auto rnd_up_size = x64::data_type_vnni_granularity(rnn.cell_dt);
         const auto dst_ld = utils::rnd_up(rnn.mb, rnd_up_size);
 
+        const size_t dt_size = types::data_type_size(rnn.cell_dt);
+
         const auto layer_transpose = x64::src_layer_iter_transpose_t(
-                src_layer_ld, dst_ld, rnn.mb, rnn.slc,
+                src_layer_ld, dst_ld, rnn.mb, rnn.slc, dt_size,
                 this->rnn_brgemm_.kernel_transpose_layer_[src_layer_ld_nb]
                         .get());
         const auto iter_transpose = x64::src_layer_iter_transpose_t(src_iter_ld,
-                dst_ld, rnn.mb, rnn.sic,
+                dst_ld, rnn.mb, rnn.sic, dt_size,
                 this->rnn_brgemm_.kernel_transpose_iter_[src_iter_ld_nb].get());
         layer_transpose.execute(src_layer_, scratch_src_layer_);
         iter_transpose.execute(src_iter_, scratch_src_iter_);
@@ -334,9 +317,6 @@ rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
 
     return dnnl_success;
 }
-template rnn_cell_execution_sig(ref_rnn_bwd_f32_t::cell_execution_brgemm);
-template rnn_cell_execution_sig(ref_rnn_bwd_bf16_t::cell_execution_brgemm);
-template rnn_cell_execution_sig(ref_rnn_bwd_f16_t::cell_execution_brgemm);
 
 } // namespace cpu
 } // namespace impl

@@ -23,24 +23,17 @@ namespace impl {
 namespace cpu {
 
 namespace {
-using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::prop_kind;
 
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
     // clang-format off
     static std::map<pk_impl_key_t, std::vector<impl_list_item_t>> the_map =  REG_RNN_P({
         {{forward}, {
-            CPU_INSTANCE(ref_rnn_fwd_bf16_t)
-            CPU_INSTANCE(ref_rnn_fwd_f16_t)
-            CPU_INSTANCE(ref_rnn_fwd_f32_t)
-            CPU_INSTANCE(ref_rnn_fwd_s8s8_t)
-            CPU_INSTANCE(ref_rnn_fwd_u8s8_t)
+            CPU_INSTANCE(ref_rnn_fwd_t)
             nullptr,
         }},
         {{backward}, REG_BWD_PK({
-            CPU_INSTANCE(ref_rnn_bwd_f32_t)
-            CPU_INSTANCE(ref_rnn_bwd_bf16_t)
-            CPU_INSTANCE(ref_rnn_bwd_f16_t)
+            CPU_INSTANCE(ref_rnn_bwd_t)
             nullptr,
         })},
     });

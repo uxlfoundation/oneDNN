@@ -35,7 +35,6 @@ using namespace dnnl::impl::utils;
 using namespace rnn_utils;
 using namespace format_tag;
 using namespace rnn_packed_format;
-using namespace data_type;
 
 static bool check_dims_contiguous_except_one(const memory_desc_wrapper &mdw,
         int idx_with_arbitrary_stride, std::initializer_list<int> perm) {
@@ -354,14 +353,8 @@ float rnn_utils::to_float(const void *data, const data_type_t dt) {
 
 const void *rnn_utils::inc_ptr(
         const void *data, data_type_t data_type, dim_t offset) {
-    if (data_type == data_type::f32)
-        return static_cast<const float *>(data) + offset;
-    else if (data_type == data_type::bf16)
-        return static_cast<const bfloat16_t *>(data) + offset;
-    else if (data_type == data_type::f16)
-        return static_cast<const float16_t *>(data) + offset;
-    else
-        return data;
+    return static_cast<const char *>(data)
+            + offset * static_cast<dim_t>(types::data_type_size(data_type));
 }
 
 void *rnn_utils::inc_ptr(void *data, data_type_t data_type, dim_t offset) {

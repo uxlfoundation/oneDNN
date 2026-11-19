@@ -177,16 +177,17 @@ void lstm_fwd_postgemm(const rnn_pd_t *pd, rnn_postgemm_sig_args) {
                 src_iter_, src_iter_c_, weights_peephole_, bias_, block_step);
 }
 
-void lstm_fwd_postgemm_u8(const rnn_pd_t *pd, rnn_postgemm_sig_args) {
+template <typename src_data_t>
+void lstm_fwd_postgemm_int8(const rnn_pd_t *pd, rnn_postgemm_sig_args) {
     const float *scales = pd->attr()->rnn_tparams_.scales_;
     const float *cscale = &(pd->attr()->rnn_tparams_.cscale_);
 
     const float data_shift = pd->attr()->rnn_data_qparams_.shift_;
     const float data_scale = pd->attr()->rnn_data_qparams_.scale_;
 
-    const auto quantize_f32_u8 = [&](float f) {
+    const auto quantize_f32_int8 = [&](float f) {
         float qf = f * data_scale + data_shift;
-        return q10n::qz_a1b0_t<float, uint8_t>()(qf);
+        return q10n::qz_a1b0_t<float, src_data_t>()(qf);
     };
 
     const auto dequantize_s32_f32 = [&](int32_t s, int gate, dim_t j) {
@@ -206,56 +207,14 @@ void lstm_fwd_postgemm_u8(const rnn_pd_t *pd, rnn_postgemm_sig_args) {
             = [](const float *scale, float a) { return tanh_fwd<float>(a); };
 
     if (!pd->attr()->rnn_tparams_.test_mode_)
-        lstm_fwd_postgemm_template<uint8_t, int32_t>(logistic_f, tanh_f,
-                quantize_f32_u8, dequantize_s32_f32, scales, cscale, rnn,
+        lstm_fwd_postgemm_template<src_data_t, int32_t>(logistic_f, tanh_f,
+                quantize_f32_int8, dequantize_s32_f32, scales, cscale, rnn,
                 cell_position, ws_gates_, scratch_gates_, dst_layer_, dst_iter_,
                 dst_iter_c_, src_iter_, src_iter_c_, weights_peephole_, bias_,
                 block_step);
     else
-        lstm_fwd_postgemm_template<uint8_t, int32_t>(linear_f, linear_f,
-                quantize_f32_u8, dequantize_s32_f32, scales, cscale, rnn,
-                cell_position, ws_gates_, scratch_gates_, dst_layer_, dst_iter_,
-                dst_iter_c_, src_iter_, src_iter_c_, weights_peephole_, bias_,
-                block_step);
-}
-
-void lstm_fwd_postgemm_s8(const rnn_pd_t *pd, rnn_postgemm_sig_args) {
-    const float *scales = pd->attr()->rnn_tparams_.scales_;
-    const float *cscale = &(pd->attr()->rnn_tparams_.cscale_);
-
-    const float data_shift = pd->attr()->rnn_data_qparams_.shift_;
-    const float data_scale = pd->attr()->rnn_data_qparams_.scale_;
-
-    const auto quantize_f32_s8 = [&](float f) {
-        float qf = f * data_scale + data_shift;
-        return q10n::qz_a1b0_t<float, int8_t>()(qf);
-    };
-
-    const auto dequantize_s32_f32 = [&](int32_t s, int gate, dim_t j) {
-        float wscale = pd->attr()->rnn_weights_qparams_.mask_ == 0
-                ? weights_scales_[0]
-                : weights_scales_[gate * rnn.dhc + j];
-
-        return q10n::saturate<float>(s) * (1.f / (wscale * data_scale));
-    };
-
-    const auto linear_f
-            = [](const float *scale, float a) { return *scale * a; };
-    const auto logistic_f = [](const float *scale, float a) {
-        return logistic_fwd<float>(a);
-    };
-    const auto tanh_f
-            = [](const float *scale, float a) { return tanh_fwd<float>(a); };
-
-    if (!pd->attr()->rnn_tparams_.test_mode_)
-        lstm_fwd_postgemm_template<int8_t, int32_t>(logistic_f, tanh_f,
-                quantize_f32_s8, dequantize_s32_f32, scales, cscale, rnn,
-                cell_position, ws_gates_, scratch_gates_, dst_layer_, dst_iter_,
-                dst_iter_c_, src_iter_, src_iter_c_, weights_peephole_, bias_,
-                block_step);
-    else
-        lstm_fwd_postgemm_template<int8_t, int32_t>(linear_f, linear_f,
-                quantize_f32_s8, dequantize_s32_f32, scales, cscale, rnn,
+        lstm_fwd_postgemm_template<src_data_t, int32_t>(linear_f, linear_f,
+                quantize_f32_int8, dequantize_s32_f32, scales, cscale, rnn,
                 cell_position, ws_gates_, scratch_gates_, dst_layer_, dst_iter_,
                 dst_iter_c_, src_iter_, src_iter_c_, weights_peephole_, bias_,
                 block_step);
@@ -273,8 +232,12 @@ rnn_postgemm_sig(rnn_postgemm_fwd_t::lstm_postgemm) {
         case data_type::f16:
             lstm_fwd_postgemm<float16_t>(pd_, rnn_postgemm_args);
             break;
-        case data_type::u8: lstm_fwd_postgemm_u8(pd_, rnn_postgemm_args); break;
-        case data_type::s8: lstm_fwd_postgemm_s8(pd_, rnn_postgemm_args); break;
+        case data_type::u8:
+            lstm_fwd_postgemm_int8<uint8_t>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::s8:
+            lstm_fwd_postgemm_int8<int8_t>(pd_, rnn_postgemm_args);
+            break;
         default: assert(!"unsupported data type");
     }
 }

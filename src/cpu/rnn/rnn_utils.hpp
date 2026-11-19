@@ -67,102 +67,93 @@
 #if DNNL_X64 || DNNL_AARCH64
 #define rnn_merged_layer_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
-            rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
-            const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
-            gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_, \
-            gemm_acc_t *gemm_acc_scratchpad, \
+            rnn_utils::cell_position_t cell_position, void **w_layer_, \
+            const void *src_layer_, void *scratch_gates_, \
+            float *diff_src_layer_, float *diff_w_layer_, \
+            void *gemm_acc_scratchpad, \
             brgemm_batch_element_t *addr_batch_global
 
 #define rnn_cell_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
-            rnn_utils::cell_position_t cell_position, dst_layer_t *dst_layer_, \
-            void *dst_iter_c_, gemm_acc_t *diff_src_layer_, \
-            gemm_acc_t *diff_augru_attention_, gemm_acc_t *diff_src_iter_, \
-            gemm_acc_t *diff_src_iter_c_, weights_t **w_layer_, \
-            weights_t **w_iter_, weights_t **w_projection_, \
-            const float *weights_peephole_, const float *w_proj_comp, \
-            void **bias_, const src_layer_t *src_layer_, \
-            const src_layer_t *augru_attention_, const src_iter_t *src_iter_, \
-            const void *src_iter_c_, gemm_acc_t *diff_dst_layer_, \
-            gemm_acc_t *diff_dst_iter_, gemm_acc_t *diff_dst_iter_c_, \
-            gemm_acc_t *diff_w_layer_, gemm_acc_t *diff_w_iter_, \
+            rnn_utils::cell_position_t cell_position, void *dst_layer_, \
+            void *dst_iter_c_, float *diff_src_layer_, \
+            float *diff_augru_attention_, float *diff_src_iter_, \
+            float *diff_src_iter_c_, void **w_layer_, void **w_iter_, \
+            void **w_projection_, const float *weights_peephole_, \
+            const float *w_proj_comp, void **bias_, const void *src_layer_, \
+            const void *augru_attention_, const void *src_iter_, \
+            const void *src_iter_c_, float *diff_dst_layer_, \
+            float *diff_dst_iter_, float *diff_dst_iter_c_, \
+            float *diff_w_layer_, float *diff_w_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, gates_t *ws_gates_, scratch_t *scratch_gates_, \
-            ht_t *proj_ht_, gemm_acc_t *scratch_diff_ht_, gates_t *ws_grid_, \
-            scratch_t *scratch_cell_, scratch_t *scratch_gates_blocked_, \
-            scratch_t *scratch_src_layer_, scratch_t *scratch_src_iter_, \
-            dst_iter_t *dst_iter_, gemm_acc_t *gemm_acc_scratchpad, \
+            float *diff_bias_, void *ws_gates_, void *scratch_gates_, \
+            void *proj_ht_, float *scratch_diff_ht_, void *ws_grid_, \
+            void *scratch_cell_, void *scratch_gates_blocked_, \
+            void *scratch_src_layer_, void *scratch_src_iter_, \
+            void *dst_iter_, void *gemm_acc_scratchpad, \
             brgemm_batch_element_t *addr_batch_global
 
 #define rnn_grid_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
-            weights_t **weights_layer_, weights_t **weights_iter_, \
-            weights_t **weights_projection_, const float *weights_peephole_, \
-            const float *w_proj_comp, void **bias_, \
-            const src_layer_t *src_layer_, \
-            const src_layer_t *augru_attention_, const src_iter_t *src_iter_, \
-            const void *src_iter_c_, dst_layer_t *dst_layer_, \
-            dst_iter_t *dst_iter_, void *dst_iter_c_, \
-            src_layer_t *ws_states_layer_, src_iter_t *ws_states_iter_, \
-            void *ws_states_iter_c_, gemm_acc_t *ws_diff_states_layer_, \
-            gemm_acc_t *ws_diff_states_iter_, \
-            gemm_acc_t *ws_diff_states_iter_c_, gates_t *ws_gates_, \
-            ht_t *ws_ht_, gates_t *ws_grid_, scratch_t *scratch_gates_, \
-            ht_t *scratch_ht_, gemm_acc_t *scratch_diff_ht_, \
-            scratch_t *scratch_cell_, scratch_t *scratch_gates_blocked_, \
-            scratch_t *scratch_src_layer_, scratch_t *scratch_src_iter_, \
-            gemm_acc_t *diff_augru_attention_, \
-            gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
-            float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, gemm_acc_t *gemm_acc_scratchpad, \
+            void **weights_layer_, void **weights_iter_, \
+            void **weights_projection_, const float *weights_peephole_, \
+            const float *w_proj_comp, void **bias_, const void *src_layer_, \
+            const void *augru_attention_, const void *src_iter_, \
+            const void *src_iter_c_, void *dst_layer_, void *dst_iter_, \
+            void *dst_iter_c_, void *ws_states_layer_, void *ws_states_iter_, \
+            void *ws_states_iter_c_, float *ws_diff_states_layer_, \
+            float *ws_diff_states_iter_, float *ws_diff_states_iter_c_, \
+            void *ws_gates_, void *ws_ht_, void *ws_grid_, \
+            void *scratch_gates_, void *scratch_ht_, float *scratch_diff_ht_, \
+            void *scratch_cell_, void *scratch_gates_blocked_, \
+            void *scratch_src_layer_, void *scratch_src_iter_, \
+            float *diff_augru_attention_, float *diff_weights_layer_, \
+            float *diff_weights_iter_, float *diff_weights_projection_, \
+            float *diff_weights_peephole_, float *diff_bias_, \
+            void *gemm_acc_scratchpad, \
             brgemm_batch_element_t *addr_batch_global
 
 #else
 
 #define rnn_merged_layer_execution_sig_args \
     const rnn_utils::rnn_conf_t &rnn, \
-            rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
-            const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
-            gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_
+            rnn_utils::cell_position_t cell_position, void **w_layer_, \
+            const void *src_layer_, void *scratch_gates_, \
+            float *diff_src_layer_, float *diff_w_layer_
 
 #define rnn_cell_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
-            rnn_utils::cell_position_t cell_position, dst_layer_t *dst_layer_, \
-            void *dst_iter_c_, gemm_acc_t *diff_src_layer_, \
-            gemm_acc_t *diff_augru_attention_, gemm_acc_t *diff_src_iter_, \
-            gemm_acc_t *diff_src_iter_c_, weights_t **w_layer_, \
-            weights_t **w_iter_, weights_t **w_projection_, \
-            const float *weights_peephole_, const float *w_proj_comp, \
-            void **bias_, const src_layer_t *src_layer_, \
-            const src_layer_t *augru_attention_, const src_iter_t *src_iter_, \
-            const void *src_iter_c_, gemm_acc_t *diff_dst_layer_, \
-            gemm_acc_t *diff_dst_iter_, gemm_acc_t *diff_dst_iter_c_, \
-            gemm_acc_t *diff_w_layer_, gemm_acc_t *diff_w_iter_, \
+            rnn_utils::cell_position_t cell_position, void *dst_layer_, \
+            void *dst_iter_c_, float *diff_src_layer_, \
+            float *diff_augru_attention_, float *diff_src_iter_, \
+            float *diff_src_iter_c_, void **w_layer_, void **w_iter_, \
+            void **w_projection_, const float *weights_peephole_, \
+            const float *w_proj_comp, void **bias_, const void *src_layer_, \
+            const void *augru_attention_, const void *src_iter_, \
+            const void *src_iter_c_, float *diff_dst_layer_, \
+            float *diff_dst_iter_, float *diff_dst_iter_c_, \
+            float *diff_w_layer_, float *diff_w_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, gates_t *ws_gates_, scratch_t *scratch_gates_, \
-            ht_t *proj_ht_, gemm_acc_t *scratch_diff_ht_, gates_t *ws_grid_, \
-            scratch_t *scratch_cell_, dst_iter_t *dst_iter_, \
-            gemm_acc_t *gemm_acc_scratchpad
+            float *diff_bias_, void *ws_gates_, void *scratch_gates_, \
+            void *proj_ht_, float *scratch_diff_ht_, void *ws_grid_, \
+            void *scratch_cell_, void *dst_iter_, void *gemm_acc_scratchpad
 
 #define rnn_grid_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
-            weights_t **weights_layer_, weights_t **weights_iter_, \
-            weights_t **weights_projection_, const float *weights_peephole_, \
-            const float *w_proj_comp, void **bias_, \
-            const src_layer_t *src_layer_, \
-            const src_layer_t *augru_attention_, const src_iter_t *src_iter_, \
-            const void *src_iter_c_, dst_layer_t *dst_layer_, \
-            dst_iter_t *dst_iter_, void *dst_iter_c_, \
-            src_layer_t *ws_states_layer_, src_iter_t *ws_states_iter_, \
-            void *ws_states_iter_c_, gemm_acc_t *ws_diff_states_layer_, \
-            gemm_acc_t *ws_diff_states_iter_, \
-            gemm_acc_t *ws_diff_states_iter_c_, gates_t *ws_gates_, \
-            ht_t *ws_ht_, gates_t *ws_grid_, scratch_t *scratch_gates_, \
-            ht_t *scratch_ht_, gemm_acc_t *scratch_diff_ht_, \
-            scratch_t *scratch_cell_, gemm_acc_t *diff_augru_attention_, \
-            gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
+            void **weights_layer_, void **weights_iter_, \
+            void **weights_projection_, const float *weights_peephole_, \
+            const float *w_proj_comp, void **bias_, const void *src_layer_, \
+            const void *augru_attention_, const void *src_iter_, \
+            const void *src_iter_c_, void *dst_layer_, void *dst_iter_, \
+            void *dst_iter_c_, void *ws_states_layer_, void *ws_states_iter_, \
+            void *ws_states_iter_c_, float *ws_diff_states_layer_, \
+            float *ws_diff_states_iter_, float *ws_diff_states_iter_c_, \
+            void *ws_gates_, void *ws_ht_, void *ws_grid_, \
+            void *scratch_gates_, void *scratch_ht_, float *scratch_diff_ht_, \
+            void *scratch_cell_, float *diff_augru_attention_, \
+            float *diff_weights_layer_, float *diff_weights_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, gemm_acc_t *gemm_acc_scratchpad
+            float *diff_bias_, void *gemm_acc_scratchpad
 
 #endif
 
@@ -178,13 +169,13 @@
 #define rnn_matmul_sig(f) \
     dnnl_status_t f(const exec_ctx_t &ctx, \
             const std::shared_ptr<dnnl::impl::primitive_t> &matmul_prim, \
-            const weights_t *a_, const gemm_data_t *b_, gemm_acc_t *c_) const
+            const void *a_, const void *b_, void *c_) const
 
 #define rnn_gemm_sig_args \
     const char transA, const char transB, dim_t m, dim_t n, dim_t k, \
-            const float alpha, const weights_t *a_, const dim_t ldA, \
-            const gemm_data_t *b_, const dim_t ldB, const float beta, \
-            gemm_acc_t *c_, const dim_t ldC
+            const float alpha, const void *a_, const dim_t ldA, \
+            const void *b_, const dim_t ldB, const float beta, void *c_, \
+            const dim_t ldC
 
 #define rnn_gemm_sig(f) dnnl_status_t f(rnn_gemm_sig_args) const
 
@@ -207,8 +198,7 @@
 
 #define rnn_weights_assign_sig_args \
     const rnn_utils::rnn_conf_t &rnn, const memory_desc_t *md, int n_parts, \
-            const int *gates_per_part, weights_t **weights_, \
-            const weights_t *w_
+            const int *gates_per_part, void **weights_, const void *w_
 
 #define rnn_weights_assign_sig(f) void f(rnn_weights_assign_sig_args) const
 

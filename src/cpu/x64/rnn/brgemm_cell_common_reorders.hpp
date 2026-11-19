@@ -30,17 +30,17 @@ struct rnn_conf_t;
 namespace x64 {
 struct src_layer_iter_transpose_t {
     src_layer_iter_transpose_t(const dim_t src_ld, const dim_t dst_ld,
-            const dim_t rows, const dim_t cols,
+            const dim_t rows, const dim_t cols, const size_t dt_size,
             jit_brgemm_trans_src_t *const kernel_transpose);
 
-    template <typename Dt>
-    void execute(const Dt *src, Dt *dst) const;
+    void execute(const void *src, void *dst) const;
 
 private:
     const dim_t src_ld_;
     const dim_t dst_ld_;
     const dim_t src_rows_;
     const dim_t src_cols_;
+    const size_t dt_size_;
     jit_brgemm_trans_src_t *const kernel_transpose_;
 };
 

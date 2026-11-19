@@ -501,8 +501,23 @@ void jit_uni_dw_conv_bwd_data_kernel_t<isa>::init_scratchpad(
     UNUSED(jcp);
 }
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
-status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
+template <cpu_isa_t isa>
+jit_uni_dw_conv_bwd_weights_kernel_t<isa>::jit_uni_dw_conv_bwd_weights_kernel_t(
+        const jit_conv_conf_t &ajcp) {
+    switch (ajcp.src_dt) {
+        case bf16:
+            ker_ = utils::make_unique<
+                    jit_avx512_dw_conv_bwd_weights_kernel_bf16_t>(ajcp);
+            break;
+        default:
+            ker_ = utils::make_unique<
+                    jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>>(ajcp);
+            break;
+    }
+}
+
+template <cpu_isa_t isa>
+status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa>::init_conf(
         jit_conv_conf_t &jcp, const convolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &diff_weights_md,
         memory_desc_t &diff_bias_md, memory_desc_t &diff_dst_md, int nthreads) {
@@ -519,6 +534,7 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, diff_weights_d, diff_dst_d),
             VERBOSE_BAD_PARAM, "large size is not supported");
 
+    jcp.src_dt = cd.src_desc.data_type;
     jcp.dwei_dt = cd.diff_weights_desc.data_type;
     const int ndims = src_d.ndims();
     const bool is_bf16 = src_d.data_type() == data_type::bf16;
@@ -689,8 +705,8 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_scratchpad(
+template <cpu_isa_t isa>
+void jit_uni_dw_conv_bwd_weights_kernel_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     using namespace dnnl::impl::memory_tracking::names;
 
@@ -738,8 +754,8 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_scratchpad(
         scratchpad.book<float>(key_conv_bias_bf16_convert_wsp, jcp.ngroups);
 }
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::balance(
+template <cpu_isa_t isa>
+void jit_uni_dw_conv_bwd_weights_kernel_t<isa>::balance(
         jit_conv_conf_t &jcp, int nthreads) {
     jcp.nthr_oh = jcp.nthr_g = jcp.nthr_mb = 1;
     if (jcp.harness == harness_mb_reduction) {
@@ -769,8 +785,8 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::balance(
     }
 }
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::partition_nthr_nxc(
+template <cpu_isa_t isa>
+void jit_uni_dw_conv_bwd_weights_kernel_t<isa>::partition_nthr_nxc(
         jit_conv_conf_t &jcp, int nthreads, bool prioritize_threading) {
 
     /* Explore thread partitioning space across 'nb_ch', 'mb' and 'nb_oh'
@@ -897,11 +913,9 @@ REG_AVX2_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx2>);
 REG_AVX512_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core>);
 REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<avx2>);
 
-REG_AVX512_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx512_core,
-        bf16>);
 REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx2, f32>);
+        template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx512_core>);
+REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx2>);
 } // namespace x64
 } // namespace cpu
 } // namespace impl

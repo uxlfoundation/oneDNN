@@ -34,7 +34,6 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <data_type_t dst_data_type>
 struct gemm_bf16_convolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
@@ -49,9 +48,10 @@ struct gemm_bf16_convolution_fwd_t : public primitive_t {
                     DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(
-                    expect_data_types(bf16, bf16, dnnl::impl::data_type::undef,
-                            dst_data_type, f32),
+            const data_type_t dst_dt = invariant_dst_md()->data_type;
+            VDISPATCH_CONV(utils::one_of(dst_dt, f32, bf16)
+                            && expect_data_types(bf16, bf16,
+                                    dnnl::impl::data_type::undef, dst_dt, f32),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
@@ -66,9 +66,9 @@ struct gemm_bf16_convolution_fwd_t : public primitive_t {
                                            bf16, f32)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
 
-            VDISPATCH_CONV(attr()->has_default_values(
-                                   primitive_attr_t::skip_mask_t::post_ops,
-                                   dst_data_type),
+            VDISPATCH_CONV(
+                    attr()->has_default_values(
+                            primitive_attr_t::skip_mask_t::post_ops, dst_dt),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto scratchpad = scratchpad_registry().registrar();
@@ -81,14 +81,14 @@ struct gemm_bf16_convolution_fwd_t : public primitive_t {
         }
 
         bool is_postprocess_required() const {
+            const data_type_t dst_dt = dst_md()->data_type;
             bool post_ops_sum_only_for_dst_f32 = true
-                    && dst_data_type == data_type::f32
-                    && attr()->post_ops_.len() == 1
+                    && dst_dt == data_type::f32 && attr()->post_ops_.len() == 1
                     && attr()->post_ops_.contain(primitive_kind::sum, 0);
             bool is_pp_for_post_ops_required = true
                     && attr()->post_ops_.len() > 0
                     && !post_ops_sum_only_for_dst_f32;
-            return dst_data_type == data_type::bf16 || with_bias()
+            return dst_dt == data_type::bf16 || with_bias()
                     || is_pp_for_post_ops_required;
         }
 
@@ -98,7 +98,6 @@ struct gemm_bf16_convolution_fwd_t : public primitive_t {
     gemm_bf16_convolution_fwd_t(const pd_t *apd)
         : primitive_t(apd), pp_ker_(nullptr) {}
 
-    using dst_data_t = typename prec_traits_t<dst_data_type>::type;
     using acc_data_t = typename prec_traits_t<data_type::f32>::type;
     using src_data_t = typename prec_traits_t<data_type::bf16>::type;
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
@@ -106,7 +105,7 @@ struct gemm_bf16_convolution_fwd_t : public primitive_t {
     status_t init(engine_t *engine) override {
         const auto &post_ops = pd()->attr()->post_ops_;
         const acc_data_t one = 1.0f, zero = 0.0f;
-        beta_ = dst_data_type == data_type::f32
+        beta_ = pd()->dst_md()->data_type == data_type::f32
                         && post_ops.find(primitive_kind::sum) >= 0
                 ? one
                 : zero;
@@ -128,7 +127,7 @@ private:
     status_t execute_forward_nspc(const exec_ctx_t &ctx) const;
     status_t execute_forward_thr_nspc(const int ithr, const int nthr,
             const src_data_t *src_base, const wei_data_t *wei_base,
-            const float *bia_base, dst_data_t *dst_base,
+            const float *bia_base, char *dst_base,
             const memory_tracking::grantor_t &scratchpad,
             const void *post_ops_binary_rhs_arg_vec) const;
 
@@ -139,11 +138,11 @@ private:
         DECLARE_CPU_JIT_AUX_FUNCTIONS(gemm_bf16_convolution_fwd_t::pp_kernel);
         pp_ker_t(const pd_t *pd);
 
-        void operator()(dst_data_t *dst, const acc_data_t *acc,
+        void operator()(void *dst, const acc_data_t *acc,
                 const acc_data_t *bias, float sum_scale, size_t oc_work,
                 const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
                 const size_t g_oc_offset);
-        void operator()(dst_data_t *dst, const acc_data_t *acc,
+        void operator()(void *dst, const acc_data_t *acc,
                 const acc_data_t *bias, float sum_scale, size_t dst_str,
                 size_t acc_str, size_t sp_len, size_t oc,
                 const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
@@ -151,7 +150,7 @@ private:
 
     private:
         struct ker_args_t {
-            dst_data_t *dst = nullptr;
+            void *dst = nullptr;
             const acc_data_t *acc = nullptr;
             const acc_data_t *bias = nullptr;
             float sum_scale = 0.f;
@@ -196,6 +195,7 @@ private:
         Xbyak::Zmm bf16_emu_reserv_6 = Xbyak::Zmm(31);
 
         const conv_gemm_conf_t &jcp_;
+        const data_type_t dst_dt_;
         const bool do_sum_;
         int max_data_reg_idx_, max_unroll_, compute_reg_step_;
         int data_reg_base_idx_;
@@ -208,28 +208,30 @@ private:
         void apply_postops(const bool apply_mask, const dim_t out_offset,
                 const int vmm_idx);
         void generate() override;
-        int vreg_dst_idx(int iter) {
+        int vreg_dst_idx(int iter) const {
             int idx = data_reg_base_idx_ + iter * compute_reg_step_ + 0;
             assert(idx <= max_data_reg_idx_);
             return idx;
         }
-        int vreg_prev_dst_idx(int iter) {
+        int vreg_prev_dst_idx(int iter) const {
             int idx = data_reg_base_idx_ + iter * compute_reg_step_ + 1;
             assert(idx <= max_data_reg_idx_);
             return idx;
         }
 
-        Xbyak::Zmm vreg_dst(int iter) { return Xbyak::Zmm(vreg_dst_idx(iter)); }
+        Xbyak::Zmm vreg_dst(int iter) const {
+            return Xbyak::Zmm(vreg_dst_idx(iter));
+        }
 
-        Xbyak::Ymm vreg_dst_ymm(int iter) {
+        Xbyak::Ymm vreg_dst_ymm(int iter) const {
             return Xbyak::Ymm(vreg_dst_idx(iter));
         }
 
-        Xbyak::Zmm vreg_prev_dst(int iter) {
+        Xbyak::Zmm vreg_prev_dst(int iter) const {
             return Xbyak::Zmm(vreg_prev_dst_idx(iter));
         }
 
-        Xbyak::Ymm vreg_prev_dst_ymm(int iter) {
+        Xbyak::Ymm vreg_prev_dst_ymm(int iter) const {
             return Xbyak::Ymm(vreg_prev_dst_idx(iter));
         }
     };
@@ -238,7 +240,6 @@ private:
     std::unique_ptr<pp_ker_t> pp_ker_;
 };
 
-template <data_type_t diff_src_data_type>
 struct gemm_bf16_convolution_bwd_data_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_data_pd_t {
         using cpu_convolution_bwd_data_pd_t::cpu_convolution_bwd_data_pd_t;
@@ -254,8 +255,10 @@ struct gemm_bf16_convolution_bwd_data_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(diff_src_data_type, bf16,
-                                   dnnl::impl::data_type::undef, bf16, f32),
+            const data_type_t diff_src_dt = invariant_src_md()->data_type;
+            VDISPATCH_CONV(utils::one_of(diff_src_dt, f32, bf16)
+                            && expect_data_types(diff_src_dt, bf16,
+                                    dnnl::impl::data_type::undef, bf16, f32),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -280,7 +283,6 @@ struct gemm_bf16_convolution_bwd_data_t : public primitive_t {
 
     using diff_dst_data_t = typename prec_traits_t<data_type::bf16>::type;
     using acc_data_t = typename prec_traits_t<data_type::f32>::type;
-    using diff_src_data_t = typename prec_traits_t<diff_src_data_type>::type;
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
@@ -293,14 +295,13 @@ private:
     status_t execute_backward_data_ncsp(const exec_ctx_t &ctx) const;
     status_t execute_backward_data_nspc(const exec_ctx_t &ctx) const;
     status_t execute_backward_data_thr_nspc(const int ithr, const int nthr,
-            diff_src_data_t *diff_src_base, const wei_data_t *wei_base,
+            char *diff_src_base, const wei_data_t *wei_base,
             const diff_dst_data_t *diff_dst_base,
             const memory_tracking::grantor_t &scratchpad) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
-template <data_type_t diff_wei_data_type>
 struct gemm_bf16_convolution_bwd_weights_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_weights_pd_t {
         using cpu_convolution_bwd_weights_pd_t::
@@ -317,8 +318,10 @@ struct gemm_bf16_convolution_bwd_weights_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(bf16, diff_wei_data_type,
-                                   dnnl::impl::data_type::undef, bf16, f32),
+            const data_type_t diff_wei_dt = invariant_wei_md()->data_type;
+            VDISPATCH_CONV(utils::one_of(diff_wei_dt, f32, bf16)
+                            && expect_data_types(bf16, diff_wei_dt,
+                                    dnnl::impl::data_type::undef, bf16, f32),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -350,7 +353,6 @@ struct gemm_bf16_convolution_bwd_weights_t : public primitive_t {
     using diff_dst_data_t = typename prec_traits_t<data_type::bf16>::type;
     using acc_data_t = typename prec_traits_t<data_type::f32>::type;
     using src_data_t = typename prec_traits_t<data_type::bf16>::type;
-    using diff_wei_data_t = typename prec_traits_t<diff_wei_data_type>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(
@@ -367,11 +369,10 @@ struct gemm_bf16_convolution_bwd_weights_t : public primitive_t {
 private:
     void bf16_bwd_weights_reduction_par_ncsp(int ithr_mb, int nthr_mb,
             const conv_gemm_conf_t &jcp, const acc_data_t *weights_reduce_base,
-            diff_wei_data_t *weights_base) const;
+            char *weights_base) const;
     void bf16_bwd_weights_reduction_par_nspc(int ithr_mb, int nthr_mb,
             dim_t g_start, dim_t g_end, const conv_gemm_conf_t &jcp,
-            const acc_data_t *weights_reduce_base,
-            diff_wei_data_t *weights_base) const;
+            const acc_data_t *weights_reduce_base, char *weights_base) const;
 
     status_t execute_backward_weights_ncsp(const exec_ctx_t &ctx) const;
     status_t execute_backward_weights_nspc(const exec_ctx_t &ctx) const;

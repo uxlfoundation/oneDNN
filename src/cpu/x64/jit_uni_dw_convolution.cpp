@@ -32,9 +32,8 @@ template <cpu_isa_t isa>
 DEFINE_PD_CREATE(jit_uni_dw_convolution_fwd_t<isa>::pd_t)
 template <cpu_isa_t isa>
 DEFINE_PD_CREATE(jit_uni_dw_convolution_bwd_data_t<isa>::pd_t)
-template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-DEFINE_PD_CREATE(jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_dw_convolution_bwd_weights_t<isa>::pd_t)
 
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
@@ -332,14 +331,13 @@ void jit_uni_dw_convolution_bwd_data_t<isa>::execute_backward_data(
 REG_AVX512_ISA(template struct jit_uni_dw_convolution_bwd_data_t<avx512_core>);
 REG_AVX2_ISA(template struct jit_uni_dw_convolution_bwd_data_t<avx2>);
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
-        jit_uni_dw_convolution_bwd_weights_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_dw_convolution_bwd_weights_t<isa>::jit_uni_dw_convolution_bwd_weights_t(
+        const pd_t *apd)
     : primitive_t(apd), acc_ker_(nullptr), kernel_(nullptr) {}
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-status_t
-jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::execute(
+template <cpu_isa_t isa>
+status_t jit_uni_dw_convolution_bwd_weights_t<isa>::execute(
         const exec_ctx_t &ctx) const {
     switch (pd()->jcp_.harness) {
         case harness_nxc:
@@ -350,7 +348,10 @@ jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::execute(
             execute_backward_weights(ctx);
             parallel(
                     1, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
-                execute_reduction(ctx);
+                if (pd()->jcp_.dwei_dt == bf16)
+                    execute_reduction_bf16(ctx);
+                else
+                    execute_reduction(ctx);
             });
             break;
         default: assert(!"Invalid harness type");
@@ -358,30 +359,32 @@ jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::execute(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_backward_weights_nxc(const exec_ctx_t &ctx)
-        const {
+template <cpu_isa_t isa>
+void jit_uni_dw_convolution_bwd_weights_t<isa>::execute_backward_weights_nxc(
+        const exec_ctx_t &ctx) const {
     const auto &jcp = pd()->jcp_;
 
-    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-    auto diff_weights
-            = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto diff_weights = CTX_OUT_MEM(void *, DNNL_ARG_DIFF_WEIGHTS);
+    const size_t src_dt_size
+            = memory_desc_wrapper(pd()->src_md()).data_type_size();
+    const size_t diff_dst_dt_size
+            = memory_desc_wrapper(pd()->diff_dst_md()).data_type_size();
 
     auto diff_wei_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_wei_reduction);
     auto diff_bias_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bia_reduction);
 
     auto diff_bias_f32_to_bf16_accum
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bias_bf16_convert_wsp);
     float *diff_bias = jcp.bia_dt == bf16
             ? diff_bias_f32_to_bf16_accum
-            : CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
+            : CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
 
     const dim_t ch_block = jcp.ch_block;
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
@@ -406,11 +409,10 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         const size_t wei_size
                 = utils::rnd_up(jcp.ngroups, jcp.ch_block) * jcp.kh * jcp.kw;
         const bool main_thread = ithr_mb == 0 && ithr_oh == 0;
-        const int offset_wei_buffer = diff_weights_type == f32 ? 1 : 0;
+        const int offset_wei_buffer = jcp.dwei_dt == f32 ? 1 : 0;
         const int ithr_block = ithr_mb * jcp.nthr_oh + ithr_oh;
-        f32_data_t *ithr_diff_weights
-                = (main_thread && diff_weights_type == f32)
-                ? (f32_data_t *)diff_weights
+        float *ithr_diff_weights = (main_thread && jcp.dwei_dt == f32)
+                ? static_cast<float *>(diff_weights)
                 : diff_wei_reduction_buffer
                         + static_cast<size_t>(
                                 (ithr_block - offset_wei_buffer) * wei_size);
@@ -457,11 +459,13 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                     const size_t src_offset = static_cast<size_t>(mb * jcp.ih
                                                       + ih + kh_top_overflow)
                             * src_h_step;
-                    conv_params.input = &src[src_offset + g_offset];
+                    conv_params.input
+                            = src + (src_offset + g_offset) * src_dt_size;
                     const size_t diff_dst_off
                             = static_cast<size_t>(mb * jcp.oh + oh_s)
                             * ddst_h_step;
-                    conv_params.output = &diff_dst[diff_dst_off + g_offset];
+                    conv_params.output = diff_dst
+                            + (diff_dst_off + g_offset) * diff_dst_dt_size;
                     conv_params.oh_index = oh_s;
                     conv_params.oh_count = oh_e;
                     if (jcp.with_bias)
@@ -480,30 +484,32 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
     });
 }
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_backward_weights(const exec_ctx_t &ctx)
-        const {
-    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-    auto diff_weights
-            = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+template <cpu_isa_t isa>
+void jit_uni_dw_convolution_bwd_weights_t<isa>::execute_backward_weights(
+        const exec_ctx_t &ctx) const {
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto diff_weights = CTX_OUT_MEM(void *, DNNL_ARG_DIFF_WEIGHTS);
+    const size_t src_dt_size
+            = memory_desc_wrapper(pd()->src_md()).data_type_size();
+    const size_t diff_dst_dt_size
+            = memory_desc_wrapper(pd()->diff_dst_md()).data_type_size();
 
     auto diff_wei_reduction_buf
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_wei_reduction);
     auto diff_bia_reduction_buf
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bia_reduction);
 
     const auto &jcp = pd()->jcp_;
 
     float *diff_bias = nullptr;
     if (jcp.bia_dt == bf16) {
-        diff_bias = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+        diff_bias = ctx.get_scratchpad_grantor().template get<float>(
                 key_conv_bias_bf16_convert_wsp);
     } else {
-        diff_bias = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
+        diff_bias = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
     }
 
     const size_t wei_size = jcp.ngroups * jcp.kh * jcp.kw;
@@ -539,8 +545,9 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                                  + ih_s - tpad_underflow_off)
                 * jcp.iw;
 
-        conv_params->output = &diff_dst[diff_dst_off * ch_block];
-        conv_params->input = &src[src_off * ch_block];
+        conv_params->output
+                = diff_dst + diff_dst_off * ch_block * diff_dst_dt_size;
+        conv_params->input = src + src_off * ch_block * src_dt_size;
     };
 
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
@@ -561,9 +568,9 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         dim_t mb_start {0}, mb_end {0};
         balance211(jcp.mb, jcp.nthr_mb, ithr_mb, mb_start, mb_end);
 
-        auto i_mb = diff_weights_type == bf16 ? ithr_mb : ithr_mb - 1;
-        f32_data_t *diff_wei = (ithr_mb == 0 && diff_weights_type == f32)
-                ? (f32_data_t *)diff_weights
+        auto i_mb = jcp.dwei_dt == bf16 ? ithr_mb : ithr_mb - 1;
+        float *diff_wei = (ithr_mb == 0 && jcp.dwei_dt == f32)
+                ? static_cast<float *>(diff_weights)
                 : diff_wei_reduction_buf + i_mb * wei_size;
 
         auto diff_bia = ithr_mb == 0
@@ -609,27 +616,26 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 /* TODO: Performing a Parallel Reduction could potentially improve performance;
  * this should be explored in the future if further optimizations are required.
  */
-template <>
-void jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16>::execute_reduction(
+template <cpu_isa_t isa>
+void jit_uni_dw_convolution_bwd_weights_t<isa>::execute_reduction_bf16(
         const exec_ctx_t &ctx) const {
 
     const auto &jcp = pd()->jcp_;
     assert(jcp.dwei_dt == bf16);
 
     auto diff_wei_reduction_buf
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_wei_reduction);
     auto diff_bia_reduction_buf
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bia_reduction);
-    auto diff_weights
-            = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+    auto diff_weights = CTX_OUT_MEM(bfloat16_t *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_bias_f32_to_bf16_accum
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bias_bf16_convert_wsp);
     float *diff_bias = jcp.bia_dt == bf16
             ? diff_bias_f32_to_bf16_accum
-            : CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
+            : CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
 
     const size_t wei_size
             = utils::rnd_up(jcp.ngroups, jcp.ch_block) * jcp.kh * jcp.kw;
@@ -661,7 +667,7 @@ void jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16>::execute_reduction(
         }
     }
     if (jcp.bia_dt == bf16) {
-        auto diff_bias_in = CTX_OUT_MEM(bf16_data_t *, DNNL_ARG_DIFF_BIAS);
+        auto diff_bias_in = CTX_OUT_MEM(bfloat16_t *, DNNL_ARG_DIFF_BIAS);
         cvt_float_to_bfloat16(diff_bias_in, diff_bias, jcp.oc_without_padding);
     }
     /* Apply single-threaded 'mb' reduction */
@@ -680,26 +686,26 @@ void jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16>::execute_reduction(
     }
 }
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_reduction(const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+void jit_uni_dw_convolution_bwd_weights_t<isa>::execute_reduction(
+        const exec_ctx_t &ctx) const {
 
     const auto &jcp = pd()->jcp_;
-    assert(everyone_is(f32, diff_weights_type, jcp.dwei_dt));
+    assert(jcp.dwei_dt == f32);
 
-    auto diff_weights = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+    auto diff_weights = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_wei_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_wei_reduction);
     auto diff_bias_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bia_reduction);
     auto diff_bias_f32_to_bf16_accum
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bias_bf16_convert_wsp);
     float *diff_bias = jcp.bia_dt == bf16
             ? diff_bias_f32_to_bf16_accum
-            : CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
+            : CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
 
     /* Apply single-threaded 'mb' reduction */
     for (int thr_mb = 1; thr_mb < jcp.nthr_mb; ++thr_mb) {
@@ -737,29 +743,29 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
     }
 
     if (jcp.bia_dt == bf16) {
-        auto diff_bias_in = CTX_OUT_MEM(bf16_data_t *, DNNL_ARG_DIFF_BIAS);
+        auto diff_bias_in = CTX_OUT_MEM(bfloat16_t *, DNNL_ARG_DIFF_BIAS);
         cvt_float_to_bfloat16(diff_bias_in, diff_bias, jcp.ngroups);
     }
 }
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_reduction_nxc(const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+void jit_uni_dw_convolution_bwd_weights_t<isa>::execute_reduction_nxc(
+        const exec_ctx_t &ctx) const {
 
     const auto &jcp = pd()->jcp_;
-    auto diff_weights = CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+    auto diff_weights = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_WEIGHTS);
     auto diff_wei_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_wei_reduction);
     auto diff_bia_reduction_buffer
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bia_reduction);
     auto diff_bias_f32_to_bf16_accum
-            = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+            = ctx.get_scratchpad_grantor().template get<float>(
                     key_conv_bias_bf16_convert_wsp);
     float *diff_bias = jcp.bia_dt == bf16
             ? diff_bias_f32_to_bf16_accum
-            : CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
+            : CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
 
     const size_t wei_size = static_cast<size_t>(
             utils::rnd_up(jcp.ngroups, jcp.ch_block) * jcp.kh * jcp.kw);
@@ -771,8 +777,8 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                 = static_cast<size_t>(jcp.kh * jcp.kw * jcp.ch_block);
         const size_t wei_offset = NB_CH * nb_ch_step;
 
-        f32_data_t *ithr_diff_weights = diff_weights_type == f32
-                ? (f32_data_t *)&diff_weights[wei_offset]
+        float *ithr_diff_weights = jcp.dwei_dt == f32
+                ? &diff_weights[wei_offset]
                 : &diff_wei_reduction_buffer[wei_offset];
         auto ithr_dwei_reduction_buff = &diff_wei_reduction_buffer[wei_offset];
 
@@ -783,7 +789,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
             const int oh_ithr = (ithr_reduction / jcp.nthr_mb) % jcp.nthr_oh;
             const size_t ithr_offset
                     = static_cast<size_t>(mb_ithr * jcp.nthr_oh + oh_ithr);
-            const int offset_wei_buffer = diff_weights_type == bf16 ? 1 : 0;
+            const int offset_wei_buffer = jcp.dwei_dt == bf16 ? 1 : 0;
             const size_t reduction_offset
                     = (ithr_offset + offset_wei_buffer) * wei_size;
             const size_t reduction_size
@@ -825,26 +831,22 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
     });
 
     parallel(1, [=](const int ithr, const int nthr) {
-        if (diff_weights_type == bf16) {
+        if (jcp.dwei_dt == bf16) {
             cvt_float_to_bfloat16((bfloat16_t *)&(diff_weights[0]),
                     (const float *)&(diff_wei_reduction_buffer[0]), wei_size);
         }
 
         if (jcp.bia_dt == bf16) {
-            auto diff_bias_in = CTX_OUT_MEM(bf16_data_t *, DNNL_ARG_DIFF_BIAS);
+            auto diff_bias_in = CTX_OUT_MEM(bfloat16_t *, DNNL_ARG_DIFF_BIAS);
             cvt_float_to_bfloat16(
                     diff_bias_in, diff_bias, jcp.oc_without_padding);
         }
     });
 }
 
-REG_AVX512_ISA(template struct jit_uni_dw_convolution_bwd_weights_t<avx512_core,
-        bf16>);
-REG_AVX512_ISA(template struct jit_uni_dw_convolution_bwd_weights_t<avx512_core,
-        bf16, f32>);
 REG_AVX512_ISA(
-        template struct jit_uni_dw_convolution_bwd_weights_t<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_convolution_bwd_weights_t<avx2, f32>);
+        template struct jit_uni_dw_convolution_bwd_weights_t<avx512_core>);
+REG_AVX2_ISA(template struct jit_uni_dw_convolution_bwd_weights_t<avx2>);
 } // namespace x64
 } // namespace cpu
 } // namespace impl

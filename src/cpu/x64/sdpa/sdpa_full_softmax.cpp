@@ -460,6 +460,16 @@ status_t build_mm2_brgemm_desc(brgemm_desc_t &brg,
     const auto &p = conf.params;
     CHECK(init_brgemm_desc(
             brg, p.mm_dt, beta, M, N, K, conf.ld_prob, conf.ldv, conf.mm2_ldc));
+
+    if (conf.mm2_postops) {
+        memory_desc_t dst_md;
+        dims_t dst_dims = {M, N};
+        dims_t dst_strides = {conf.out_ld, 1};
+        CHECK(memory_desc_init_by_strides(
+                dst_md, 2, dst_dims, p.out_dt, dst_strides));
+        CHECK(brgemm_desc_set_postops(&brg, nullptr, &dst_md, conf.out_ld));
+    }
+
     return finalize_brgemm_desc(brg, conf.mm2_needs_vnni_b);
 }
 
@@ -934,17 +944,19 @@ status_t configure(const sdpa_full_softmax_params_t &params,
         sk.mm2_chunks = n_chunks(conf.mm2_k_block);
     }
 
-    // mm2 can write its f32 result straight into the user output tensor (C =
-    // output, LDC = output row stride), skipping the pv scratch tile and the
-    // down-convert/scatter, when the output is f32 with unit-stride rows. All
-    // other cases (bf16/f16 output or a strided output column) keep pv+scatter.
-    // Multiple mm2 chunks must be summed before writing the output.
+    // mm2 can write the final result directly to the output when it has only
+    // one chunk, skipping the pv scratch tile and the down-convert/scatter
+    // for f32 or converting in the final K block's epilogue for bf16/f16.
+    // Multiple mm2 chunks must be summed before writing the output, and a
+    // strided output column keeps pv+scatter.
     const dim_t o_col_stride = p_.o_strides[ndims - 1];
     const bool mm2_has_single_chunk
             = !split_kv || conf.split_kv.mm2_chunks == 1;
     const bool mm2_direct = mm2_has_single_chunk && o_col_stride == 1
             && p_.out_dt == data_type::f32;
     conf.mm2_direct = mm2_direct;
+    conf.mm2_postops = mm2_has_single_chunk && o_col_stride == 1
+            && utils::one_of(p_.out_dt, data_type::bf16, data_type::f16);
     conf.ld_pv = scratch_row_ld(p_.hs_v, sizeof(float), /*allow_padding=*/true);
 
     // With seq_q == 1, the queries in a kv_head_group work item come from
@@ -1101,10 +1113,11 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // [q_block x seq_kv] and one pv tile [q_block x hs_v], both f32 (BRGEMM
     // accumulates in f32). For a non-f32 compute type, a third
     // [q_block x seq_kv] tile holds P (mm2's A operand) down-converted from the
-    // f32 softmax output; f32 reuses the scores tile directly. The pv tile lets
-    // mm2 write a dense output that is then scattered (and down-converted) to
-    // the (possibly strided) user output. The tiles of the work item's heads
-    // are consecutive. split_kv keeps these tiles in shared buffers instead.
+    // f32 softmax output; f32 reuses the scores tile directly. The pv tile
+    // holds partial sums until the final K block converts/stores the result,
+    // or until store() copies it to the (possibly strided) user output. The
+    // tiles of the work item's heads are consecutive. split_kv keeps these
+    // tiles in shared buffers instead.
     const size_t item_q_rows = split_kv
             ? 0
             : static_cast<size_t>(conf.query_heads_per_item) * q_block;
@@ -1609,6 +1622,8 @@ public:
             v_op.load_tile(kv0, 0, k_tail);
             const bool use_beta0_kernel
                     = conf_.mm2_beta != 0.0f && kv0 == kv_begin;
+            const bool last_k_block = kv0 + conf_.mm2_k_block >= kv_end;
+            const bool apply_postops = conf_.mm2_postops && last_k_block;
             assert(!(use_beta0_kernel && k_tail));
             for_each_block(
                     0, st_.p.hs_v, conf_.v_block, [&](dim_t v0, bool v_tail) {
@@ -1619,8 +1634,17 @@ public:
                     brgemm_batch_element_t be;
                     be.ptr.A = prob.of(h) + kv0 * st_.mm_dt_sz;
                     be.ptr.B = v_op.at(kv0, v0);
-                    brgemm_kernel_execute(kernel, 1, &be, c.f32(h) + v0,
-                            thread_state_.amx_wsp);
+                    float *c_blk = c.f32(h) + v0;
+                    if (apply_postops) {
+                        char *dst = thread_state_.heads[h].out
+                                + v0 * types::data_type_size(st_.p.out_dt);
+                        const brgemm_post_ops_data_t pod;
+                        brgemm_kernel_execute_postops(kernel, 1, &be, c_blk,
+                                dst, pod, thread_state_.amx_wsp);
+                    } else {
+                        brgemm_kernel_execute(
+                                kernel, 1, &be, c_blk, thread_state_.amx_wsp);
+                    }
                 }
             });
         });
@@ -1690,7 +1714,7 @@ void execute_fused(const exec_state_t &st, int nthr) {
             const item_tiles_t pv = {thread_state.scratch + scratch_layout.pv,
                     q_block * conf.ld_pv * sizeof(float)};
             item.mm2(0, p.seq_kv, prob, pv);
-            item.store(pv);
+            if (!conf.mm2_postops) item.store(pv);
         }
     };
     const dim_t work = p.batch * n_items * n_qblk;
@@ -1798,7 +1822,8 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                     item_tiles(sk.prob, prob_row_bytes, batch_idx,
                             item_head_idx, q_block_idx),
                     c_tile);
-            if (sk.mm2_chunks == 1 && !conf.mm2_direct) item.store(c_tile);
+            if (sk.mm2_chunks == 1 && !conf.mm2_direct && !conf.mm2_postops)
+                item.store(c_tile);
         });
     });
     if (sk.mm2_chunks == 1) return;

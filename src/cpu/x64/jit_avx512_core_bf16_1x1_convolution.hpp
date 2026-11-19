@@ -146,9 +146,7 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
         std::unique_ptr<cpu_convolution_fwd_pd_t> dw_conv_pd_;
 
     protected:
-        template <data_type_t ddt>
-        using dw_pd_t = typename jit_uni_dw_convolution_fwd_t<avx512_core,
-                data_type::bf16, ddt>::pd_t;
+        using dw_pd_t = jit_uni_dw_convolution_fwd_t<avx512_core>::pd_t;
 
         bool set_default_formats() {
             using namespace format_tag;
@@ -182,26 +180,11 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
             jcp_ = other.jcp_;
             rtus_ = other.rtus_;
             jcp_dw_ = nullptr;
-            using namespace data_type;
             if (other.dw_conv_pd_) {
                 dw_conv_pd_.reset(static_cast<cpu_convolution_fwd_pd_t *>(
                         other.dw_conv_pd_->clone()));
                 if (!dw_conv_pd_) return status::out_of_memory;
-                auto dw_dst_dt = dw_conv_pd_->dst_md()->data_type;
-
-                switch (dw_dst_dt) {
-                    case bf16:
-                        jcp_dw_ = &(
-                                static_cast<dw_pd_t<bf16> *>(dw_conv_pd_.get())
-                                        ->jcp_);
-                        break;
-                    case f32:
-                        jcp_dw_ = &(
-                                static_cast<dw_pd_t<f32> *>(dw_conv_pd_.get())
-                                        ->jcp_);
-                        break;
-                    default: assert(!"unreachable");
-                }
+                jcp_dw_ = &(static_cast<dw_pd_t *>(dw_conv_pd_.get())->jcp_);
             }
             return status::success;
         }
@@ -251,26 +234,17 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
             CHECK(get_depthwise_conv_desc(
                     cd_dw, src_md, attr_1x1, attr_dw, dw_po_index));
 
-            auto dw_dst_dt = cd_dw.dst_desc.data_type;
-
-#define CASE(dt) \
-    case (dt): { \
-        auto fusable_pd \
-                = make_unique_pd<dw_pd_t<(dt)>>(&cd_dw, &attr_dw, nullptr); \
-        CHECK(fusable_pd->init(engine)); \
-        jcp_dw = &(fusable_pd->jcp_); \
-        dw_conv_pd_ = std::move(fusable_pd); \
-        break; \
-    }
-            if (jcp_1x1.dst_dt == data_type::bf16) {
-                switch (dw_dst_dt) {
-                    CASE(data_type::bf16);
-                    CASE(data_type::f32);
-                    default: return status::unimplemented;
-                }
-            } else
+            const auto dw_dst_dt = cd_dw.dst_desc.data_type;
+            if (jcp_1x1.dst_dt != data_type::bf16
+                    || !utils::one_of(
+                            dw_dst_dt, data_type::bf16, data_type::f32))
                 return status::unimplemented;
-#undef CASE
+
+            auto fusable_pd
+                    = make_unique_pd<dw_pd_t>(&cd_dw, &attr_dw, nullptr);
+            CHECK(fusable_pd->init(engine));
+            jcp_dw = &(fusable_pd->jcp_);
+            dw_conv_pd_ = std::move(fusable_pd);
 
             VDISPATCH_CONV_IC(
                     dnnl_memory_desc_equal(&src_md, dw_conv_pd_->src_md(0)),

@@ -36,7 +36,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <impl::data_type_t data_type>
 struct gemm_inner_product_fwd_t : public primitive_t {
     struct pd_t : public cpu_inner_product_fwd_pd_t {
         using cpu_inner_product_fwd_pd_t::cpu_inner_product_fwd_pd_t;
@@ -55,9 +54,10 @@ struct gemm_inner_product_fwd_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_INNER_PRODUCT(
-                    everyone_is(data_type, src_md()->data_type,
+                    everyone_is(data_type::f32, src_md()->data_type,
                             weights_md()->data_type, dst_md()->data_type,
-                            with_bias() ? weights_md(1)->data_type : data_type),
+                            with_bias() ? weights_md(1)->data_type
+                                        : data_type::f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     attr()->has_default_values(
@@ -126,8 +126,6 @@ struct gemm_inner_product_fwd_t : public primitive_t {
         return pp_kernel_->create_kernel();
     }
 
-    using data_t = typename prec_traits_t<data_type>::type;
-
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
     }
@@ -140,7 +138,6 @@ private:
     bool postops_in_ip_;
 };
 
-template <impl::data_type_t data_type>
 struct gemm_inner_product_bwd_data_t : public primitive_t {
     struct pd_t : public cpu_inner_product_bwd_data_pd_t {
         using cpu_inner_product_bwd_data_pd_t::cpu_inner_product_bwd_data_pd_t;
@@ -159,7 +156,7 @@ struct gemm_inner_product_bwd_data_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_INNER_PRODUCT(
-                    utils::everyone_is(data_type, diff_src_md()->data_type,
+                    utils::everyone_is(data_type::f32, diff_src_md()->data_type,
                             weights_md()->data_type, diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
@@ -174,7 +171,6 @@ struct gemm_inner_product_bwd_data_t : public primitive_t {
     };
 
     gemm_inner_product_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}
-    using data_t = typename prec_traits_t<data_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_backward_data(ctx);
@@ -185,7 +181,6 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
-template <impl::data_type_t data_type>
 struct gemm_inner_product_bwd_weights_t : public primitive_t {
     struct pd_t : public cpu_inner_product_bwd_weights_pd_t {
         using cpu_inner_product_bwd_weights_pd_t::
@@ -205,11 +200,11 @@ struct gemm_inner_product_bwd_weights_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_INNER_PRODUCT(
-                    utils::everyone_is(data_type, src_md()->data_type,
+                    utils::everyone_is(data_type::f32, src_md()->data_type,
                             diff_weights_md()->data_type,
                             diff_dst_md()->data_type,
                             with_bias() ? diff_weights_md(1)->data_type
-                                        : data_type),
+                                        : data_type::f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -224,7 +219,6 @@ struct gemm_inner_product_bwd_weights_t : public primitive_t {
     };
 
     gemm_inner_product_bwd_weights_t(const pd_t *apd) : primitive_t(apd) {}
-    using data_t = typename prec_traits_t<data_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_backward_weights(ctx);

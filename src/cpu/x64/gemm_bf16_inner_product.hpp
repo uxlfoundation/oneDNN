@@ -39,7 +39,6 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <data_type_t dst_data_type>
 struct gemm_bf16_inner_product_fwd_t : public primitive_t {
     struct pd_t : public cpu_inner_product_fwd_pd_t {
         using cpu_inner_product_fwd_pd_t::cpu_inner_product_fwd_pd_t;
@@ -62,8 +61,9 @@ struct gemm_bf16_inner_product_fwd_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(everyone_is(bf16, src_md()->data_type,
                                             weights_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(dst_data_type == dst_md()->data_type,
-                    VERBOSE_UNSUPPORTED_DT);
+            const data_type_t dst_dt = dst_md()->data_type;
+            VDISPATCH_INNER_PRODUCT(
+                    one_of(dst_dt, f32, bf16), VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     IMPLICATION(with_bias(),
                             one_of(weights_md(1)->data_type, f32, bf16)),
@@ -89,7 +89,7 @@ struct gemm_bf16_inner_product_fwd_t : public primitive_t {
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            dst_is_acc_ = dst_data_type == f32;
+            dst_is_acc_ = dst_dt == f32;
 
             init_scratchpad();
 
@@ -111,7 +111,6 @@ struct gemm_bf16_inner_product_fwd_t : public primitive_t {
 
     gemm_bf16_inner_product_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    using dst_data_t = typename prec_traits_t<dst_data_type>::type;
     using acc_data_t = typename prec_traits_t<data_type::f32>::type;
     using src_data_t = typename prec_traits_t<data_type::bf16>::type;
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
@@ -152,7 +151,6 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
-template <data_type_t diff_src_data_type>
 struct gemm_bf16_inner_product_bwd_data_t : public primitive_t {
     struct pd_t : public cpu_inner_product_bwd_data_pd_t {
         using cpu_inner_product_bwd_data_pd_t::cpu_inner_product_bwd_data_pd_t;
@@ -176,8 +174,8 @@ struct gemm_bf16_inner_product_bwd_data_t : public primitive_t {
                     utils::everyone_is(bf16, weights_md()->data_type,
                             diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(
-                    diff_src_data_type == diff_src_md()->data_type,
+            const data_type_t diff_src_dt = diff_src_md()->data_type;
+            VDISPATCH_INNER_PRODUCT(utils::one_of(diff_src_dt, f32, bf16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -188,7 +186,7 @@ struct gemm_bf16_inner_product_bwd_data_t : public primitive_t {
                                             weights_md(), diff_dst_md()),
                     VERBOSE_INCOMPATIBLE_GEMM_FMT);
 
-            diff_src_is_acc_ = diff_src_data_type == data_type::f32;
+            diff_src_is_acc_ = diff_src_dt == f32;
 
             init_scratchpad();
 
@@ -212,7 +210,6 @@ struct gemm_bf16_inner_product_bwd_data_t : public primitive_t {
 
     using diff_dst_data_t = typename prec_traits_t<data_type::bf16>::type;
     using acc_data_t = typename prec_traits_t<data_type::f32>::type;
-    using diff_src_data_t = typename prec_traits_t<diff_src_data_type>::type;
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
@@ -224,7 +221,6 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
-template <data_type_t diff_wei_data_type>
 struct gemm_bf16_inner_product_bwd_weights_t : public primitive_t {
     struct pd_t : public cpu_inner_product_bwd_weights_pd_t {
         using cpu_inner_product_bwd_weights_pd_t::
@@ -250,9 +246,9 @@ struct gemm_bf16_inner_product_bwd_weights_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(everyone_is(bf16, src_md()->data_type,
                                             diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
+            const data_type_t diff_wei_dt = diff_weights_md()->data_type;
             VDISPATCH_INNER_PRODUCT(
-                    diff_wei_data_type == diff_weights_md()->data_type,
-                    VERBOSE_UNSUPPORTED_DT);
+                    one_of(diff_wei_dt, f32, bf16), VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     IMPLICATION(with_bias(),
                             one_of(diff_weights_md(1)->data_type, f32, bf16)),
@@ -265,7 +261,7 @@ struct gemm_bf16_inner_product_bwd_weights_t : public primitive_t {
                                             diff_weights_md(), diff_dst_md()),
                     VERBOSE_INCOMPATIBLE_GEMM_FMT);
 
-            diff_wei_is_acc_ = diff_wei_data_type == f32;
+            diff_wei_is_acc_ = diff_wei_dt == f32;
             bias_reduction_nthr_ = dnnl_get_max_threads();
 
             init_scratchpad();
@@ -328,7 +324,6 @@ struct gemm_bf16_inner_product_bwd_weights_t : public primitive_t {
     using diff_dst_data_t = typename prec_traits_t<data_type::bf16>::type;
     using acc_data_t = typename prec_traits_t<data_type::f32>::type;
     using src_data_t = typename prec_traits_t<data_type::bf16>::type;
-    using diff_wei_data_t = typename prec_traits_t<diff_wei_data_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_backward_weights(ctx);

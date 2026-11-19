@@ -302,6 +302,18 @@ public:
         return inplace_pairs_;
     }
 
+    /// The minimal number of input and output tensors to be given on
+    /// execute. Backends bind in/outputs_ by their positions in the lists
+    /// given on compile, so execute must provide at least that many.
+    void set_min_num_tensors(size_t num_inputs, size_t num_outputs) {
+        min_num_inputs_ = num_inputs;
+        min_num_outputs_ = num_outputs;
+    }
+
+    size_t get_min_num_inputs() const { return min_num_inputs_; }
+
+    size_t get_min_num_outputs() const { return min_num_outputs_; }
+
     /// Query out a specific logical tensor by using an id. This function
     /// is used in C APIThe queried
     /// @param tid The id used to find the required logical tensor
@@ -402,6 +414,9 @@ protected:
     /// If B and C can share same buffer, then the inplace_pairs_
     /// should be [{2, 3}]
     std::vector<inplace_pair_t> inplace_pairs_;
+
+    size_t min_num_inputs_ = 0;
+    size_t min_num_outputs_ = 0;
 };
 
 } // namespace graph

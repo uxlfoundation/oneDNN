@@ -612,6 +612,22 @@ static status_t post_process(std::vector<logical_tensor_t> &dst,
     return status::success;
 }
 
+// Returns the number of leading elements of `given` that cover the first
+// occurrence of each logical tensor in `required`.
+static size_t get_min_num_tensors(const std::vector<logical_tensor_t> &required,
+        const std::vector<logical_tensor_t> &given) {
+    size_t num = 0;
+    for (const auto &req : required) {
+        for (size_t i = 0; i < given.size(); i++) {
+            if (given[i].id == req.id) {
+                num = std::max(num, i + 1);
+                break;
+            }
+        }
+    }
+    return num;
+}
+
 static status_t pre_process(std::vector<tensor_t> &dst,
         const std::vector<tensor_t> &src, const backend_t *abackend) {
     using ltw = logical_tensor_wrapper_t;
@@ -715,6 +731,10 @@ status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
     ret = post_process(cp->get_mutable_outputs(), tmp_outputs, backend);
     if (status::success != ret) return ret;
 
+    cp->pimpl_->set_min_num_tensors(
+            get_min_num_tensors(cp->get_inputs(), tmp_inputs),
+            get_min_num_tensors(cp->get_outputs(), tmp_outputs));
+
     if (ret != status::success || !cp->is_initialized())
         return status::unimplemented;
     return status::success;
@@ -787,6 +807,10 @@ status_t dnnl_graph_compiled_partition::execute(stream_t *astream,
         const backend_t *backend = src_partition_.get_assigned_backend();
         if (!backend) return status::invalid_arguments;
 
+        if (inputs.size() < pimpl_->get_min_num_inputs()
+                || outputs.size() < pimpl_->get_min_num_outputs())
+            return status::invalid_arguments;
+
         // Pre-process the given tensor. The pre-process includes
         // FIXME(xx) reduce overhead?
         // 1. decode backend id from the layout id and remove it
@@ -814,6 +838,10 @@ status_t dnnl_graph_compiled_partition::execute_sycl(stream_t *astream,
     const backend_t *backend = src_partition_.get_assigned_backend();
     if (!backend) return status::invalid_arguments;
 
+    if (inputs.size() < pimpl_->get_min_num_inputs()
+            || outputs.size() < pimpl_->get_min_num_outputs())
+        return status::invalid_arguments;
+
     // Pre-process the given tensor. The pre-process includes
     // 1. decode backend id from the layout id and remove it
     std::vector<tensor_t> processed_inputs, processed_outputs;
@@ -838,6 +866,10 @@ status_t dnnl_graph_compiled_partition::execute_ocl(stream_t *astream,
 
     const backend_t *backend = src_partition_.get_assigned_backend();
     if (!backend) return status::invalid_arguments;
+
+    if (inputs.size() < pimpl_->get_min_num_inputs()
+            || outputs.size() < pimpl_->get_min_num_outputs())
+        return status::invalid_arguments;
 
     std::vector<tensor_t> processed_inputs, processed_outputs;
     pre_process(processed_inputs, inputs, backend);

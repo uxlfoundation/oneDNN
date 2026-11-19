@@ -115,6 +115,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
             const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
 
     const bool with_wei_zps = !attr_zps.has_default_values(DNNL_ARG_WEIGHTS);
+    const bool wei_zp_after_scale = pd()->wei_zp_after_scale();
     const auto wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
     const int wei_zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
     const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
@@ -202,6 +203,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                 src_k_dim = wei_k_dim = k_start + i_group * k_group_size;
 
                 int src_zp = 0, wei_zp = 0;
+                float wei_zp_f = 0.0f;
                 float src_scale = 1.0f, wei_scale = 1.0f;
                 if (with_src_zps) {
                     const dim_t src_zp_offset = matmul_helper_t::get_quant_off(
@@ -214,8 +216,12 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                     const dim_t wei_zp_offset = matmul_helper_t::get_quant_off(
                             wei_dims_idx, wei_ndims, wei_zp_mask,
                             wei_zp_group_k, wei_zp_group_n, wei_zp_md);
-                    wei_zp = io::load_int_value(
-                            wei_zp_dt, wei_zps, wei_zp_offset);
+                    if (wei_zp_after_scale)
+                        wei_zp_f = io::load_float_value(
+                                wei_zp_dt, wei_zps, wei_zp_offset);
+                    else
+                        wei_zp = io::load_int_value(
+                                wei_zp_dt, wei_zps, wei_zp_offset);
                 }
                 if (with_src_scales) {
                     const dim_t src_scale_offset
@@ -255,10 +261,14 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                                 src_dt, src_data, src_off + k * src_stride_k);
                         const float w = io::load_float_value(
                                 wei_dt, wei_data, wei_off + k * wei_stride_k);
-                        acc += s * (w - wei_zp);
+                        // static_sbzp applies the scale before the zero point
+                        acc += s
+                                * (wei_zp_after_scale ? w * wei_scale - wei_zp_f
+                                                      : w - wei_zp);
                     }
                 }
-                result += acc * src_scale * wei_scale;
+                result += acc * src_scale
+                        * (wei_zp_after_scale ? 1.0f : wei_scale);
             }
 
             if (with_bias)

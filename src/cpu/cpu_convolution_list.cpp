@@ -298,10 +298,10 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         // BWD_W fp
         {{backward_weights, "f32:*:f32"}, REG_BWD_PK({
             CPU_INSTANCE_X64(ip_convolution_bwd_weights_t)
-            CPU_INSTANCE_AVX512(jit_avx512_common_dw_convolution_bwd_weights_t)
+            CPU_INSTANCE_AVX512(jit_uni_dw_convolution_bwd_weights_t<avx512_core>)
             CPU_INSTANCE_AVX512(jit_avx512_common_1x1_convolution_bwd_weights_t)
             CPU_INSTANCE_AVX512(jit_avx512_common_convolution_bwd_weights_t)
-            CPU_INSTANCE_AVX2(jit_avx2_dw_convolution_bwd_weights_t)
+            CPU_INSTANCE_AVX2(jit_uni_dw_convolution_bwd_weights_t<avx2>)
             CPU_INSTANCE_AVX2(jit_avx2_1x1_convolution_bwd_weights_t)
             CPU_INSTANCE_AVX2(jit_avx2_convolution_bwd_weights_t)
             CPU_INSTANCE_AARCH64(jit_uni_dw_convolution_bwd_weights_t<sve_512,f32>)
@@ -317,8 +317,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         })},
         {{backward_weights, "bf16:*:bf16"}, REG_BWD_PK({
             CPU_INSTANCE_X64(ip_convolution_bwd_weights_t)
-            CPU_INSTANCE_AVX512(jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16, f32>)
-            CPU_INSTANCE_AVX512(jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16, bf16>)
+            CPU_INSTANCE_AVX512(jit_uni_dw_convolution_bwd_weights_t<avx512_core>)
             CPU_INSTANCE_AMX(brgemm_convolution_bwd_weights_t)
             CPU_INSTANCE_AMX(jit_avx512_core_amx_convolution_bwd_weights_t)
             CPU_INSTANCE_AVX512(jit_avx512_core_bf16_1x1_convolution_bwd_weights_t)

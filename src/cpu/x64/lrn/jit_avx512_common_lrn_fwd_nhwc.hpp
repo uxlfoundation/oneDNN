@@ -26,12 +26,12 @@ namespace cpu {
 namespace x64 {
 namespace lrn {
 
-template <data_type_t d_type>
 class jit_avx512_common_lrn_kernel_fwd_nhwc_t
-    : public jit_avx512_common_lrn_kernel_fwd_t<d_type> {
+    : public jit_avx512_common_lrn_kernel_fwd_t {
 public:
-    jit_avx512_common_lrn_kernel_fwd_nhwc_t(unsigned C, prop_kind_t prop_kind,
-            float alpha, float beta, float k, int local_size);
+    jit_avx512_common_lrn_kernel_fwd_nhwc_t(data_type_t dt, unsigned C,
+            prop_kind_t prop_kind, float alpha, float beta, float k,
+            int local_size);
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_common_lrn_kernel_fwd_nhwc_t);
 

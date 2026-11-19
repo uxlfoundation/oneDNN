@@ -37,7 +37,7 @@ struct jit_avx512_common_lrn_fwd_t : public primitive_t {
         using cpu_lrn_fwd_pd_t::cpu_lrn_fwd_pd_t;
 
         DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("lrn_jit:", lrn::get_isa<d_type>(), ""),
+                JIT_IMPL_NAME_HELPER("lrn_jit:", lrn::get_isa(d_type), ""),
                 jit_avx512_common_lrn_fwd_t);
 
         status_t init(const engine_t *engine);
@@ -68,7 +68,7 @@ struct jit_avx512_common_lrn_bwd_t : public primitive_t {
         using cpu_lrn_bwd_pd_t::cpu_lrn_bwd_pd_t;
 
         DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("lrn_jit:", lrn::get_isa<d_type>(), ""),
+                JIT_IMPL_NAME_HELPER("lrn_jit:", lrn::get_isa(d_type), ""),
                 jit_avx512_common_lrn_bwd_t);
 
         status_t init(const engine_t *engine);

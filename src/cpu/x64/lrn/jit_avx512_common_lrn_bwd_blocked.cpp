@@ -23,25 +23,24 @@ namespace lrn {
 
 using acc_data_t = float;
 
-template <data_type_t d_type>
-jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::
-        jit_avx512_common_lrn_kernel_bwd_blocked_t(
+jit_avx512_common_lrn_kernel_bwd_blocked_t::
+        jit_avx512_common_lrn_kernel_bwd_blocked_t(data_type_t dt,
                 const struct nChw16c_across_t &J, float alpha, float beta,
                 int local_size, int use_h_parallel)
-    : jit_avx512_common_lrn_kernel_bwd_t<d_type>(
-              alpha, beta, local_size, jit_name())
+    : jit_avx512_common_lrn_kernel_bwd_t(
+              dt, alpha, beta, local_size, jit_name())
     , xmm_size_ {4 * sizeof(acc_data_t)}
     , zmm_size_ {64}
     , buffer_block_ {xmm_size_ + zmm_size_ + xmm_size_}
     , buffer_nest_offset_ {xmm_size_ + zmm_size_}
-    , src_prev_offset_ {static_cast<int>(this->vlen_ - 4 * sizeof(data_t))}
+    , src_prev_offset_ {static_cast<int>(
+              this->vlen_ - 4 * types::data_type_size(dt))}
     , HW_(J.H * J.W)
     , W_(J.W)
     , version_(J.version)
     , use_h_parallelism_(use_h_parallel) {}
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::generate() {
+void jit_avx512_common_lrn_kernel_bwd_blocked_t::generate() {
 
     this->preamble();
     if (this->bf16_emu_) this->bf16_emu_->init_vcvtneps2bf16();
@@ -99,7 +98,7 @@ void jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::generate() {
             for (int irb = 0; irb < this->reg_block_; irb++)
                 this->dec(hw_);
             this->cmp(hw_, 0);
-            this->jne(lrn_loop, this->T_NEAR);
+            this->jne(lrn_loop, T_NEAR);
         }
     }
 
@@ -109,8 +108,7 @@ void jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::generate() {
     this->postamble();
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::compute_loop(
+void jit_avx512_common_lrn_kernel_bwd_blocked_t::compute_loop(
         int loop_size_param) {
     // loop_size - this->param_ for IRB_LOOP macro
     int loop_size = loop_size_param;
@@ -131,10 +129,10 @@ void jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::compute_loop(
 
     IRB_LOOP(this->load_data(this->zreg(irb, zws1_),
             this->EVEX_compress_addr(this->workspace1_, irb * this->vlen_)));
-    IRB_LOOP(this->load_data(this->zreg(irb, this->zdiffdst_),
+    IRB_LOOP(this->load_data(this->zreg(irb, zdiffdst_),
             this->EVEX_compress_addr(this->diffdst_, irb * this->vlen_)));
-    IRB_LOOP(this->vmulps(this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->zdiffdst_), this->zreg(irb, zws1_)));
+    IRB_LOOP(this->vmulps(this->zreg(irb, zdiffsrc_),
+            this->zreg(irb, zdiffdst_), this->zreg(irb, zws1_)));
 
     if (version_ != across_version::Last
             && version_ != across_version::Single) {
@@ -153,7 +151,7 @@ void jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::compute_loop(
     }
     IRB_LOOP(this->vmovups(this->EVEX_compress_addr(
                                    this->rsp, irb * buffer_block_ + xmm_size_),
-            this->zreg(irb, this->zdiffsrc_)));
+            this->zreg(irb, zdiffsrc_)));
     if (version_ != across_version::Last
             && version_ != across_version::Single) {
         IRB_LOOP(this->vmovups(
@@ -173,50 +171,42 @@ void jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::compute_loop(
     IRB_LOOP(this->vmovups(this->zreg(irb, this->z_next_[1]),
             this->EVEX_compress_addr(this->rsp,
                     irb * buffer_block_ + xmm_size_ + 2 * acc_size)));
-    IRB_LOOP(this->vaddps(this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->z_prev_[0])));
-    assert(this->zsrc_ == this->z_prev_[0]);
-    IRB_LOOP(this->load_data(this->zreg(irb, this->zsrc_),
+    IRB_LOOP(this->vaddps(this->zreg(irb, zdiffsrc_),
+            this->zreg(irb, zdiffsrc_), this->zreg(irb, this->z_prev_[0])));
+    assert(zsrc_ == this->z_prev_[0]);
+    IRB_LOOP(this->load_data(this->zreg(irb, zsrc_),
             this->EVEX_compress_addr(this->src_, irb * this->vlen_)));
-    IRB_LOOP(this->vaddps(this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->z_prev_[1])));
-    IRB_LOOP(this->vaddps(this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->z_next_[0])));
-    IRB_LOOP(this->vaddps(this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->z_next_[1])));
-    IRB_LOOP(this->vmulps(this->zreg(irb, this->zsrc_),
-            this->zreg(irb, this->zsrc_), this->znalphabeta_));
+    IRB_LOOP(this->vaddps(this->zreg(irb, zdiffsrc_),
+            this->zreg(irb, zdiffsrc_), this->zreg(irb, this->z_prev_[1])));
+    IRB_LOOP(this->vaddps(this->zreg(irb, zdiffsrc_),
+            this->zreg(irb, zdiffsrc_), this->zreg(irb, this->z_next_[0])));
+    IRB_LOOP(this->vaddps(this->zreg(irb, zdiffsrc_),
+            this->zreg(irb, zdiffsrc_), this->zreg(irb, this->z_next_[1])));
+    IRB_LOOP(this->vmulps(this->zreg(irb, zsrc_), this->zreg(irb, zsrc_),
+            this->znalphabeta_));
 
-    IRB_LOOP(this->load_data(this->zreg(irb, this->zws0_),
+    IRB_LOOP(this->load_data(this->zreg(irb, zws0_),
             this->EVEX_compress_addr(this->workspace0_, irb * this->vlen_)));
-    IRB_LOOP(this->vdivps(this->zreg(irb, this->zdiffdst_),
-            this->zreg(irb, this->zdiffdst_), this->zreg(irb, this->zws0_)));
-    IRB_LOOP(this->vfmadd213ps(this->zreg(irb, this->zdiffsrc_),
-            this->zreg(irb, this->zsrc_), this->zreg(irb, this->zdiffdst_)));
+    IRB_LOOP(this->vdivps(this->zreg(irb, zdiffdst_),
+            this->zreg(irb, zdiffdst_), this->zreg(irb, zws0_)));
+    IRB_LOOP(this->vfmadd213ps(this->zreg(irb, zdiffsrc_),
+            this->zreg(irb, zsrc_), this->zreg(irb, zdiffdst_)));
 
     Label unaligned_store, end_store;
     this->test(this->diffsrc_, this->vlen_ - 1);
-    this->jnz(unaligned_store, this->T_NEAR);
+    this->jnz(unaligned_store, T_NEAR);
     IRB_LOOP(this->store_data(true,
             this->EVEX_compress_addr(this->diffsrc_, irb * this->vlen_),
-            this->zreg(irb, this->zdiffsrc_)));
-    this->jmp(end_store, this->T_NEAR);
+            this->zreg(irb, zdiffsrc_)));
+    this->jmp(end_store, T_NEAR);
     this->L(unaligned_store);
     {
         IRB_LOOP(this->store_data(false,
                 this->EVEX_compress_addr(this->diffsrc_, irb * this->vlen_),
-                this->zreg(irb, this->zdiffsrc_)));
+                this->zreg(irb, zdiffsrc_)));
     }
     this->L(end_store);
 }
-
-template class jit_avx512_common_lrn_kernel_bwd_blocked_t<f32>;
-template class jit_avx512_common_lrn_kernel_bwd_blocked_t<bf16>;
-template class jit_avx512_common_lrn_kernel_bwd_blocked_t<f16>;
 
 } // namespace lrn
 } // namespace x64

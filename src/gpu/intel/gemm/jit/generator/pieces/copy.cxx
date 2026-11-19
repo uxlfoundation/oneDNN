@@ -104,6 +104,10 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
     }
     if (preshiftedS4) stub("Pre-shifted s4 data not supported on this path");
 
+    if (Ts == Td && alpha == 1 && !conjugate
+            && copyRegisters4BitVNNI(Ts, layoutSrc, layoutDst, src, dst, dOffR, dOffC, state, preserveSrc))
+        return;
+
     // Check layouts.
     bool sCM = layoutSrc.colMajor();
     bool dCM = layoutDst.colMajor();
@@ -182,6 +186,98 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
     } /* sblock loop */
 
     copyExecute(std::move(plan), state);
+}
+
+// Repack 4-bit data from VNNI-transposed loads (crosspack 4) to crosspack 8, one GRF per 8-element group.
+template <HW hw>
+bool Generator<hw>::copyRegisters4BitVNNI(Type T, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
+                                          const GRFMultirange &src, const GRFMultirange &dst,
+                                          int dOffR, int dOffC, CommonState &state, bool preserveSrc)
+{
+    constexpr int lanes = 16, grfBytes = 4 * lanes;
+    if (!T.is4() || GRF::bytes(hw) != grfBytes) return false;
+
+    vector<std::pair<GRF, GRF>> jobs;
+
+    for (auto &sblock : layoutSrc) {
+        bool cm = sblock.colMajor;
+        int nx = cm ? sblock.nr : sblock.nc;
+        int ny = cm ? sblock.nc : sblock.nr;
+
+        if (!sblock.byteGlue || sblock.crosspack != 4 || sblock.ld != lanes || nx != lanes) return false;
+        if (sblock.component != 0 || sblock.cxComponent != RegisterBlock::Interleaved) return false;
+        if (ny % 8) return false;
+
+        for (int y = 0; y < ny; y += 8) {
+            auto sreg = sblock.find(T, cm ? 0 : y, cm ? y : 0, src);
+
+            const RegisterBlock *dblock = nullptr;
+            int i = sblock.offsetR + dOffR + (cm ? 0 : y);
+            int j = sblock.offsetC + dOffC + (cm ? y : 0);
+            if (i >= layoutDst.rows() || j >= layoutDst.cols()) return false;
+            auto dreg = layoutDst.find(i, j, dst, nullptr, &dblock);
+
+            int dx = cm ? i - dblock->offsetR : j - dblock->offsetC;
+            int dy = cm ? j - dblock->offsetC : i - dblock->offsetR;
+            int dnx = cm ? dblock->nr : dblock->nc;
+            int dny = cm ? dblock->nc : dblock->nr;
+
+            if (dblock->colMajor != cm || dblock->byteGlue || dblock->crosspack != 8 || dblock->ld != lanes) return false;
+            if (dx != 0 || dnx != lanes || (dy % 8) || dy + 8 > dny) return false;
+            if (sreg.getByteOffset() != 0 || dreg.getByteOffset() != 0) return false;
+
+            jobs.emplace_back(GRF(sreg.getBase()), GRF(dreg.getBase()));
+        }
+    }
+
+    if (jobs.empty()) return false;
+
+    constexpr int maxBatch = 8;
+    int perJob = preserveSrc ? 2 : 1;
+    vector<GRF> temps;
+    for (int n = std::min<int>(maxBatch, int(jobs.size())) * perJob; n > 0; n--) {
+        auto temp = state.ra.tryAlloc();
+        if (temp.isInvalid()) break;
+        temps.push_back(temp);
+    }
+
+    int batch = int(temps.size()) / perJob;
+    if (batch == 0) {
+        for (auto &temp : temps) state.ra.release(temp);
+        return false;
+    }
+
+    // Per dword b0-b3: A = [(b0,b2), (b0,b2) >> 4], B = [(b1,b3) << 4, (b1,b3)].
+    for (int j0 = 0; j0 < int(jobs.size()); j0 += batch) {
+        int n = std::min(batch, int(jobs.size()) - j0);
+        auto S = [&](int q) { return jobs[j0 + q].first; };
+        auto D = [&](int q) { return jobs[j0 + q].second; };
+        auto B = [&](int q) { return temps[q * perJob]; };
+        auto A = [&](int q) { return preserveSrc ? temps[q * perJob + 1] : S(q); };
+
+        for (int q = 0; q < n; q++) {
+            mov(16, B(q).ud(0)(1), S(q).ud(0)(1));
+            if (preserveSrc) mov(16, A(q).ud(0)(1), S(q).ud(0)(1));
+        }
+        for (int q = 0; q < n; q++) {
+            mov(16, A(q).ub(1)(4), A(q).ub(2)(4));
+            mov(16, B(q).ub(2)(4), B(q).ub(1)(4));
+        }
+        for (int q = 0; q < n; q++) {
+            shr(16, A(q).uw(1)(2), A(q).uw(0)(2), 4);
+            shl(16, B(q).uw(0)(2), B(q).uw(1)(2), 4);
+        }
+        for (int q = 0; q < n; q++)
+            bfn(32, 0xCA, B(q).uw(0)(1), B(q).uw(0)(1), A(q).uw(0)(1), Immediate::uw(0x0F0F));
+        for (int q = 0; q < n; q++) {
+            mov(16, D(q).uw(0)(2), B(q).uw(0)(1));
+            mov(16, D(q).uw(1)(2), B(q).uw(16)(1));
+        }
+    }
+
+    for (auto &temp : temps) state.ra.release(temp);
+
+    return true;
 }
 
 template <HW hw>

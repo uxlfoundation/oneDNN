@@ -1,0 +1,98 @@
+# static_sbzp wei decompression, grouped GEMM (2Dx3D): variable M, weights 3D
+# [G, K, N], w = q * scale - zp with floating-point zero-points
+
+# Weights data types and layouts (microkernel loads)
+--reset
+--allow-enum-tags-only=0
+--dt=f16:u4:f16,f16:s4:f32,f16:u8:f16,f16:s8:f16,f16:u3:f16
+--wtag=abc,acb
+--attr-fpmath=f16:true
+--grouped=0:8:balanced
+--attr-scales=wei:7:f16:32x1:sbzp
+--attr-zero-points=wei:7:f16:32x1:sbzp
+256x512:8x512x256
+
+# bf16 activations, scales and zero-points
+--reset
+--allow-enum-tags-only=0
+--dt=bf16:u4:bf16,bf16:s8:f32
+--wtag=abc,acb
+--attr-scales=wei:7:bf16:64x1:sbzp
+--attr-zero-points=wei:7:bf16:64x1:sbzp
+--attr-fpmath=bf16:true
+--grouped=0:8:balanced
+256x512:8x512x256
+
+# f32 activations (reference implementations)
+--reset
+--allow-enum-tags-only=0
+--dt=f32:u4:f32,f32:s8:f32
+--attr-scales=wei:7:f16:32x1:sbzp
+--attr-zero-points=wei:7:f16:32x1:sbzp
+--attr-fpmath=strict:true
+--grouped=0:8:balanced
+256x512:8x512x256
+
+# Scales and zero-points also grouped along N
+--reset
+--allow-enum-tags-only=0
+--dt=f16:u4:f16
+--wtag=acb
+--attr-scales=wei:7:f16:64x2:sbzp
+--attr-zero-points=wei:7:f16:64x2:sbzp
+--attr-fpmath=f16:true
+--grouped=0:8:balanced
+256x512:8x512x256
+
+# Column-wise scales and zero-points without K groups
+--reset
+--allow-enum-tags-only=0
+--dt=f16:u4:f16,f32:u4:f32
+--attr-scales=wei:5:f16::sbzp
+--attr-zero-points=wei:5:f16::sbzp
+--attr-fpmath=strict:true
+--grouped=0:8:balanced
+256x512:8x512x256
+
+# static_sbzp scales without zero-points
+--reset
+--allow-enum-tags-only=0
+--dt=f16:u4:f16
+--attr-scales=wei:7:f16:32x1:sbzp
+--attr-fpmath=f16:true
+--grouped=0:8:balanced
+256x512:8x512x256
+
+# Bias and post-ops
+--reset
+--allow-enum-tags-only=0
+--dt=f16:u4:f16
+--wtag=acb
+--bia-dt=f16
+--attr-scales=wei:7:f16:64x1:sbzp
+--attr-zero-points=wei:7:f16:64x1:sbzp
+--attr-fpmath=f16:true
+--attr-post-ops=relu+mul:f16:3:grouped
+--grouped=0:8:balanced
+256x512:8x512x256
+
+# MoE decode with GGUF Q4_K (group 32) and Q4_1 (group 64) experts:
+# Qwen1.5-MoE-A2.7B (E=60, top-k=4, hidden=2048, expert_dim=1408),
+# Ling-mini-2.0 (E=256, top-k=8, hidden=2048, expert_dim=512)
+--reset
+--allow-enum-tags-only=0
+--dt=f16:u4:f16
+--wtag=acb
+--attr-fpmath=f16:true
+--attr-scales=wei:7:f16:32x1:sbzp
+--attr-zero-points=wei:7:f16:32x1:sbzp
+--grouped=0:60:decode
+4x2048:60x2048x1408
+--grouped=0:256:decode
+8x512:256x512x2048
+--attr-scales=wei:7:f16:64x1:sbzp
+--attr-zero-points=wei:7:f16:64x1:sbzp
+--grouped=0:60:decode
+4x1408:60x1408x2048
+--grouped=0:256:decode
+8x2048:256x2048x512

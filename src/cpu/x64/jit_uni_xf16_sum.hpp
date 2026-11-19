@@ -247,7 +247,7 @@ protected:
     void index_tables() override {}
 };
 
-template <data_type_t src_data_type, data_type_t dst_data_type, cpu_isa_t isa>
+template <cpu_isa_t isa>
 struct jit_xf16_sum_t : public primitive_t {
     struct pd_t : public cpu_sum_pd_t {
         using cpu_sum_pd_t::cpu_sum_pd_t;
@@ -273,14 +273,21 @@ struct jit_xf16_sum_t : public primitive_t {
             VDISPATCH_SUM(src_mds_.size() <= (long unsigned int)max_num_arrs,
                     "number of inputs exceed max number of arrays");
 
+            using namespace data_type;
             const memory_desc_wrapper o_d(&dst_md_);
-            VDISPATCH_SUM(o_d.data_type() == dst_data_type,
-                    VERBOSE_INCONSISTENT_DT, "o_d", "dst");
+            const data_type_t src_dt = src_mds_[0].data_type;
+            const data_type_t dst_dt = o_d.data_type();
+            VDISPATCH_SUM(is_superset(isa, avx512_core)
+                            ? src_dt == bf16
+                            : utils::one_of(src_dt, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SUM(utils::one_of(dst_dt, src_dt, f32),
+                    VERBOSE_INCONSISTENT_DT, "src", "dst");
             VDISPATCH_SUM(o_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             for (size_t i = 0; i < src_mds_.size(); ++i) {
                 const memory_desc_wrapper i_d(&src_mds_[i]);
-                VDISPATCH_SUM(src_data_type == i_d.data_type(),
+                VDISPATCH_SUM(src_dt == i_d.data_type(),
                         VERBOSE_INCONSISTENT_DT, "src", "i_d");
                 VDISPATCH_SUM(o_d.similar_to(i_d, true, false, 0),
                         VERBOSE_INCONSISTENT_MDS, "o_d", "i_d");
@@ -288,7 +295,7 @@ struct jit_xf16_sum_t : public primitive_t {
                         i_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
                 // are scales representable in their respective xfloat16 datatype? scales will be down
                 // converted to xf16.
-                if (src_data_type == data_type::bf16)
+                if (src_dt == bf16)
                     VDISPATCH_SUM(scales_[i] == float(bfloat16_t(scales_[i])),
                             VERBOSE_UNSUPPORTED_SCALES_CFG);
                 else
@@ -322,10 +329,6 @@ struct jit_xf16_sum_t : public primitive_t {
     }
 
     status_t execute(const exec_ctx_t &ctx) const override;
-
-    using src_data_t = typename prec_traits_t<src_data_type>::type;
-    using dst_data_t = typename prec_traits_t<dst_data_type>::type;
-    using acc_data_t = typename prec_traits_t<data_type::f32>::type;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

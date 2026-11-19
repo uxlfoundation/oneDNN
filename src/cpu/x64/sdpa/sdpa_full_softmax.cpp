@@ -1410,20 +1410,82 @@ struct exec_state_t {
 
 // When packing ahead, materialise mm1's B (K as a dense [hs_qk, seq_kv]
 // matrix; the brgemm ukernel has no transposed-B mode) and mm2's B (V) once
-// per (batch, kv_head) into the shared area. bf16/f16 are VNNI-packed over the
-// reduction axis.
-void pack_ahead(const exec_state_t &st, int nthr) {
+// per (batch, kv_head) into the shared area.
+void pack_kv_ahead(const exec_state_t &st, int nthr) {
     const dim_t num_head_kv = st.p.num_head_q / st.p.group_head;
-    auto pack = [&](const tensor_desc_t<const char> &td,
-                        const sdpa_brgemm_copy::b_packer_t &packer) {
-        parallel_nd_ext(nthr, st.p.batch, num_head_kv,
-                [&](int, int, dim_t batch_idx, dim_t kv_head_idx) {
-            packer.execute(get_arg_ptr(td, batch_idx, kv_head_idx),
-                    get_copy_ptr(td, batch_idx, kv_head_idx));
-        });
+    const bool pack_k = st.k_td.copy_desc;
+    const bool pack_v = st.v_td.copy_desc;
+    if (!pack_k && !pack_v) return;
+
+    auto chunk_rows_of = [&](const sdpa_brgemm_copy::b_packer_t &p) {
+        // Rows per fine-grained task: about 128 (an untuned target), rounded up to
+        // the packer's K step.
+        constexpr dim_t target_chunk_rows = 128;
+        return utils::rnd_up(target_chunk_rows, p.k_step());
     };
-    if (st.k_td.copy_desc) pack(st.k_td, *st.kernels.k_packers[0]);
-    if (st.v_td.copy_desc) pack(st.v_td, *st.kernels.v_packers[0]);
+    const dim_t k_chunk_rows
+            = pack_k ? chunk_rows_of(*st.kernels.k_packers[0]) : 0;
+    const dim_t v_chunk_rows
+            = pack_v ? chunk_rows_of(*st.kernels.v_packers[0]) : 0;
+
+    const dim_t batch_head_count = st.p.batch * num_head_kv;
+    const dim_t coarse_work = batch_head_count * (pack_k + pack_v);
+    const bool fine_grained = coarse_work < nthr;
+
+    constexpr dim_t packer_panel_n = sdpa_brgemm_copy::b_packer_t::panel_n;
+    const dim_t k_n_panels
+            = fine_grained ? utils::div_up(st.p.seq_kv, packer_panel_n) : 1;
+    const dim_t k_k_chunks = fine_grained && pack_k
+            ? utils::div_up(st.p.hs_qk, k_chunk_rows)
+            : 1;
+    const dim_t v_n_panels
+            = fine_grained ? utils::div_up(st.p.hs_v, packer_panel_n) : 1;
+    const dim_t v_k_chunks = fine_grained && pack_v
+            ? utils::div_up(st.p.seq_kv, v_chunk_rows)
+            : 1;
+    const dim_t k_work
+            = pack_k ? batch_head_count * k_n_panels * k_k_chunks : 0;
+    const dim_t v_work
+            = pack_v ? batch_head_count * v_n_panels * v_k_chunks : 0;
+    const dim_t work = k_work + v_work;
+
+    // Keep whole-head tasks unless they cannot fill the team.
+    parallel(adjust_num_threads(nthr, work), [&](int ithr, int nthr) {
+        dim_t start = 0, end = 0;
+        balance211(work, nthr, ithr, start, end);
+        for (dim_t task = start; task < end; ++task) {
+            const bool is_k = task < k_work;
+            const dim_t operand_task = is_k ? task : task - k_work;
+            const dim_t n_panels = is_k ? k_n_panels : v_n_panels;
+            const dim_t k_chunks = is_k ? k_k_chunks : v_k_chunks;
+            const dim_t head_idx = operand_task / (k_chunks * n_panels);
+
+            const auto &td = is_k ? st.k_td : st.v_td;
+            const auto &packer = is_k ? *st.kernels.k_packers[0]
+                                      : *st.kernels.v_packers[0];
+
+            const dim_t batch_idx = head_idx / num_head_kv;
+            const dim_t kv_head_idx = head_idx % num_head_kv;
+            const char *src = get_arg_ptr(td, batch_idx, kv_head_idx);
+            char *dst = get_copy_ptr(td, batch_idx, kv_head_idx);
+
+            if (!fine_grained) {
+                packer.execute(src, dst);
+                continue;
+            }
+
+            const dim_t n_panel_idx = operand_task / k_chunks % n_panels;
+            const dim_t k_chunk_idx = operand_task % k_chunks;
+
+            const dim_t n0 = n_panel_idx * packer_panel_n;
+            const dim_t chunk_rows = is_k ? k_chunk_rows : v_chunk_rows;
+            const dim_t k0 = k_chunk_idx * chunk_rows;
+
+            const dim_t k_dim_size = is_k ? st.p.hs_qk : st.p.seq_kv;
+            const dim_t k1 = nstl::min(k0 + chunk_rows, k_dim_size);
+            packer.execute_panel_range(src, dst, n0, k0, k1);
+        }
+    });
 }
 
 // Score, P or f32 mm2-result tiles of the query heads of a work item: query
@@ -1867,7 +1929,8 @@ status_t execute(const sdpa_full_softmax_conf_t &conf,
         const sdpa_full_softmax_kernels_t &kernels,
         const sdpa_full_softmax_run_args_t &args, int nthr) {
     const exec_state_t st(conf, kernels, args, nthr);
-    pack_ahead(st, nthr);
+    if (conf.kv_packing == sdpa_full_softmax_kv_packing_t::ahead)
+        pack_kv_ahead(st, nthr);
     if (conf.schedule == sdpa_full_softmax_schedule_t::split_kv)
         execute_split_kv(st, nthr);
     else

@@ -101,39 +101,53 @@ public:
     }
 
     void execute(const void *src, void *dst) const {
+        for (dim_t n0 = 0; n0 < N_; n0 += panel_n)
+            execute_panel_range(src, dst, n0, 0, K_);
+    }
+
+    // Maximum number of K rows processed by one copy-kernel call.
+    dim_t k_step() const { return conf_.K_blk; }
+
+    // Packs rows [k_begin, k_end) of the panel starting at column n0. Range
+    // bounds must be multiples of k_step(), except k_end == K, so that only the
+    // last range pads K.
+    void execute_panel_range(const void *src, void *dst, dim_t n0,
+            dim_t k_begin, dim_t k_end) const {
+        assert(n0 % panel_n == 0);
+        assert(k_begin % k_step() == 0);
+        assert(k_end == K_ || k_end % k_step() == 0);
         const auto src_size = types::data_type_size(dt_);
         const auto dst_size = types::data_type_size(conf_.wei_dt);
         const auto *src_bytes = static_cast<const char *>(src);
         auto *dst_bytes = static_cast<char *>(dst);
 
-        for (dim_t n0 = 0; n0 < N_; n0 += panel_n) {
-            const dim_t n = N_ - n0 < panel_n ? N_ - n0 : panel_n;
-            for (dim_t k0 = 0; k0 < K_; k0 += conf_.K_blk) {
-                const dim_t k_iters = nstl::min(conf_.K_blk, K_ - k0);
-                const dim_t k_remainder = k_iters % k_pad_block_;
-                const dim_t k_pad = k_remainder == 0
-                        ? 0
-                        : k_pad_block_ - utils::rnd_up(k_remainder, k_vnni_);
-                const dim_t src_offset = src_tag_ == format_tag::ab
-                        ? k0 * src_ld_ + n0
-                        : n0 * src_ld_ + k0;
-                const dim_t dst_offset
-                        = (k0 / k_vnni_ * dst_ld_ * k_vnni_
-                                  + (separate_panels_ ? n0 / panel_n
-                                                          * packed_k(K_, dt_)
-                                                          * dst_ld_
-                                                      : n0 * k_vnni_))
-                        * dst_size;
+        const dim_t n = N_ - n0 < panel_n ? N_ - n0 : panel_n;
+        for (dim_t k0 = k_begin; k0 < k_end; k0 += conf_.K_blk) {
+            const dim_t k_iters
+                    = nstl::min(conf_.K_blk, nstl::min(K_ - k0, k_end - k0));
+            const dim_t k_remainder = k_iters % k_pad_block_;
+            const dim_t k_pad = k_remainder == 0
+                    ? 0
+                    : k_pad_block_ - utils::rnd_up(k_remainder, k_vnni_);
+            const dim_t src_offset = src_tag_ == format_tag::ab
+                    ? k0 * src_ld_ + n0
+                    : n0 * src_ld_ + k0;
+            const dim_t dst_offset
+                    = (k0 / k_vnni_ * dst_ld_ * k_vnni_
+                              + (separate_panels_
+                                              ? n0 / panel_n * packed_k(K_, dt_)
+                                                      * dst_ld_
+                                              : n0 * k_vnni_))
+                    * dst_size;
 
-                auto ctx = matmul::jit_brgemm_matmul_copy_b_t::ctx_t();
-                ctx.src = src_bytes + src_offset * src_size;
-                ctx.tr_src = dst_bytes + dst_offset;
-                ctx.current_K_start = k0;
-                ctx.current_K_iters = k_iters;
-                ctx.current_K_pad = k_pad;
-                ctx.current_N_blk = n;
-                (*kernel_)(&ctx);
-            }
+            auto ctx = matmul::jit_brgemm_matmul_copy_b_t::ctx_t();
+            ctx.src = src_bytes + src_offset * src_size;
+            ctx.tr_src = dst_bytes + dst_offset;
+            ctx.current_K_start = k0;
+            ctx.current_K_iters = k_iters;
+            ctx.current_K_pad = k_pad;
+            ctx.current_N_blk = n;
+            (*kernel_)(&ctx);
         }
     }
 

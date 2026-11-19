@@ -24,30 +24,6 @@ GEMMSTONE_NAMESPACE_START
 using namespace ngen;
 
 
-void movePipes(Subregister &s, bool sizeCanChange)
-{
-    DataType type = s.getType();
-
-    switch (type) {
-        case DataType::bf8:
-        case DataType::hf8: type = DataType::ub; break;
-        case DataType::bf:
-        case DataType::hf: type = DataType::uw; break;
-        case DataType::tf32:
-        case DataType::f:  type = DataType::ud; break;
-        case DataType::df: if (sizeCanChange) type = DataType::ud; break;
-        case DataType::w:
-        case DataType::uw: type = DataType::hf; break;
-        case DataType::d:
-        case DataType::ud: type = DataType::f; break;
-        case DataType::q:
-        case DataType::uq: if (sizeCanChange) type = DataType::f; break;
-        default: break;
-    }
-
-    s = s.reinterpret(0, type);
-}
-
 void moveToIntPipe(Subregister &s)
 {
     DataType type = s.getType();

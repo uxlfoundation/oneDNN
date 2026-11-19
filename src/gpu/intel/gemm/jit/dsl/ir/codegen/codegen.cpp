@@ -46,11 +46,6 @@
 #include "ngen_opencl.hpp"
 #endif
 
-// clang-format off
-// unifdef is sensitive to newlines in preprocessor directives, so we need to
-// keep the formatting here.
-// clang-format on
-
 // When the host compiler supports per-target defines, this file is compiled
 // once per HW with DNNL_GPU_ISA_<HW> to instantiate only that HW's templates,
 // and once with GEMMSTONE_CODEGEN_SPLIT for the HW-independent code, so that a

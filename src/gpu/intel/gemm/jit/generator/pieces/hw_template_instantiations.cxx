@@ -16,7 +16,7 @@
 
 
 #ifdef _MSC_VER
-#pragma warning (disable: 4661)     /* missing definition in template instatiation */
+#pragma warning (disable: 4661)     /* missing definition in template instantiation */
 #endif
 
 #if defined(DNNL_GPU_ISA_XEHPG)

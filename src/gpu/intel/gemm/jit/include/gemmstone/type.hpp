@@ -39,10 +39,10 @@ public:
     * 5 - split complex=1
     * 6-7 - reserved
     * // nibble 2-4: size meta-information
-    * 8-11 - size of the block (units based on following flags)
-    * 12-15 - number of values per block
-    * 16 - block size in bits=0, block size in bytes=1
-    * 17 - log2 block size=0, actual block size=1
+    * 8-11 - element size (units based on following flags)
+    * 12-15 - reserved (1)
+    * 16 - size in bits=0, size in bytes=1
+    * 17 - log2 size=0, actual size=1
     * 18-19 - reserved
     * // nibble 5-6: index in ngen mapping table
     * 20-27 - ngen reference
@@ -86,8 +86,6 @@ public:
 
     constexpr bool isValid()          const { return val != Type::invalid; }
     constexpr Type real()             const { return *this; }
-    constexpr bool isComplex()        const { return false; }
-    constexpr int complexComponents() const { return 1; }
     constexpr int components()        const { return 1; }
     constexpr bool isFP()             const { return uint32_t(val) & 0x1; }
     constexpr bool isInteger()        const { return !isFP(); }
@@ -96,7 +94,6 @@ public:
     constexpr bool is3()              const { return val == Type::u3; }
     constexpr bool is4()              const { return bits() == 4; }
     constexpr bool isInt4()           const { return is4() && isInteger(); }
-    constexpr bool isIntSubByte()     const { return isSubByteInt(); }
     constexpr bool isInt8()           const { return (val == Type::u8)  || (val == Type::s8);  }
     constexpr bool isInt16()          const { return (val == Type::u16) || (val == Type::s16); }
     constexpr bool isF8()             const {
@@ -104,8 +101,6 @@ public:
     }
     constexpr bool isF4()             const { return bits() == 4 && isFP(); }
     constexpr bool isSigned()         const { return (uint32_t(val) & 0x3) != 0x0; }
-    constexpr int blockSize()         const { return (uint32_t(val) >> 12) & 0xF; }
-    constexpr bool isBlocked()        const { return blockSize() > 1; }
     constexpr bool isLog2Size()       const { return !(uint32_t(val) & (1 << 17)); }
     constexpr bool isByteSize()       const { return uint32_t(val) & (1 << 16); }
     constexpr int bits()              const {
@@ -120,7 +115,7 @@ public:
             val += 1;
         }
         return val; }
-    int size()                        const { subByteCheck(); blockCheck(); return paddedSize(); }
+    int size()                        const { subByteCheck(); return paddedSize(); }
     constexpr bool isSubByte()        const { return isValid() && (bits() < 8); }
     constexpr int perByte()           const { return is2() ? 4 : is4() ? 2 : 1; }
     uint16_t logPerByte()             const {
@@ -128,7 +123,6 @@ public:
         return (perByte() == 4) ? 2 : 1;
     }
     void subByteCheck()               const { if (isSubByte()) stub(); }
-    void blockCheck()                 const { if (isBlocked()) stub(); }
 
     constexpr Type arithmetic() const {
         return (val == tf32) ? Type(f32) : real();

@@ -125,8 +125,7 @@ void Generator<hw>::gemmHilbertlikeOrder(const Subregister &groupIDMN, const Sub
 {
     if (aLeader.isValid() || bLeader.isValid()) stub();
 
-    const bool triangular = false;
-    const bool rectangular = !triangular && state.inputs.hilbertVD.isValid();
+    bool rectangular = state.inputs.hilbertVD.isValid();
 
     auto storage = state.ra.alloc();
     auto u = storage.ud(0);
@@ -171,7 +170,6 @@ void Generator<hw>::gemmHilbertlikeOrder(const Subregister &groupIDMN, const Sub
             jmpi(mod | any2h, l);
     };
 
-    Label lTriangularTop, lTriangularExit, lTriangularBypass;
     Label lRecursiveTop, lRecursiveEnd;
 
     // NB: Sequence assumes group counts fit in 16 bits.
@@ -179,20 +177,17 @@ void Generator<hw>::gemmHilbertlikeOrder(const Subregister &groupIDMN, const Sub
     if (avoidAny2) mov(1, f0[0], 0);
     if (rectangular)
         mov(1, f0[1], vd.uw(1));                    // High word of vd = 0xFFFF -> start splitting in x
-    else if (triangular)
-        cmp(1 | ne | f0[0], state.inputs.diagC, 0);
     mov(1, u, state.inputs.groupCountM);
     mov(1, v, state.inputs.groupCountN);
     mov(4, a0, Immediate::uv(4, 0, 12, 8, 0, 0, 0, 0));
     mov(1, f1.ud(0), 0);                            // bu = bv = false
-    mov(1, np1, triangular ? 0xFFFFFFFF : 0);
-    if (triangular)
-        cmp(1 | ~f0[0] | ne | f0[0], state.inputs.m, state.inputs.n);
-    else
+    {
+        mov(1, np1, 0u);
         cmp(2 | le | f0[0], u(1), hilbertBail);
+    }
     mov(1, q, groupIDMN);
     add(4, a0[4](1), a0[0](1), 16);
-    if (!rectangular && !triangular)
+    if (!rectangular)
         emad(1, uv1, -1, u.uw(), v.uw(), strategy, state);
     mov(8, a.uw()(1), Immediate::uv(0x00010000));   // a = b = 0, normal = 1, reversed = 0;
     if (soff >= 512) {
@@ -204,10 +199,7 @@ void Generator<hw>::gemmHilbertlikeOrder(const Subregister &groupIDMN, const Sub
         movi(8 | mod, storage.ud(), indirect[a0].ud(soff)(1));
     };
 
-    if (triangular)
-        jmpi(1 | f0[0], lTriangularBypass);
-    else
-        jumpAny2(1 | f0[0], lRecursiveEnd);
+    jumpAny2(1 | f0[0], lRecursiveEnd);
 
     // Rectangular partitioning step. Break dispatch into blocks of roughly desired aspect ratio.
     if (rectangular) {

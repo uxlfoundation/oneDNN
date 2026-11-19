@@ -111,9 +111,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
     // Set default parameters.
     colMajor = isColMajor(atype.layout);
-    splitComplex = false;
     byteGlue = false;
-    cxComponent = RegisterBlock::Interleaved;
     crosspack = 1;
     rowMask = MaskInfo::None();
     colMask = MaskInfo::None();
@@ -956,8 +954,6 @@ RegisterBlock RegisterBlock::trySlice(Type T, bool column, int x1, int x2, int x
                 blockDst.count = x2 - x1;
                 if (blockDst.ebytes == 1)
                     blockDst.count *= T;
-                else if (blockDst.splitComplex)
-                    blockDst.count *= 2;
                 else if (T.paddedSize() < blockDst.ebytes) {
                     // Extra alignment path with small types.
                     // Check to see if we can still use this element size,
@@ -1071,7 +1067,7 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
 {
     auto Te = T;
 
-    if (ii < 0 || ii >= nr || jj < 0 || jj >= nc || component != component_ || !one_of(cxComponent, {-1, cxComponent_}))
+    if (ii < 0 || ii >= nr || jj < 0 || jj >= nc || component != component_)
         stub("Requested out-of-bounds element.");
 
     int xx = colMajor ? ii : jj;
@@ -1164,8 +1160,6 @@ void RegisterBlock::calcBytes(Type T, const MatrixAddressingStrategy &astrategy)
 
 void RegisterBlock::calcBytes(Type T)
 {
-    if (cxComponent != Interleaved)
-        T = T.real();
     if (T.is3() && !isLoadBlock() && colMajor && !byteGlue) {
         int phase = offsetBytes % crosspack;
         int lastByte = phase + div_up(nc * T.bits(), 8) - 1;
@@ -1380,39 +1374,34 @@ RegisterLayout::RegisterLayout(HW hw_, Type T_, int r, int c, bool colMajor,
     if (tileC <= 0) tileC = c;
 
     int offsetBytes = 0;
-    int qCXMin = -1, qCXMax = -1;
 
     if (tileR > 0 && tileC > 0)
         list.reserve(div_up(r, tileR) * div_up(c, tileC));
 
-    for (int qCX = qCXMin; qCX <= qCXMax; qCX++) {
-        for (int q = 0; q < T.components(); q++) {
-            for (int i = 0; i < r; i += tileR) {
-                for (int j = 0; j < c; j += tileC) {
-                    block.hw = hw;
-                    block.nr = std::min(r - i, tileR);
-                    block.nc = std::min(c - j, tileC);
-                    block.ld = colMajor ? tileR : tileC;
-                    if (!allowPartialRegs)
-                        block.ld = align_up(block.ld, elementsPerGRF(hw, T) / crosspack);
-                    block.offsetR = i;
-                    block.offsetC = j;
-                    block.colMajor = colMajor;
-                    block.crosspack = crosspack;
-                    block.offsetBytes = offsetBytes;
-                    block.splitComplex = false;
-                    block.byteGlue = false;
-                    block.cxComponent = qCX;
-                    block.component = q;
-                    block.remainderR = false;
-                    block.remainderC = false;
-                    block.simdSize = 0;         // Not backed by memory.
+    for (int q = 0; q < T.components(); q++) {
+        for (int i = 0; i < r; i += tileR) {
+            for (int j = 0; j < c; j += tileC) {
+                block.hw = hw;
+                block.nr = std::min(r - i, tileR);
+                block.nc = std::min(c - j, tileC);
+                block.ld = colMajor ? tileR : tileC;
+                if (!allowPartialRegs)
+                    block.ld = align_up(block.ld, elementsPerGRF(hw, T) / crosspack);
+                block.offsetR = i;
+                block.offsetC = j;
+                block.colMajor = colMajor;
+                block.crosspack = crosspack;
+                block.offsetBytes = offsetBytes;
+                block.byteGlue = false;
+                block.component = q;
+                block.remainderR = false;
+                block.remainderC = false;
+                block.simdSize = 0;         // Not backed by memory.
 
-                    block.calcBytes(T);
-                    offsetBytes += block.bytes;
+                block.calcBytes(T);
+                offsetBytes += block.bytes;
 
-                    list.push_back(block);
-                }
+                list.push_back(block);
             }
         }
     }
@@ -1456,7 +1445,6 @@ RegisterLayout RegisterLayout::int3UnpackLayout() const
                     || next.*otherSize != block.*otherSize
                     || next.offsetBytes != block.offsetBytes + block.bytes
                     || next.component != block.component
-                    || next.cxComponent != block.cxComponent
                     || next.colMajor != block.colMajor
                     || next.ld != block.ld || next.crosspack != block.crosspack)
                 stub("Noncontiguous u3 transpose load.");
@@ -1611,9 +1599,7 @@ bool RegisterLayout::append1DBlocks(int r, int c)
             (colMajor ? block.offsetC : block.offsetR) = cy;
             block.component = 0;
             block.colMajor = colMajor;
-            block.splitComplex = false;
             block.byteGlue = false;
-            block.cxComponent = RegisterBlock::Interleaved;
 
             if (first) {
                 block.ebytes = ebytes;
@@ -1927,8 +1913,7 @@ Subregister RegisterLayout::find(int i, int j, const GRFMultirange &regs, int *o
         int ii = i - block.offsetR;
         int jj = j - block.offsetC;
         if (ii >= 0 && ii < block.nr && jj >= 0 && jj < block.nc
-                    && ecomponent == block.component
-                    && one_of(block.cxComponent, {int8_t(cxComponent), RegisterBlock::Interleaved})) {
+                    && ecomponent == block.component) {
             if (outBlock) *outBlock = &block;
             return block.find(T, ii, jj, regs, outNElems, cxComponent, component);
         }

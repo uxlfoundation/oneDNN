@@ -34,7 +34,6 @@ struct EvaluateParams {
     int euCount;
     ngen::Product product;
     uint32_t deviceId = 0;          // PCI device id (LUT tier, G rows' gates)
-    int tileCount = 1;
     bool effective = false;
     bool cConvert = false;
     bool postOps = false;

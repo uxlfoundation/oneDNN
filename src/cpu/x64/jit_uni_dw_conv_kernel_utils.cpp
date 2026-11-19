@@ -25,11 +25,33 @@ namespace x64 {
 
 using namespace data_type;
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
-status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
-        jit_conv_conf_t &jcp, const convolution_desc_t &cd,
-        memory_desc_t &src_md, memory_desc_t &weights_md,
-        memory_desc_t &bias_md, memory_desc_t &dst_md, primitive_attr_t &attr) {
+template <cpu_isa_t isa>
+jit_uni_dw_conv_fwd_kernel_t<isa>::jit_uni_dw_conv_fwd_kernel_t(
+        const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md) {
+    // `jit_uni_dw_conv_fwd_kernel_f32_t` exists only for avx2 and avx512_core,
+    // and avx512_core_fp16 is a superset of the latter.
+    constexpr cpu_isa_t f32_isa = isa == avx2 ? avx2 : avx512_core;
+    switch (ajcp.src_dt) {
+        case bf16:
+            ker_ = utils::make_unique<jit_avx512_dw_conv_fwd_kernel_bf16_t>(
+                    ajcp, dst_md);
+            break;
+        case f16:
+            ker_ = utils::make_unique<jit_avx512_dw_conv_fwd_kernel_f16_t>(
+                    ajcp, dst_md);
+            break;
+        default:
+            ker_ = utils::make_unique<
+                    jit_uni_dw_conv_fwd_kernel_f32_t<f32_isa>>(ajcp, dst_md);
+            break;
+    }
+}
+
+template <cpu_isa_t isa>
+status_t jit_uni_dw_conv_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
+        const convolution_desc_t &cd, memory_desc_t &src_md,
+        memory_desc_t &weights_md, memory_desc_t &bias_md,
+        memory_desc_t &dst_md, primitive_attr_t &attr) {
 
     using namespace dnnl::impl::format_tag;
     using namespace dnnl::impl::utils;
@@ -273,8 +295,8 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_scratchpad(
+template <cpu_isa_t isa>
+void jit_uni_dw_conv_fwd_kernel_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     using namespace dnnl::impl::memory_tracking::names;
     if (jcp.bia_dt == data_type::bf16)
@@ -853,11 +875,9 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::partition_nthr_nxc(
     }
 }
 
-REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core_fp16, f16>);
-REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core, bf16>);
-REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx2, f32>);
+REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core_fp16>);
+REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core>);
+REG_AVX2_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx2>);
 
 REG_AVX512_ISA(
         template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core, bf16>);

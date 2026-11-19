@@ -365,8 +365,7 @@ private:
 
     std::unique_ptr<jit_avx512_core_bf16_1x1_conv_kernel_t> kernel_;
     std::unique_ptr<rtus_driver_t<avx512_core>> rtus_driver_;
-    using dw_conv_kernel_t
-            = jit_uni_dw_conv_fwd_kernel_t<avx512_core, data_type::bf16>;
+    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_t<avx512_core>;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 

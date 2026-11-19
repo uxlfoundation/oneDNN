@@ -34,8 +34,7 @@ namespace x64 {
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t dst_type = src_type>
 struct jit_uni_dw_convolution_fwd_t : public primitive_t {
-    using jit_uni_dw_conv_fwd_kernel_inst_t
-            = jit_uni_dw_conv_fwd_kernel_t<isa, src_type>;
+    using jit_uni_dw_conv_fwd_kernel_inst_t = jit_uni_dw_conv_fwd_kernel_t<isa>;
 
     struct pd_t : public cpu_convolution_fwd_pd_t {
         // Note: check `USING_INHERITED_IS_IMPOSSIBLE` comment in other files

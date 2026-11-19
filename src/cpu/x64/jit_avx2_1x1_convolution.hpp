@@ -330,7 +330,7 @@ private:
     std::unique_ptr<rtus_driver_t<avx2>> rtus_driver_;
 
     template <cpu_isa_t isa>
-    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_t<isa, data_type::f32>;
+    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_t<isa>;
 
     std::unique_ptr<dw_conv_kernel_t<avx2>> kernel_dw_avx2;
 };

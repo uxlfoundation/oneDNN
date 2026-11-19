@@ -383,12 +383,21 @@ class TagTripletMixin:
 
 
 class StridesMixin(TagTripletMixin):
+    def _grouped_tag(self, arg: str, strides: str) -> str:
+        # the contiguous dim picks the layout of a grouped operand
+        return "ab" if strides.split("x")[-1] == "1" else "ba"
+
     @property
     def tags(self):
         tags = []
         strides = []
 
         def add_strides_or_tag(arg, md: ir.MemoryDescriptor):
+            if md.grouped is not None:
+                tag = self._grouped_tag(arg, md.grouped.strides)
+                tags.append(f"--{arg[0]}tag={tag}")
+                strides.append("")
+                return
             if md.format_kind == "sparse":
                 strides.append(md.strides)
                 return
@@ -701,6 +710,18 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
             groups = [int(g) for g in scale.groups.split("x")]
             unit = max(unit, groups[-1] if arg.startswith("src") else groups[0])
         return unit
+
+    def _grouped_tag(self, arg: str, strides: str) -> str:
+        # benchdnn `ab` gives strides {0, cols, 1} and `ba` gives {0, 1, rows}
+        # for the [rows, cols] matrix of a grouped operand, unit extents may
+        # make both strides 1
+        src, wei = (s.split("x") for s in self.entry.shapes.split(":")[:2])
+        dims = {"src": src[1:], "wei": wei[1:], "dst": [src[1], wei[2]]}
+        rows, cols = dims[arg]
+        matrix_strides = strides.split("x")[1:]
+        if matrix_strides == ["1", rows] and matrix_strides != [cols, "1"]:
+            return "ba"
+        return super()._grouped_tag(arg, strides)
 
     @property
     def shapes(self):

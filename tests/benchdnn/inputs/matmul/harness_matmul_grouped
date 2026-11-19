@@ -2,7 +2,7 @@
 # harness_grouped_matmul_generated_ci doesn't generate yet (it replaced
 # Section A = 2Dx3D and Section B = 2Dx2D):
 # Section C = 2Dx2D scaled (fp8 with K-grouped scales)
-# Section D = layouts of grouped operands
+# Section D = layouts of grouped operands and row-wise 2Dx2D scales
 #
 # Grouped operands are 3D with the groups in dim 0, so masks are over src
 # {G, M, K} and wei {G, K, N} in both variants
@@ -59,7 +59,7 @@
 --grouped=1:2:32+0,1:3:0+32+0
 16x32:32x16
 
-# --- Section D: layouts of grouped operands ---------------------------------
+# --- Section D: layouts of grouped operands and row-wise 2Dx2D scales -------
 # `--stag`, `--wtag`, and `--dtag` set to `ab` or `ba` pick the contiguous dim
 # of a grouped operand. K-major src (ab) and wei (ba) is the layout of the
 # PyTorch _scaled_grouped_mm 2Dx2D
@@ -86,6 +86,15 @@
 --attr-scales=src:7:f32:1x128+wei:7:f32:128x1
 --grouped=1:3:128+0+256
 24x384:384x40
+
+# 2Dx2D FP8 row-wise: src per group and row [G, M], wei per group and column
+# [G, N], also next to K-grouped wei scales
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16,f8_e5m2:f8_e5m2:bf16
+--stag=any,ab --wtag=any,ba
+--attr-scales=src:3+wei:5,src:3,wei:5,src:3+wei:7:f32:32x1
+--grouped=1:4:balanced,1:3:0+32+64
+16x96:96x24
 
 # 2Dx3D: column-major src and dst
 --reset

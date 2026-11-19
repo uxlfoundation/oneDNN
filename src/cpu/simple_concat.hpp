@@ -28,7 +28,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t data_type>
 struct simple_concat_t : public primitive_t {
     struct pd_t : public cpu_concat_pd_t {
         using cpu_concat_pd_t::cpu_concat_pd_t;
@@ -38,8 +37,12 @@ struct simple_concat_t : public primitive_t {
         DECLARE_CONCAT_PD_T("simple:any", simple_concat_t);
 
         status_t init(const engine_t *engine) {
+            using namespace data_type;
             const memory_desc_wrapper dst_d(dst_md());
-            VDISPATCH_CONCAT(platform::has_data_type_support(data_type),
+            const data_type_t dt = src_mds_[0].data_type;
+            VDISPATCH_CONCAT(utils::one_of(dt, f32, u8, s8, s32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONCAT(platform::has_data_type_support(dt),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONCAT(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -54,8 +57,8 @@ struct simple_concat_t : public primitive_t {
 
                 const bool ignore_strides = true;
 
-                VDISPATCH_CONCAT(utils::everyone_is(data_type, i_d.data_type(),
-                                         o_d.data_type()),
+                VDISPATCH_CONCAT(utils::everyone_is(
+                                         dt, i_d.data_type(), o_d.data_type()),
                         VERBOSE_UNSUPPORTED_DT);
                 VDISPATCH_CONCAT(utils::everyone_is(format_kind::blocked,
                                          i_d.format_kind(), o_d.format_kind()),
@@ -149,8 +152,9 @@ struct simple_concat_t : public primitive_t {
         void init_scratchpad() {
             using namespace memory_tracking::names;
             auto scratchpad = scratchpad_registry().registrar();
-            scratchpad.template book<data_t *>(key_concat_iptrs, n_inputs());
-            scratchpad.template book<data_t *>(key_concat_optrs, n_inputs());
+            scratchpad.template book<const char *>(
+                    key_concat_iptrs, n_inputs());
+            scratchpad.template book<char *>(key_concat_optrs, n_inputs());
             scratchpad.template book<dim_t>(key_concat_nelems, n_inputs());
             scratchpad.template book<strides_t>(
                     key_concat_istrides, n_inputs());
@@ -167,8 +171,6 @@ struct simple_concat_t : public primitive_t {
     simple_concat_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t execute(const exec_ctx_t &ctx) const override;
-
-    using data_t = typename prec_traits_t<data_type>::type;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

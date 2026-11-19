@@ -26,12 +26,9 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <impl::data_type_t data_type>
-DEFINE_PD_CREATE(gemm_inner_product_fwd_t<data_type>::pd_t)
-template <impl::data_type_t data_type>
-DEFINE_PD_CREATE(gemm_inner_product_bwd_data_t<data_type>::pd_t)
-template <impl::data_type_t data_type>
-DEFINE_PD_CREATE(gemm_inner_product_bwd_weights_t<data_type>::pd_t)
+DEFINE_PD_CREATE(gemm_inner_product_fwd_t::pd_t)
+DEFINE_PD_CREATE(gemm_inner_product_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(gemm_inner_product_bwd_weights_t::pd_t)
 
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::prop_kind;
@@ -39,19 +36,18 @@ using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::format_tag;
 using namespace dnnl::impl::primitive_kind;
 
-template <impl::data_type_t data_type>
-status_t gemm_inner_product_fwd_t<data_type>::execute_forward(
+status_t gemm_inner_product_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
-    auto bias = CTX_IN_MEM(const data_t *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
+    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector_utils::prepare_binary_args(
                     this->pd()->attr()->post_ops_, ctx);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
-    auto acc_ptr = scratchpad.template get<data_t>(
+    auto acc_ptr = scratchpad.template get<float>(
             memory_tracking::names::key_gemm_tmp_buffer);
     auto acc = pd()->sum_through_pp_kernel_ ? acc_ptr : dst;
 
@@ -95,12 +91,11 @@ status_t gemm_inner_product_fwd_t<data_type>::execute_forward(
     return status::success;
 }
 
-template <impl::data_type_t data_type>
-status_t gemm_inner_product_bwd_data_t<data_type>::execute_backward_data(
+status_t gemm_inner_product_bwd_data_t::execute_backward_data(
         const exec_ctx_t &ctx) const {
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
-    auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
+    auto diff_dst = CTX_IN_MEM(const float *, DNNL_ARG_DIFF_DST);
+    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto diff_src = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SRC);
 
     const dim_t MB = pd()->MB();
     const dim_t OC = pd()->OC();
@@ -126,13 +121,12 @@ status_t gemm_inner_product_bwd_data_t<data_type>::execute_backward_data(
     return st;
 }
 
-template <impl::data_type_t data_type>
-status_t gemm_inner_product_bwd_weights_t<data_type>::execute_backward_weights(
+status_t gemm_inner_product_bwd_weights_t::execute_backward_weights(
         const exec_ctx_t &ctx) const {
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto diff_weights = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_WEIGHTS);
-    auto diff_bias = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_BIAS);
+    auto diff_dst = CTX_IN_MEM(const float *, DNNL_ARG_DIFF_DST);
+    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
+    auto diff_weights = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_WEIGHTS);
+    auto diff_bias = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_BIAS);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper diff_bias_d(pd()->diff_weights_md(1));
@@ -187,10 +181,6 @@ status_t gemm_inner_product_bwd_weights_t<data_type>::execute_backward_weights(
 
     return status::success;
 }
-
-template struct gemm_inner_product_fwd_t<data_type::f32>;
-template struct gemm_inner_product_bwd_data_t<data_type::f32>;
-template struct gemm_inner_product_bwd_weights_t<data_type::f32>;
 
 } // namespace cpu
 } // namespace impl

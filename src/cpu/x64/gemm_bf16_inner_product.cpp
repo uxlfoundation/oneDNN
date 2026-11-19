@@ -32,13 +32,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <data_type_t dst_data_type>
-DEFINE_PD_CREATE(gemm_bf16_inner_product_fwd_t<dst_data_type>::pd_t)
-template <data_type_t diff_src_data_type>
-DEFINE_PD_CREATE(gemm_bf16_inner_product_bwd_data_t<diff_src_data_type>::pd_t)
-template <data_type_t diff_wei_data_type>
-DEFINE_PD_CREATE(
-        gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::pd_t)
+DEFINE_PD_CREATE(gemm_bf16_inner_product_fwd_t::pd_t)
+DEFINE_PD_CREATE(gemm_bf16_inner_product_bwd_data_t::pd_t)
+DEFINE_PD_CREATE(gemm_bf16_inner_product_bwd_weights_t::pd_t)
 
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::prop_kind;
@@ -48,13 +44,12 @@ using namespace dnnl::impl::primitive_kind;
 using namespace memory_tracking::names;
 using namespace dnnl::impl::cpu::x64::bf16_support;
 
-template <data_type_t dst_data_type>
-status_t gemm_bf16_inner_product_fwd_t<dst_data_type>::execute_forward(
+status_t gemm_bf16_inner_product_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector_utils::prepare_binary_args(
                     this->pd()->attr()->post_ops_, ctx);
@@ -98,13 +93,11 @@ status_t gemm_bf16_inner_product_fwd_t<dst_data_type>::execute_forward(
     return st;
 }
 
-template <data_type_t diff_src_data_type>
-status_t
-gemm_bf16_inner_product_bwd_data_t<diff_src_data_type>::execute_backward_data(
+status_t gemm_bf16_inner_product_bwd_data_t::execute_backward_data(
         const exec_ctx_t &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
+    auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
 
     const dim_t M = pd()->IC_total_padded();
     const dim_t N = pd()->MB();
@@ -137,7 +130,7 @@ gemm_bf16_inner_product_bwd_data_t<diff_src_data_type>::execute_backward_data(
             size_t work_size = M * N;
             balance211(work_size, nthr, ithr, start, end);
             if (end > start)
-                cvt_float_to_bfloat16((bfloat16_t *)&diff_src[start],
+                cvt_float_to_bfloat16((bfloat16_t *)diff_src + start,
                         (const float *)&acc[start], end - start);
         });
     }
@@ -145,12 +138,11 @@ gemm_bf16_inner_product_bwd_data_t<diff_src_data_type>::execute_backward_data(
     return status::success;
 }
 
-template <data_type_t diff_wei_data_type>
-status_t gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
-        execute_backward_weights(const exec_ctx_t &ctx) const {
+status_t gemm_bf16_inner_product_bwd_weights_t::execute_backward_weights(
+        const exec_ctx_t &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-    auto diff_weights = CTX_OUT_MEM(diff_wei_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+    auto diff_weights = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_WEIGHTS);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     diff_dst += diff_dst_d.offset0();
@@ -191,7 +183,7 @@ status_t gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
             start = std::min(work_size, start * blksize);
             end = std::min(work_size, end * blksize);
             if (end > start) {
-                cvt_float_to_bfloat16((bfloat16_t *)&diff_weights[start],
+                cvt_float_to_bfloat16((bfloat16_t *)diff_weights + start,
                         (const float *)&acc[start], end - start);
             }
         });
@@ -202,9 +194,8 @@ status_t gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
     return status::success;
 }
 
-template <data_type_t diff_wei_data_type>
-void gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
-        execute_backward_bias(const exec_ctx_t &ctx) const {
+void gemm_bf16_inner_product_bwd_weights_t::execute_backward_bias(
+        const exec_ctx_t &ctx) const {
     if (!pd()->with_bias()) return;
 
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
@@ -301,13 +292,6 @@ void gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
         }
     });
 }
-
-template struct gemm_bf16_inner_product_fwd_t<data_type::f32>;
-template struct gemm_bf16_inner_product_fwd_t<data_type::bf16>;
-template struct gemm_bf16_inner_product_bwd_data_t<data_type::f32>;
-template struct gemm_bf16_inner_product_bwd_data_t<data_type::bf16>;
-template struct gemm_bf16_inner_product_bwd_weights_t<data_type::f32>;
-template struct gemm_bf16_inner_product_bwd_weights_t<data_type::bf16>;
 
 } // namespace x64
 } // namespace cpu

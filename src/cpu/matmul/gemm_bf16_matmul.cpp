@@ -41,13 +41,11 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
-template <impl::data_type_t dst_type>
-DEFINE_PD_CREATE(gemm_bf16_matmul_t<dst_type>::pd_t)
+DEFINE_PD_CREATE(gemm_bf16_matmul_t::pd_t)
 
 using namespace data_type;
 
-template <impl::data_type_t dst_type>
-status_t gemm_bf16_matmul_t<dst_type>::pd_t::init(const engine_t *engine) {
+status_t gemm_bf16_matmul_t::pd_t::init(const engine_t *engine) {
     auto check_bias = [&]() -> bool {
         return !with_bias()
                 || (utils::one_of(weights_md(1)->data_type, f32, bf16)
@@ -59,10 +57,11 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
+    const data_type_t dst_dt = dst_md()->data_type;
     const bool problem_dt_correct = src_md()->data_type == src_type
             && weights_md()->data_type == weights_type
             && desc()->accum_data_type == acc_type
-            && dst_md()->data_type == dst_type
+            && utils::one_of(dst_dt, f32, bf16)
             && platform::has_data_type_support(data_type::bf16);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT_CFG);
@@ -75,7 +74,7 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::init(const engine_t *engine) {
             attr()->has_default_values(primitive_attr_t::skip_mask_t::scales
                     | primitive_attr_t::skip_mask_t::post_ops),
             VERBOSE_UNSUPPORTED_ATTR);
-    VDISPATCH_MATMUL(attr()->post_ops_.check_sum_consistency(dst_type,
+    VDISPATCH_MATMUL(attr()->post_ops_.check_sum_consistency(dst_dt,
                              /* is_int8 */ false),
             VERBOSE_UNSUPPORTED_POSTOP);
 
@@ -105,8 +104,7 @@ static bool should_gemm_execute_sum_po(const gemm_based::params_t &params,
             && po.entry_[sum_idx].sum.zero_point == 0;
 }
 
-template <impl::data_type_t dst_type>
-status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
+status_t gemm_bf16_matmul_t::pd_t::check_and_configure_attributes(
         const engine_t *engine) {
     auto check_attr_scales = [&]() -> status_t {
         CHECK(attr_scales_ok(engine));
@@ -173,10 +171,11 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
     // check post-ops
     VDISPATCH_MATMUL(check_attr_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
 
+    const data_type_t dst_dt = dst_md()->data_type;
     const bool sum_po_via_gemm_beta
-            = should_gemm_execute_sum_po(params_, dst_type);
+            = should_gemm_execute_sum_po(params_, dst_dt);
     // set state
-    params_.dst_is_acc_ = dst_type == data_type::f32
+    params_.dst_is_acc_ = dst_dt == data_type::f32
             && IMPLICATION(attr()->post_ops_.find(primitive_kind::sum) != -1,
                     sum_po_via_gemm_beta);
 
@@ -201,19 +200,17 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
     return status::success;
 }
 
-template <impl::data_type_t dst_type>
-bool gemm_bf16_matmul_t<dst_type>::should_skip_sum_po() const noexcept {
-    return should_gemm_execute_sum_po(pd()->params(), dst_type);
+bool gemm_bf16_matmul_t::should_skip_sum_po() const noexcept {
+    return should_gemm_execute_sum_po(
+            pd()->params(), pd()->dst_md()->data_type);
 }
 
-template <impl::data_type_t dst_type>
-status_t gemm_bf16_matmul_t<dst_type>::execute_ref(
-        const exec_ctx_t &ctx) const {
+status_t gemm_bf16_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     using namespace binary_injector_utils;
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const weights_data_t *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto &po = this->pd()->attr()->post_ops_;
     const auto post_ops_binary_rhs_arg_vec = prepare_binary_args(po, ctx);
 
@@ -330,7 +327,7 @@ status_t gemm_bf16_matmul_t<dst_type>::execute_ref(
                 const weights_data_t *curr_weights
                         = weights + weights_d.off_v(w_dims_idx);
                 const dim_t dst_off = dst_d.off_v(d_dims_idx);
-                dst_data_t *curr_dst = dst + dst_off;
+                char *curr_dst = dst + dst_off * dst_d.data_type_size();
                 if (!reuse_acc) curr_acc = acc + dst_off;
                 dim_t gemm_M {0}, gemm_N {0};
 
@@ -418,10 +415,6 @@ status_t gemm_bf16_matmul_t<dst_type>::execute_ref(
 
     return st;
 }
-
-using namespace data_type;
-template struct gemm_bf16_matmul_t<data_type::f32>;
-template struct gemm_bf16_matmul_t<data_type::bf16>;
 
 } // namespace matmul
 } // namespace cpu

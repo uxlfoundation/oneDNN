@@ -207,6 +207,13 @@ A user can initialize a memory descriptor with strides:
     dnnl_memory_desc_create_with_strides(&md, 4, dims, dnnl_f32, strides);
 ~~~
 
+Strides must be non-negative, except for #DNNL_RUNTIME_DIM_VAL denoting a
+runtime stride. A stride of a dimension of size one is never applied to
+compute an offset, so any non-negative value is accepted for it. Other
+dimensions require a positive stride, since a zero stride would alias all
+indices of the dimension to the same memory. Broadcast is expressed by a
+dimension of size one instead.
+
 
 oneDNN supports strides via blocking structure. The pseudo-code for
 the function above is:

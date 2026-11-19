@@ -1241,8 +1241,8 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
         for (int i = 0; i < 2; ++i) {
             if (!rows[i] || !cols[i]) continue;
             packers[i].reset(new sdpa_brgemm_copy::b_packer_t());
-            CHECK(packers[i]->init(rows[i], cols[i], row_stride, col_stride, ld,
-                    p_.mm_dt, /*separate_panels=*/true));
+            CHECK(packers[i]->init(
+                    rows[i], cols[i], row_stride, col_stride, ld, p_.mm_dt));
         }
         return status::success;
     };

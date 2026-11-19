@@ -82,13 +82,12 @@ enum class lrn_config_t {
 template <class Derived>
 class jit_uni_lrn_kernel_t; // primary template
 
-template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
-        cpu_isa_t isa, data_type_t d_type>
-class jit_uni_lrn_kernel_t<Derived<isa, d_type>> : public jit_generator_t {
+template <template <cpu_isa_t isa> class Derived, cpu_isa_t isa>
+class jit_uni_lrn_kernel_t<Derived<isa>> : public jit_generator_t {
 public:
-    jit_uni_lrn_kernel_t(const char *name = jit_name());
-    jit_uni_lrn_kernel_t(
-            const within_config_t &J, const char *name = jit_name());
+    jit_uni_lrn_kernel_t(data_type_t dt, const char *name = jit_name());
+    jit_uni_lrn_kernel_t(data_type_t dt, const within_config_t &J,
+            const char *name = jit_name());
 
     ~jit_uni_lrn_kernel_t() override;
 
@@ -106,6 +105,7 @@ protected:
     void within_body_reg_blocked(int loop_count, int max_reg_block, int hoff,
             int Hoff, int woff, int Woff, int stride, prop_kind_t pk);
 
+    const data_type_t dt_;
     const bool emulate_bfloat_ = false;
     const Xbyak::Zmm bf16_emu_reserv_1_ = Xbyak::Zmm(28);
     const Xbyak::Zmm bf16_emu_reserv_2_ = Xbyak::Zmm(29);
@@ -119,30 +119,29 @@ protected:
     const Xbyak::Reg64 reg_tmp_ = this->rsi;
     static constexpr size_t simd_w_
             = cpu_isa_traits_t<isa>::vlen / sizeof(float);
-    int single_pixel_offset_
-            = VECTOR_LENGTH * sizeof(typename prec_traits_t<d_type>::type);
+    int single_pixel_offset_;
 
     io::jit_io_multi_dt_helper_t<Vmm> io_;
 };
 
-template <cpu_isa_t isa, data_type_t d_type>
+template <cpu_isa_t isa>
 class jit_uni_lrn_fwd_kernel_t
-    : public jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<isa, d_type>> {
+    : public jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<isa>> {
 public:
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lrn_fwd_kernel_t)
 
-    jit_uni_lrn_fwd_kernel_t(
-            const within_config_t &J, float A, float K, prop_kind_t pk);
-    jit_uni_lrn_fwd_kernel_t(
-            const nchw8c_across_t &J, float A, float K, prop_kind_t pk);
-    jit_uni_lrn_fwd_kernel_t(
-            const nhwc_across_t &J, float A, float K, prop_kind_t pk);
-    jit_uni_lrn_fwd_kernel_t(
-            const nchw_across_t &J, float A, float K, prop_kind_t pk);
+    jit_uni_lrn_fwd_kernel_t(data_type_t dt, const within_config_t &J, float A,
+            float K, prop_kind_t pk);
+    jit_uni_lrn_fwd_kernel_t(data_type_t dt, const nchw8c_across_t &J, float A,
+            float K, prop_kind_t pk);
+    jit_uni_lrn_fwd_kernel_t(data_type_t dt, const nhwc_across_t &J, float A,
+            float K, prop_kind_t pk);
+    jit_uni_lrn_fwd_kernel_t(data_type_t dt, const nchw_across_t &J, float A,
+            float K, prop_kind_t pk);
     ~jit_uni_lrn_fwd_kernel_t() override;
 
 private:
-    using Base = jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<isa, d_type>>;
+    using Base = jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<isa>>;
 
     void generate() override {
         switch (config_) {
@@ -203,18 +202,19 @@ private:
     static constexpr int stack_space_needed_ = 11 * 4 * sizeof(float) + 16;
 };
 
-template <cpu_isa_t isa, data_type_t d_type>
+template <cpu_isa_t isa>
 class jit_uni_lrn_bwd_kernel_t
-    : public jit_uni_lrn_kernel_t<jit_uni_lrn_bwd_kernel_t<isa, d_type>> {
+    : public jit_uni_lrn_kernel_t<jit_uni_lrn_bwd_kernel_t<isa>> {
 public:
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lrn_bwd_kernel_t)
 
+    jit_uni_lrn_bwd_kernel_t(data_type_t dt, const nchw8c_across_t &J, float A,
+            float B, int use_h_parallel);
     jit_uni_lrn_bwd_kernel_t(
-            const nchw8c_across_t &J, float A, float B, int use_h_parallel);
-    jit_uni_lrn_bwd_kernel_t(const within_config_t &J, float A, float B);
+            data_type_t dt, const within_config_t &J, float A, float B);
 
 private:
-    using Base = jit_uni_lrn_kernel_t<jit_uni_lrn_bwd_kernel_t<isa, d_type>>;
+    using Base = jit_uni_lrn_kernel_t<jit_uni_lrn_bwd_kernel_t<isa>>;
 
     void generate() override {
         switch (config_) {

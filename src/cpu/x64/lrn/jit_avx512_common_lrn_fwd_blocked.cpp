@@ -21,34 +21,31 @@ namespace cpu {
 namespace x64 {
 namespace lrn {
 
-template <data_type_t d_type>
-jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::
-        jit_avx512_common_lrn_kernel_fwd_blocked_t(
+jit_avx512_common_lrn_kernel_fwd_blocked_t::
+        jit_avx512_common_lrn_kernel_fwd_blocked_t(data_type_t dt,
                 const struct nChw16c_across_t &J, prop_kind_t prop_kind,
                 int use_h_parallel, float alpha, float beta, float k,
                 int local_size)
-    : jit_avx512_common_lrn_kernel_fwd_t<d_type>(
-              prop_kind, alpha, beta, k, local_size, jit_name())
+    : jit_avx512_common_lrn_kernel_fwd_t(
+              dt, prop_kind, alpha, beta, k, local_size, jit_name())
     // some registers needed for conversion from bf16 to f32
     , xmm_size_(4 * sizeof(acc_data_t))
     , zmm_size_(64)
     , buffer_block_(xmm_size_ + zmm_size_ + xmm_size_)
     , buffer_nest_offset_(xmm_size_ + zmm_size_)
-    , src_prev_offset_(this->vlen_ - 4 * sizeof(data_t))
+    , src_prev_offset_(
+              this->vlen_ - 4 * static_cast<int>(types::data_type_size(dt)))
     , HW_(J.W * J.H)
     , W_(J.W)
     , version_(J.version)
     , use_h_parallelism_(use_h_parallel) {}
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::generate() {
+void jit_avx512_common_lrn_kernel_fwd_blocked_t::generate() {
     this->preamble();
     if (this->bf16_emu_) this->bf16_emu_->init_vcvtneps2bf16();
 
 #define GET_OFF(field) \
-    offsetof(typename jit_avx512_common_lrn_kernel_fwd_t< \
-                     d_type>::jit_args_fwd_t, \
-            field)
+    offsetof(jit_avx512_common_lrn_kernel_fwd_t::jit_args_fwd_t, field)
     this->mov(this->src_, ptr[this->param_ + GET_OFF(src)]);
     this->mov(this->dst_, ptr[this->param_ + GET_OFF(dst)]);
     if (this->pk_ != prop_kind::forward_inference) {
@@ -106,7 +103,7 @@ void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::generate() {
             for (int irb = 0; irb < this->reg_block_; irb++)
                 this->dec(hw_);
             this->cmp(hw_, 0);
-            this->jne(lrn_loop, this->T_NEAR);
+            this->jne(lrn_loop, T_NEAR);
         }
     }
 
@@ -116,8 +113,7 @@ void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::generate() {
     this->postamble();
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::compute_loop(
+void jit_avx512_common_lrn_kernel_fwd_blocked_t::compute_loop(
         int loop_size_param) {
     // loop_size - param for IRB_LOOP macro
     int loop_size = loop_size_param;
@@ -132,7 +128,7 @@ void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::compute_loop(
                 ptr[this->src_ + (irb - HW_) * this->vlen_
                         + src_prev_offset_]));
     }
-    IRB_LOOP(this->load_data(this->zreg(irb, this->zsrc_),
+    IRB_LOOP(this->load_data(this->zreg(irb, zsrc_),
             this->EVEX_compress_addr(this->src_, irb * this->vlen_)));
     if (version_ != across_version::Last
             && version_ != across_version::Single) {
@@ -147,7 +143,7 @@ void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::compute_loop(
     }
     IRB_LOOP(this->vmovups(
             this->EVEX_compress_addr(t_, irb * buffer_block_ + xmm_size_),
-            this->zreg(irb, this->zsrc_)));
+            this->zreg(irb, zsrc_)));
     if (version_ != across_version::Last
             && version_ != across_version::Single) {
         IRB_LOOP(this->vmovups(
@@ -170,9 +166,9 @@ void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::compute_loop(
             this->EVEX_compress_addr(
                     t_, irb * buffer_block_ + xmm_size_ + 2 * acc_size)));
 
-    assert(this->zc_ == this->zsrc_);
-    IRB_LOOP(this->vmulps(this->zreg(irb, this->zsum_),
-            this->zreg(irb, this->zc_), this->zreg(irb, this->zc_)));
+    assert(zc_ == zsrc_);
+    IRB_LOOP(this->vmulps(this->zreg(irb, this->zsum_), this->zreg(irb, zc_),
+            this->zreg(irb, zc_)));
 
     IRB_LOOP(this->vfmadd231ps(this->zreg(irb, this->zsum_),
             this->zreg(irb, this->z_prev_[0]),
@@ -191,14 +187,14 @@ void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::compute_loop(
             this->zreg(irb, this->zsum_), this->zk_, this->zalpha_));
 
     IRB_LOOP(this->vmovaps(
-            this->zreg(irb, this->zbase_), this->zreg(irb, this->zsum_)));
+            this->zreg(irb, zbase_), this->zreg(irb, this->zsum_)));
 
-    IRB_LOOP(this->vmulps(this->zreg(irb, this->zsum2_),
-            this->zreg(irb, this->zsum_), this->zreg(irb, this->zsum_)));
+    IRB_LOOP(this->vmulps(this->zreg(irb, zsum2_), this->zreg(irb, this->zsum_),
+            this->zreg(irb, this->zsum_)));
 
     if (this->beta_ != 1) {
         IRB_LOOP(this->vmulps(this->zreg(irb, this->zsum_),
-                this->zreg(irb, this->zsum_), this->zreg(irb, this->zsum2_)));
+                this->zreg(irb, this->zsum_), this->zreg(irb, zsum2_)));
 
         IRB_LOOP(this->vsqrtps(
                 this->zreg(irb, this->zsum_), this->zreg(irb, this->zsum_)));
@@ -206,33 +202,29 @@ void jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::compute_loop(
                 this->zreg(irb, this->zsum_), this->zreg(irb, this->zsum_)));
     }
 
-    const int ytmp = this->zsum2_; // temporary ymm for f32->bf16 conversion
+    const int ytmp = zsum2_; // temporary ymm for f32->bf16 conversion
     if (this->pk_ != prop_kind::forward_inference) {
         // save intermediate results for lrn backward
         IRB_LOOP(this->store_data(
                 this->EVEX_compress_addr(this->ws0_, irb * this->vlen_),
                 this->zreg(irb, this->zsum_), this->yreg(irb, ytmp)));
     }
-    IRB_LOOP(this->vdivps(this->zreg(irb, this->zdst_),
-            this->zreg(irb, this->zsrc_), this->zreg(irb, this->zsum_)));
+    IRB_LOOP(this->vdivps(this->zreg(irb, zdst_), this->zreg(irb, zsrc_),
+            this->zreg(irb, this->zsum_)));
     // storing to dst
     IRB_LOOP(this->store_data(
             this->EVEX_compress_addr(this->dst_, irb * this->vlen_),
-            this->zreg(irb, this->zdst_), this->yreg(irb, ytmp)));
+            this->zreg(irb, zdst_), this->yreg(irb, ytmp)));
     if (this->pk_ != prop_kind::forward_inference) {
         // calculate and save more intermediate results for lrn backward
         /* ws1 = zdst / zbase = zsrc / (zbase^1.75) */
         IRB_LOOP(this->vdivps(this->zreg(irb, this->zsum_),
-                this->zreg(irb, this->zdst_), this->zreg(irb, this->zbase_)));
+                this->zreg(irb, zdst_), this->zreg(irb, zbase_)));
         IRB_LOOP(this->store_data(
                 this->EVEX_compress_addr(this->ws1_, irb * this->vlen_),
                 this->zreg(irb, this->zsum_), this->yreg(irb, ytmp)));
     }
 }
-
-template class jit_avx512_common_lrn_kernel_fwd_blocked_t<f32>;
-template class jit_avx512_common_lrn_kernel_fwd_blocked_t<bf16>;
-template class jit_avx512_common_lrn_kernel_fwd_blocked_t<f16>;
 
 } // namespace lrn
 } // namespace x64

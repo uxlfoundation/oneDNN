@@ -26,22 +26,21 @@ namespace cpu {
 namespace x64 {
 namespace lrn {
 
-template <data_type_t d_type>
 class jit_avx512_common_lrn_kernel_fwd_blocked_t
-    : public jit_avx512_common_lrn_kernel_fwd_t<d_type> {
+    : public jit_avx512_common_lrn_kernel_fwd_t {
 
 public:
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_common_lrn_kernel_fwd_blocked_t)
 
-    jit_avx512_common_lrn_kernel_fwd_blocked_t(const struct nChw16c_across_t &J,
-            prop_kind_t prop_kind, int use_h_parallel, float alpha, float beta,
-            float k, int local_size);
+    jit_avx512_common_lrn_kernel_fwd_blocked_t(data_type_t dt,
+            const struct nChw16c_across_t &J, prop_kind_t prop_kind,
+            int use_h_parallel, float alpha, float beta, float k,
+            int local_size);
 
     void compute_loop(int loop_size_param);
 
 private:
     void generate() override;
-    using data_t = typename jit_avx512_common_lrn_kernel_fwd_t<d_type>::data_t;
 
     int xmm_size_, zmm_size_, buffer_block_, buffer_nest_offset_,
             src_prev_offset_, HW_, W_;

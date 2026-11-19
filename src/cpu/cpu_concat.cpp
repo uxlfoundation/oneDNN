@@ -31,12 +31,7 @@ using namespace dnnl::impl::data_type;
             __VA_ARGS__::pd_t>()),
 // clang-format off
 constexpr impl_list_item_t cpu_concat_impl_list[] = REG_CONCAT_P({
-        INSTANCE(simple_concat_t<f32>)
-        INSTANCE(simple_concat_t<u8>)
-        INSTANCE(simple_concat_t<s8>)
-        INSTANCE(simple_concat_t<s32>)
-        INSTANCE(simple_concat_t<bf16>)
-        INSTANCE(simple_concat_t<f16>)
+        INSTANCE(simple_concat_t)
         INSTANCE(ref_concat_t)
         nullptr,
 });

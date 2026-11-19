@@ -46,12 +46,12 @@ cpu_isa_t get_io_isa(cpu_isa_t isa, data_type_t d_type) {
             : isa;
 }
 
-template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
-        cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_kernel_t<Derived<isa, d_type>>::jit_uni_lrn_kernel_t(
-        const char *name)
+template <template <cpu_isa_t isa> class Derived, cpu_isa_t isa>
+jit_uni_lrn_kernel_t<Derived<isa>>::jit_uni_lrn_kernel_t(
+        data_type_t dt, const char *name)
     : jit_generator_t(name, isa)
-    , emulate_bfloat_(d_type == data_type::bf16 && !mayiuse(avx512_core_bf16)
+    , dt_(dt)
+    , emulate_bfloat_(dt == data_type::bf16 && !mayiuse(avx512_core_bf16)
               && is_superset(isa, avx512_core))
     , bf16_emu_(emulate_bfloat_
                       ? utils::make_unique<bf16_emulation_t>(this,
@@ -59,31 +59,30 @@ jit_uni_lrn_kernel_t<Derived<isa, d_type>>::jit_uni_lrn_kernel_t(
                                 bf16_emu_reserv_3_, bf16_emu_scratch_,
                                 bf16_emu_reserv_4_)
                       : nullptr)
-    , io_(this, get_io_isa(isa, d_type), {d_type}, {},
+    , single_pixel_offset_(
+              VECTOR_LENGTH * static_cast<int>(types::data_type_size(dt)))
+    , io_(this, get_io_isa(isa, dt), {dt}, {},
               io::io_tail_conf_t {simd_w_, 0, this->k1, 0, this->reg_tmp_},
               io::io_emu_bf16_conf_t {bf16_emu_reserv_1_, bf16_emu_reserv_2_,
                       bf16_emu_reserv_3_, bf16_emu_scratch_,
                       bf16_emu_reserv_4_}) {}
 
-template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
-        cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_kernel_t<Derived<isa, d_type>>::jit_uni_lrn_kernel_t(
-        const within_config_t &config, const char *name)
-    : jit_uni_lrn_kernel_t(name) {
+template <template <cpu_isa_t isa> class Derived, cpu_isa_t isa>
+jit_uni_lrn_kernel_t<Derived<isa>>::jit_uni_lrn_kernel_t(
+        data_type_t dt, const within_config_t &config, const char *name)
+    : jit_uni_lrn_kernel_t(dt, name) {
     if (config.dat_tag == nhwc)
         single_pixel_offset_
-                = config.C * sizeof(typename prec_traits_t<d_type>::type);
+                = config.C * static_cast<int>(types::data_type_size(dt));
 }
 
-template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
-        cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_kernel_t<Derived<isa, d_type>>::~jit_uni_lrn_kernel_t() = default;
+template <template <cpu_isa_t isa> class Derived, cpu_isa_t isa>
+jit_uni_lrn_kernel_t<Derived<isa>>::~jit_uni_lrn_kernel_t() = default;
 
-template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
-        cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_kernel_t<Derived<isa, d_type>>::within_loop(
+template <template <cpu_isa_t isa> class Derived, cpu_isa_t isa>
+void jit_uni_lrn_kernel_t<Derived<isa>>::within_loop(
         const within_config_t &config, int max_reg_blocks, prop_kind_t pk) {
-    const auto derived_ptr = static_cast<Derived<isa, d_type> *>(this);
+    const auto derived_ptr = static_cast<Derived<isa> *>(this);
 
     const int lower_bound = (config.size - 1) / 2,
               upper_bound = config.size - lower_bound - 1;
@@ -152,13 +151,12 @@ void jit_uni_lrn_kernel_t<Derived<isa, d_type>>::within_loop(
     }
 }
 
-template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
-        cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_kernel_t<Derived<isa, d_type>>::within_body_reg_blocked(
-        int loop_count, int max_reg_blocks, int hoff, int Hoff, int woff,
-        int Woff, int stride, prop_kind_t pk) {
+template <template <cpu_isa_t isa> class Derived, cpu_isa_t isa>
+void jit_uni_lrn_kernel_t<Derived<isa>>::within_body_reg_blocked(int loop_count,
+        int max_reg_blocks, int hoff, int Hoff, int woff, int Woff, int stride,
+        prop_kind_t pk) {
 
-    const auto derived_ptr = static_cast<Derived<isa, d_type> *>(this);
+    const auto derived_ptr = static_cast<Derived<isa> *>(this);
     Label reg_block_compute_loop;
 
     const auto res = std::div(loop_count, max_reg_blocks);
@@ -179,9 +177,8 @@ void jit_uni_lrn_kernel_t<Derived<isa, d_type>>::within_body_reg_blocked(
     }
 }
 
-template <template <cpu_isa_t isa, data_type_t d_type> class Derived,
-        cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_kernel_t<Derived<isa, d_type>>::load_constant(
+template <template <cpu_isa_t isa> class Derived, cpu_isa_t isa>
+void jit_uni_lrn_kernel_t<Derived<isa>>::load_constant(
         float constant, const Vmm &v_constant, const Xbyak::Xmm &x_constant) {
     this->mov(this->imm_addr64_, float2int(constant));
     this->uni_vmovq(x_constant, this->imm_addr64_);
@@ -190,9 +187,9 @@ void jit_uni_lrn_kernel_t<Derived<isa, d_type>>::load_constant(
 
 //////////////////////////////////////////////////////////////////////////////
 // forward kernel
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_fwd_kernel_t<isa, d_type>::within_body(int hoff, int Hoff,
-        int woff, int Woff, int stride, prop_kind_t pk, const int reg_block,
+template <cpu_isa_t isa>
+void jit_uni_lrn_fwd_kernel_t<isa>::within_body(int hoff, int Hoff, int woff,
+        int Woff, int stride, prop_kind_t pk, const int reg_block,
         int pixel_offset) {
 
     static const std::array<Vmm, 5> vsum {
@@ -208,7 +205,7 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::within_body(int hoff, int Hoff,
     static const std::array<Vmm, 2> vtmp2 {{Vmm(12), Vmm(13)}};
     static const Vmm vaux = Vmm(14);
     const bool has_ne_convert_xf16_support = isa == avx2_vnni_2
-            && utils::one_of(d_type, data_type::bf16, data_type::f16);
+            && utils::one_of(this->dt_, data_type::bf16, data_type::f16);
 
     IRB_LOOP(this->uni_vxorps(vsum[irb], vsum[irb], vsum[irb]));
     for (int i = hoff; i <= Hoff; ++i) {
@@ -218,17 +215,17 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::within_body(int hoff, int Hoff,
             const bool can_load_two_simdw = has_ne_convert_xf16_support
                     && Woff - j >= 2 && !(i == 0 && (j == 0 || j + 1 == 0));
             if (can_load_two_simdw) {
-                IRB_LOOP(this->io_.at(d_type)->load_two_simdw_xf16(
+                IRB_LOOP(this->io_.at(this->dt_)->load_two_simdw_xf16(
                         this->ptr[src_ + p_off + irb_off], vtmp[irb],
                         vtmp2[irb]));
-                IRB_LOOP(this->io_.at(d_type)->merge_interleaved_to_plain(
+                IRB_LOOP(this->io_.at(this->dt_)->merge_interleaved_to_plain(
                         vtmp[irb], vtmp2[irb], vaux));
                 IRB_LOOP(this->vfmadd231ps(vsum[irb], vtmp[irb], vtmp[irb]));
                 IRB_LOOP(this->vfmadd231ps(vsum[irb], vtmp2[irb], vtmp2[irb]));
                 ++j;
             } else {
                 const auto vdata = (i == 0 && j == 0) ? vdst : vtmp;
-                IRB_LOOP(this->io_.at(d_type)->load(
+                IRB_LOOP(this->io_.at(this->dt_)->load(
                         this->ptr[(src_ + p_off + irb_off)], vdata[irb],
                         false));
                 IRB_LOOP(this->vfmadd231ps(vsum[irb], vdata[irb], vdata[irb]));
@@ -250,20 +247,20 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::within_body(int hoff, int Hoff,
             vdst[irb], vdst[irb], vsum[irb])); // ydst <- ydst / ysum
 
     if (pk_ != prop_kind::forward_inference) {
-        IRB_LOOP(this->io_.at(d_type)->store(vsum[irb],
+        IRB_LOOP(this->io_.at(this->dt_)->store(vsum[irb],
                 this->ptr[scratch_ + pixel_offset + irb_off], false));
         IRB_LOOP(this->vdivps(vscratch[irb], vdst[irb], vscratch[irb]));
-        IRB_LOOP(this->io_.at(d_type)->store(vscratch[irb],
+        IRB_LOOP(this->io_.at(this->dt_)->store(vscratch[irb],
                 this->ptr[bwd_intermediate_res_ + pixel_offset + irb_off],
                 false));
     }
 
-    IRB_LOOP(this->io_.at(d_type)->store(
+    IRB_LOOP(this->io_.at(this->dt_)->store(
             vdst[irb], this->ptr[dst_ + pixel_offset + irb_off], false));
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_fwd_kernel_t<isa, d_type>::move_data_pointers(
+template <cpu_isa_t isa>
+void jit_uni_lrn_fwd_kernel_t<isa>::move_data_pointers(
         int pixel_count, prop_kind_t pk) {
 
     const int pixel_offset = this->single_pixel_offset_ * pixel_count;
@@ -275,19 +272,18 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::move_data_pointers(
     }
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_fwd_kernel_t<isa, d_type>::jit_uni_lrn_fwd_kernel_t(
+template <cpu_isa_t isa>
+jit_uni_lrn_fwd_kernel_t<isa>::jit_uni_lrn_fwd_kernel_t(data_type_t dt,
         const within_config_t &config, float A, float K, prop_kind_t pk)
-    : Base(config, jit_name())
+    : Base(dt, config, jit_name())
     , config_(lrn_config_t::within_config)
     , within_config_(config)
     , alpha_(A)
     , k_(K)
     , pk_(pk) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_fwd_kernel_t<isa, d_type>::generate(
-        const within_config_t &config) {
+template <cpu_isa_t isa>
+void jit_uni_lrn_fwd_kernel_t<isa>::generate(const within_config_t &config) {
     this->preamble();
     if (this->emulate_bfloat_) this->io_.init_bf16();
 
@@ -312,18 +308,18 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::generate(
     this->postamble();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_fwd_kernel_t<isa, d_type>::jit_uni_lrn_fwd_kernel_t(
+template <cpu_isa_t isa>
+jit_uni_lrn_fwd_kernel_t<isa>::jit_uni_lrn_fwd_kernel_t(data_type_t dt,
         const struct nchw8c_across_t &J, float A, float K, prop_kind_t pk)
-    : Base(jit_name())
+    : Base(dt, jit_name())
     , config_(lrn_config_t::nchw8c_across)
     , nchw8c_across_(J)
     , alpha_(A)
     , k_(K)
     , pk_(pk) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_fwd_kernel_t<isa, d_type>::generate(const nchw8c_across_t &J) {
+template <cpu_isa_t isa>
+void jit_uni_lrn_fwd_kernel_t<isa>::generate(const nchw8c_across_t &J) {
     const Xbyak::Reg64 &t = this->rsp;
     const Xbyak::Reg64 &hw = this->r9;
     const Xbyak::Xmm &xsrc_prev = this->xmm2;
@@ -405,24 +401,24 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::generate(const nchw8c_across_t &J) {
     if (pk_ != prop_kind::forward_inference) this->add(scratch_, 32);
     this->dec(hw);
     this->cmp(hw, 0);
-    this->jne(lrn_loop, this->T_NEAR);
+    this->jne(lrn_loop, jit_generator_t::T_NEAR);
 
     this->add(t, 64);
     this->postamble();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_fwd_kernel_t<isa, d_type>::jit_uni_lrn_fwd_kernel_t(
+template <cpu_isa_t isa>
+jit_uni_lrn_fwd_kernel_t<isa>::jit_uni_lrn_fwd_kernel_t(data_type_t dt,
         const struct nhwc_across_t &J, float A, float K, prop_kind_t pk)
-    : Base(jit_name())
+    : Base(dt, jit_name())
     , config_(lrn_config_t::nhwc_across)
     , nhwc_across_(J)
     , alpha_(A)
     , k_(K)
     , pk_(pk) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_fwd_kernel_t<isa, d_type>::generate(const nhwc_across_t &J) {
+template <cpu_isa_t isa>
+void jit_uni_lrn_fwd_kernel_t<isa>::generate(const nhwc_across_t &J) {
     static const uint32_t mask[] = {0, 0, 0x80000000, 0x80000000, 0x80000000,
             0x80000000, 0x80000000, 0x80000000, 0x80000000, 0, 0};
 
@@ -534,10 +530,10 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::generate(const nhwc_across_t &J) {
     this->postamble();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_fwd_kernel_t<isa, d_type>::nchw_body(int tail, int HW,
-        prop_kind_t pk, Xbyak::Ymm ymask, Xbyak::Ymm ya, Xbyak::Ymm yb,
-        Xbyak::Ymm yc, Xbyak::Ymm yd, Xbyak::Ymm ye, Xbyak::Ymm ysum) {
+template <cpu_isa_t isa>
+void jit_uni_lrn_fwd_kernel_t<isa>::nchw_body(int tail, int HW, prop_kind_t pk,
+        Xbyak::Ymm ymask, Xbyak::Ymm ya, Xbyak::Ymm yb, Xbyak::Ymm yc,
+        Xbyak::Ymm yd, Xbyak::Ymm ye, Xbyak::Ymm ysum) {
     const Xbyak::Ymm &ydst = this->ymm14;
     const Xbyak::Ymm &ybase = this->ymm15;
 
@@ -571,18 +567,18 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::nchw_body(int tail, int HW,
     this->vmovups(yd, ye);
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_fwd_kernel_t<isa, d_type>::jit_uni_lrn_fwd_kernel_t(
+template <cpu_isa_t isa>
+jit_uni_lrn_fwd_kernel_t<isa>::jit_uni_lrn_fwd_kernel_t(data_type_t dt,
         const nchw_across_t &J, float A, float K, prop_kind_t pk)
-    : Base(jit_name())
+    : Base(dt, jit_name())
     , config_(lrn_config_t::nchw_across)
     , nchw_across_(J)
     , alpha_(A)
     , k_(K)
     , pk_(pk) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_fwd_kernel_t<isa, d_type>::generate(const nchw_across_t &J) {
+template <cpu_isa_t isa>
+void jit_uni_lrn_fwd_kernel_t<isa>::generate(const nchw_across_t &J) {
     static const uint32_t mask[]
             = {0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000,
                     0x80000000, 0x80000000, 0, 0, 0, 0, 0, 0, 0};
@@ -661,22 +657,22 @@ void jit_uni_lrn_fwd_kernel_t<isa, d_type>::generate(const nchw_across_t &J) {
     this->postamble();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_fwd_kernel_t<isa, d_type>::~jit_uni_lrn_fwd_kernel_t() = default;
+template <cpu_isa_t isa>
+jit_uni_lrn_fwd_kernel_t<isa>::~jit_uni_lrn_fwd_kernel_t() = default;
 
 //////////////////////////////////////////////////////////////////////////////
 // backward kernel
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_bwd_kernel_t<isa, d_type>::jit_uni_lrn_bwd_kernel_t(
+template <cpu_isa_t isa>
+jit_uni_lrn_bwd_kernel_t<isa>::jit_uni_lrn_bwd_kernel_t(data_type_t dt,
         const nchw8c_across_t &J, float A, float B, int use_h_parallel)
-    : Base(jit_name())
+    : Base(dt, jit_name())
     , config_(lrn_config_t::nchw8c_across)
     , nchw8c_across_(J)
     , nalphabeta_(-2 * A * B)
     , use_h_parallelizm_(use_h_parallel) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_bwd_kernel_t<isa, d_type>::generate(const nchw8c_across_t &J) {
+template <cpu_isa_t isa>
+void jit_uni_lrn_bwd_kernel_t<isa>::generate(const nchw8c_across_t &J) {
 
     const Xbyak::Reg64 &t = this->rsp;
     const Xbyak::Reg64 &hw = this->r10;
@@ -796,25 +792,24 @@ void jit_uni_lrn_bwd_kernel_t<isa, d_type>::generate(const nchw8c_across_t &J) {
 
         this->dec(hw);
         this->cmp(hw, 0);
-        this->jne(lrn_loop, this->T_NEAR);
+        this->jne(lrn_loop, jit_generator_t::T_NEAR);
     }
 
     this->add(t, 64);
     this->postamble();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_bwd_kernel_t<isa, d_type>::jit_uni_lrn_bwd_kernel_t(
-        const within_config_t &config, float A, float B)
-    : Base(config, jit_name())
+template <cpu_isa_t isa>
+jit_uni_lrn_bwd_kernel_t<isa>::jit_uni_lrn_bwd_kernel_t(
+        data_type_t dt, const within_config_t &config, float A, float B)
+    : Base(dt, config, jit_name())
     , config_(lrn_config_t::within_config)
     , within_config_(config)
     , nalphabeta_(-2.0f * A * B)
     , use_h_parallelizm_(0) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_bwd_kernel_t<isa, d_type>::generate(
-        const within_config_t &config) {
+template <cpu_isa_t isa>
+void jit_uni_lrn_bwd_kernel_t<isa>::generate(const within_config_t &config) {
 
     this->preamble();
     if (this->bf16_emu_) this->bf16_emu_->init_vcvtneps2bf16();
@@ -835,9 +830,9 @@ void jit_uni_lrn_bwd_kernel_t<isa, d_type>::generate(
     this->postamble();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_bwd_kernel_t<isa, d_type>::within_body(int hoff, int Hoff,
-        int woff, int Woff, int stride, prop_kind_t pk, const int reg_block,
+template <cpu_isa_t isa>
+void jit_uni_lrn_bwd_kernel_t<isa>::within_body(int hoff, int Hoff, int woff,
+        int Woff, int stride, prop_kind_t pk, const int reg_block,
         int pixel_offset) {
 
     static const std::array<Vmm, 4> vsum {{Vmm(1), Vmm(7), Vmm(13), Vmm(19)}};
@@ -851,18 +846,18 @@ void jit_uni_lrn_bwd_kernel_t<isa, d_type>::within_body(int hoff, int Hoff,
     IRB_LOOP(this->uni_vxorps(vsum[irb], vsum[irb], vsum[irb]));
     for (int i = hoff; i <= Hoff; ++i) {
         for (int j = woff; j <= Woff; ++j) {
-            IRB_LOOP(this->io_.at(d_type)->load(
+            IRB_LOOP(this->io_.at(this->dt_)->load(
                     this->ptr[(diffdst_ + pixel_offset + irb_off)
                             + (i * stride + j) * this->single_pixel_offset_],
                     diff_dst[irb], false));
-            IRB_LOOP(this->io_.at(d_type)->load(
+            IRB_LOOP(this->io_.at(this->dt_)->load(
                     this->ptr[(bwd_intermediate_res_ + pixel_offset + irb_off)
                             + (i * stride + j) * this->single_pixel_offset_],
                     ws1[irb], false));
 
             if (i == 0 && j == 0) {
-                if (utils::one_of(d_type, data_type::bf16, data_type::f16)) {
-                    IRB_LOOP(this->io_.at(d_type)->load(
+                if (utils::one_of(this->dt_, data_type::bf16, data_type::f16)) {
+                    IRB_LOOP(this->io_.at(this->dt_)->load(
                             this->ptr[(scratch_ + pixel_offset + irb_off)],
                             ws0[irb], false));
                     IRB_LOOP(this->vdivps(a[irb], diff_dst[irb], ws0[irb]));
@@ -876,8 +871,8 @@ void jit_uni_lrn_bwd_kernel_t<isa, d_type>::within_body(int hoff, int Hoff,
         }
     }
 
-    if (utils::one_of(d_type, data_type::bf16, data_type::f16)) {
-        IRB_LOOP(this->io_.at(d_type)->load(
+    if (utils::one_of(this->dt_, data_type::bf16, data_type::f16)) {
+        IRB_LOOP(this->io_.at(this->dt_)->load(
                 this->ptr[(src_ + pixel_offset + irb_off)], src[irb], false));
         IRB_LOOP(this->vmulps(src[irb], this->vnalphabeta_, src[irb]));
     } else {
@@ -887,12 +882,12 @@ void jit_uni_lrn_bwd_kernel_t<isa, d_type>::within_body(int hoff, int Hoff,
 
     IRB_LOOP(this->vfmadd231ps(a[irb], src[irb], vsum[irb]));
 
-    IRB_LOOP(this->io_.at(d_type)->store(
+    IRB_LOOP(this->io_.at(this->dt_)->store(
             a[irb], this->ptr[diffsrc_ + pixel_offset + irb_off], false));
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_lrn_bwd_kernel_t<isa, d_type>::move_data_pointers(
+template <cpu_isa_t isa>
+void jit_uni_lrn_bwd_kernel_t<isa>::move_data_pointers(
         int pixel_count, prop_kind_t pk) {
     const int pixel_offset = this->single_pixel_offset_ * pixel_count;
     this->add(src_, pixel_offset);
@@ -902,39 +897,23 @@ void jit_uni_lrn_bwd_kernel_t<isa, d_type>::move_data_pointers(
     this->add(bwd_intermediate_res_, pixel_offset);
 }
 
-template class jit_uni_lrn_fwd_kernel_t<avx2, data_type::f32>;
-template class jit_uni_lrn_fwd_kernel_t<avx2_vnni_2, data_type::bf16>;
-template class jit_uni_lrn_fwd_kernel_t<avx2_vnni_2, data_type::f16>;
-template class jit_uni_lrn_fwd_kernel_t<avx512_core, data_type::f32>;
-template class jit_uni_lrn_fwd_kernel_t<avx512_core, data_type::bf16>;
-template class jit_uni_lrn_fwd_kernel_t<avx512_core_fp16, data_type::f16>;
+template class jit_uni_lrn_fwd_kernel_t<avx2>;
+template class jit_uni_lrn_fwd_kernel_t<avx2_vnni_2>;
+template class jit_uni_lrn_fwd_kernel_t<avx512_core>;
+template class jit_uni_lrn_fwd_kernel_t<avx512_core_fp16>;
 
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_fwd_kernel_t<avx2, data_type::f32>>;
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_fwd_kernel_t<avx2_vnni_2, data_type::bf16>>;
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_fwd_kernel_t<avx2_vnni_2, data_type::f16>>;
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_fwd_kernel_t<avx512_core, data_type::f32>>;
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_fwd_kernel_t<avx512_core, data_type::bf16>>;
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_fwd_kernel_t<avx512_core_fp16, data_type::f16>>;
+template class jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<avx2>>;
+template class jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<avx2_vnni_2>>;
+template class jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<avx512_core>>;
+template class jit_uni_lrn_kernel_t<jit_uni_lrn_fwd_kernel_t<avx512_core_fp16>>;
 
-template class jit_uni_lrn_bwd_kernel_t<avx512_core_fp16, data_type::f16>;
-template class jit_uni_lrn_bwd_kernel_t<avx512_core, data_type::f32>;
-template class jit_uni_lrn_bwd_kernel_t<avx512_core, data_type::bf16>;
-template class jit_uni_lrn_bwd_kernel_t<avx2, data_type::f32>;
+template class jit_uni_lrn_bwd_kernel_t<avx512_core_fp16>;
+template class jit_uni_lrn_bwd_kernel_t<avx512_core>;
+template class jit_uni_lrn_bwd_kernel_t<avx2>;
 
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_bwd_kernel_t<avx2, data_type::f32>>;
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_bwd_kernel_t<avx512_core, data_type::f32>>;
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_bwd_kernel_t<avx512_core, data_type::bf16>>;
-template class jit_uni_lrn_kernel_t<
-        jit_uni_lrn_bwd_kernel_t<avx512_core_fp16, data_type::f16>>;
+template class jit_uni_lrn_kernel_t<jit_uni_lrn_bwd_kernel_t<avx2>>;
+template class jit_uni_lrn_kernel_t<jit_uni_lrn_bwd_kernel_t<avx512_core>>;
+template class jit_uni_lrn_kernel_t<jit_uni_lrn_bwd_kernel_t<avx512_core_fp16>>;
 
 } // namespace x64
 } // namespace cpu

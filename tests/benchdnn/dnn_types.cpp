@@ -1464,6 +1464,17 @@ dnnl_status_t attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
             DNN_SAFE_STATUS(dnn_mem_t::init_md(rhs_tensor_desc, ndims,
                     rhs_tensor_dims, po_rhs_tensor_entry.dt,
                     po_rhs_tensor_entry.tag, po_rhs_tensor_entry.strides));
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            // A grouped tensor takes the groups of the grouped dst {G, *, N},
+            // whose dims hold the total size at the variable dim
+            if (e.binary.grouped) {
+                rhs_tensor_dims[0] = dims[0];
+                rhs_tensor_dims[1] = DNNL_VARIABLE_DIM_VAL;
+                DNN_SAFE_STATUS(dnn_mem_t::init_grouped_md(rhs_tensor_desc,
+                        ndims, rhs_tensor_dims, po_rhs_tensor_entry.dt,
+                        dims[1], {}));
+            }
+#endif
             mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                 | po_rhs_tensor_entry.arg_attr_mask),
                     std::move(rhs_tensor_desc));

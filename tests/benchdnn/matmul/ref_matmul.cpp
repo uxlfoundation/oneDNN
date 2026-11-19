@@ -169,7 +169,7 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
     p.dst_N_group = !dsg.empty() ? dsg[1] : 1;
     p.dst_scale_groups = dsg;
 
-    p.v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
+    p.v_po_masks = prb->attr.post_ops.get_po_masks(p.dst_m->ndims());
 
     p.src_zp_single = p.has_src_single_zp ? p.src_zps->get_elem(0) : 0;
     p.wei_zp_single = p.has_wei_single_zp ? p.wei_zps->get_f32_elem(0) : 0.f;
@@ -211,15 +211,16 @@ static chunk_params_t make_chunk_params(const prb_t *prb, const args_t &args) {
 //   wei_ab(k, n) = wei_attr_base + k * N + n (for scales and zps, logical
 //                  row-major wei)
 //   wei(k, n)    = wei_base + k * wei_k_stride + n * wei_n_stride
-//   dst_ab(m, n) = (dst_row_base + m) * N + n (for post-ops, dropout, dst
-//                  scales and zps, logical row-major dst)
+//   dst_ab(m, n) = (dst_attr_row_base + m) * N + n (for post-ops, dropout,
+//                  dst scales and zps, logical row-major dst)
 //   dst(m, n)    = (dst_row_base + m) * dst_m_stride + n * dst_n_stride
 //   bia(m, n)    = bia_base + m * bia_m_stride + n * bia_n_stride
 static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
         int64_t Kg, int64_t mc, int64_t nc, int64_t src_base,
         int64_t src_attr_base, int64_t wei_base, int64_t wei_attr_base,
-        int64_t dst_row_base, int64_t bia_base, int64_t bia_m_stride,
-        int64_t bia_n_stride, const attr_t &attr, const args_t &args) {
+        int64_t dst_row_base, int64_t dst_attr_row_base, int64_t bia_base,
+        int64_t bia_m_stride, int64_t bia_n_stride, const attr_t &attr,
+        const args_t &args) {
     const int64_t N = p.N, K = p.K;
     const int64_t src_m_stride = p.src_m_stride, src_k_stride = p.src_k_stride;
     const int64_t wei_k_stride = p.wei_k_stride, wei_n_stride = p.wei_n_stride;
@@ -288,7 +289,7 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
             }
         }
 
-        const auto dst_off = (dst_row_base + m) * N + n;
+        const auto dst_off = (dst_attr_row_base + m) * N + n;
         const auto dst_phys_off
                 = (dst_row_base + m) * p.dst_m_stride + n * p.dst_n_stride;
         if (p.bia_dt != dnnl_data_type_undef) {
@@ -350,8 +351,8 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
             dst_scale
                     = round_to_nearest_representable(p.dst_scale_dt, dst_scale);
         }
-        const auto dst_off
-                = (dst_row_base + mc * p.dst_M_group) * N + nc * p.dst_N_group;
+        const auto dst_off = (dst_attr_row_base + mc * p.dst_M_group) * N
+                + nc * p.dst_N_group;
         const auto dscale_idx = p.dst_m->get_idx(dst_off, p.dst_scale_mask,
                 p.dst_m->ndims(), p.dst_scale_groups);
         p.dst_scales->set_f32_elem(dscale_idx, dst_scale);
@@ -368,7 +369,7 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
             ++n)
     {
         int dst_zp = 0;
-        const auto dst_off = (dst_row_base + m) * N + n;
+        const auto dst_off = (dst_attr_row_base + m) * N + n;
         const auto dst_phys_off
                 = (dst_row_base + m) * p.dst_m_stride + n * p.dst_n_stride;
 
@@ -464,15 +465,17 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         const int64_t k0 = var_M ? 0 : off;
         const int64_t dst_g = var_M ? 0 : g;
 
-        // Data is accessed by strides, scales and zero points by logical
-        // row-major offsets over src {G, M, K} and wei {G, K, N}, where an
-        // index along the variable dim spans all groups
+        // Data is accessed by strides, scales, zero points and post-ops by
+        // logical row-major offsets over src {G, M, K}, wei {G, K, N} and
+        // dst {G, M, N}, where an index along the variable dim spans all
+        // groups
         const int64_t src_base
                 = m0 * params.src_m_stride + k0 * params.src_k_stride;
         const int64_t src_attr_base = (g * prb->m + m0) * prb->k + k0;
         const int64_t wei_base = g * wei_g_stride + k0 * params.wei_k_stride;
         const int64_t wei_attr_base = (g * prb->k + k0) * prb->n;
         const int64_t dst_row_base = dst_g * prb->m + m0;
+        const int64_t dst_attr_row_base = g * prb->m + m0;
 
         // var_K reduces over the group K_g only, not total_K
         const int64_t Kg = var_M ? prb->k : group_size;
@@ -485,8 +488,9 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         }
 
         compute_ref_matmul_chunk(params, M, Kg, mc, nc, src_base, src_attr_base,
-                wei_base, wei_attr_base, dst_row_base, bia_base,
-                /* bia_m_stride = */ 0, bia_n_stride, prb->attr, args);
+                wei_base, wei_attr_base, dst_row_base, dst_attr_row_base,
+                bia_base, /* bia_m_stride = */ 0, bia_n_stride, prb->attr,
+                args);
     });
 }
 
@@ -548,8 +552,9 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         compute_ref_matmul_chunk(params, M, /* Kg = */ K, mc, nc,
                 /* src_base = */ src_row_base * K,
                 /* src_attr_base = */ src_row_base * K, wei_base,
-                /* wei_attr_base = */ wei_base, dst_row_base, bia_base,
-                bia_m_stride, bia_n_stride, prb->attr, args);
+                /* wei_attr_base = */ wei_base, dst_row_base,
+                /* dst_attr_row_base = */ dst_row_base, bia_base, bia_m_stride,
+                bia_n_stride, prb->attr, args);
     });
 }
 

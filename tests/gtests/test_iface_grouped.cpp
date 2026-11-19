@@ -546,50 +546,64 @@ TEST(iface_grouped_test_t, TestGroupedMatmulScales) {
     const int ngroups = 2;
     const int M = 32, K = 64, N = 16;
 
-    // Masks are over src {G, M, K} and wei {G, K, N}
+    // Masks are over src {G, M, K} and wei {G, K, N} in both patterns
     const int src_rowwise = (1 << 0) | (1 << 1);
     const int src_k_blocked = src_rowwise | (1 << 2);
     const int wei_colwise = (1 << 0) | (1 << 2);
     const int wei_k_blocked = wei_colwise | (1 << 1);
 
-    auto src_md = memory::desc::grouped(
-            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f8_e4m3, M);
-    auto wei_md = memory::desc({ngroups, K, N}, dt::f8_e4m3, tag::acb);
-    auto dst_md = memory::desc::grouped(
-            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::bf16, M);
+    for (bool var_k : {false, true}) {
+        auto src_md = var_k
+                ? memory::desc::grouped(
+                          {ngroups, M, DNNL_VARIABLE_DIM_VAL}, dt::f8_e4m3, K)
+                : memory::desc::grouped(
+                          {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f8_e4m3, M);
+        auto wei_md = var_k
+                ? memory::desc::grouped(
+                          {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f8_e4m3, K)
+                : memory::desc({ngroups, K, N}, dt::f8_e4m3, tag::acb);
+        auto dst_md = var_k
+                ? memory::desc({ngroups, M, N}, dt::bf16, tag::abc)
+                : memory::desc::grouped(
+                          {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::bf16, M);
 
-    // Row-wise src and column-wise wei scales (FP8 row-wise)
-    {
-        primitive_attr attr;
-        attr.set_scales_mask(DNNL_ARG_SRC, src_rowwise);
-        attr.set_scales_mask(DNNL_ARG_WEIGHTS, wei_colwise);
-        EXPECT_NO_THROW(
-                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
-    }
+        // Row-wise src and column-wise wei scales (FP8 row-wise), variable M
+        // only
+        if (!var_k) {
+            primitive_attr attr;
+            attr.set_scales_mask(DNNL_ARG_SRC, src_rowwise);
+            attr.set_scales_mask(DNNL_ARG_WEIGHTS, wei_colwise);
+            EXPECT_NO_THROW(
+                    matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+        }
 
-    // K-blocked src and wei scales (MXFP8)
-    {
-        primitive_attr attr;
-        attr.set_scales(DNNL_ARG_SRC, src_k_blocked, {1, 32}, dt::e8m0);
-        attr.set_scales(DNNL_ARG_WEIGHTS, wei_k_blocked, {32, 1}, dt::e8m0);
-        EXPECT_NO_THROW(
-                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
-    }
+        // K-blocked src and wei scales (MXFP8)
+        {
+            primitive_attr attr;
+            attr.set_scales(DNNL_ARG_SRC, src_k_blocked, {1, 32}, dt::e8m0);
+            attr.set_scales(DNNL_ARG_WEIGHTS, wei_k_blocked, {32, 1}, dt::e8m0);
+            EXPECT_NO_THROW(
+                    matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+        }
 
-    // A mask covering the variable dim must cover G too
-    {
-        primitive_attr attr;
-        attr.set_scales_mask(DNNL_ARG_SRC, (1 << 1));
-        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
-                dnnl::error);
-    }
+        // A mask covering the variable dim must cover G too
+        {
+            primitive_attr attr;
+            attr.set_scales_mask(
+                    DNNL_ARG_SRC, var_k ? (1 << 1) | (1 << 2) : (1 << 1));
+            EXPECT_THROW(
+                    matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                    dnnl::error);
+        }
 
-    // Groups go with K-blocked masks only
-    {
-        primitive_attr attr;
-        attr.set_scales(DNNL_ARG_SRC, src_rowwise, {1, 32}, dt::e8m0);
-        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
-                dnnl::error);
+        // Groups go with K-blocked masks only
+        {
+            primitive_attr attr;
+            attr.set_scales(DNNL_ARG_SRC, src_rowwise, {1, 32}, dt::e8m0);
+            EXPECT_THROW(
+                    matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                    dnnl::error);
+        }
     }
 }
 
@@ -646,15 +660,7 @@ TEST(iface_grouped_test_t, TestGrouped2Dby2DUnsupportedAttr) {
     // Default attributes are supported
     EXPECT_NO_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md));
 
-    // 2Dx2D supports only default attributes
-    // Scales
-    {
-        primitive_attr attr;
-        attr.set_scales_mask(DNNL_ARG_SRC, 0);
-        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
-                dnnl::error);
-    }
-
+    // Only scales are supported for 2Dx2D, see TestGroupedMatmulScales
     // Zero points
     {
         primitive_attr attr;

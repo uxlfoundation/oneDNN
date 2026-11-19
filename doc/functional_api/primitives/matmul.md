@@ -559,7 +559,6 @@ The following are supported:
   the grouped dst, and the layout must be the default one.
 
 - Bias (variable-M variant only) supports per-group shape `[num_groups, 1, N]`.
-- Only default attributes are supported for the variable-K variant.
 - Supported on CPU and GPU engines.
 
 #### Supported Data Types

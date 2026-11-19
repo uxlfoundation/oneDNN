@@ -154,8 +154,6 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
 // Grouped matmul attribute checks.
 // Separated from regular matmul as grouped gemm coverage is experimental
 // and limited
-//
-// Note: 2Dx2D supports only default attribues for now
 status_t grouped_matmul_attr_check(
         const matmul_desc_t &desc, const primitive_attr_t *attr) {
     using smask_t = primitive_attr_t::skip_mask_t;
@@ -172,16 +170,16 @@ status_t grouped_matmul_attr_check(
         return status::success;
     }
 
-    // Reject 2Dx2D as no support so far
     const memory_desc_wrapper src_d(&desc.src_desc);
     const memory_desc_wrapper wei_d(&desc.weights_desc);
     const bool is_2dby2d = src_d.is_grouped_desc() && wei_d.is_grouped_desc();
-    VCHECK_MATMUL_UNIMPL(!is_2dby2d, VERBOSE_UNSUPPORTED_ATTR);
 
-    // Grouped matmul supports scales, zero points, woq, and post-ops
-    auto allowed_mask = smask_t::scales_data_type | smask_t::scales_groups
-            | smask_t::fpmath_mode | smask_t::zero_points_data_type
-            | smask_t::zero_points_groups | smask_t::post_ops;
+    // Grouped matmul 2Dx3D supports scales, zero points, woq, and post-ops
+    // 2Dx2D variant supports scales only
+    auto allowed_mask = smask_t::scales_data_type | smask_t::scales_groups;
+    if (!is_2dby2d)
+        allowed_mask |= smask_t::fpmath_mode | smask_t::zero_points_data_type
+                | smask_t::zero_points_groups | smask_t::post_ops;
     VCHECK_MATMUL_UNIMPL(
             attr->has_default_values(allowed_mask, desc.dst_desc.data_type),
             VERBOSE_UNSUPPORTED_ATTR);
@@ -214,8 +212,9 @@ status_t grouped_matmul_attr_check(
             VERBOSE_UNSUPPORTED_DT_CFG);
 
     // Scales and zero points groups are {1, gK} for src and {gK, gN} for wei,
-    // and must divide K and N
-    const dim_t K = src_d.dims()[2];
+    // and must divide K (total_K for 2Dx2D) and N. Note, get_group() returns
+    // 1 when no groups were requested
+    const dim_t K = src_d.extent(2);
     const dim_t N = wei_d.dims()[2];
     const dim_t src_gK = sc.get_group(DNNL_ARG_SRC, -1);
     const dim_t wei_gK = sc.get_group(DNNL_ARG_WEIGHTS, -2);
@@ -228,9 +227,10 @@ status_t grouped_matmul_attr_check(
                     && (src_gK % wei_gK == 0 || wei_gK % src_gK == 0),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-    // Masks are over src {G, M, K} and wei {G, K, N}: src per row or per
-    // K-group, wei per column or per K-group. A mask covering the variable
-    // dim covers G too, groups go with the K-grouped masks only
+    // Masks are over src {G, M, K} and wei {G, K, N} in both patterns: src
+    // per row or per K-group, wei per column or per K-group, 2Dx2D K-grouped
+    // only. A mask covering the variable dim covers G too, groups go with the
+    // K-grouped masks only
     const int src_rowwise = (1 << 0) | (1 << 1);
     const int src_k_grouped = src_rowwise | (1 << 2);
     const int wei_colwise = (1 << 0) | (1 << 2);
@@ -238,6 +238,7 @@ status_t grouped_matmul_attr_check(
     if (!sc.has_default_values(DNNL_ARG_SRC)) {
         const int mask = sc.get_mask(DNNL_ARG_SRC);
         VCHECK_MATMUL_UNIMPL(utils::one_of(mask, src_rowwise, src_k_grouped)
+                        && IMPLICATION(is_2dby2d, mask == src_k_grouped)
                         && (mask == src_k_grouped
                                         ? src_gK > 1
                                         : sc.has_default_groups(DNNL_ARG_SRC)),
@@ -246,6 +247,7 @@ status_t grouped_matmul_attr_check(
     if (!sc.has_default_values(DNNL_ARG_WEIGHTS)) {
         const int mask = sc.get_mask(DNNL_ARG_WEIGHTS);
         VCHECK_MATMUL_UNIMPL(utils::one_of(mask, wei_colwise, wei_k_grouped)
+                        && IMPLICATION(is_2dby2d, mask == wei_k_grouped)
                         && (mask == wei_k_grouped ? wei_gK > 1
                                                   : sc.has_default_groups(
                                                             DNNL_ARG_WEIGHTS)),

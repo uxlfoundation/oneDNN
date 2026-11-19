@@ -254,25 +254,30 @@ struct sparse_desc_t {
     // Uses format_kind::sparse because grouped layout is a form of multi-buffer
     // representation where values are stored together with metadata
     // describing the variable structure (similar to CSR with rowptr/colind)
+    //
+    // dims are {G, *, X} or {G, X, *}: the number of groups and the two matrix
+    // dims, with DNNL_VARIABLE_DIM_VAL at the variable one
     struct grouped_desc_t {
-        // Number of groups
-        dnnl_dim_t group_count;
-        // Index of the dimension with variable size per group
-        int variable_dim_idx;
-        // Layout of the values buffer (handle 0):
-        // - strides are to describe element-to-element navigation within
-        // concatenated values buffer
-        // - across groups we use the offsets (handle 1)
-        //
-        // Note, that variable dim is always the outer one:
-        //   variable_dim_idx == 0 -> row-major (ab): strides[0]=dims[1],
-        //                            strides[1]=1
-        //   variable_dim_idx == 1 -> col-major (ba): strides[0]=1,
-        //                            strides[1]=dims[0]
+        // Layout of the values buffer (handle 0), in elements. strides[0] is
+        // 0: group g starts at offsets[g - 1] * strides[variable dim], with
+        // the offsets in handle 1
         dims_t strides;
     } grouped_desc;
 #endif
 };
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+// Position of the variable dim in the dims of a grouped md
+inline int grouped_variable_dim(const dims_t dims) {
+    return dims[1] == DNNL_VARIABLE_DIM_VAL ? 1 : 2;
+}
+
+// Size of the variable dim of a grouped md summed over all groups
+inline dim_t grouped_total(
+        const sparse_desc_t &sparse_desc, const dims_t dims) {
+    return sparse_desc.nnz / dims[3 - grouped_variable_dim(dims)];
+}
+#endif
 
 // Description of extra information stored in memory
 struct memory_extra_desc_t {

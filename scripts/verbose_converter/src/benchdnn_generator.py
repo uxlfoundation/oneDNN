@@ -665,23 +665,36 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
         encoding = ":".join(encodings.get(arg, "") for arg in counts)
         return f"--encoding={encoding}"
 
+    def _is_grouped(self, arg) -> bool:
+        return any(
+            md.arg == arg and md.grouped is not None for md in self.entry.mds
+        )
+
     @property
     def grouped(self) -> str:
-        # grouped params come from the src variable dim
-        src_md = next((md for md in self.entry.mds if md.arg == "src"), None)
-        desc = src_md.grouped if src_md is not None else None
-        if desc is None:
+        # grouped src is {G, *, K} with grouped dst, or {G, M, *} with grouped
+        # wei, and its dims show the size summed over all groups at `*`
+        if not self._is_grouped("src"):
             return ""
-        var_idx, count = desc.variable_dim_idx, desc.group_count
-        # verbose omits per-group sizes, so split the src dim evenly
+        var_idx = 0 if self._is_grouped("dst") else 1
         src_dims = self.entry.shapes.split(":")[0].split("x")
-        total_dim = int(src_dims[var_idx])
+        count, total_dim = int(src_dims[0]), int(src_dims[var_idx + 1])
+        # verbose omits per-group sizes, so split the src dim evenly
         group_size, remainder = divmod(total_dim, count)
         sizes = [group_size] * count
         for i in range(remainder):
             sizes[i] += 1
         group_sizes = "+".join(map(str, sizes))
         return f"--grouped={var_idx}:{count}:{group_sizes}"
+
+    @property
+    def shapes(self):
+        # benchdnn takes the matrix of a grouped operand, without the group dim
+        shapes = self.entry.shapes.split(":")
+        for i, arg in enumerate(("src", "wei")):
+            if self._is_grouped(arg):
+                shapes[i] = shapes[i].split("x", 1)[1]
+        return ":".join(shapes)
 
     @property
     def aux(self):

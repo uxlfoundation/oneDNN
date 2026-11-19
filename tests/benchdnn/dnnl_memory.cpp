@@ -406,7 +406,8 @@ int64_t dnn_mem_t::get_idx(int64_t logical_idx, int dims_mask, const int ndims,
         const dims_t &groups) const {
     if (dims_mask == 0) return 0;
 
-    const auto &dims = this->dims();
+    dnnl_dims_t dims;
+    get_logical_dims(md_, dims, dims_mask);
     int64_t stride = 1;
     int64_t offset = 0;
 
@@ -768,13 +769,13 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_host_scalar_md(
 
 dnnl_status_t dnn_mem_t::init_grouped_md(
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> &md_out, int ndims,
-        const dnnl_dims_t dims, dnnl_data_type_t data_type,
-        int variable_dim_idx, dnnl_dim_t group_count,
-        dnnl_data_type_t offsets_dt) {
+        const dnnl_dims_t dims, dnnl_data_type_t data_type, dnnl_dim_t total,
+        const dims_t &strides, dnnl_data_type_t offsets_dt) {
     dnnl_memory_desc_t md {};
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     DNN_SAFE_STATUS(dnnl_memory_desc_create_with_grouped_encoding(&md, ndims,
-            dims, data_type, variable_dim_idx, group_count, offsets_dt));
+            dims, data_type, total, strides.empty() ? nullptr : strides.data(),
+            offsets_dt));
 #endif
     md_out.reset(md);
     return dnnl_success;
@@ -1431,6 +1432,20 @@ bool has_grouped_encoding(const_dnnl_memory_desc_t md) {
     return query_md_sparse_encoding(md) == dnnl_grouped;
 #else
     return false;
+#endif
+}
+
+void get_logical_dims(
+        const_dnnl_memory_desc_t md, dnnl_dims_t dims, int &mask) {
+    const auto &md_dims = query_md_dims(md);
+    std::copy(md_dims, md_dims + DNNL_MAX_NDIMS, dims);
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // Only grouped mds have the placeholder, so the encoding isn't queried
+    const bool var_m = md_dims[1] == DNNL_VARIABLE_DIM_VAL;
+    if (!var_m && md_dims[2] != DNNL_VARIABLE_DIM_VAL) return;
+    const int var_dim = var_m ? 1 : 2;
+    dims[var_dim] = query_md_nnz(md) / md_dims[3 - var_dim];
+    if (mask & (1 << var_dim)) mask &= ~1;
 #endif
 }
 

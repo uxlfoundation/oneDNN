@@ -551,6 +551,18 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
                     VERBOSE_UNSUPPORTED_ZP_CFG
                     ": host scalar wei zero points dt(%s)",
                     dnnl_dt2str(wei_quant().zp_dt()));
+        } else if (wei_zp_after_scale()) {
+            // static_sbzp (data types checked by the common layer) applies the
+            // zero points after the scales, which needs both in the
+            // microkernel, as 2D parameters.
+            VDISPATCH_MATMUL(utils::one_of(src_dt, f16, bf16),
+                    VERBOSE_UNSUPPORTED_ZP_CFG
+                    ": static_sbzp wei zero points with src dt(%s)",
+                    dnnl_dt2str(src_dt));
+            VDISPATCH_MATMUL(wei_zp_mask == 7,
+                    VERBOSE_UNSUPPORTED_ZP_CFG
+                    ": static_sbzp wei zero points mask(%d)",
+                    wei_zp_mask);
         } else if (wei_zp_mask == 5) {
             VDISPATCH_MATMUL(
                     utils::one_of(wei_quant().zp_dt(), s32, u8, s8, u4, s4),
@@ -600,6 +612,11 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
                 VERBOSE_UNSUPPORTED_ZP_CFG
                 ": wei scale and zp groups must match");
     }
+    // Scales with a single group along K are applied after the GEMM.
+    VDISPATCH_MATMUL(IMPLICATION(wei_zp_after_scale(), wei_groups[1] < K()),
+            VERBOSE_UNSUPPORTED_ZP_CFG
+            ": static_sbzp wei k group (%d) must be smaller than K",
+            wei_groups[1]);
 
     // Weights and src that can't use block 2D loads are copied into SLM, and
     // with 2D quantization on both the microkernel loads their parameters per
@@ -765,6 +782,7 @@ void init_ukernel_problem(const grouped_micro_gemm_t::pd_t &pd,
                 : wei_zp_1d                        ? 1
                                                    : 2;
         problem.aOffset = ABOffset::Calc;
+        problem.aOffsetAfterScale = conf.wei_zp_after_scale;
     }
 
     if (opts.scaleB) {
@@ -886,6 +904,7 @@ status_t grouped_micro_gemm_t::pd_t::init_conf(
             conf.wei_zp_host_scalar = wei_quant().with_zp()
                     && attr()->zero_points_.get(DNNL_ARG_WEIGHTS)
                                .is_host_scalar();
+            conf.wei_zp_after_scale = wei_zp_after_scale();
             conf.int32_offset = wei_d.strides()[0] * ngroups()
                     < std::numeric_limits<int>::max();
 

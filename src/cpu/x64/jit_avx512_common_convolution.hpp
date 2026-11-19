@@ -35,8 +35,6 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <impl::data_type_t src_type, impl::data_type_t wei_type = src_type,
-        impl::data_type_t dst_type = src_type>
 struct jit_avx512_common_convolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
@@ -46,15 +44,16 @@ struct jit_avx512_common_convolution_fwd_t : public primitive_t {
 
         status_t init(const engine_t *engine) {
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(src_type, wei_type, dst_type,
-                                   dst_type, data_type::undef),
+            VDISPATCH_CONV(
+                    expect_data_types(data_type::f32, data_type::f32,
+                            data_type::f32, data_type::f32, data_type::undef),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
-            VDISPATCH_CONV(
-                    attr()->has_default_values(
-                            primitive_attr_t::skip_mask_t::post_ops, dst_type),
+            VDISPATCH_CONV(attr()->has_default_values(
+                                   primitive_attr_t::skip_mask_t::post_ops,
+                                   data_type::f32),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
@@ -75,10 +74,6 @@ struct jit_avx512_common_convolution_fwd_t : public primitive_t {
     };
 
     jit_avx512_common_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
-
-    using src_data_t = typename prec_traits_t<src_type>::type;
-    using wei_data_t = typename prec_traits_t<wei_type>::type;
-    using dst_data_t = typename prec_traits_t<dst_type>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
@@ -102,7 +97,7 @@ struct jit_avx512_common_convolution_fwd_t : public primitive_t {
     }
 
 private:
-    void prepare_padded_bias(const dst_data_t *&bias,
+    void prepare_padded_bias(const float *&bias,
             const memory_tracking::grantor_t &scratchpad) const;
     void execute_forward_1d(const exec_ctx_t &ctx) const;
     void execute_forward_2d(const exec_ctx_t &ctx) const;

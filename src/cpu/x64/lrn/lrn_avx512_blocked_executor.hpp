@@ -48,20 +48,20 @@ public:
 
         if (C_ / vsize_ == 1) {
             ker_ = utils::make_unique<
-                    lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>>(
+                    lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t>(d_type,
                     lrn::nChw16c_across_t(H_, W_, lrn::across_version::Single),
                     pk, use_h_parallelism_, alpha, beta, k, local_size);
         } else {
             ker_ = utils::make_unique<
-                    lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>>(
+                    lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t>(d_type,
                     lrn::nChw16c_across_t(H_, W_, lrn::across_version::Middle),
                     pk, use_h_parallelism_, alpha, beta, k, local_size);
             ker_first_ = utils::make_unique<
-                    lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>>(
+                    lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t>(d_type,
                     lrn::nChw16c_across_t(H_, W_, lrn::across_version::First),
                     pk, use_h_parallelism_, alpha, beta, k, local_size);
             ker_last_ = utils::make_unique<
-                    lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>>(
+                    lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t>(d_type,
                     lrn::nChw16c_across_t(H_, W_, lrn::across_version::Last),
                     pk, use_h_parallelism_, alpha, beta, k, local_size);
         }
@@ -105,8 +105,8 @@ public:
                             + c16 * H_ * 2 * W_ * vsize_ + h * 2 * W_ * vsize_;
                     const auto ws_offset1 = ws_offset0 + W_ * vsize_;
 
-                    typename lrn::jit_avx512_common_lrn_kernel_fwd_t<
-                            d_type>::jit_args_fwd_t args;
+                    lrn::jit_avx512_common_lrn_kernel_fwd_t::jit_args_fwd_t
+                            args;
                     args.src = &src[offset];
                     args.dst = &dst[offset];
                     args.ws0 = ws ? &ws[ws_offset0] : nullptr;
@@ -132,8 +132,8 @@ public:
                             = n * C_ * H_ * 2 * W_ + c16 * H_ * 2 * W_ * vsize_;
                     const auto ws_offset1 = ws_offset0 + H_ * W_ * vsize_;
 
-                    typename lrn::jit_avx512_common_lrn_kernel_fwd_t<
-                            d_type>::jit_args_fwd_t args;
+                    lrn::jit_avx512_common_lrn_kernel_fwd_t::jit_args_fwd_t
+                            args;
                     args.src = &src[offset];
                     args.dst = &dst[offset];
                     args.ws0 = ws ? &ws[ws_offset0] : nullptr;
@@ -157,8 +157,8 @@ public:
     }
 
 private:
-    std::unique_ptr<lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>>
-            ker_, ker_first_, ker_last_;
+    std::unique_ptr<lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t> ker_,
+            ker_first_, ker_last_;
     static constexpr int vsize_ = 16;
     const dim_t N_;
     const dim_t C_;
@@ -186,20 +186,20 @@ public:
 
         if (C_ / vsize_ == 1) {
             ker_ = utils::make_unique<
-                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>>(
+                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t>(d_type,
                     lrn::nChw16c_across_t(H_, W_, lrn::across_version::Single),
                     alpha, beta, local_size, use_h_parallelism_);
         } else {
             ker_ = utils::make_unique<
-                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>>(
+                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t>(d_type,
                     lrn::nChw16c_across_t(H_, W_, lrn::across_version::Middle),
                     alpha, beta, local_size, use_h_parallelism_);
             ker_first_ = utils::make_unique<
-                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>>(
+                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t>(d_type,
                     lrn::nChw16c_across_t(H_, W_, lrn::across_version::First),
                     alpha, beta, local_size, use_h_parallelism_);
             ker_last_ = utils::make_unique<
-                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>>(
+                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t>(d_type,
                     lrn::nChw16c_across_t(H_, W_, lrn::across_version::Last),
                     alpha, beta, local_size, use_h_parallelism_);
         }
@@ -244,8 +244,8 @@ public:
                             + c16 * H_ * 2 * W_ * vsize_ + h * 2 * W_ * vsize_;
                     const auto ws_offset1 = ws_offset0 + W_ * vsize_;
 
-                    typename lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t<
-                            d_type>::jit_args_bwd_t args;
+                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t::
+                            jit_args_bwd_t args;
                     args.src = &src[offset];
                     args.diff_dst = &diff_dst[offset];
                     args.ws0 = ws ? &ws[ws_offset0] : nullptr;
@@ -272,8 +272,8 @@ public:
                             = n * C_ * H_ * 2 * W_ + c16 * H_ * 2 * W_ * vsize_;
                     const auto ws_offset1 = ws_offset0 + H_ * W_ * vsize_;
 
-                    typename lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t<
-                            d_type>::jit_args_bwd_t args;
+                    lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t::
+                            jit_args_bwd_t args;
                     args.src = &src[offset];
                     args.diff_dst = &diff_dst[offset];
                     args.ws0 = ws ? &ws[ws_offset0] : nullptr;
@@ -298,8 +298,8 @@ public:
     }
 
 private:
-    std::unique_ptr<lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>>
-            ker_, ker_first_, ker_last_;
+    std::unique_ptr<lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t> ker_,
+            ker_first_, ker_last_;
     static constexpr int vsize_ = 16;
     const dim_t N_;
     const dim_t C_;

@@ -27,15 +27,12 @@ namespace lrn {
 static constexpr int acc_size = sizeof(acc_data_t);
 static constexpr int acc_bf_16_size = sizeof(acc_data_bf16_t);
 
-template <data_type_t d_type>
-const int32_t
-        jit_avx512_common_lrn_kernel_bwd_t<d_type>::jit_args_bwd_t::mask[48]
+const int32_t jit_avx512_common_lrn_kernel_bwd_t::jit_args_bwd_t::mask[48]
         = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 17, 18, 19, 20,
                 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-template <data_type_t d_type>
-jit_avx512_common_lrn_kernel_bwd_t<d_type>::jit_args_bwd_t::jit_args_bwd_t()
+jit_avx512_common_lrn_kernel_bwd_t::jit_args_bwd_t::jit_args_bwd_t()
     : src(nullptr)
     , diff_dst(nullptr)
     , ws0(nullptr)
@@ -43,40 +40,32 @@ jit_avx512_common_lrn_kernel_bwd_t<d_type>::jit_args_bwd_t::jit_args_bwd_t()
     , diff_src(nullptr)
     , mask_ptr(&mask[16]) {}
 
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<f32>::load_data(
+void jit_avx512_common_lrn_kernel_bwd_t::load_data(
         Xmm reg, const Address p, bool from_stack) {
-    this->vmovups(reg, p);
-}
-
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<bf16>::load_data(
-        Xmm reg, const Address p, bool from_stack) {
-    if (!from_stack) {
+    if (from_stack || dt_ == f32) {
+        this->vmovups(reg, p);
+    } else if (dt_ == bf16) {
         this->vpmovzxwd(reg, p);
         this->vpslld(reg, reg, 0x10);
-    } else
-        this->vmovups(reg, p);
-}
-
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<f16>::load_data(
-        Xmm reg, const Address p, bool from_stack) {
-    if (!from_stack) {
+    } else {
         this->vcvtph2psx(reg, p);
-    } else
-        this->vmovups(reg, p);
+    }
 }
 
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<f16>::store_data(
-        bool nt, const Address addr, Zmm zr) {
-    this->vcvtps2ph(addr, zr, jit_generator_t::_op_mxcsr);
-}
+void jit_avx512_common_lrn_kernel_bwd_t::store_data(
+        bool non_temp_hint, const Address addr, Zmm zr) {
+    if (dt_ == f32) {
+        if (non_temp_hint)
+            uni_vmovntps(addr, zr);
+        else
+            uni_vmovups(addr, zr);
+        return;
+    }
+    if (dt_ == f16) {
+        this->vcvtps2ph(addr, zr, jit_generator_t::_op_mxcsr);
+        return;
+    }
 
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<bf16>::store_data(
-        bool nt, const Address addr, Zmm zr) {
     const bool is_bf16_supported
             = mayiuse(avx512_core_bf16) || bf16_emu_ != nullptr;
     if (!is_bf16_supported) {
@@ -91,23 +80,13 @@ void jit_avx512_common_lrn_kernel_bwd_t<bf16>::store_data(
     vmovdqu16(addr, yr);
 }
 
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<f32>::store_data(
-        bool non_temp_hint, const Address addr, Zmm zr) {
-    if (non_temp_hint)
-        uni_vmovntps(addr, zr);
-    else
-        uni_vmovups(addr, zr);
-}
-
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_bwd_t<d_type>::load_tail(int tail_value,
-        Reg64 src, int src_mem_offset, int dst_stack_offset,
+void jit_avx512_common_lrn_kernel_bwd_t::load_tail(int tail_value, Reg64 src,
+        int src_mem_offset, int dst_stack_offset,
         int tmp_load_to_stack_idx_tail) {
     // TODO: Investigate if this method can be simplified by using mask or
     // jit_generator_t load utilities.
-    static constexpr auto src_acc_size
-            = utils::one_of(d_type, bf16, f16) ? acc_bf_16_size : acc_size;
+    const int src_acc_size
+            = utils::one_of(dt_, bf16, f16) ? acc_bf_16_size : acc_size;
     auto tmp_xreg = this->xreg(0, tmp_load_to_stack_idx_tail);
 
     const auto load_tail_simd = [&](Xmm tmp_reg, int vlen) {
@@ -123,11 +102,11 @@ void jit_avx512_common_lrn_kernel_bwd_t<d_type>::load_tail(int tail_value,
     if (tail_value >= 4) load_tail_simd(tmp_xreg, 4);
 
     for (int i = 0; i < tail_value; ++i) {
-        if (d_type == bf16) {
+        if (dt_ == bf16) {
             this->movzx(this->imm_addr64_, word[src + src_mem_offset]);
             this->vmovq(tmp_xreg, this->imm_addr64_);
             this->vpslld(tmp_xreg, tmp_xreg, 0x10);
-        } else if (d_type == f16) {
+        } else if (dt_ == f16) {
             this->vxorps(tmp_xreg, tmp_xreg, tmp_xreg);
             this->vcvtsh2ss(tmp_xreg, tmp_xreg,
                     this->EVEX_compress_addr(src, src_mem_offset));
@@ -142,41 +121,36 @@ void jit_avx512_common_lrn_kernel_bwd_t<d_type>::load_tail(int tail_value,
     }
 }
 
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<f32>::store_tail(int tail_value,
-        Zmm src, Reg64 dst, int dst_mem_offset, int tmp_stack_offset,
-        int tmp_idx) {
+void jit_avx512_common_lrn_kernel_bwd_t::store_tail(int tail_value, Zmm src,
+        Reg64 dst, int dst_mem_offset, int tmp_stack_offset, int tmp_idx) {
 
     this->store_data(
             false, this->EVEX_compress_addr(rsp, tmp_stack_offset), src);
 
-    const auto store_tail_simd = [&](Xmm tmp_reg, int vlen) {
-        this->vmovups(tmp_reg, this->EVEX_compress_addr(rsp, tmp_stack_offset));
-        this->vmovups(this->EVEX_compress_addr(dst, dst_mem_offset), tmp_reg);
-        tmp_stack_offset += vlen * acc_size;
-        dst_mem_offset += vlen * acc_size;
-        tail_value -= vlen;
-    };
+    if (dt_ == f32) {
+        const auto store_tail_simd = [&](Xmm tmp_reg, int vlen) {
+            this->vmovups(
+                    tmp_reg, this->EVEX_compress_addr(rsp, tmp_stack_offset));
+            this->vmovups(
+                    this->EVEX_compress_addr(dst, dst_mem_offset), tmp_reg);
+            tmp_stack_offset += vlen * acc_size;
+            dst_mem_offset += vlen * acc_size;
+            tail_value -= vlen;
+        };
 
-    if (tail_value >= 8) store_tail_simd(this->yreg(0, tmp_idx), 8);
-    if (tail_value >= 4) store_tail_simd(this->xreg(0, tmp_idx), 4);
+        if (tail_value >= 8) store_tail_simd(this->yreg(0, tmp_idx), 8);
+        if (tail_value >= 4) store_tail_simd(this->xreg(0, tmp_idx), 4);
 
-    for (int i = 0; i < tail_value;
-            ++i, tmp_stack_offset += acc_size, dst_mem_offset += acc_size) {
-        this->vmovss(this->xreg(0, tmp_idx),
-                this->EVEX_compress_addr(rsp, tmp_stack_offset));
-        this->vmovss(this->EVEX_compress_addr(dst, dst_mem_offset),
-                this->xreg(0, tmp_idx));
+        for (int i = 0; i < tail_value;
+                ++i, tmp_stack_offset += acc_size, dst_mem_offset += acc_size) {
+            this->vmovss(this->xreg(0, tmp_idx),
+                    this->EVEX_compress_addr(rsp, tmp_stack_offset));
+            this->vmovss(this->EVEX_compress_addr(dst, dst_mem_offset),
+                    this->xreg(0, tmp_idx));
+        }
+        return;
     }
-}
 
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<bf16>::store_tail(int tail_value,
-        Zmm src, Reg64 dst, int dst_mem_offset, int tmp_stack_offset,
-        int tmp_idx) {
-
-    this->store_data(
-            false, this->EVEX_compress_addr(rsp, tmp_stack_offset), src);
     const auto res = std::div(tail_value, 4);
 
     for (int i = 0; i < res.quot; ++i, tmp_stack_offset += 4 * acc_bf_16_size,
@@ -192,33 +166,11 @@ void jit_avx512_common_lrn_kernel_bwd_t<bf16>::store_tail(int tail_value,
     }
 }
 
-// Copy-paste of bf16 from above
-template <>
-void jit_avx512_common_lrn_kernel_bwd_t<f16>::store_tail(int tail_value,
-        Zmm src, Reg64 dst, int dst_mem_offset, int tmp_stack_offset,
-        int tmp_idx) {
-
-    this->store_data(
-            false, this->EVEX_compress_addr(rsp, tmp_stack_offset), src);
-    const auto res = std::div(tail_value, 4);
-
-    for (int i = 0; i < res.quot; ++i, tmp_stack_offset += 4 * acc_bf_16_size,
-             dst_mem_offset += 4 * acc_bf_16_size) {
-        this->mov(this->imm_addr64_, qword[rsp + tmp_stack_offset]);
-        this->mov(qword[dst + dst_mem_offset], this->imm_addr64_);
-    }
-
-    for (int i = 0; i < res.rem; ++i, tmp_stack_offset += acc_bf_16_size,
-             dst_mem_offset += acc_bf_16_size) {
-        this->mov(this->imm_addr16_, word[rsp + tmp_stack_offset]);
-        this->mov(word[dst + dst_mem_offset], this->imm_addr16_);
-    }
-}
-
-template <data_type_t d_type>
-jit_avx512_common_lrn_kernel_bwd_t<d_type>::jit_avx512_common_lrn_kernel_bwd_t(
-        float alpha, float beta, int local_size, const char *name)
-    : jit_generator_t(name, get_isa<d_type>())
+jit_avx512_common_lrn_kernel_bwd_t::jit_avx512_common_lrn_kernel_bwd_t(
+        data_type_t dt, float alpha, float beta, int local_size,
+        const char *name)
+    : jit_generator_t(name, get_isa(dt))
+    , dt_(dt)
     , local_size_ {local_size - !(local_size % 2)}
     , z_prev_ {[this]() {
         std::vector<int> v(this->local_size_ / 2);
@@ -231,14 +183,15 @@ jit_avx512_common_lrn_kernel_bwd_t<d_type>::jit_avx512_common_lrn_kernel_bwd_t(
         return v;
     }()}
     , nalphabeta_(-2 * alpha * beta)
-    , emulateBfloat_(d_type == bf16 && !mayiuse(avx512_core_bf16))
+    , emulateBfloat_(dt == bf16 && !mayiuse(avx512_core_bf16))
     , regs_used_per_block_ {std::max(this->local_size_ + 2, 7)}
     , reg_block_ {[this]() {
         const int max_possible_reg_block
                 = (emulateBfloat_ ? 27 : 31) / this->regs_used_per_block_;
         return mayiuse(avx512_core) ? max_possible_reg_block
                                     : std::min(max_possible_reg_block, 2);
-    }()} {
+    }()}
+    , vlen_(utils::one_of(dt, bf16, f16) ? 32 : 64) {
     if (emulateBfloat_) {
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
                 bf16_emu_reserv_1_, bf16_emu_reserv_2_, bf16_emu_reserv_3_,
@@ -246,24 +199,17 @@ jit_avx512_common_lrn_kernel_bwd_t<d_type>::jit_avx512_common_lrn_kernel_bwd_t(
     }
 }
 
-template <data_type_t d_type>
-Zmm jit_avx512_common_lrn_kernel_bwd_t<d_type>::zreg(int irb, int i) const {
+Zmm jit_avx512_common_lrn_kernel_bwd_t::zreg(int irb, int i) const {
     return Zmm(irb * regs_used_per_block_ + i);
 }
 
-template <data_type_t d_type>
-Ymm jit_avx512_common_lrn_kernel_bwd_t<d_type>::yreg(int irb, int i) const {
+Ymm jit_avx512_common_lrn_kernel_bwd_t::yreg(int irb, int i) const {
     return Ymm(irb * regs_used_per_block_ + i);
 }
 
-template <data_type_t d_type>
-Xmm jit_avx512_common_lrn_kernel_bwd_t<d_type>::xreg(int irb, int i) const {
+Xmm jit_avx512_common_lrn_kernel_bwd_t::xreg(int irb, int i) const {
     return Xmm(irb * regs_used_per_block_ + i);
 }
-
-template class jit_avx512_common_lrn_kernel_bwd_t<f32>;
-template class jit_avx512_common_lrn_kernel_bwd_t<bf16>;
-template class jit_avx512_common_lrn_kernel_bwd_t<f16>;
 
 } // namespace lrn
 } // namespace x64

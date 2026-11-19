@@ -31,9 +31,8 @@ template <::dnnl::impl::data_type_t d_type, typename PD_T>
 class lrn_avx512_nhwc_executor_fwd_t : public i_lrn_executor_t {
 public:
     lrn_avx512_nhwc_executor_fwd_t(const PD_T *pd)
-        : ker_(utils::make_unique<
-                  lrn::jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>>(
-                  static_cast<unsigned>(pd->C()), pd->desc()->prop_kind,
+        : ker_(utils::make_unique<lrn::jit_avx512_common_lrn_kernel_fwd_nhwc_t>(
+                  d_type, static_cast<unsigned>(pd->C()), pd->desc()->prop_kind,
                   pd->desc()->lrn_alpha / pd->desc()->local_size,
                   pd->desc()->lrn_beta, pd->desc()->lrn_k,
                   static_cast<int>(pd->desc()->local_size)))
@@ -57,8 +56,7 @@ public:
         const auto ker = ker_.get();
         parallel_nd(
                 N_, H_ * W_, [= COMPAT_THIS_CAPTURE](dim_t n, dim_t pixel_id) {
-            typename lrn::jit_avx512_common_lrn_kernel_fwd_t<
-                    d_type>::jit_args_fwd_t args;
+            lrn::jit_avx512_common_lrn_kernel_fwd_t::jit_args_fwd_t args;
             const auto offset = n * C_ * H_ * W_ + pixel_id * C_;
             const auto ws_offset0 = offset * 2;
             const auto ws_offset1 = ws_offset0 + C_;
@@ -77,7 +75,7 @@ public:
     ~lrn_avx512_nhwc_executor_fwd_t() override = default;
 
 private:
-    std::unique_ptr<jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>> ker_;
+    std::unique_ptr<jit_avx512_common_lrn_kernel_fwd_nhwc_t> ker_;
     const dim_t N_;
     const dim_t C_;
     const dim_t H_;
@@ -88,7 +86,7 @@ class lrn_avx512_nhwc_executor_bwd_t : public i_lrn_executor_t {
 public:
     lrn_avx512_nhwc_executor_bwd_t(const PD_T *pd)
         : ker_ {utils::make_unique<
-                  lrn::jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>>(
+                  lrn::jit_avx512_common_lrn_kernel_bwd_nhwc_t>(d_type,
                   static_cast<unsigned>(pd->C()),
                   pd->desc()->lrn_alpha / pd->desc()->local_size,
                   pd->desc()->lrn_beta,
@@ -112,8 +110,7 @@ public:
         const auto ker = ker_.get();
         parallel_nd(
                 N_, H_ * W_, [= COMPAT_THIS_CAPTURE](dim_t n, dim_t pixel_id) {
-            typename lrn::jit_avx512_common_lrn_kernel_bwd_nhwc_t<
-                    d_type>::jit_args_bwd_t args;
+            lrn::jit_avx512_common_lrn_kernel_bwd_nhwc_t::jit_args_bwd_t args;
             const auto offset = n * C_ * H_ * W_ + pixel_id * C_;
             const auto ws_offset0 = offset * 2;
             const auto ws_offset1 = ws_offset0 + C_;
@@ -133,7 +130,7 @@ public:
     ~lrn_avx512_nhwc_executor_bwd_t() override = default;
 
 private:
-    std::unique_ptr<jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>> ker_;
+    std::unique_ptr<jit_avx512_common_lrn_kernel_bwd_nhwc_t> ker_;
     const dim_t N_;
     const dim_t C_;
     const dim_t H_;

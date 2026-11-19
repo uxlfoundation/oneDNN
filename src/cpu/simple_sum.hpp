@@ -87,7 +87,7 @@ struct simple_sum_t : public primitive_t {
                     = utils::one_of(src_dt, data_type::bf16, data_type::f16)
                     ? 16 * platform::get_cache_line_size()
                     : platform::get_per_core_cache_size(1) / 2;
-            block_size_ = block_size_bytes / (int)sizeof(src_dt);
+            block_size_ = block_size_bytes / (int)types::data_type_size(src_dt);
             const memory_desc_wrapper o_d(dst_md());
             nelems_ = o_d.nelems();
             blocks_number_ = nelems_ / block_size_;

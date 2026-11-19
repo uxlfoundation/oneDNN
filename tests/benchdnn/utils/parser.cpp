@@ -2100,6 +2100,85 @@ bool parse_bench_settings(const char *str) {
     return parsed;
 }
 
+// `--engine`, `--cpu-isa-hints`, `--repeats-per-prb` and `--summary` are
+// process-wide or used at submit, so they are not here.
+struct bench_globals_t::state_t {
+    bench_mode_t mode = bench_mode;
+    mode_modifier_t mode_modifier = bench_mode_modifier;
+    double max_ms = max_ms_per_prb;
+    int fix_times = fix_times_per_prb;
+    int n_streams = num_streams;
+    bool mem_check_ = mem_check;
+    memory_kind_ext_t mem_kind = memory_kind;
+    stream_kind_t strm_kind = stream_kind;
+    execution_mode_t exec_mode = execution_mode;
+    cold_cache_input_t cold_cache = cold_cache_input;
+    std::string buf_prefix = buffer_prefix;
+    bool fast_ref_ = fast_ref;
+    runtime_kind_t ref_impl_kind = check_ref_impl;
+    bool same_pd_check = attr_same_pd_check;
+    impl_filter_t impl_filter = global_impl_filter;
+    std::string skip_impl_ = skip_impl;
+    int start = test_start;
+    bool canonical_ = canonical;
+    bool enum_tags_only = allow_enum_tags_only;
+    int verbose_ = verbose;
+};
+
+bench_globals_t bench_globals_t::capture() {
+    bench_globals_t g;
+    g.state_ = std::make_shared<const state_t>();
+    return g;
+}
+
+void bench_globals_t::apply() const {
+    const auto &s = *state_;
+    bench_mode = s.mode;
+    // The engine adds `M` once at creation, keep it.
+    bench_mode_modifier = s.mode_modifier
+            | (bench_mode_modifier & mode_modifier_t::no_ref_memory);
+    max_ms_per_prb = s.max_ms;
+    fix_times_per_prb = s.fix_times;
+    num_streams = s.n_streams;
+    mem_check = s.mem_check_;
+    memory_kind = s.mem_kind;
+    stream_kind = s.strm_kind;
+    execution_mode = s.exec_mode;
+    cold_cache_input = s.cold_cache;
+    buffer_prefix = s.buf_prefix;
+    fast_ref = s.fast_ref_;
+    check_ref_impl = s.ref_impl_kind;
+    attr_same_pd_check = s.same_pd_check;
+    global_impl_filter = s.impl_filter;
+    skip_impl = s.skip_impl_;
+    test_start = s.start;
+    canonical = s.canonical_;
+    allow_enum_tags_only = s.enum_tags_only;
+    verbose = s.verbose_;
+}
+
+bool bench_globals_t::operator==(const bench_globals_t &other) const {
+    const auto &a = *state_;
+    const auto &b = *other.state_;
+    const auto same_filter
+            = [](const impl_filter_t &x, const impl_filter_t &y) {
+        return x.get_names() == y.get_names() && x.use_impl() == y.use_impl()
+                && x.respect_global_filter() == y.respect_global_filter();
+    };
+    return a.mode == b.mode && a.mode_modifier == b.mode_modifier
+            && a.max_ms == b.max_ms && a.fix_times == b.fix_times
+            && a.n_streams == b.n_streams && a.mem_check_ == b.mem_check_
+            && a.mem_kind == b.mem_kind && a.strm_kind == b.strm_kind
+            && a.exec_mode == b.exec_mode && a.cold_cache == b.cold_cache
+            && a.buf_prefix == b.buf_prefix && a.fast_ref_ == b.fast_ref_
+            && a.ref_impl_kind == b.ref_impl_kind
+            && a.same_pd_check == b.same_pd_check
+            && same_filter(a.impl_filter, b.impl_filter)
+            && a.skip_impl_ == b.skip_impl_ && a.start == b.start
+            && a.canonical_ == b.canonical_
+            && a.enum_tags_only == b.enum_tags_only && a.verbose_ == b.verbose_;
+}
+
 // Service functions
 void catch_unknown_options(const char *str) {
     last_parsed_is_problem = true; // if reached, means problem parsing

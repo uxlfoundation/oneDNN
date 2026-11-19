@@ -18,6 +18,7 @@
 #define UTILS_TASK_EXECUTOR_HPP
 
 #include "utils/parallel.hpp"
+#include "utils/parser.hpp"
 #include "utils/task.hpp"
 
 // A macro serves an unification purpose.
@@ -35,6 +36,9 @@ struct task_executor_t {
             const std::string &perf_template, const create_func_t &create_func,
             const check_func_t &check_func, const do_func_t &do_func) {
         static const int nthreads = benchdnn_get_max_threads();
+        const auto globals = parser::bench_globals_t::capture();
+        if (!tasks_.empty() && globals != queued_globals_) flush();
+        queued_globals_ = globals;
         for (int r = 0; r < repeats_per_prb; r++) {
             tasks_.emplace_back(prb, perf_template, create_func, check_func,
                     do_func, get_idx());
@@ -46,6 +50,11 @@ struct task_executor_t {
     }
 
     void flush() {
+        if (tasks_.empty()) return;
+        // Queued problems run with the global options they were parsed with.
+        const auto globals = parser::bench_globals_t::capture();
+        queued_globals_.apply();
+
         // Special case is needed for THREADPOOL RUNTIME. Both `Parallel_nd` and
         // `createit` calls activate threadpool which causes undesired behavior.
         if (tasks_.size() == 1)
@@ -64,9 +73,11 @@ struct task_executor_t {
         }
 
         tasks_.clear();
+        globals.apply();
     }
 
     std::vector<task_t<perf_report_t>> tasks_;
+    parser::bench_globals_t queued_globals_;
 
     int get_idx() {
         static int idx = 0;

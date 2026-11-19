@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -329,6 +330,21 @@ void parse_prb_dims(prb_dims_t &prb_dims, const std::string &str);
 
 // service functions
 bool parse_bench_settings(const char *str);
+
+// Values of global options a problem depends on. Keep in sync with
+// `parse_bench_settings()`.
+struct bench_globals_t {
+    static bench_globals_t capture();
+    void apply() const;
+    bool operator==(const bench_globals_t &other) const;
+    bool operator!=(const bench_globals_t &other) const {
+        return !operator==(other);
+    }
+
+private:
+    struct state_t;
+    std::shared_ptr<const state_t> state_;
+};
 
 template <typename S>
 bool parse_driver_shared_settings(S &s, const S &def, const char *str) {

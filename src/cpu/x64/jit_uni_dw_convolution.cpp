@@ -30,9 +30,8 @@ namespace x64 {
 
 template <cpu_isa_t isa>
 DEFINE_PD_CREATE(jit_uni_dw_convolution_fwd_t<isa>::pd_t)
-template <cpu_isa_t isa, data_type_t diff_dst_type, data_type_t diff_src_type>
-DEFINE_PD_CREATE(jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
-        diff_src_type>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_dw_convolution_bwd_data_t<isa>::pd_t)
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
 DEFINE_PD_CREATE(jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         diff_weights_type>::pd_t)
@@ -185,16 +184,19 @@ REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core_fp16>);
 REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core>);
 REG_AVX2_ISA(template struct jit_uni_dw_convolution_fwd_t<avx2>);
 
-template <cpu_isa_t isa, data_type_t diff_dst_type, data_type_t diff_src_type>
-void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
-        diff_src_type>::execute_backward_data(const exec_ctx_t &ctx) const {
-    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
-    auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
+template <cpu_isa_t isa>
+void jit_uni_dw_convolution_bwd_data_t<isa>::execute_backward_data(
+        const exec_ctx_t &ctx) const {
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
+    auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
+    auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
 
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
+    const size_t diff_dst_dt_size = diff_dst_d.data_type_size();
+    const size_t diff_src_dt_size = diff_src_d.data_type_size();
+    const size_t wei_dt_size = weights_d.data_type_size();
 
     const auto &jcp = pd()->jcp_;
 
@@ -219,11 +221,15 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
         ow /= jcp.stride_w;
 
         const dim_t ic_offset = is_dsrc_layout_nxc ? ch * jcp.ch_block : ch;
-        par_conv.src = &diff_src[diff_src_d.blk_off(n, ic_offset, ih, iw)];
+        par_conv.src = diff_src
+                + diff_src_d.blk_off(n, ic_offset, ih, iw) * diff_src_dt_size;
         const dim_t oc_offset = is_ddst_layout_nxc ? ch * jcp.ch_block : ch;
-        par_conv.dst = &diff_dst[diff_dst_d.blk_off(n, oc_offset, oh, ow)];
-        par_conv.filt = &weights[weights_d.blk_off(ch, 0, 0,
-                i_b_overflow + stride_off_h, i_r_overflow + stride_off_w)];
+        par_conv.dst = diff_dst
+                + diff_dst_d.blk_off(n, oc_offset, oh, ow) * diff_dst_dt_size;
+        par_conv.filt = weights
+                + weights_d.blk_off(ch, 0, 0, i_b_overflow + stride_off_h,
+                          i_r_overflow + stride_off_w)
+                        * wei_dt_size;
 
         par_conv.kh_padding = nstl::max<dim_t>(
                 0, jcp.kh - i_t_overflow - i_b_overflow - stride_off_h);
@@ -323,13 +329,8 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
     });
 }
 
-REG_AVX512_ISA(template struct jit_uni_dw_convolution_bwd_data_t<avx512_core,
-        bf16, f32>);
-REG_AVX512_ISA(
-        template struct jit_uni_dw_convolution_bwd_data_t<avx512_core, bf16>);
-REG_AVX512_ISA(
-        template struct jit_uni_dw_convolution_bwd_data_t<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_convolution_bwd_data_t<avx2, f32>);
+REG_AVX512_ISA(template struct jit_uni_dw_convolution_bwd_data_t<avx512_core>);
+REG_AVX2_ISA(template struct jit_uni_dw_convolution_bwd_data_t<avx2>);
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
 jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::

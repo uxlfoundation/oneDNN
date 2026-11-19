@@ -1104,7 +1104,12 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_blob(
 /// @param ndims Number of dimensions
 /// @param dims Array of dimensions.
 /// @param data_type Elements data type.
-/// @param strides Strides in each dimension.
+/// @param strides Strides in each dimension. Strides must be non-negative,
+///     except for #DNNL_RUNTIME_DIM_VAL denoting a runtime stride. A stride
+///     of a dimension of size one is never applied to compute an offset, so
+///     any non-negative value is accepted for it. Other dimensions require a
+///     positive stride; broadcast is expressed by a dimension of size one
+///     instead of a zero stride.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_memory_desc_create_with_strides(

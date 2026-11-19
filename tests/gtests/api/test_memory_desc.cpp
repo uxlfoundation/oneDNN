@@ -88,6 +88,24 @@ HANDLE_EXCEPTIONS_FOR_TEST(memory_desc_test_t, TestComparison) {
     EXPECT_NE(plain_md, blocked_md);
 }
 
+HANDLE_EXCEPTIONS_FOR_TEST(memory_desc_test_t, TestStridesValidation) {
+    const auto dt = memory::data_type::f32;
+
+    // A zero stride on a non-unit dimension aliases all its indices, and a
+    // negative stride is never valid, even on a unit dimension.
+    EXPECT_ANY_THROW(memory::desc({2, 3}, dt, memory::dims {3, 0}));
+    EXPECT_ANY_THROW(memory::desc({2, 1}, dt, memory::dims {1, -1}));
+
+    // A stride of a unit dimension is never applied to compute an offset.
+    EXPECT_NO_THROW(memory::desc({2, 1}, dt, memory::dims {1, 0}));
+    EXPECT_NO_THROW(memory::desc({2, 1}, dt, memory::dims {1, 5}));
+
+    // DNNL_RUNTIME_DIM_VAL is negative, yet it is a valid runtime stride whose
+    // value is unknown until execution.
+    EXPECT_NO_THROW(memory::desc({2, 3}, dt,
+            memory::dims {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL}));
+}
+
 TEST(c_api_host_scalar_md, TestHostScalarF32) {
     dnnl_memory_desc_t scalar_md = nullptr;
     DNNL_CHECK(dnnl_memory_desc_create_host_scalar(&scalar_md, dnnl_f32));

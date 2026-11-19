@@ -2924,7 +2924,13 @@ struct memory : public handle<dnnl_memory_t> {
         ///
         /// @param adims Tensor dimensions.
         /// @param adata_type Data precision/type.
-        /// @param strides Strides for each dimension.
+        /// @param strides Strides for each dimension. Strides must be
+        ///     non-negative, except for #DNNL_RUNTIME_DIM_VAL denoting a
+        ///     runtime stride. A stride of a dimension of size one is never
+        ///     applied to compute an offset, so any non-negative value is
+        ///     accepted for it. Other dimensions require a positive stride;
+        ///     broadcast is expressed by a dimension of size one instead of a
+        ///     zero stride.
         /// @param allow_empty A flag signifying whether construction is
         ///     allowed to fail without throwing an exception. In this case a
         ///     zero memory descriptor will be constructed. This flag is

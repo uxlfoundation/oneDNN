@@ -28,7 +28,7 @@ TEST(TestsbinaryStride, StrideZero) {
 
     auto dims = memory::dims {2, 3};
     std::vector<float> lhs = {0, 0, 0, 0, 0, 0}; // [[0 0 0][0 0 0]]
-    std::vector<float> rhs = {1, 2, 3, 4, 5, 6}; // [[1 2 3][4 5 6]]
+    std::vector<float> rhs = {1, 4}; // [[1][4]]
     std::vector<float> res = {0, 0, 0, 0, 0, 0};
     std::vector<float> expected_result = {1, 1, 1, 4, 4, 4};
 
@@ -38,7 +38,7 @@ TEST(TestsbinaryStride, StrideZero) {
     const auto src0_md
             = memory::desc(dims, memory::data_type::f32, memory::dims {3, 1});
     const auto src1_md
-            = memory::desc(dims, memory::data_type::f32, memory::dims {3, 0});
+            = memory::desc({2, 1}, memory::data_type::f32, memory::dims {1, 0});
     const auto src0_mem = memory(src0_md, eng, lhs.data());
     const auto src1_mem = memory(src1_md, eng, rhs.data());
     const auto dst_mem = memory(dst_md, eng, res.data());

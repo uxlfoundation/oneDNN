@@ -307,11 +307,25 @@ void jit_uni_dw_conv_fwd_kernel_t<isa>::init_scratchpad(
         scratchpad.book<float>(key_conv_padded_bias, jcp.oc);
 }
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
-status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
-        jit_conv_conf_t &jcp, const convolution_desc_t &cd,
-        memory_desc_t &diff_src_md, memory_desc_t &weights_md,
-        memory_desc_t &diff_dst_md) {
+template <cpu_isa_t isa>
+jit_uni_dw_conv_bwd_data_kernel_t<isa>::jit_uni_dw_conv_bwd_data_kernel_t(
+        const jit_conv_conf_t &ajcp) {
+    switch (ajcp.ddst_dt) {
+        case bf16:
+            ker_ = utils::make_unique<
+                    jit_avx512_dw_conv_bwd_data_kernel_bf16_t>(ajcp);
+            break;
+        default:
+            ker_ = utils::make_unique<
+                    jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>>(ajcp);
+            break;
+    }
+}
+
+template <cpu_isa_t isa>
+status_t jit_uni_dw_conv_bwd_data_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
+        const convolution_desc_t &cd, memory_desc_t &diff_src_md,
+        memory_desc_t &weights_md, memory_desc_t &diff_dst_md) {
     using namespace dnnl::impl::format_tag;
     using namespace dnnl::impl::utils;
 
@@ -325,6 +339,7 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
             VERBOSE_BAD_PARAM, "large size is not supported");
 
     jcp.dsrc_dt = cd.diff_src_desc.data_type;
+    jcp.ddst_dt = cd.diff_dst_desc.data_type;
     const bool is_bf16 = diff_dst_d.data_type() == bf16;
     jcp.isa = (is_bf16 && mayiuse(avx512_core_bf16)) ? avx512_core_bf16 : isa;
 
@@ -479,8 +494,8 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
-void jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_scratchpad(
+template <cpu_isa_t isa>
+void jit_uni_dw_conv_bwd_data_kernel_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     UNUSED(scratchpad);
     UNUSED(jcp);
@@ -879,11 +894,8 @@ REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core_fp16>);
 REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core>);
 REG_AVX2_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx2>);
 
-REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core, bf16>);
-REG_AVX512_ISA(
-        template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<avx2, f32>);
+REG_AVX512_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core>);
+REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<avx2>);
 
 REG_AVX512_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx512_core,
         bf16>);

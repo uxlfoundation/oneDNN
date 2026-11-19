@@ -402,38 +402,39 @@ void jit_uni_xf16_sum_kernel_t<Vmm>::generate() {
     index_tables();
 }
 
-template <data_type_t src_data_type, data_type_t dst_data_type, cpu_isa_t isa>
-status_t jit_xf16_sum_t<src_data_type, dst_data_type, isa>::execute(
-        const exec_ctx_t &ctx) const {
-    auto output = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+template <cpu_isa_t isa>
+status_t jit_xf16_sum_t<isa>::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper o_d(pd()->dst_md());
-    output += o_d.blk_off(0);
+    const data_type_t src_dt = pd()->src_md(0)->data_type;
+    const size_t src_dt_size = types::data_type_size(src_dt);
+    const size_t dst_dt_size = types::data_type_size(o_d.data_type());
+
+    auto output
+            = CTX_OUT_MEM(char *, DNNL_ARG_DST) + o_d.blk_off(0) * dst_dt_size;
     const int num_arrs = pd()->n_inputs();
     const dim_t nelems = o_d.nelems(true);
-    const src_data_t
-            *input_ptrs[jit_avx512_core_bf16_sum_kernel_t::max_num_arrs];
+    const char *input_ptrs[jit_avx512_core_bf16_sum_kernel_t::max_num_arrs];
     /* Number of scales needs to be multiple of 2 in order
     to use VNNI instructions */
-    src_data_t scales[jit_avx512_core_bf16_sum_kernel_t::max_num_arrs];
+    // `uint16_t` holds the bits of either bf16 or f16 scales.
+    uint16_t scales[jit_avx512_core_bf16_sum_kernel_t::max_num_arrs];
     for (int a = 0; a < num_arrs; ++a) {
         const memory_desc_wrapper i_d(pd()->src_md(a));
 
-        input_ptrs[a]
-                = CTX_IN_MEM(const src_data_t *, DNNL_ARG_MULTIPLE_SRC + a)
-                + i_d.blk_off(0);
+        input_ptrs[a] = CTX_IN_MEM(const char *, DNNL_ARG_MULTIPLE_SRC + a)
+                + i_d.blk_off(0) * src_dt_size;
     }
-    if (src_data_type == data_type::bf16)
+    if (src_dt == data_type::bf16)
         cvt_float_to_bfloat16(
                 (bfloat16_t *)scales, &pd()->scales()[0], num_arrs);
     else
         cvt_float_to_float16((float16_t *)scales, &pd()->scales()[0], num_arrs);
 
-    if (isa == avx512_core && num_arrs % 2 != 0) scales[num_arrs] = 0.0f;
+    if (isa == avx512_core && num_arrs % 2 != 0) scales[num_arrs] = 0;
 
     const dim_t half_L1 = 16 * 1024; // bytes
     const dim_t num_elems_in_block = utils::rnd_up(
-            utils::div_up(half_L1,
-                    num_arrs * sizeof(src_data_t) + sizeof(dst_data_t)),
+            utils::div_up(half_L1, num_arrs * src_dt_size + dst_dt_size),
             pd()->jsp_.size_blocking);
     const dim_t num_blocks = nelems / num_elems_in_block;
     const dim_t tail = nelems % num_elems_in_block;
@@ -442,16 +443,16 @@ status_t jit_xf16_sum_t<src_data_type, dst_data_type, isa>::execute(
         dim_t start {0}, end {0};
         balance211(num_blocks, nthr, ithr, start, end);
         auto arg = jit_sum_call_t();
-        const src_data_t *local_input_ptrs
+        const char *local_input_ptrs
                 [jit_avx512_core_bf16_sum_kernel_t::max_num_arrs];
-        dst_data_t *local_output;
+        char *local_output;
 
         for (dim_t nb = start; nb < end; ++nb) {
             dim_t start_e = nb * num_elems_in_block;
             for (int a = 0; a < num_arrs; ++a) {
-                local_input_ptrs[a] = &input_ptrs[a][start_e];
+                local_input_ptrs[a] = input_ptrs[a] + start_e * src_dt_size;
             }
-            local_output = &output[start_e];
+            local_output = output + start_e * dst_dt_size;
             arg.srcs = (const void **)local_input_ptrs;
             arg.dst = (const void *)local_output;
             arg.scales = (const void *)scales;
@@ -462,9 +463,9 @@ status_t jit_xf16_sum_t<src_data_type, dst_data_type, isa>::execute(
         if (tail != 0 && ithr == nthr - 1) {
             dim_t start_e = nelems - tail;
             for (int a = 0; a < num_arrs; ++a) {
-                local_input_ptrs[a] = &input_ptrs[a][start_e];
+                local_input_ptrs[a] = input_ptrs[a] + start_e * src_dt_size;
             }
-            local_output = &output[start_e];
+            local_output = output + start_e * dst_dt_size;
             arg.srcs = (const void **)local_input_ptrs;
             arg.dst = (const void *)local_output;
             arg.scales = (const void *)scales;
@@ -475,12 +476,8 @@ status_t jit_xf16_sum_t<src_data_type, dst_data_type, isa>::execute(
     return status::success;
 }
 
-template struct jit_xf16_sum_t<data_type::bf16, data_type::f32, avx512_core>;
-template struct jit_xf16_sum_t<data_type::bf16, data_type::bf16, avx512_core>;
-template struct jit_xf16_sum_t<data_type::bf16, data_type::f32, avx2_vnni_2>;
-template struct jit_xf16_sum_t<data_type::bf16, data_type::bf16, avx2_vnni_2>;
-template struct jit_xf16_sum_t<data_type::f16, data_type::f32, avx2_vnni_2>;
-template struct jit_xf16_sum_t<data_type::f16, data_type::f16, avx2_vnni_2>;
+template struct jit_xf16_sum_t<avx512_core>;
+template struct jit_xf16_sum_t<avx2_vnni_2>;
 
 template struct jit_uni_xf16_sum_kernel_t<Xbyak::Zmm>;
 template struct jit_uni_xf16_sum_kernel_t<Xbyak::Ymm>;

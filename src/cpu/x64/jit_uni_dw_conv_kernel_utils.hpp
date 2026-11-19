@@ -64,11 +64,10 @@ private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel_t)
 };
 
-template <cpu_isa_t isa, data_type_t kernel_dt>
+template <cpu_isa_t isa>
 struct jit_uni_dw_conv_bwd_data_kernel_t {
 
-    jit_uni_dw_conv_bwd_data_kernel_t(const jit_conv_conf_t &ajcp)
-        : ker_(utils::make_unique<jit_kernel_t>(ajcp)) {}
+    jit_uni_dw_conv_bwd_data_kernel_t(const jit_conv_conf_t &ajcp);
 
     status_t create_kernel() {
         if (ker_) return ker_->create_kernel();
@@ -86,11 +85,7 @@ struct jit_uni_dw_conv_bwd_data_kernel_t {
     void operator()(const jit_conv_args_t *p) const { (*ker_)(p); }
 
 private:
-    using jit_kernel_t = typename utils::conditional<isa == avx512_core
-                    && kernel_dt == data_type::bf16,
-            jit_avx512_dw_conv_bwd_data_kernel_bf16_t,
-            jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>>::type;
-    std::unique_ptr<jit_kernel_t> ker_;
+    std::unique_ptr<jit_generator_t> ker_;
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_bwd_data_kernel_t)
 };
 

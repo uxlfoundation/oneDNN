@@ -242,8 +242,10 @@ void Generator<hw>::outerProductFMA(int h, int ha_period, int hb_period, int opC
 
                         // Use requested execution size if possible, but limited to available elements.
                         // Decide on kernel type based on register block layouts.
-                        bool canColMajor = (A_block->colMajor && globalCM);
-                        bool canRowMajor = (!B_block->colMajor && !globalCM);
+                        bool A_colMajor = A_block->colMajor;
+                        bool B_colMajor = B_block->colMajor;
+                        bool canColMajor = (A_colMajor && globalCM);
+                        bool canRowMajor = (!B_colMajor && !globalCM);
                         bool colMajor = globalCM;
 
                         if (!canColMajor && !canRowMajor)

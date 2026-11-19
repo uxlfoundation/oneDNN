@@ -407,30 +407,16 @@ status_t set_mm1_post_ops(brgemm_desc_t &brg, dim_t output_rows,
     return brgemm_desc_set_postops(&brg, &attr, &dst_md, output_row_stride);
 }
 
-// Build a finalized BRGEMM descriptor.
-status_t build_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
-        dim_t M, dim_t N, dim_t K, dim_t lda, dim_t ldb, dim_t ldc,
-        const std::vector<sdpa_mm1_post_op_t> *post_ops = nullptr,
-        bool select_as_postop = false, dim_t full_output_width = 0,
-        bool b_is_vnni = false, bool stack_heads = false) {
-    CHECK(brgemm_desc_init(&brg, isa_undef, brgemm_addr, dt, dt,
+status_t init_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
+        dim_t M, dim_t N, dim_t K, dim_t lda, dim_t ldb, dim_t ldc) {
+    return brgemm_desc_init(&brg, isa_undef, brgemm_addr, dt, dt,
             /*transA=*/false, /*transB=*/false, brgemm_row_major,
-            /*alpha=*/1.0f, beta, lda, ldb, ldc, M, N, K, /*strides=*/nullptr));
+            /*alpha=*/1.0f, beta, lda, ldb, ldc, M, N, K, /*strides=*/nullptr);
+}
 
-    // The full output width can be larger than this BRGEMM's N. For tiled
-    // mm1, N is the kv-block width, but post-op descriptors cover the full
-    // [M, seq_kv] score tile. At execution, data_C_ptr_ anchors that full tile
-    // while ptr_D points at the current N-block; the binary injector uses
-    // their difference to recover each element's row and global column.
-    // This handles per-element and broadcast masks. The full output width
-    // defaults to N when the full output fits one tile.
-    const dim_t full_tile_width = full_output_width > 0 ? full_output_width : N;
-
-    CHECK(set_mm1_post_ops(brg, M, full_tile_width, ldc, post_ops,
-            select_as_postop, stack_heads));
-
+status_t finalize_brgemm_desc(brgemm_desc_t &brg, bool b_is_vnni) {
     const bool amx_vnni_k_tail = (brg.is_bf16_tmm || brg.is_f16_tmm)
-            && K % data_type_vnni_granularity(dt) != 0;
+            && brg.reduce_dim % data_type_vnni_granularity(brg.dt_a) != 0;
     // AMX follows the BRGEMM matmul kernel policy: SDPA always executes a
     // single batch element, which lets it use the AMX microkernel with
     // interleaved tile stores instead of the generic tile kernel.
@@ -448,8 +434,33 @@ status_t build_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
     }
 
-    CHECK(brgemm_desc_finalize(&brg));
-    return status::success;
+    return brgemm_desc_finalize(&brg);
+}
+
+status_t build_mm1_brgemm_desc(brgemm_desc_t &brg,
+        const sdpa_full_softmax_conf_t &conf, dim_t M, dim_t N) {
+    const auto &p = conf.params;
+    CHECK(init_brgemm_desc(brg, p.mm_dt, /*beta=*/0.0f, M, N, p.hs_qk,
+            conf.mm1_lda, conf.ldk, conf.ld_scores));
+
+    // N is the kv-block width, but post-op descriptors cover the full
+    // [M, seq_kv] score tile. At execution, data_C_ptr_ anchors that full tile
+    // while ptr_D points at the current N-block; the binary injector uses
+    // their difference to recover each element's row and global column.
+    // This handles per-element and broadcast masks.
+    CHECK(set_mm1_post_ops(brg, M, p.seq_kv, conf.ld_scores, &p.mm1_post_ops,
+            conf.mm1_select_postop, conf.stack_heads));
+
+    return finalize_brgemm_desc(brg, conf.mm1_needs_vnni_b);
+}
+
+status_t build_mm2_brgemm_desc(brgemm_desc_t &brg,
+        const sdpa_full_softmax_conf_t &conf, float beta, dim_t M, dim_t N,
+        dim_t K) {
+    const auto &p = conf.params;
+    CHECK(init_brgemm_desc(
+            brg, p.mm_dt, beta, M, N, K, conf.ld_prob, conf.ldv, conf.mm2_ldc));
+    return finalize_brgemm_desc(brg, conf.mm2_needs_vnni_b);
 }
 
 status_t is_vnni_b_required(
@@ -1029,8 +1040,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     const dim_t ms[2] = {conf.m_block, conf.q_tail};
 
     // mm1 N is one seq_kv column block; its post-op descriptors keep the full
-    // seq_kv width (full_output_width) so the folded mask/select is addressed
-    // by global column.
+    // seq_kv width so the folded mask/select is addressed by global column.
     auto build_mm1_descs = [&]() -> status_t {
         const dim_t ns[2] = {conf.mm1_n_block, conf.mm1_n_tail};
         for (int qi = 0; qi < 2; ++qi) {
@@ -1038,14 +1048,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
             for (int ni = 0; ni < 2; ++ni) {
                 if (!ns[ni]) continue;
                 brgemm_desc_t brg;
-                CHECK(build_brgemm_desc(brg, p_.mm_dt,
-                        /*beta=*/0.0f, ms[qi], ns[ni], p_.hs_qk,
-                        /*lda=*/conf.mm1_lda,
-                        /*ldb=*/conf.ldk,
-                        /*ldc=*/conf.ld_scores, &p_.mm1_post_ops,
-                        conf.mm1_select_postop,
-                        /*full_output_width=*/p_.seq_kv,
-                        /*b_is_vnni=*/conf.mm1_needs_vnni_b, conf.stack_heads));
+                CHECK(build_mm1_brgemm_desc(brg, conf, ms[qi], ns[ni]));
                 CHECK(add_brg_desc(
                         brg_conf.mm1[qi][ni], brg, conf.mm1_needs_vnni_b));
             }
@@ -1068,11 +1071,8 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                     const dim_t width = vi ? conf.v_tail : conf.v_block;
                     if (!width) continue;
                     brgemm_desc_t brg;
-                    CHECK(build_brgemm_desc(brg, p_.mm_dt, mm2_beta, ms[qi],
-                            width, ks[ki],
-                            /*lda=*/conf.ld_prob, /*ldb=*/conf.ldv,
-                            /*ldc=*/conf.mm2_ldc, nullptr, false, 0,
-                            conf.mm2_needs_vnni_b));
+                    CHECK(build_mm2_brgemm_desc(
+                            brg, conf, mm2_beta, ms[qi], width, ks[ki]));
                     CHECK(add_brg_desc(brg_conf.mm2[qi][ki][vi], brg,
                             conf.mm2_needs_vnni_b));
                 }
@@ -1082,10 +1082,8 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                     const dim_t width = vi ? conf.v_tail : conf.v_block;
                     if (!width) continue;
                     brgemm_desc_t brg;
-                    CHECK(build_brgemm_desc(brg, p_.mm_dt, 0.0f, ms[qi], width,
-                            conf.mm2_k_block, conf.ld_prob, conf.ldv,
-                            conf.mm2_ldc, nullptr, false, 0,
-                            conf.mm2_needs_vnni_b));
+                    CHECK(build_mm2_brgemm_desc(brg, conf, /*beta=*/0.0f,
+                            ms[qi], width, conf.mm2_k_block));
                     CHECK(add_brg_desc(brg_conf.mm2_beta0[qi][vi], brg,
                             conf.mm2_needs_vnni_b));
                 }

@@ -174,9 +174,6 @@ private:
     std::unique_ptr<jit_avx512_common_conv_bwd_data_kernel_f32_t> kernel_;
 };
 
-template <impl::data_type_t src_type,
-        impl::data_type_t diff_dst_type = src_type,
-        impl::data_type_t diff_weights_type = src_type>
 struct jit_avx512_common_convolution_bwd_weights_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_weights_pd_t {
         using cpu_convolution_bwd_weights_pd_t::
@@ -189,8 +186,8 @@ struct jit_avx512_common_convolution_bwd_weights_t : public primitive_t {
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(
-                    expect_data_types(src_type, diff_weights_type,
-                            diff_weights_type, diff_dst_type, data_type::undef),
+                    expect_data_types(data_type::f32, data_type::f32,
+                            data_type::f32, data_type::f32, data_type::undef),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -217,7 +214,7 @@ struct jit_avx512_common_convolution_bwd_weights_t : public primitive_t {
         }
 
         jit_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
-        typename cpu_reducer_t<diff_weights_type>::conf_t reducer_bia_conf_;
+        cpu_reducer_t<data_type::f32>::conf_t reducer_bia_conf_;
 
     private:
         void init_balancers() {
@@ -233,10 +230,6 @@ struct jit_avx512_common_convolution_bwd_weights_t : public primitive_t {
 
     jit_avx512_common_convolution_bwd_weights_t(const pd_t *apd)
         : primitive_t(apd) {}
-
-    using src_data_t = typename prec_traits_t<src_type>::type;
-    using diff_dst_data_t = typename prec_traits_t<diff_dst_type>::type;
-    using diff_weights_data_t = typename prec_traits_t<diff_weights_type>::type;
 
     status_t init(engine_t *engine) override;
 
@@ -263,8 +256,8 @@ private:
     int nthr_, nthr_mb_, nthr_g_, nthr_oc_b_, nthr_ic_b_;
 
     std::unique_ptr<jit_avx512_common_conv_bwd_weights_kernel_f32_t> kernel_;
-    std::unique_ptr<cpu_accumulator_1d_t<diff_weights_type>> acc_ker_;
-    std::unique_ptr<cpu_reducer_t<diff_weights_type>> reducer_bias_;
+    std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;
+    std::unique_ptr<cpu_reducer_t<data_type::f32>> reducer_bias_;
 };
 
 } // namespace x64

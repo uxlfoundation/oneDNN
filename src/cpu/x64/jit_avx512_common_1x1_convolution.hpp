@@ -132,7 +132,7 @@ struct jit_avx512_common_1x1_convolution_fwd_t : public primitive_t {
 
         jit_1x1_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
         reduce_to_unit_stride_t rtus_ = utils::zero<decltype(rtus_)>();
-        using dw_pd_t = jit_avx512_common_dw_convolution_fwd_t::pd_t;
+        using dw_pd_t = jit_uni_dw_convolution_fwd_t<avx512_core>::pd_t;
         std::unique_ptr<dw_pd_t> dw_conv_pd_;
 
     protected:

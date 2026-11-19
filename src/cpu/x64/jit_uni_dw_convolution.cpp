@@ -28,8 +28,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t dst_type>
-DEFINE_PD_CREATE(jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_dw_convolution_fwd_t<isa>::pd_t)
 template <cpu_isa_t isa, data_type_t diff_dst_type, data_type_t diff_src_type>
 DEFINE_PD_CREATE(jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
         diff_src_type>::pd_t)
@@ -42,13 +42,13 @@ using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;
 using namespace dnnl::impl::data_type;
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t dst_type>
-void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
+template <cpu_isa_t isa>
+void jit_uni_dw_convolution_fwd_t<isa>::execute_forward(
         const exec_ctx_t &ctx) const {
     const auto *jcp_ptr = &pd()->jcp_;
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const data_t *, DNNL_ARG_WEIGHTS);
-    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(jcp_ptr->post_ops, ctx);
 
@@ -56,28 +56,30 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
+    const size_t src_dt_size = src_d.data_type_size();
+    const size_t dst_dt_size = dst_d.data_type_size();
+    const size_t wei_dt_size = weights_d.data_type_size();
 
-    f32_data_t *bias = nullptr;
+    float *bias = nullptr;
     if (pd()->desc()->bias_desc.data_type == bf16) {
-        auto bias_in = CTX_IN_MEM(const bf16_data_t *, DNNL_ARG_BIAS);
-        bias = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+        auto bias_in = CTX_IN_MEM(const bfloat16_t *, DNNL_ARG_BIAS);
+        bias = ctx.get_scratchpad_grantor().template get<float>(
                 key_conv_bias_bf16_convert_wsp);
         cvt_bfloat16_to_float(bias, bias_in, jcp_ptr->oc_without_padding);
         utils::array_set(bias + jcp_ptr->oc_without_padding, 0.f,
                 jcp_ptr->oc - jcp_ptr->oc_without_padding);
     } else if (pd()->desc()->bias_desc.data_type == f16) {
-        auto bias_in = CTX_IN_MEM(const f16_data_t *, DNNL_ARG_BIAS);
-        bias = ctx.get_scratchpad_grantor().template get<f32_data_t>(
+        auto bias_in = CTX_IN_MEM(const float16_t *, DNNL_ARG_BIAS);
+        bias = ctx.get_scratchpad_grantor().template get<float>(
                 key_conv_bias_f16_convert_wsp);
         cvt_float16_to_float(bias, bias_in, jcp_ptr->oc_without_padding);
         utils::array_set(bias + jcp_ptr->oc_without_padding, 0.f,
                 jcp_ptr->oc - jcp_ptr->oc_without_padding);
     } else {
-        auto bias_in = CTX_IN_MEM(const f32_data_t *, DNNL_ARG_BIAS);
+        auto bias_in = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
         if (pd()->wants_padded_bias()) {
-            auto padded_bias
-                    = ctx.get_scratchpad_grantor().template get<f32_data_t>(
-                            key_conv_padded_bias);
+            auto padded_bias = ctx.get_scratchpad_grantor().template get<float>(
+                    key_conv_padded_bias);
             utils::array_copy(
                     padded_bias, bias_in, jcp_ptr->oc_without_padding);
             utils::array_set(padded_bias + jcp_ptr->oc_without_padding, 0.f,
@@ -141,10 +143,12 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
             auto par_conv = jit_conv_args_t();
             par_conv.src = jcp.is_fused_conv
                     ? src
-                    : &src[src_d.blk_off(n, ic_off_idx, ih, iw)];
-            par_conv.dst = &dst[dst_d.blk_off(n, oc_off_idx, oh, ow)];
+                    : src + src_d.blk_off(n, ic_off_idx, ih, iw) * src_dt_size;
+            par_conv.dst
+                    = dst + dst_d.blk_off(n, oc_off_idx, oh, ow) * dst_dt_size;
 
-            par_conv.filt = &weights[weights_d.blk_off(ch, 0, 0, kh, kw)];
+            par_conv.filt = weights
+                    + weights_d.blk_off(ch, 0, 0, kh, kw) * wei_dt_size;
             if (bias) par_conv.bias = &bias[bias_d.blk_off(ch * jcp.ch_block)];
 
             par_conv.kh_padding = nstl::max<dim_t>(0, kh_padding);
@@ -177,15 +181,9 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
 }
 
-REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core_fp16,
-        f16, f32>);
-REG_AVX512_ISA(
-        template struct jit_uni_dw_convolution_fwd_t<avx512_core_fp16, f16>);
-REG_AVX512_ISA(
-        template struct jit_uni_dw_convolution_fwd_t<avx512_core, bf16, f32>);
-REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core, bf16>);
-REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core, f32>);
-REG_AVX2_ISA(template struct jit_uni_dw_convolution_fwd_t<avx2, f32>);
+REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core_fp16>);
+REG_AVX512_ISA(template struct jit_uni_dw_convolution_fwd_t<avx512_core>);
+REG_AVX2_ISA(template struct jit_uni_dw_convolution_fwd_t<avx2>);
 
 template <cpu_isa_t isa, data_type_t diff_dst_type, data_type_t diff_src_type>
 void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,

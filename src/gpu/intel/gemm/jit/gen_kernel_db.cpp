@@ -26,6 +26,9 @@ namespace gemmstone {
 #define _CATALOG_ gemm_lut_674f
 #include "selector/db/lut_674f.db"
 #undef _CATALOG_
+#define _CATALOG_ gemm_lut_674c
+#include "selector/db/lut_674c.db"
+#undef _CATALOG_
 // lut.py: end
 #define _CATALOG_ gemm_gbr_catalog
 #include "selector/db/gbr.db"
@@ -52,6 +55,7 @@ struct lut_t {
 const lut_t luts[] = {
         // lut.py: table
         {0x674f, "lut_674f.db", gemmstone::gemm_lut_674f},
+        {0x674c, "lut_674c.db", gemmstone::gemm_lut_674c},
         // lut.py: end
 };
 } // namespace

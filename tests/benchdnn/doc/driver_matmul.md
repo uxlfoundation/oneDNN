@@ -50,8 +50,9 @@ where *matmul-knobs* are:
             2D `[total_K,N]` and the destination is 3D `[G,M,N]`.
             Multiple configs can be comma-separated to iterate over them.
             Masks of `--attr-scales` and `--attr-zero-points` are over the 3D
-            operands, src `{G, M, K}` and weights `{G, K, N}`: e.g., `src:3`
-            gives row-wise and `src:7` K-grouped src scales.
+            operands, src `{G, M, K}` and weights `{G, K, N}`, for variable
+            `M` and `K` alike: e.g., `src:3` gives row-wise and `src:7`
+            K-grouped src scales.
             Example: `--grouped=0:4:32+0+32+96 160x512:4x512x256`
             means `M` dimension is variable, `4` experts are used, `32, 0, ...`
             are sizes of each group with total `32+0+32+96 = 160`.
@@ -72,6 +73,11 @@ where *matmul-knobs* are:
             Optional `PARAM` is attached to `PROFILE` with a `.`.
             Optional `HINT` is the max_variable_dim dispatch hint, if not
             provided, it defaults to the largest generated group.
+            Note: when `K` is variable and scales are grouped along `K`, every
+            group size must be a multiple of the coarsest scales `K` group
+            `gK`. Profiles hand out sizes in units of `gK`, so `decode`
+            requires `total_K / gK <= NUM_GROUPS`. Problems with other sizes
+            are skipped as invalid.
             Example: `--grouped=0:64:balanced 512x512:64x512x256`
             Example: `--grouped=0:64:balanced:512 512x512:64x512x256`
             Example: `--grouped=0:32:hot.80 256x512:32x512x256`

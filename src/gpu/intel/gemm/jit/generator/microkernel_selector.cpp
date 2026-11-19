@@ -474,6 +474,7 @@ static Package generatePackage(const GEMMOptions &options, HostPayload host, HWI
     auto product = npack::decodeHWIPVersion(hwInfo.gmdid);
     auto hw = getCore(product.family);
     auto stepping = hwInfo.gmdid & 0xFF;
+    (void)stepping;
 
     /* Generate interface */
     GEMMOptions effOptions = transC ? options.transpose() : options;

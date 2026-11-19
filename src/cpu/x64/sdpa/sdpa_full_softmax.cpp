@@ -936,10 +936,12 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // output, LDC = output row stride), skipping the pv scratch tile and the
     // down-convert/scatter, when the output is f32 with unit-stride rows. All
     // other cases (bf16/f16 output or a strided output column) keep pv+scatter.
-    // split_kv sums the results of the mm2 chunks before writing the output.
+    // Multiple mm2 chunks must be summed before writing the output.
     const dim_t o_col_stride = p_.o_strides[ndims - 1];
-    const bool mm2_direct
-            = !split_kv && p_.out_dt == data_type::f32 && o_col_stride == 1;
+    const bool mm2_has_single_chunk
+            = !split_kv || conf.split_kv.mm2_chunks == 1;
+    const bool mm2_direct = mm2_has_single_chunk && o_col_stride == 1
+            && p_.out_dt == data_type::f32;
     conf.mm2_direct = mm2_direct;
     conf.ld_pv = scratch_row_ld(p_.hs_v, sizeof(float), /*allow_padding=*/true);
 
@@ -1166,8 +1168,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
         sk.prob = ts.has_prob
                 ? add_shared_buffer(rows * conf.ld_prob * mm_dt_sz)
                 : sk.scores;
-        sk.partials = add_shared_buffer(
-                sk.mm2_chunks * rows * conf.ld_pv * sizeof(float));
+        if (!conf.mm2_direct)
+            sk.partials = add_shared_buffer(
+                    sk.mm2_chunks * rows * conf.ld_pv * sizeof(float));
     }
     conf.scratch_per_thread = ts.size;
     conf.shared_scratch_bytes = shared_offset;
@@ -1785,13 +1788,15 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                     st, thread_state, batch_idx, item_head_idx, q_block_idx);
             const auto kv = split_kv_chunk_keys(
                     c, sk.mm2_chunks, conf.mm2_k_block, p.seq_kv);
-            const auto pv = item_tiles(sk.partials + c * partial_bytes,
-                    pv_row_bytes, batch_idx, item_head_idx, q_block_idx);
+            const auto c_tile = conf.mm2_direct
+                    ? item.output_tiles()
+                    : item_tiles(sk.partials + c * partial_bytes, pv_row_bytes,
+                              batch_idx, item_head_idx, q_block_idx);
             item.mm2(kv.first, kv.second,
                     item_tiles(sk.prob, prob_row_bytes, batch_idx,
                             item_head_idx, q_block_idx),
-                    pv);
-            if (sk.mm2_chunks == 1) item.store(pv);
+                    c_tile);
+            if (sk.mm2_chunks == 1 && !conf.mm2_direct) item.store(c_tile);
         });
     });
     if (sk.mm2_chunks == 1) return;

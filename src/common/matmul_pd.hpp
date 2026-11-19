@@ -188,6 +188,11 @@ struct matmul_pd_t : public primitive_desc_t {
         return 1 << (src_ndims - 1);
     }
 
+    // Weights zero-points applied after the scales (static_sbzp)
+    bool wei_zp_after_scale() const {
+        return attr()->zero_points_.get(DNNL_ARG_WEIGHTS).is_sbzp();
+    }
+
     int wei_qmask_N() const {
         const int wei_ndims = weights_md(0)->ndims;
         assert(wei_ndims >= 2);

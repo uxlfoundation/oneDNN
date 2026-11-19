@@ -48,6 +48,10 @@ where *matmul-knobs* are:
             When `M` is variable, weights must be provided as 3D `[G,K,N]`
             where `G` matches `NUM_GROUPS`. When `K` is variable, weights are
             2D `[total_K,N]` and the destination is 3D `[G,M,N]`.
+            For grouped operands, `--stag`, `--wtag`, and `--dtag` set to `ab`
+            (`abc`, `abx`) make the last dim contiguous and `ba` (`acb`,
+            `aby`) the middle one, `any` gives the default layout with the
+            variable dim outermost. `--strides` is not used for them.
             Multiple configs can be comma-separated to iterate over them.
             Masks of `--attr-scales` and `--attr-zero-points` are over the 3D
             operands, src `{G, M, K}` and weights `{G, K, N}`, for variable

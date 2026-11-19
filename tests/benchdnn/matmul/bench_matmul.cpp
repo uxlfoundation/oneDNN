@@ -192,11 +192,12 @@ int verify_input(const settings_t &s, const settings_t &def) {
 //
 // Two configurations are supported:
 //  - 2Dx3D with variable_dim_idx=0: src is [total_M, K] with dim 0
-//    variable (row-major), wei is dense 3D [G, K, N],
+//    variable (row-major by default), wei is dense 3D [G, K, N],
 //    dst is [total_M, N] with dim 0 variable,
 //  - 2Dx2D with variable_dim_idx=1: src is [M, total_K] with dim 1
-//    variable (col-major), wei is [total_K, N] with dim 0
-//    variable (row-major), dst is dense 3D [G, M, N]
+//    variable (col-major by default), wei is [total_K, N] with dim 0
+//    variable (row-major by default), dst is dense 3D [G, M, N]
+// Tags of grouped operands select their other layout
 int verify_grouped_input(const settings_t &s) {
     if (!s.sparse_options[0].is_grouped(DNNL_ARG_SRC)) return OK;
 

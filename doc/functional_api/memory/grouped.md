@@ -82,4 +82,11 @@ auto src_md = memory::desc::grouped(
 std::vector<float> values(5000 * 512);
 std::vector<int32_t> offsets = {800, 1400, 2100, 2600, 3250, 3700, 4250, 5000};
 memory src_mem(src_md, eng, {values.data(), offsets.data()});
+
+// Weight gradient with K-major operands, as in PyTorch _scaled_grouped_mm
+// with 2D x 2D inputs: [M, total_K] row-major and [total_K, N] column-major
+auto a_md = memory::desc::grouped({G, M, DNNL_VARIABLE_DIM_VAL},
+        memory::data_type::f8_e4m3, total_K, {0, total_K, 1});
+auto b_md = memory::desc::grouped({G, DNNL_VARIABLE_DIM_VAL, N},
+        memory::data_type::f8_e4m3, total_K, {0, 1, total_K});
 ~~~

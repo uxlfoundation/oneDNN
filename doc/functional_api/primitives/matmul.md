@@ -345,8 +345,8 @@ boundaries. The concatenated size of the variable dimension is denoted
   while the destination is represented as a regular dense 3D tensor
   `[num_groups, M, N]`.
 
-Grouped source, weights, and destination support only the default layout of
-the grouped memory format, with the variable dimension outermost.
+Grouped source, weights, and destination accept any layout of the grouped
+memory format.
 
 In MoE workloads, the variable dimension is the token dimension in both
 variants: `total_M` and `total_K` are the total number of tokens routed to all

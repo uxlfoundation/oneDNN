@@ -515,6 +515,20 @@ TEST(iface_grouped_test_t, TestGroupedMatmulPatterns) {
     EXPECT_NO_THROW(
             matmul::primitive_desc(eng, src_var_k, wei_var_k, dst_dense_3d));
 
+    // Column-major src and dst (varM), K-major src and wei (varK)
+    EXPECT_NO_THROW(matmul::primitive_desc(eng,
+            memory::desc::grouped(
+                    {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, M, {0, 1, M}),
+            wei_dense_3d,
+            memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32,
+                    M, {0, 1, M})));
+    EXPECT_NO_THROW(matmul::primitive_desc(eng,
+            memory::desc::grouped(
+                    {ngroups, M, DNNL_VARIABLE_DIM_VAL}, dt::f32, K, {0, K, 1}),
+            memory::desc::grouped(
+                    {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, K, {0, 1, K}),
+            dst_dense_3d));
+
     // Unsupported cases:
 
     // grouped(varM) * dense 3D -> dense 3D
@@ -553,14 +567,15 @@ TEST(iface_grouped_test_t, TestGroupedMatmulScales) {
     const int wei_k_blocked = wei_colwise | (1 << 1);
 
     for (bool var_k : {false, true}) {
+        // K-major src and wei for variable K
         auto src_md = var_k
-                ? memory::desc::grouped(
-                          {ngroups, M, DNNL_VARIABLE_DIM_VAL}, dt::f8_e4m3, K)
+                ? memory::desc::grouped({ngroups, M, DNNL_VARIABLE_DIM_VAL},
+                          dt::f8_e4m3, K, {0, K, 1})
                 : memory::desc::grouped(
                           {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f8_e4m3, M);
         auto wei_md = var_k
-                ? memory::desc::grouped(
-                          {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f8_e4m3, K)
+                ? memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, N},
+                          dt::f8_e4m3, K, {0, 1, K})
                 : memory::desc({ngroups, K, N}, dt::f8_e4m3, tag::acb);
         auto dst_md = var_k
                 ? memory::desc({ngroups, M, N}, dt::bf16, tag::abc)

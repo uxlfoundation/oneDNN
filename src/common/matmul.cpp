@@ -97,13 +97,6 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
             src_d.grouped_variable_dim(), partner_name,
             partner_d.grouped_variable_dim());
 
-    // Only the default layout, with the variable dim outermost, is supported
-    VCHECK_MATMUL_UNIMPL(src_d.strides()[3 - src_d.grouped_variable_dim()] == 1,
-            VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-    VCHECK_MATMUL_UNIMPL(
-            partner_d.strides()[3 - partner_d.grouped_variable_dim()] == 1,
-            VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, partner_name);
-
     VCHECK_MATMUL_UNIMPL(src_d.grouped_total() == partner_d.grouped_total(),
             VERBOSE_INCONSISTENT_DIM, "src_total", (int)src_d.grouped_total(),
             partner_name, (int)partner_d.grouped_total());

@@ -108,8 +108,7 @@ private:
     std::unique_ptr<jit_uni_dw_conv_fwd_kernel_inst_t> kernel_;
 };
 
-template <cpu_isa_t isa, data_type_t diff_dst_type,
-        data_type_t diff_src_type = diff_dst_type>
+template <cpu_isa_t isa>
 struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_data_pd_t {
         using cpu_convolution_bwd_data_pd_t::cpu_convolution_bwd_data_pd_t;
@@ -121,8 +120,16 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
             using namespace data_type;
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(diff_src_type, diff_dst_type,
-                                   data_type::undef, diff_dst_type, f32),
+            const data_type_t diff_src_dt = diff_src_md()->data_type;
+            const data_type_t diff_dst_dt = diff_dst_md()->data_type;
+            const bool diff_dst_dt_ok = isa == avx512_core
+                    ? utils::one_of(diff_dst_dt, f32, bf16)
+                    : diff_dst_dt == f32;
+            VDISPATCH_CONV(diff_dst_dt_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(utils::one_of(diff_src_dt, diff_dst_dt, f32),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(expect_data_types(diff_src_dt, diff_dst_dt,
+                                   data_type::undef, diff_dst_dt, f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -148,10 +155,6 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
 
     jit_uni_dw_convolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}
 
-    using diff_src_data_t = typename prec_traits_t<diff_src_type>::type;
-    using diff_dst_data_t = typename prec_traits_t<diff_dst_type>::type;
-    using wei_data_t = typename prec_traits_t<diff_dst_type>::type;
-
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
                 new jit_uni_dw_conv_bwd_data_kernel_t<isa>(pd()->jcp_)));
@@ -169,11 +172,6 @@ private:
 
     std::unique_ptr<jit_uni_dw_conv_bwd_data_kernel_t<isa>> kernel_;
 };
-
-using jit_avx512_common_dw_convolution_bwd_data_t
-        = jit_uni_dw_convolution_bwd_data_t<avx512_core, data_type::f32>;
-using jit_avx2_dw_convolution_bwd_data_t
-        = jit_uni_dw_convolution_bwd_data_t<avx2, data_type::f32>;
 
 template <cpu_isa_t isa, data_type_t src_type,
         data_type_t diff_weights_type = src_type>

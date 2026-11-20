@@ -114,35 +114,85 @@ bool is_bcast_supported(const dnnl::impl::memory_desc_t &src1_desc,
     return true;
 }
 
+// Checks that a descriptor is plain, dense, and strictly in standard ncsp
+// (ab, abc, abcd, abcde) stride order: stride[d] == padded_dims[d+1] * stride[d+1].
+// This catches permuted tags (like bcad, acbd) even when some dims have size 1,
+// where get_layout_type() or is_dense() alone would be fooled.
+static bool is_strict_ncsp_layout(const memory_desc_wrapper &md) {
+    if (!md.is_plain() || !md.is_dense(true)) return false;
+    const int ndims = md.ndims();
+    const auto &strides = md.blocking_desc().strides;
+    const auto *padded_dims = md.padded_dims();
+    if (ndims < 1 || strides[ndims - 1] != 1) return false;
+    for (int d = 0; d < ndims - 1; ++d) {
+        if (strides[d] != padded_dims[d + 1] * strides[d + 1]) return false;
+    }
+    return true;
+}
+
+// Determines whether shared_axes should broadcast a single scalar across the
+// SIMD vector (`ptr_b`) or load contiguous elements (`ptr`).
+static bool is_shared_axes_bcast(
+        const memory_desc_wrapper &rhs_d, const memory_desc_wrapper &dst_d) {
+    const int ndims = dst_d.ndims();
+    if (ndims < 1) return false;
+    if (rhs_d.format_any()) return true;
+
+    // Normal case (dst innermost dim > 1): broadcast if rhs innermost dim is 1.
+    if (dst_d.dims()[ndims - 1] > 1) return rhs_d.dims()[ndims - 1] == 1;
+
+    // Degenerate innermost dim (dst_dims[ndims - 1] == 1, e.g., Matmul N=1 GEMV):
+    // When src is transposed, brgemm_matmul flips vectorization to M (ndims - 2).
+    // If both dst and rhs have size > 1 and unit stride along M (ndims - 2),
+    // use a vector load (`ptr[]`) so flipped GEMV loads consecutive M elements.
+    if (ndims >= 2 && dst_d.dims()[ndims - 2] > 1
+            && dst_d.blocking_desc().strides[ndims - 2] == 1
+            && rhs_d.dims()[ndims - 2] > 1
+            && rhs_d.blocking_desc().strides[ndims - 2] == 1) {
+        return false;
+    }
+    return true;
+}
+
+static bool should_use_shared_axes_fallback(broadcasting_strategy_t bcast_type,
+        const memory_desc_wrapper &rhs_d, const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
+    if (!supported_strategy_set.count(broadcasting_strategy_t::shared_axes))
+        return false;
+    if (utils::one_of(bcast_type, broadcasting_strategy_t::unsupported,
+                broadcasting_strategy_t::scalar,
+                broadcasting_strategy_t::no_broadcast,
+                broadcasting_strategy_t::shared_axes))
+        return false;
+
+    const int ndims = dst_d.ndims();
+    const bool is_innermost_bcast = is_shared_axes_bcast(rhs_d, dst_d);
+
+    const bool legacy_emits_vector_load = utils::one_of(bcast_type,
+            broadcasting_strategy_t::per_mb_spatial,
+            broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_w,
+            broadcasting_strategy_t::per_hw, broadcasting_strategy_t::batch);
+
+    return dst_d.is_plain()
+            && (ndims > 5 || !is_strict_ncsp_layout(dst_d)
+                    || (!rhs_d.format_any() && !is_strict_ncsp_layout(rhs_d))
+                    || (legacy_emits_vector_load && is_innermost_bcast));
+}
+
 bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set) {
     VCHECK_BIN_INJ_BOOL(is_data_supported(isa, src1_desc.data_type),
             VERBOSE_ISA_DT_MISMATCH);
+
     const memory_desc_wrapper rhs_d(src1_desc);
     auto bcast_type = get_rhs_arg_broadcasting_strategy(
             src1_desc, dst_d, supported_strategy_set);
-    const int ndims = dst_d.ndims();
-    const bool is_innermost_bcast = ndims >= 1
-            && (rhs_d.format_any() || rhs_d.dims()[ndims - 1] == 1);
-    const bool use_shared_axes_fallback
-            = supported_strategy_set.count(broadcasting_strategy_t::shared_axes)
-            && !utils::one_of(bcast_type, broadcasting_strategy_t::unsupported,
-                    broadcasting_strategy_t::scalar,
-                    broadcasting_strategy_t::no_broadcast,
-                    broadcasting_strategy_t::shared_axes)
-            && ((dst_d.ndims() > 5 && dst_d.is_plain())
-                    || (dst_d.is_plain()
-                            && injector_utils::get_layout_type(dst_d)
-                                    == injector_utils::layout_t::unsupported)
-                    || (!rhs_d.format_any() && !rhs_d.is_dense(true)
-                            && bcast_type
-                                    != broadcasting_strategy_t::
-                                            per_mb_spatial)
-                    || (bcast_type == broadcasting_strategy_t::per_mb_spatial
-                            && is_innermost_bcast));
-    if (use_shared_axes_fallback)
+
+    if (should_use_shared_axes_fallback(
+                bcast_type, rhs_d, dst_d, supported_strategy_set))
         bcast_type = broadcasting_strategy_t::shared_axes;
+
     const bool rhs_nontrivial_strides = !rhs_d.is_dense(true);
     if (rhs_nontrivial_strides) {
         VCHECK_BIN_INJ_BOOL(rhs_d.is_plain(), VERBOSE_NONTRIVIAL_STRIDE);
@@ -158,20 +208,20 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
                                         == injector_utils::layout_t::ncsp),
                 VERBOSE_NONTRIVIAL_STRIDE);
     }
+
     if (bcast_type == broadcasting_strategy_t::shared_axes) {
         VCHECK_BIN_INJ_BOOL(
                 dst_d.is_plain() && (rhs_d.format_any() || rhs_d.is_plain()),
                 VERBOSE_UNSUPPORTED_TAG);
         const int ndims = dst_d.ndims();
         VCHECK_BIN_INJ_BOOL(ndims >= 1, VERBOSE_BAD_NDIMS, "dst", ndims);
-        VCHECK_BIN_INJ_BOOL(rhs_d.dims()[ndims - 1] == 1
-                        || (dst_d.blocking_desc().strides[ndims - 1] == 1
-                                && (rhs_d.format_any()
-                                        || rhs_d.blocking_desc()
-                                                        .strides[ndims - 1]
-                                                == 1)),
+        VCHECK_BIN_INJ_BOOL(dst_d.blocking_desc().strides[ndims - 1] == 1
+                        && (rhs_d.dims()[ndims - 1] == 1 || rhs_d.format_any()
+                                || rhs_d.blocking_desc().strides[ndims - 1]
+                                        == 1),
                 VERBOSE_NONTRIVIAL_STRIDE);
     }
+
     return is_bcast_supported(src1_desc, dst_d, supported_strategy_set);
 }
 
@@ -637,26 +687,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range_impl(
     const memory_desc_wrapper rhs_d(src1_desc);
     auto rhs_broadcasting_strategy = get_rhs_arg_broadcasting_strategy(
             src1_desc, rhs_arg_static_params_.dst_d, supported_strategy_set_);
-    const int ndims = dst_d.ndims();
-    const bool is_innermost_bcast = ndims >= 1
-            && (rhs_d.format_any() || rhs_d.dims()[ndims - 1] == 1);
-    if (supported_strategy_set_.count(broadcasting_strategy_t::shared_axes)
-            && !utils::one_of(rhs_broadcasting_strategy,
-                    broadcasting_strategy_t::unsupported,
-                    broadcasting_strategy_t::scalar,
-                    broadcasting_strategy_t::no_broadcast,
-                    broadcasting_strategy_t::shared_axes)
-            && ((dst_d.ndims() > 5 && dst_d.is_plain())
-                    || (dst_d.is_plain()
-                            && injector_utils::get_layout_type(dst_d)
-                                    == injector_utils::layout_t::unsupported)
-                    || (!rhs_d.is_dense(true)
-                            && rhs_broadcasting_strategy
-                                    != broadcasting_strategy_t::
-                                            per_mb_spatial)
-                    || (rhs_broadcasting_strategy
-                                    == broadcasting_strategy_t::per_mb_spatial
-                            && is_innermost_bcast)))
+    if (should_use_shared_axes_fallback(rhs_broadcasting_strategy, rhs_d, dst_d,
+                supported_strategy_set_))
         rhs_broadcasting_strategy = broadcasting_strategy_t::shared_axes;
     const auto rhs_arg_data_type = src1_desc.data_type;
     const auto needs_ternary_input = post_op.is_binary_with_ternary_op();
@@ -664,7 +696,7 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range_impl(
     const bool tail_exists_in_range = !vmm_tail_idx.empty();
     const bool is_shared_axes_bcast_inner
             = rhs_broadcasting_strategy == broadcasting_strategy_t::shared_axes
-            && dst_d.ndims() >= 1 && src1_desc.dims[dst_d.ndims() - 1] == 1;
+            && is_shared_axes_bcast(rhs_d, dst_d);
     const bool is_spatial_bcast_ncsp
             = rhs_broadcasting_strategy == broadcasting_strategy_t::spatial
             && injector_utils::get_layout_type(dst_d)
@@ -991,12 +1023,8 @@ Xbyak::Address jit_uni_binary_injector_t<Vmm>::prepare_rhs_arg_addr(int vmm_idx,
                     rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first,
                     rhs_d);
-                
-            const int ndims = rhs_d.ndims();
-            // If the innermost vectorized dimension is broadcast (size 1), use scalar broadcast!
-            return (ndims >= 1 && rhs_d.dims()[ndims - 1] == 1)
-                    ? host_->ptr_b[rhs_addr_reg]
-                    : host_->ptr[rhs_addr_reg];
+
+            return host_->ptr[rhs_addr_reg];
         }
         case broadcasting_strategy_t::per_mb_w: {
             append_mb_w_offset(rhs_arg_params.vmm_idx_to_out_addr,
@@ -1056,8 +1084,7 @@ Xbyak::Address jit_uni_binary_injector_t<Vmm>::prepare_rhs_arg_addr(int vmm_idx,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first,
                     rhs_d);
 
-            const int ndims = rhs_d.ndims();
-            return (ndims >= 1 && rhs_d.dims()[ndims - 1] == 1)
+            return is_shared_axes_bcast(rhs_d, rhs_arg_static_params_.dst_d)
                     ? host_->ptr_b[rhs_addr_reg]
                     : host_->ptr[rhs_addr_reg];
         }

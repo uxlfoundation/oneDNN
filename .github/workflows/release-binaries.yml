@@ -148,6 +148,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       COMPILER: gcc
+      APT_SNAPSHOT: 20261115T150000Z
+      GCC_PACKAGE_VERSION: 14.2.0-4ubuntu2~24.04.1cross1
       CMAKE_TOOLCHAIN_FILE: ${{ github.workspace }}/ci/cmake/toolchains/riscv64.cmake
       CTEST_INCLUDE_REGEX: '^cpu-primitives-matmul-cpp$'
       CPU_RUNTIME: OMP
@@ -180,9 +182,27 @@ jobs:
 
       - name: Install build tools and cross compiler
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-14-riscv64-linux-gnu g++-14-riscv64-linux-gnu
+          sudo apt-get update --snapshot="$APT_SNAPSHOT"
+          sudo apt-get install -y --snapshot="$APT_SNAPSHOT" \
+            "gcc-14-riscv64-linux-gnu=$GCC_PACKAGE_VERSION" \
+            "g++-14-riscv64-linux-gnu=$GCC_PACKAGE_VERSION"
           pipx install ninja==1.13.2
+
+      - name: Report build environment
+        run: |
+          riscv64-linux-gnu-gcc-14 --version
+          riscv64-linux-gnu-g++-14 --version
+          riscv64-linux-gnu-ld --version
+          cmake --version
+          ninja --version
+          dpkg-query --show --showformat='${binary:Package}=${Version}\n' \
+            gcc-14-riscv64-linux-gnu g++-14-riscv64-linux-gnu \
+            binutils-riscv64-linux-gnu \
+            libc6-riscv64-cross libc6-dev-riscv64-cross \
+            linux-libc-dev-riscv64-cross \
+            libgcc-s1-riscv64-cross libgcc-14-dev-riscv64-cross \
+            libstdc++6-riscv64-cross libstdc++-14-dev-riscv64-cross \
+            libgomp1-riscv64-cross
 
       - name: Build and test
         working-directory: oneDNN

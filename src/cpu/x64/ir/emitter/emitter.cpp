@@ -106,6 +106,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     auto reg_of
             = [&](vreg_t vr) { return spilled(vr) ? temp_of(vr) : phys(vr); };
 
+    // Registers unused at operation `i` in the file that `vr` allocates from
+    // (see `reg_alloc_result_t::unused_regs_at`).
+    auto unused_regs_of = [&](int i, vreg_t vr) {
+        const int f = rc.pools.file_of(ir.vreg_info()[(int)vr]);
+        return alloc.unused_regs_at[f * ir.n_ops() + i];
+    };
+
     // Physical register of the tile `vr`. Tiles are never spilled. A tile has
     // no register when the tile configuration has no tile of its shape, or
     // when more tiles of that shape are live at once than the configuration
@@ -256,7 +263,8 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::vstore: {
                 int base = gpr_use(op.mem.base).getIdx();
                 int s = vec_use(op.s0);
-                be.vstore(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0));
+                be.vstore(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0),
+                        unused_regs_of(i, op.s0));
                 break;
             }
             case op_kind_t::vload_scalar: { // overwrites dst
@@ -355,8 +363,8 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 int base = gpr_use(op.mem.base).getIdx();
                 int s = vec_use(op.s0);
                 int m = mask_use(op.s1);
-                be.vstore_masked(
-                        base, op.mem.disp, s, m, op.mem_dt, dt_of(op.s0));
+                be.vstore_masked(base, op.mem.disp, s, m, op.mem_dt,
+                        dt_of(op.s0), unused_regs_of(i, op.s0));
                 break;
             }
 

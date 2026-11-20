@@ -15,11 +15,16 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
 #include <atomic>
+#include <functional>
 #include <map>
 #include <regex>
 #include <sstream>
+#include <utility>
+#include <vector>
 #include <type_traits>
+#include <unordered_set>
 
 #include <stdlib.h>
 #ifndef _WIN32
@@ -473,21 +478,65 @@ std::string md2fmt_tag_str(const memory_desc_t *md) {
         return true;
     });
 
-    char dim_chars[DNNL_MAX_NDIMS + 1];
+    std::string s;
     for (int i = 0; i < mdw.ndims(); ++i)
-        dim_chars[i] = sort_keys[i].dim_char;
-    dim_chars[mdw.ndims()] = '\0';
+        s += sort_keys[i].dim_char;
 
-    std::string s(dim_chars);
-
+    std::string inner_blks_str;
     if (!mdw.is_plain()) {
         for (int iblk = 0; iblk < blk.inner_nblks; ++iblk) {
             char c = ('a' + (char)blk.inner_idxs[iblk]);
-            s += (std::to_string(blk.inner_blks[iblk]) + c);
+            inner_blks_str += (std::to_string(blk.inner_blks[iblk]) + c);
         }
     }
 
-    return s;
+    // Dimensions with a single outer block sharing a stride can be listed in
+    // any order without changing the layout, but the alphabetical order used
+    // above may produce a tag that doesn't exist. Pick the order that matches
+    // an existing tag to report the tag the layout was created with.
+    static const std::unordered_set<std::string> existing_tags = []() {
+        std::unordered_set<std::string> tags;
+        for (int t = format_tag::undef + 1; t < format_tag::last; ++t)
+            tags.emplace(dnnl_fmt_tag2str(static_cast<format_tag_t>(t)));
+        return tags;
+    }();
+    if (existing_tags.count(s + inner_blks_str)) return s + inner_blks_str;
+
+    // Ranges of interchangeable dimensions in `s` as [begin, end) pairs.
+    std::vector<std::pair<int, int>> ranges;
+    for (int i = 0; i < mdw.ndims();) {
+        int j = i;
+        while (j < mdw.ndims()
+                && sort_keys[j].stride_order == sort_keys[i].stride_order)
+            ++j;
+        int begin = i;
+        while (begin < j && sort_keys[begin].outer_block != 1)
+            ++begin;
+        if (j - begin > 1) ranges.emplace_back(begin, j);
+        i = j;
+    }
+
+    std::string candidate = s;
+    // Depth-first search over a tree where level `r` enumerates permutations
+    // of `ranges[r]` and each leaf is a full candidate tag. The first existing
+    // tag ends the search; the leaf count is the product of range-size
+    // factorials and stays small for weights tags.
+    // A recursive lambda can't be declared with `auto` since it refers to
+    // itself, and C++11 lacks generic lambdas to pass itself as an argument.
+    std::function<bool(size_t)> find_existing = [&](size_t r) -> bool {
+        if (r == ranges.size())
+            return existing_tags.count(candidate + inner_blks_str) > 0;
+        auto b = candidate.begin() + ranges[r].first;
+        auto e = candidate.begin() + ranges[r].second;
+        std::sort(b, e);
+        do {
+            if (find_existing(r + 1)) return true;
+        } while (std::next_permutation(b, e));
+        return false;
+    };
+    if (find_existing(0)) return candidate + inner_blks_str;
+
+    return s + inner_blks_str;
 }
 
 std::string md2fmt_strides_str(const memory_desc_t *md) {

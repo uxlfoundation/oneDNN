@@ -5147,9 +5147,11 @@ struct jit_brgemm_matmul_copy_b_transposed_t
                                                             || req_int8_zp_b_shift_
                                                     ? 1
                                                     : 0))
-                  - ((req_int8_zp_b_shift_ && do_compute_compensation_)
-                                  ? (is_src_int4_ ? 2 : 1)
-                                  : 0))
+                  // With compensation the zp-b value and the int4 permute
+                  // table move above the tmp range (see vmm_zp_b_val).
+                  - (do_compute_compensation_ ? (req_int8_zp_b_shift_ ? 1 : 0)
+                                          + (is_src_int4_ && !is_ymm_ ? 1 : 0)
+                                              : 0))
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_)
         , src_elems_per_byte_(is_src_4bit_ ? 2 : 1)
@@ -5244,15 +5246,14 @@ private:
     Vmm vmm_ones_words = Vmm(max_vmm_regs_ - 7);
     Vmm vmm_dot_product_temp = Vmm(max_vmm_regs_ - 8);
 
-    // When int8-grouped-quant ZP runs alongside compensation, place
-    // these registers right above the (already-shrunk) tmp_vmm range
-    // so they never alias the comp registers at the top of the file.
+    // When compensation is computed, place these registers right above the
+    // (already-shrunk) tmp_vmm range so they never alias the comp registers
+    // at the top of the file.
     Vmm vmm_zp_b_val = (req_int8_zp_b_shift_ && do_compute_compensation_)
             ? Vmm(n_blk_step_ + max_tmp_idx)
             : Vmm(max_vmm_regs_ - 1);
-    Vmm vmm_permd
-            = (req_int8_zp_b_shift_ && do_compute_compensation_ && is_src_int4_)
-            ? Vmm(n_blk_step_ + max_tmp_idx + 1)
+    Vmm vmm_permd = (do_compute_compensation_ && is_src_int4_ && !is_ymm_)
+            ? Vmm(n_blk_step_ + max_tmp_idx + (req_int8_zp_b_shift_ ? 1 : 0))
             : Vmm(max_vmm_regs_ - 2);
     // Collide with `vmm_zp_a_neg_val` as they shouldn't intersect in
     // functionality.

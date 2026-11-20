@@ -44,16 +44,18 @@ static constexpr dim_t max_n_chunk = 512;
 // Plain B: 2 * vlen (int4) or vlen (int8) columns of one row per K step.
 // Blocked int4 ([n / n_blk][k / 4][n_blk][4], AVX-512 only): 32 columns, 4 K
 // values each, per step. dst accumulates in int32 and is converted at the end.
+// Transposed B (K-contiguous columns): one column per step, k_iters bytes.
 struct col_sum_kernel_t : public jit_generator_t {
     struct call_params_t {
         const void *src; // B at the first (k, n) of the block
         float *dst; // n_cols sums
-        dim_t k_iters; // K steps (rows, or k quads of the blocked layout)
-        dim_t src_stride; // bytes between K steps
+        dim_t k_iters; // K steps (rows, k quads, or bytes of a column)
+        dim_t src_stride; // bytes between K steps (or columns)
         dim_t n_cols; // <= block_cols(), multiple of col_granularity()
     };
     using jit_generator_t::jit_generator_t;
     virtual int block_cols() const = 0;
+    // Columns (plain) or bytes of a column (transposed) per mask unit.
     virtual int col_granularity() const = 0;
 };
 
@@ -286,6 +288,154 @@ private:
     }
 };
 
+// Transposed B: every column is a K-contiguous run of bytes, summed with
+// vpsadbw into qword lanes and reduced to one float per column.
+template <typename Vmm>
+struct jit_col_sum_tr_kernel_t : public col_sum_kernel_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_col_sum_tr_kernel_t)
+
+    jit_col_sum_tr_kernel_t(data_type_t dt)
+        : col_sum_kernel_t(
+                  "per_mn_comp_col_sum_tr", is_zmm ? avx512_core : avx2)
+        , is_int4_(utils::one_of(dt, u4, s4))
+        , is_signed_(utils::one_of(dt, s4, s8)) {}
+
+    int block_cols() const override { return max_n_chunk; }
+    int col_granularity() const override { return is_zmm ? 1 : 4; }
+
+private:
+    static constexpr bool is_zmm = std::is_same<Vmm, Zmm>::value;
+    static constexpr int vlen = is_zmm ? 64 : 32;
+
+    const bool is_int4_, is_signed_;
+
+    const Reg64 reg_src = r8, reg_dst = r9, reg_k = r10, reg_stride = r11,
+                reg_n = r12, reg_cnt = r13, reg_ptr = r14, reg_tmp = rax,
+                reg_tmp2 = rcx;
+    const Opmask k_load = k1;
+    const Vmm vmm_nib = Vmm(0), vmm_flip = Vmm(1), vmm_zero = Vmm(2),
+              vmm_ld = Vmm(3), vmm_lo = Vmm(4), vmm_hi = Vmm(5),
+              vmm_acc = Vmm(6), vmm_idx = Vmm(7), vmm_mask = Vmm(8);
+
+    void bcast_imm(const Vmm &dst, uint32_t imm) {
+        mov(reg_tmp.cvt32(), imm);
+        vmovd(Xmm(dst.getIdx()), reg_tmp.cvt32());
+        vpbroadcastd(dst, Xmm(dst.getIdx()));
+    }
+    // Masked-out bytes must stay zero: they all land in the same sum.
+    void accumulate(bool masked) {
+        if (is_signed_) {
+            if (!masked)
+                uni_vpxor(vmm_ld, vmm_ld, vmm_flip);
+            else {
+                // Byte-granular mask of the flip (vpxord masks per dword).
+                if (is_zmm)
+                    vmovdqu8(vmm_lo | k_load | T_z, vmm_flip);
+                else
+                    uni_vpand(vmm_lo, vmm_flip, vmm_mask);
+                uni_vpxor(vmm_ld, vmm_ld, vmm_lo);
+            }
+        }
+        if (is_int4_) {
+            uni_vpand(vmm_lo, vmm_ld, vmm_nib);
+            vpsrlw(vmm_hi, vmm_ld, 4);
+            uni_vpand(vmm_hi, vmm_hi, vmm_nib);
+            vpsadbw(vmm_lo, vmm_lo, vmm_zero);
+            vpsadbw(vmm_hi, vmm_hi, vmm_zero);
+            vpaddq(vmm_acc, vmm_acc, vmm_lo);
+            vpaddq(vmm_acc, vmm_acc, vmm_hi);
+        } else {
+            vpsadbw(vmm_ld, vmm_ld, vmm_zero);
+            vpaddq(vmm_acc, vmm_acc, vmm_ld);
+        }
+    }
+
+    void generate() override {
+        preamble();
+        mov(reg_src, ptr[param1 + offsetof(call_params_t, src)]);
+        mov(reg_dst, ptr[param1 + offsetof(call_params_t, dst)]);
+        mov(reg_k, ptr[param1 + offsetof(call_params_t, k_iters)]);
+        mov(reg_stride, ptr[param1 + offsetof(call_params_t, src_stride)]);
+        mov(reg_n, ptr[param1 + offsetof(call_params_t, n_cols)]);
+
+        Label l_idx;
+        if (!is_zmm) {
+            mov(reg_tmp, l_idx);
+            vmovdqu(vmm_idx, ptr[reg_tmp]);
+        }
+        bcast_imm(vmm_nib, 0x0F0F0F0F);
+        bcast_imm(vmm_flip, is_int4_ ? 0x88888888 : 0x80808080);
+        uni_vpxor(vmm_zero, vmm_zero, vmm_zero);
+
+        Label l_col, l_full, l_tail_done, l_done;
+        test(reg_n, reg_n);
+        jz(l_done, T_NEAR);
+        L(l_col);
+        uni_vpxor(vmm_acc, vmm_acc, vmm_acc);
+        mov(reg_ptr, reg_src);
+        mov(reg_cnt, reg_k);
+
+        L(l_full);
+        cmp(reg_cnt, vlen);
+        jl(l_tail_done, T_NEAR);
+        if (is_zmm)
+            vmovdqu8(vmm_ld, ptr[reg_ptr]);
+        else
+            vmovdqu(vmm_ld, ptr[reg_ptr]);
+        accumulate(false);
+        add(reg_ptr, vlen);
+        sub(reg_cnt, vlen);
+        jmp(l_full, T_NEAR);
+
+        L(l_tail_done);
+        Label l_reduce;
+        test(reg_cnt, reg_cnt);
+        jz(l_reduce, T_NEAR);
+        if (is_zmm) {
+            mov(reg_tmp, -1);
+            bzhi(reg_tmp, reg_tmp, reg_cnt);
+            kmovq(k_load, reg_tmp);
+            vmovdqu8(vmm_ld | k_load | T_z, ptr[reg_ptr]);
+        } else {
+            // reg_cnt is a multiple of 4: mask the dwords below it.
+            vmovd(Xmm(vmm_mask.getIdx()), reg_cnt.cvt32());
+            vpbroadcastd(vmm_mask, Xmm(vmm_mask.getIdx()));
+            vpcmpgtd(vmm_mask, vmm_mask, vmm_idx);
+            vpmaskmovd(vmm_ld, vmm_mask, ptr[reg_ptr]);
+        }
+        accumulate(true);
+
+        L(l_reduce);
+        const Xmm xacc(vmm_acc.getIdx()), xtmp(vmm_lo.getIdx());
+        if (is_zmm) {
+            vextracti64x4(Ymm(vmm_lo.getIdx()), Zmm(vmm_acc.getIdx()), 1);
+            vpaddq(Ymm(vmm_acc.getIdx()), Ymm(vmm_acc.getIdx()),
+                    Ymm(vmm_lo.getIdx()));
+        }
+        vextracti128(xtmp, Ymm(vmm_acc.getIdx()), 1);
+        vpaddq(xacc, xacc, xtmp);
+        vpsrldq(xtmp, xacc, 8);
+        vpaddq(xacc, xacc, xtmp);
+        vmovq(reg_tmp, xacc);
+        vcvtsi2ss(xtmp, xtmp, reg_tmp);
+        vmovss(ptr[reg_dst], xtmp);
+
+        add(reg_dst, 4);
+        add(reg_src, reg_stride);
+        dec(reg_n);
+        jnz(l_col, T_NEAR);
+        L(l_done);
+        postamble();
+
+        if (!is_zmm) {
+            align(32);
+            L(l_idx);
+            for (int i = 0; i < 8; ++i)
+                dd(4 * i);
+        }
+    }
+};
+
 // One U/V row per brgemm K call is needed when the raw sum over A is offset
 // by a src zero point or by the s8 -> u8 shift of the kernel.
 static bool has_src_rows(const brgemm_matmul_conf_t &bgmmc) {
@@ -310,10 +460,14 @@ static dim_t gcd_gsize(const brgemm_matmul_conf_t &bgmmc,
 bool brgemm_matmul_per_mn_comp_t::init_conf(brgemm_matmul_conf_t &bgmmc) {
     const bool wei_scales_in_kernel
             = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b;
-    // The S term reads column sums of B: plain N-contiguous, or VNNI-blocked
-    // int4 ([n / wei_n_blk][k / 4][wei_n_blk][4]).
+    // The S term reads column sums of B: plain N-contiguous, K-contiguous
+    // (transposed), or VNNI-blocked int4 ([n / wei_n_blk][k / 4][wei_n_blk][4]).
     const bool B_plain = !bgmmc.blocked_B && !bgmmc.transposed_B
             && bgmmc.B_strides[0] == bgmmc.b_dt_sz;
+    const bool B_transposed = !bgmmc.blocked_B && bgmmc.transposed_B
+            && bgmmc.B_strides[1] == bgmmc.b_dt_sz
+            // Int4 columns must start on a byte boundary.
+            && IMPLICATION(bgmmc.is_int4_weights, bgmmc.B_strides[0] % 2 == 0);
     const bool B_blocked_int4 = bgmmc.blocked_B && bgmmc.is_int4_weights
             && bgmmc.B_strides[1]
                     == bgmmc.b_dt_sz * bgmmc.wei_k_blk * bgmmc.wei_n_blk;
@@ -328,7 +482,8 @@ bool brgemm_matmul_per_mn_comp_t::init_conf(brgemm_matmul_conf_t &bgmmc) {
             && bgmmc.A_strides[0] == bgmmc.a_dt_sz
             // Blocked int8 weights carry their compensation in the md.
             && IMPLICATION(bgmmc.blocked_B, bgmmc.is_int4_weights)
-            && IMPLICATION(has_src_rows(bgmmc), B_plain || B_blocked_int4);
+            && IMPLICATION(has_src_rows(bgmmc),
+                    B_plain || B_transposed || B_blocked_int4);
     if (!ok) return false;
 
     bgmmc.per_mn_comp_wei_gsize = gcd_gsize(bgmmc,
@@ -393,11 +548,17 @@ status_t brgemm_matmul_per_mn_comp_t::create_kernels(
         CHECK(safe_ptr_assign(kernels_[i_M], ker));
     }
     if (has_src_rows(bgmmc)) {
-        col_sum_kernel_t *ker = is_superset(bgmmc.isa, avx512_core)
-                ? static_cast<col_sum_kernel_t *>(new jit_col_sum_kernel_t<Zmm>(
-                          bgmmc.orig_wei_dt, bgmmc.blocked_B))
-                : new jit_col_sum_kernel_t<Ymm>(
-                          bgmmc.orig_wei_dt, bgmmc.blocked_B);
+        const bool is_avx512 = is_superset(bgmmc.isa, avx512_core);
+        const auto dt = bgmmc.orig_wei_dt;
+        col_sum_kernel_t *ker = bgmmc.transposed_B
+                ? (is_avx512 ? static_cast<col_sum_kernel_t *>(
+                                       new jit_col_sum_tr_kernel_t<Zmm>(dt))
+                             : new jit_col_sum_tr_kernel_t<Ymm>(dt))
+                : (is_avx512 ? static_cast<col_sum_kernel_t *>(
+                                       new jit_col_sum_kernel_t<Zmm>(
+                                               dt, bgmmc.blocked_B))
+                             : new jit_col_sum_kernel_t<Ymm>(
+                                       dt, bgmmc.blocked_B));
         CHECK(safe_ptr_assign(col_sum_kernel_, ker));
         CHECK(col_sum_kernel_->create_kernel());
     }
@@ -477,6 +638,45 @@ static void column_sums_plain(const brgemm_matmul_conf_t &bgmmc,
         for (dim_t i = n_ker; i < nv; ++i)
             S[i] += row[i - n_ker];
     }
+}
+
+// Same for transposed B (K-contiguous columns, B_strides[0] elements apart);
+// the kernel takes the whole bytes, the remaining elements are summed here.
+static void column_sums_transposed(const brgemm_matmul_conf_t &bgmmc,
+        const col_sum_kernel_t *ker, const char *B, dim_t k0, dim_t len,
+        dim_t n0, dim_t nv, float *S) {
+    const auto dt = bgmmc.orig_wei_dt;
+    const bool is_int4 = utils::one_of(dt, u4, s4);
+    const int bits = is_int4 ? 4 : 8;
+    const int bias = dt == s4 ? 8 : dt == s8 ? 128 : 0;
+    const dim_t ldn = bgmmc.B_strides[0];
+    dim_t k_ker = 0;
+    if (ker && IMPLICATION(is_int4, k0 % 2 == 0 && ldn % 2 == 0)) {
+        const int gran = ker->col_granularity();
+        const dim_t bytes = (len * bits / 8) / gran * gran;
+        k_ker = bytes * 8 / bits;
+        col_sum_kernel_t::call_params_t p;
+        p.src = B + ((n0 * ldn + k0) * bits >> 3);
+        p.dst = S;
+        p.k_iters = bytes;
+        p.src_stride = ldn * bits >> 3;
+        p.n_cols = nv;
+        (*ker)(&p);
+        for (dim_t i = 0; i < nv; ++i)
+            S[i] -= static_cast<float>(bias * k_ker);
+    }
+    const auto *p8 = reinterpret_cast<const uint8_t *>(B);
+    for (dim_t i = 0; i < nv; ++i)
+        for (dim_t k = k0 + k_ker; k < k0 + len; ++k) {
+            const dim_t idx = (n0 + i) * ldn + k;
+            int v;
+            if (is_int4) {
+                v = (p8[idx >> 1] >> ((idx & 1) * 4)) & 0xF;
+                if (dt == s4) v = (v ^ 8) - 8;
+            } else
+                v = dt == s8 ? static_cast<int8_t>(p8[idx]) : p8[idx];
+            S[i] += static_cast<float>(v);
+        }
 }
 
 // Same for VNNI-blocked int4 B ([n / wei_n_blk][k / 4][wei_n_blk][4]); the
@@ -601,6 +801,9 @@ void brgemm_matmul_per_mn_comp_t::prepare(
                     col_sum_kernel_.get());
             if (bgmmc.blocked_B)
                 column_sums_blocked_int4(
+                        bgmmc, ker, ctx.B_batch(b), k0, len, n0, nv, v);
+            else if (bgmmc.transposed_B)
+                column_sums_transposed(
                         bgmmc, ker, ctx.B_batch(b), k0, len, n0, nv, v);
             else
                 column_sums_plain(

@@ -177,15 +177,12 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
 
     jcp.ur_w = is_bf16 ? (isa_has_bf16(jcp.isa) ? 6 : 4)
             : utils::one_of(isa, avx512_core, avx512_core_fp16) ? 6
-            : isa == avx2                                       ? 4
-                                                                : 3;
+                                                                : 4;
     jcp.ur_w = static_cast<int>(nstl::min<dim_t>(jcp.ur_w, jcp.ow));
 
     jcp.ch_block = simd_w;
     jcp.nb_ch = div_up(jcp.oc, jcp.ch_block);
-    jcp.nb_ch_blocking = is_superset(isa, avx512_core) ? 4
-            : isa == avx2                              ? 3
-                                                       : 2;
+    jcp.nb_ch_blocking = is_superset(isa, avx512_core) ? 4 : 3;
     if (jcp.nb_ch < jcp.nb_ch_blocking)
         jcp.nb_ch_blocking = static_cast<int>(jcp.nb_ch);
 
@@ -274,8 +271,7 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
     VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
     const bool ok_to_pad_channels = true && !is_data_layout_nxc
-            && jcp.oc == jcp.ngroups && jcp.ic == jcp.ngroups
-            && one_of(isa, avx512_core_fp16, avx512_core, avx2);
+            && jcp.oc == jcp.ngroups && jcp.ic == jcp.ngroups;
     if (ok_to_pad_channels) {
         jcp.oc = rnd_up(jcp.oc, simd_w);
         jcp.ic = rnd_up(jcp.oc, simd_w);
@@ -432,7 +428,7 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
     jcp.ch_block = isa == avx512_core ? 16 : 8;
 
     bool ok_to_pad_channels = !is_data_layout_nxc && jcp.oc == jcp.ngroups
-            && jcp.ic == jcp.ngroups && one_of(isa, avx512_core, avx2);
+            && jcp.ic == jcp.ngroups;
     if (ok_to_pad_channels) {
         jcp.oc = rnd_up(jcp.oc, jcp.ch_block);
         jcp.ic = rnd_up(jcp.oc, jcp.ch_block);
@@ -456,14 +452,13 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
 
     jcp.ur_w = is_bf16           ? (isa_has_bf16(jcp.isa) ? 6 : 4)
             : isa == avx512_core ? 6
-            : isa == avx2        ? 4
-                                 : 3;
+                                 : 4;
 
     jcp.loop_order = is_data_layout_nxc ? loop_nhwcg : loop_ngcw;
 
     jcp.ch_tail = static_cast<int>(jcp.ngroups % jcp.ch_block);
     jcp.nb_ch = div_up(jcp.ic, jcp.ch_block);
-    jcp.nb_ch_blocking = isa == avx512_core ? 4 : isa == avx2 ? 3 : 2;
+    jcp.nb_ch_blocking = isa == avx512_core ? 4 : 3;
     if (jcp.nb_ch < jcp.nb_ch_blocking)
         jcp.nb_ch_blocking = static_cast<int>(jcp.nb_ch);
 
@@ -640,8 +635,7 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa>::init_conf(
     jcp.ch_tail = static_cast<int>(jcp.oc_without_padding % jcp.ch_block);
 
     // note: bf16 to be supported in the next commit
-    bool ok_to_pad_channels
-            = !is_data_layout_nxc && one_of(isa, avx512_core, avx2);
+    bool ok_to_pad_channels = !is_data_layout_nxc;
     if (ok_to_pad_channels) { jcp.ngroups = rnd_up(jcp.ngroups, jcp.ch_block); }
 
     VDISPATCH_CONV_IC(
@@ -664,8 +658,7 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa>::init_conf(
     // for byte_load.
     // TODO: enable 'is_fast_depthwise' for bf16 if it offers performance
     // improvement.
-    jcp.is_fast_depthwise
-            = !is_bf16 && is_data_layout_nxc && one_of(isa, avx512_core, avx2);
+    jcp.is_fast_depthwise = !is_bf16 && is_data_layout_nxc;
     constexpr int max_reg_idx = isa == avx512_core ? 31 : 15;
     // Note: anything larger than 4 didn't show significant speedup
     const int max_isa_unroll = jcp.is_fast_depthwise ? 4 : 1;

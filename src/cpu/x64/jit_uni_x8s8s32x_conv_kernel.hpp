@@ -191,21 +191,9 @@ struct jit_uni_x8s8s32x_fwd_kernel_t {
 
     jit_uni_x8s8s32x_fwd_kernel_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
-        : kernel_(nullptr) {
-        const dim_t ch_block
-                = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
-        switch (ch_block) {
-            case 8:
-                if (utils::one_of(isa, avx2)) {
-                    kernel_ = utils::make_unique<
-                            jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Xbyak::Ymm>>(
-                            ajcp, attr, dst_md);
-                } else
-                    assert(!"invalid channel blocking for current ISA");
-                return;
-            default: assert(!"invalid channel blocking");
-        }
-    }
+        : kernel_(utils::make_unique<
+                  jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Xbyak::Ymm>>(
+                  ajcp, attr, dst_md)) {}
 
     status_t create_kernel() {
         if (kernel_) return kernel_->create_kernel();

@@ -95,7 +95,7 @@ private:
     const Vmm vmm_zp = Vmm(1);
     const Vmm vmm_zp_comp = Vmm(2);
 
-    constexpr static int simd_w = isa == avx2 ? 8 : 4;
+    constexpr static int simd_w = 8;
     constexpr static int reg64_size = sizeof(int64_t);
     constexpr static int bcast_loop_work_off = 0;
     constexpr static int reg_bias_data_off = 1 * reg64_size;
@@ -160,7 +160,7 @@ struct jit_uni_x8s8s32x_1x1_conv_kernel_t {
     using jit_avx2_x8s8s32x_1x1_conv_kernel
             = jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<avx2, Xbyak::Ymm>;
 
-    constexpr static int simd_w = isa == avx2 ? 8 : 4;
+    constexpr static int simd_w = 8;
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_x8s8s32x_1x1_conv_kernel_t);

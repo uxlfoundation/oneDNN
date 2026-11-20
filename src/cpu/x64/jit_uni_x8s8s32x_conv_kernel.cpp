@@ -368,9 +368,6 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::compute_ker_dw(int ur_w,
         dim_t pad_l, dim_t pad_r, ic_block_t last_ic_block_flag,
         bool h_padded) {
 
-    if (!(utils::one_of(isa, avx2) && std::is_same<Vmm, Xbyak::Ymm>::value))
-        assert(!"invalid group blocking for depthwise convolution");
-
     const bool compute_kernel = IMPLICATION(h_padded, jcp.signed_input);
 
     if (jcp.src_zero_point) {
@@ -1275,7 +1272,6 @@ status_t jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
     const bool is_1d = ndims == 3;
     const bool is_2d = ndims == 4;
     const bool is_3d = ndims == 5;
-    const bool is_avx2 = isa == avx2;
     assert(is_1d || is_2d || is_3d);
 
     // disabling verbose dispatch messages for unsupported isa for better readability
@@ -1357,26 +1353,19 @@ status_t jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
             "unsupported depthwise implementation for 3D convolution");
 
     if (jcp.is_depthwise) {
-        jcp.ch_block = is_avx2 ? 8 : 4;
+        jcp.ch_block = 8;
         jcp.ic_block = 1;
         jcp.oc_block = 1;
     } else {
         jcp.ch_block = 1;
-        jcp.ic_block = is_avx2 ? 8 : 4;
-        jcp.oc_block = is_avx2 ? 8 : 4;
+        jcp.ic_block = 8;
+        jcp.oc_block = 8;
 
+        // Grouped convolutions don't support channel padding, only non-grouped
+        // ones are padded to the block.
         if (jcp.ngroups == 1) {
-            /* For non grouped convolutions, pad channels by 8 if needed */
             jcp.oc = rnd_up(jcp.oc, jcp.oc_block);
             jcp.ic = rnd_up(jcp.ic, jcp.ic_block);
-        } else if (jcp.ngroups != 1
-                && ((jcp.ic % jcp.ic_block != 0)
-                        || (jcp.oc % jcp.oc_block != 0))) {
-            /* For grouped convolutions, oneDNN doesn't support padding.
-             * When channels per group is not multiple of 8:
-             * - Use Xmm when channels per group is multiple of 4.
-             * - Otherwise return unimplemented */
-            jcp.oc_block = jcp.ic_block = 4;
         }
         VDISPATCH_CONV_IC(
                 !(jcp.ic % jcp.ic_block != 0 || jcp.oc % jcp.oc_block != 0),
@@ -1401,32 +1390,14 @@ status_t jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
         const int c_mask = 0x1,
                   g_mask = 0x3; // mask for i/o-channel and ngroups
         format_tag_t wei_tag;
-        if (jcp.ic_block == 8 || jcp.ch_block == 8) {
-            if (is_1d) {
-                wei_tag = with_groups ? jcp.is_depthwise ? Goiw8g : gOIw2i8o4i
-                                      : OIw2i8o4i;
-            } else if (is_2d) {
-                wei_tag = with_groups ? jcp.is_depthwise ? Goihw8g : gOIhw2i8o4i
-                                      : OIhw2i8o4i;
-            } else {
-                wei_tag = with_groups ? gOIdhw2i8o4i : OIdhw2i8o4i;
-            }
+        if (is_1d) {
+            wei_tag = with_groups ? jcp.is_depthwise ? Goiw8g : gOIw2i8o4i
+                                  : OIw2i8o4i;
+        } else if (is_2d) {
+            wei_tag = with_groups ? jcp.is_depthwise ? Goihw8g : gOIhw2i8o4i
+                                  : OIhw2i8o4i;
         } else {
-            if (is_avx2) {
-                assert(with_groups && jcp.ic_block == 4);
-                wei_tag = is_3d ? gOIdhw4o4i : is_2d ? gOIhw4o4i : gOIw4o4i;
-            } else {
-                if (is_1d) {
-                    wei_tag = with_groups ? jcp.is_depthwise ? Goiw4g : gOIw4o4i
-                                          : OIw4o4i;
-                } else if (is_2d) {
-                    wei_tag = with_groups
-                            ? jcp.is_depthwise ? Goihw4g : gOIhw4o4i
-                            : OIhw4o4i;
-                } else {
-                    wei_tag = with_groups ? gOIdhw4o4i : OIdhw4o4i;
-                }
-            }
+            wei_tag = with_groups ? gOIdhw2i8o4i : OIdhw2i8o4i;
         }
         memory_desc_t want_wei_md = weights_md;
         CHECK_BOOL(memory_desc_init_by_tag(want_wei_md, wei_tag));

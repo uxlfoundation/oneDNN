@@ -192,17 +192,11 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
 
             const bool is_src_s8 = src_md_.data_type == data_type::s8;
             const bool is_src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
-            format_tag_t wei_tag;
-            switch (isa) {
-                case avx2:
-                    wei_tag = with_groups()
-                            ? utils::pick(ndims() - 3, gOIw2i8o4i, gOIhw2i8o4i,
-                                      gOIdhw2i8o4i)
-                            : utils::pick(ndims() - 3, OIw2i8o4i, OIhw2i8o4i,
-                                      OIdhw2i8o4i);
-                    break;
-                default: assert(!"Current ISA is not supported!"); break;
-            }
+            const format_tag_t wei_tag = with_groups()
+                    ? utils::pick(ndims() - 3, gOIw2i8o4i, gOIhw2i8o4i,
+                              gOIdhw2i8o4i)
+                    : utils::pick(
+                              ndims() - 3, OIw2i8o4i, OIhw2i8o4i, OIdhw2i8o4i);
 
             memory_desc_t want_wei_md = weights_md_;
             CHECK_BOOL(memory_desc_init_by_tag(want_wei_md, wei_tag));
@@ -248,7 +242,7 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             // for 1x1: Check that no better ISA is available.
             // for dw: Always fuse with same ISA.
             // Caveat: May be a better dw conv exists.
-            VDISPATCH_CONV_IC(!mayiuse(isa == avx2 ? avx512_core : avx2),
+            VDISPATCH_CONV_IC(!mayiuse(avx512_core),
                     VERBOSE_1x1CONV_HEURISTIC_FAIL, "higher isa is supported");
 
             VDISPATCH_CONV_IC(

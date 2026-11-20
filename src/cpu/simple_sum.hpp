@@ -45,9 +45,11 @@ struct simple_sum_t : public primitive_t {
         status_t init(const engine_t *engine) {
             const int n = n_inputs();
 
-            VDISPATCH_SUM(platform::has_data_type_support(src_data_type),
+            VDISPATCH_SUM(platform::has_data_type_support(src_data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SUM(platform::has_data_type_support(dst_data_type),
+            VDISPATCH_SUM(platform::has_data_type_support(dst_data_type)
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SUM(cpu_sum_pd_t::init(engine) == status::success,
                     VERBOSE_BAD_ENGINE_KIND);

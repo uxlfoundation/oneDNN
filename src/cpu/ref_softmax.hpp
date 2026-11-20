@@ -45,10 +45,10 @@ struct ref_softmax_fwd_t : public primitive_t {
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_SOFTMAX(
+            VDISPATCH_SOFTMAX_SC(
                     platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SOFTMAX(
+            VDISPATCH_SOFTMAX_SC(
                     platform::has_data_type_support(dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(utils::one_of(src_md()->data_type, f32, bf16, f16,
@@ -62,7 +62,7 @@ struct ref_softmax_fwd_t : public primitive_t {
                             | skip_mask_t::post_ops | skip_mask_t::dropout),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SOFTMAX(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_SOFTMAX(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_SOFTMAX_SC(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_SOFTMAX(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
@@ -115,7 +115,7 @@ struct ref_softmax_fwd_t : public primitive_t {
             }
         }
 
-        bool post_ops_ok() const {
+        status_t post_ops_ok() const {
             return ref_post_ops_t::post_ops_ok(attr()->post_ops_);
         }
 
@@ -194,17 +194,31 @@ struct ref_softmax_bwd_t : public primitive_t {
 
         status_t init(const engine_t *engine) {
             using namespace data_type;
-            bool ok = !is_fwd()
-                    && utils::one_of(dst_md()->data_type, f32, bf16, f16)
-                    && utils::one_of(diff_dst_md()->data_type, f32, bf16, f16)
-                    && utils::one_of(diff_src_md()->data_type, f32, bf16, f16)
-                    && platform::has_data_type_support(dst_md()->data_type)
-                    && platform::has_data_type_support(diff_dst_md()->data_type)
-                    && platform::has_data_type_support(diff_src_md()->data_type)
-                    && dst_md()->data_type == diff_dst_md()->data_type
-                    && attr()->has_default_values()
-                    && set_default_formats() == status::success;
-            if (!ok) return status::unimplemented;
+            VDISPATCH_SOFTMAX(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_SOFTMAX_SC(
+                    platform::has_data_type_support(dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX_SC(
+                    platform::has_data_type_support(diff_dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX_SC(
+                    platform::has_data_type_support(diff_src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(
+                    utils::one_of(dst_md()->data_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(
+                    utils::one_of(diff_dst_md()->data_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(
+                    utils::one_of(diff_src_md()->data_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(dst_md()->data_type == diff_dst_md()->data_type,
+                    VERBOSE_INCONSISTENT_DT, "dst", "diff_dst");
+            VDISPATCH_SOFTMAX(
+                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_SOFTMAX(set_default_formats() == status::success,
+                    VERBOSE_UNSUPPORTED_TAG);
 
             return status::success;
         }

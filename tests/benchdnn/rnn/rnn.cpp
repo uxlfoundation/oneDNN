@@ -879,7 +879,8 @@ void prb_t::skip_unimplemented(res_t *res) const {
 
 #if defined(DNNL_AARCH64_USE_ACL)
         const bool is_acl_f16_not_ok = prb->cfg[SRC_LAYER].dt == dnnl_f16
-                && dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16);
+                && dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16)
+                        == dnnl_success;
         if (is_acl_f16_not_ok) {
             res->state = SKIPPED;
             res->reason = reason_t::skip_not_supported;

@@ -80,7 +80,10 @@ struct primitive_desc_iterator_t {
                 engine_, op_desc_.get(), &attr_, offset_, hint_mds, skip_idx_);
 
         pd_ = primitive_cache().get_pd(key);
-        if (pd_) { return *this; }
+        if (pd_) {
+            has_found_impl_ = true;
+            return *this;
+        }
 
         while (++idx_ != last_idx_) {
             if (idx_ == skip_idx_) continue;
@@ -90,8 +93,11 @@ struct primitive_desc_iterator_t {
                     dst_engine_);
             if (s == status::success) {
                 pd_.reset(candidate_pd);
+                has_found_impl_ = true;
                 break;
             }
+            if (s == status::data_type_not_supported)
+                has_unsupported_dt_ = true;
         }
         return *this;
     }
@@ -103,6 +109,17 @@ struct primitive_desc_iterator_t {
     // The iterator is only usable if the attributes it copied were allocated
     // successfully; delegate the check to the copied attributes.
     bool is_initialized() const { return attr_.is_initialized(); }
+
+    // Status to report when no suitable implementation was found. Unsupported
+    // data type is a platform-wide limitation, so a single implementation
+    // reporting it is enough. However, if any implementation was created and
+    // then rejected by the caller (e.g. when creating a nested primitive), the
+    // data types are supported and the reason is something else.
+    status_t no_impl_status() const {
+        return has_unsupported_dt_ && !has_found_impl_
+                ? status::data_type_not_supported
+                : status::unimplemented;
+    }
 
 protected:
     int idx_;
@@ -117,6 +134,8 @@ protected:
     int offset_;
     const engine_t *src_engine_;
     const engine_t *dst_engine_;
+    bool has_unsupported_dt_ = false;
+    bool has_found_impl_ = false;
 
 private:
     primitive_desc_iterator_t(const engine_t *engine, int last_idx)
@@ -141,7 +160,9 @@ private:
         , skip_idx_(other.skip_idx_)
         , offset_(other.offset_)
         , src_engine_(other.src_engine_)
-        , dst_engine_(other.dst_engine_) {}
+        , dst_engine_(other.dst_engine_)
+        , has_unsupported_dt_(other.has_unsupported_dt_)
+        , has_found_impl_(other.has_found_impl_) {}
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(primitive_desc_iterator_t);
 };

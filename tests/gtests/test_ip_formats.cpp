@@ -47,9 +47,11 @@ protected:
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
         const bool supports_bf16
-                = dnnl::impl::cpu::platform::has_data_type_support(dnnl_bf16);
+                = dnnl::impl::cpu::platform::has_data_type_support(dnnl_bf16)
+                == dnnl_success;
         const bool supports_f16
-                = dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16);
+                = dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16)
+                == dnnl_success;
 #else
         const bool supports_bf16 = false;
         const bool supports_f16 = false;

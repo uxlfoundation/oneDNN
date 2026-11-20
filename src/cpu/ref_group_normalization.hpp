@@ -40,21 +40,23 @@ struct ref_group_normalization_fwd_t : public primitive_t {
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
             VDISPATCH_GNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_GNORM(
-                    utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8)
-                            && platform::has_data_type_support(
-                                    src_md()->data_type),
+            VDISPATCH_GNORM_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_GNORM_SC(
+                    platform::has_data_type_support(dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_GNORM(
-                    utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8)
-                            && platform::has_data_type_support(
-                                    dst_md()->data_type),
+                    utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_GNORM(
+                    utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_GNORM(attr()->has_default_values(skip_mask_t::scales
                                     | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_GNORM(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_GNORM_SC(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_GNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
@@ -66,7 +68,7 @@ struct ref_group_normalization_fwd_t : public primitive_t {
         }
 
     private:
-        bool post_ops_ok() const {
+        status_t post_ops_ok() const {
             return ref_post_ops_t::post_ops_ok(attr()->post_ops_);
         }
     };
@@ -101,19 +103,22 @@ struct ref_group_normalization_bwd_t : public primitive_t {
 
             VDISPATCH_GNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
-            VDISPATCH_GNORM(utils::one_of(src_md()->data_type, f32, bf16, f16)
-                            && platform::has_data_type_support(
-                                    src_md()->data_type),
+            VDISPATCH_GNORM_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_GNORM_SC(
+                    platform::has_data_type_support(diff_dst_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_GNORM_SC(
+                    platform::has_data_type_support(diff_src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_GNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_GNORM(
-                    utils::one_of(diff_dst_md()->data_type, f32, bf16, f16)
-                            && platform::has_data_type_support(
-                                    diff_dst_md()->data_type),
+                    utils::one_of(diff_dst_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_GNORM(
-                    utils::one_of(diff_src_md()->data_type, f32, bf16, f16)
-                            && platform::has_data_type_support(
-                                    diff_src_md()->data_type),
+                    utils::one_of(diff_src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_GNORM(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

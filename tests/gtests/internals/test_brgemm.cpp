@@ -128,7 +128,8 @@ protected:
                 "Brgemm requires cpu.");
         eng_ = std::make_shared<engine>(engine::kind::cpu, 0);
 
-        SKIP_IF(!impl::cpu::platform::has_data_type_support(p.dt_a),
+        SKIP_IF(impl::cpu::platform::has_data_type_support(p.dt_a)
+                        != dnnl_success,
                 "Engine does not support this data type.");
 
         catch_expected_failures(

@@ -235,7 +235,7 @@ protected:
     ngen::NEOInterfaceHandler interface_ {ngen::HW::Unknown};
 
     void init_interface();
-    void maybe_print_verbose();
+    void maybe_print_verbose() const;
 };
 
 } // namespace jit

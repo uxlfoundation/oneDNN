@@ -649,7 +649,10 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     bool fpmath_bf16 = mode & mode_bf16x1;
     bool fpmath_f16 = mode & mode_f16x1;
 
-    auto add_matches = [&](MatchParams start, const char *(*match)(Type)) {
+    // By value: callers pass match_params elements that push_back() may move.
+    auto add_matches =
+            [&](MatchParams start, // NOLINT(performance-unnecessary-value-param)
+                    const char *(*match)(Type)) {
         if (match(problem.Ta_ext)) {
             match_params.push_back(start);
             match_params.back().selector.precisions[0] = match(problem.Ta_ext);
@@ -959,7 +962,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     auto entries = select(
             catalog(), match_params, eval_params, aux_params_, &observer);
 
-    if (entries.size() < 1) return status::unimplemented;
+    if (entries.empty()) return status::unimplemented;
     entry_ = entries[0];
     return finalize(match_params.tags, eval_params);
 }
@@ -1282,7 +1285,7 @@ std::string gen_desc_t::hash() const {
     return buf;
 }
 
-void gen_kernel_t::maybe_print_verbose() {
+void gen_kernel_t::maybe_print_verbose() const {
     gpu_debug() << "kernel:"
                 << dump_kernel(
                            desc()->hw_, desc()->problem_, desc()->strategy_);

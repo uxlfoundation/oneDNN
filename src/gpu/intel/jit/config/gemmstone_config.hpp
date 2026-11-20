@@ -27,18 +27,14 @@
 #include "gpu/intel/post_ops.hpp"
 #include "ngen_register_allocator.hpp"
 
-// TODO: Work with upstream to prefix defines with GEMMSTONE
-#define DNNL
-#define MICROKERNEL_INTERFACE
-
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-#define ZEBIN_OUTPUT
+#define GEMMSTONE_ZEBIN_OUTPUT
 #define GEMMSTONE_WITH_SYCL_RUNTIME
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#define OPENCL_OUTPUT
+#define GEMMSTONE_OPENCL_OUTPUT
 #define GEMMSTONE_WITH_OPENCL_RUNTIME
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-#define ZEBIN_OUTPUT
+#define GEMMSTONE_ZEBIN_OUTPUT
 #define GEMMSTONE_WITH_L0_RUNTIME
 #endif
 
@@ -59,10 +55,11 @@
 
 namespace gemmstone {
 
-#define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
-#define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>
-#define FORWARD(hw) NGEN_FORWARD_ELF(hw)
-#define GENERATOR_DEBUGINFO \
+#define GEMMSTONE_GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
+#define GEMMSTONE_GENERATOR_BASE(hw) \
+    dnnl::impl::gpu::intel::jit::generator_t<hw>
+#define GEMMSTONE_GENERATOR_FORWARD(hw) NGEN_FORWARD_ELF(hw)
+#define GEMMSTONE_GENERATOR_DEBUGINFO \
     dnnl::impl::gpu::intel::jit::debug_config_t { \
         GENERATOR_NAME, GENERATOR_LINE \
     }
@@ -96,7 +93,7 @@ struct PostOpsProblem {
 
     template <ngen::HW hw>
     using Injector = dnnl::impl::gpu::intel::jit::post_op_injector_t<
-            typename GENERATOR_BASE(hw)::RootCodeGenerator>;
+            typename GEMMSTONE_GENERATOR_BASE(hw)::RootCodeGenerator>;
     static BinaryOp toBinaryOp(const PostOps::entry_t &e);
 
     bool empty() const { return ops.empty(); }
@@ -130,7 +127,7 @@ struct PostOpsProblem {
 
     template <ngen::HW hw>
     void injectNonBinaryPostOps(const PostOps::entry_t &entry,
-            GENERATOR_BASE(hw) * g, ngen::RegisterAllocator ra,
+            GEMMSTONE_GENERATOR_BASE(hw) * g, ngen::RegisterAllocator ra,
             int C_grfs[ngen::GRF::maxRegs()], int C_ngrf) const {
         namespace jit = dnnl::impl::gpu::intel::jit;
         switch (entry.kind()) {
@@ -156,7 +153,7 @@ struct PostOpsProblem {
     }
 
     template <ngen::HW hw>
-    void injectStochasticRound(GENERATOR_BASE(hw) * g,
+    void injectStochasticRound(GEMMSTONE_GENERATOR_BASE(hw) * g,
             ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
             int C_ngrf, const ngen::Subregister &seed, ngen::DataType t) const {
         namespace jit = dnnl::impl::gpu::intel::jit;
@@ -175,9 +172,9 @@ struct PostOpsProblem {
     }
 
     template <ngen::HW hw>
-    void injectMXScale(GENERATOR_BASE(hw) * g, ngen::RegisterAllocator ra,
-            int C_grfs[ngen::GRF::maxRegs()], int C_ngrf,
-            const ngen::Subregister &scaleDst, ngen::DataType t,
+    void injectMXScale(GEMMSTONE_GENERATOR_BASE(hw) * g,
+            ngen::RegisterAllocator ra, int C_grfs[ngen::GRF::maxRegs()],
+            int C_ngrf, const ngen::Subregister &scaleDst, ngen::DataType t,
             int unroll) const {
         namespace jit = dnnl::impl::gpu::intel::jit;
         using Injector = jit::eltwise_injector_f32_t<

@@ -53,6 +53,12 @@ foreach(d ${DIRS})
     list(APPEND SOURCES "${d_sources}")
 endforeach()
 
+# Standalone-only sources
+list(REMOVE_ITEM SOURCES
+    ${ONEDNN_GEMMSTONE_DIR}/dsl/partition.cpp
+    ${ONEDNN_GEMMSTONE_DIR}/dsl/utils/logging.cpp
+    ${ONEDNN_GEMMSTONE_DIR}/generator/ngen_elf.cpp)
+
 # There is no easy way to emulate target_compile_definitions() with the dpcpp
 # host compiler arguments. As such, we cannot split compilation of the generator
 # and codegen templates by using defines.
@@ -99,6 +105,6 @@ include_directories_with_host_compiler_before(${OBJ_LIB} ${ONEDNN_GEMMSTONE_DIR}
 
 if(CMAKE_COMPILER_IS_GNUCC)
     # Workaround for LTO bug in GCC 10, 11, 12 (possibly other versions)
-    set_source_files_properties(generator/pieces/loop_sequencer.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
-    set_source_files_properties(generator/generator.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
+    set_source_files_properties(${ONEDNN_GEMMSTONE_DIR}/generator/pieces/loop_sequencer.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
+    set_source_files_properties(${ONEDNN_GEMMSTONE_DIR}/generator/generator.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
 endif()

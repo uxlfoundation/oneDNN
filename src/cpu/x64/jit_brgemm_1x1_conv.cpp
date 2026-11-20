@@ -168,8 +168,8 @@ status_t brgemm_1x1_convolution_fwd_base_t::pd_t::init(
 
 status_t brgemm_1x1_convolution_fwd_base_t::pd_t::init_brgemm_desc() {
 
-    const auto src_type = src_md(0)->data_type;
-    const auto wei_type = weights_md(0)->data_type;
+    const auto src_type = jcp_.src_dt;
+    const auto wei_type = jcp_.wei_dt;
     const float alpha = 1.0f;
     const float beta = 1.0f;
 
@@ -186,7 +186,8 @@ status_t brgemm_1x1_convolution_fwd_base_t::pd_t::init_brgemm_desc() {
         const auto brg_idx = get_brg_idx(jcp_, params);
 
         brgemm_desc_t brg;
-        brg.fp8_with_f16_vnni_block = jcp_.is_fp8 && jcp_.vnni_block == 2;
+        brg.fp8_with_f16_vnni_block
+                = jcp_.is_fp8 && !jcp_.req_precvt_fp8 && jcp_.vnni_block == 2;
         brgemm_strides_t brg_strides;
         brg_strides.stride_a = jcp_.brg_stride_a;
         brg_strides.stride_b = jcp_.brg_stride_b;
@@ -246,6 +247,20 @@ status_t brgemm_1x1_convolution_fwd_base_t::init(engine_t *engine) {
 
     const auto &jcp = pd()->jcp_;
 
+    if (jcp.req_precvt_fp8) {
+        jit_brgemm_conv_fp8_cvt_kernel_t::cfg_t cfg;
+        cfg.isa = jcp.isa;
+        cfg.src_dt = pd()->src_md()->data_type;
+        cfg.dst_dt = data_type::f16;
+        CHECK(safe_ptr_assign(
+                fp8_src_cvt_, new jit_brgemm_conv_fp8_cvt_kernel_t(cfg)));
+        CHECK(fp8_src_cvt_->create_kernel());
+        cfg.src_dt = pd()->weights_md()->data_type;
+        CHECK(safe_ptr_assign(
+                fp8_weights_cvt_, new jit_brgemm_conv_fp8_cvt_kernel_t(cfg)));
+        CHECK(fp8_weights_cvt_->create_kernel());
+    }
+
     ID = ndims_pick(jcp.id, 1, 1);
     IH = ndims_pick(jcp.ih, jcp.ih, 1);
     IW = jcp.iw;
@@ -271,7 +286,7 @@ status_t brgemm_1x1_convolution_fwd_base_t::init(engine_t *engine) {
     dst_h_sz = OH * dst_w_sz;
     dst_d_sz = OD * dst_h_sz;
 
-    const auto src_type = pd()->src_md(0)->data_type;
+    const auto src_type = jcp.src_dt;
     const bool req_emulation
             = utils::one_of(jcp.isa, avx512_core_fp16, avx10_2);
     const data_type_t last_ic_block_dt
@@ -402,10 +417,9 @@ void brgemm_1x1_convolution_fwd_base_t::exec_ker(
         char *fp8_convert_wsp, const bool is_last_os) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
-    const memory_desc_wrapper weights_d(pd()->weights_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
-    const size_t src_dt_size = types::data_type_size(src_d.data_type());
-    const size_t wei_dt_size = types::data_type_size(weights_d.data_type());
+    const size_t src_dt_size = src_dsz;
+    const size_t wei_dt_size = wei_dsz;
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
     const char *const __restrict src = brgemm_ctx.src;
@@ -754,6 +768,31 @@ status_t brgemm_1x1_convolution_fwd_base_t::execute_forward_all(
 
     const auto &jcp = pd()->jcp_;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
+
+    if (jcp.req_precvt_fp8) {
+        auto *src_f16 = scratchpad.template get<char>(key_brgemm_conv_fp8_src);
+        auto *wei_f16 = scratchpad.template get<char>(key_brgemm_conv_fp8_wei);
+        const auto src_nelems
+                = memory_desc_wrapper(pd()->src_md()).nelems(true);
+        const auto wei_nelems = weights_d.nelems(true);
+        parallel(jcp.nthr, [&](int ithr, int nthr) {
+            dim_t start = 0, end = 0;
+            balance211(src_nelems, nthr, ithr, start, end);
+            jit_brgemm_conv_fp8_cvt_kernel_t::ctx_t p;
+            p.src = brgemm_ctx.src + start;
+            p.dst = src_f16 + start * jcp.src_dsz;
+            p.nelems = end - start;
+            (*fp8_src_cvt_)(&p);
+
+            balance211(wei_nelems, nthr, ithr, start, end);
+            p.src = brgemm_ctx.weights + start;
+            p.dst = wei_f16 + start * jcp.wei_dsz;
+            p.nelems = end - start;
+            (*fp8_weights_cvt_)(&p);
+        });
+        brgemm_ctx.src = src_f16;
+        brgemm_ctx.weights = wei_f16;
+    }
 
     const void *src_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);

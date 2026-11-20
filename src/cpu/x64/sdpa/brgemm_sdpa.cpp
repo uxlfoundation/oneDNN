@@ -171,35 +171,35 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     auto scratchpad = scratchpad_registry().registrar();
 
     if (kind_ == sdpa_impl_kind_t::online_softmax) {
-        auto &fp_ = online_conf_.params;
-        fp_ = sdpa_online_softmax_params_t();
-        fp_.ndims = sdpa_pd_t::ndims;
-        fp_.batch = desc()->batch();
-        fp_.num_head_q = desc()->num_q_heads();
-        fp_.group_head = desc()->num_q_heads() / desc()->num_kv_heads();
-        fp_.seq_q = desc()->queries();
-        fp_.seq_kv = desc()->keys();
-        fp_.head_size_qk = desc()->head_size();
-        fp_.head_size_v = desc()->values();
-        fp_.q_strides.assign(
+        auto &p = online_conf_.params;
+        p = sdpa_online_softmax_params_t();
+        p.ndims = sdpa_pd_t::ndims;
+        p.batch = desc()->batch();
+        p.num_head_q = desc()->num_q_heads();
+        p.group_head = desc()->num_q_heads() / desc()->num_kv_heads();
+        p.seq_q = desc()->queries();
+        p.seq_kv = desc()->keys();
+        p.head_size_qk = desc()->head_size();
+        p.head_size_v = desc()->values();
+        p.q_strides.assign(
                 qry_mdw.strides(), qry_mdw.strides() + sdpa_pd_t::ndims);
-        fp_.k_strides.assign(
+        p.k_strides.assign(
                 key_mdw.strides(), key_mdw.strides() + sdpa_pd_t::ndims);
-        fp_.v_strides.assign(
+        p.v_strides.assign(
                 val_mdw.strides(), val_mdw.strides() + sdpa_pd_t::ndims);
-        fp_.o_strides.assign(
+        p.o_strides.assign(
                 dst_mdw.strides(), dst_mdw.strides() + sdpa_pd_t::ndims);
-        fp_.has_select = with_select_mask();
-        fp_.invert_select = desc()->invert_select;
+        p.has_select = with_select_mask();
+        p.invert_select = desc()->invert_select;
         if (with_select_mask()) {
             const memory_desc_wrapper cond_mdw(desc()->attn_mask_md());
-            fp_.cond_strides.assign(
+            p.cond_strides.assign(
                     cond_mdw.strides(), cond_mdw.strides() + sdpa_pd_t::ndims);
-            fp_.cond_dims.assign(
+            p.cond_dims.assign(
                     cond_mdw.dims(), cond_mdw.dims() + sdpa_pd_t::ndims);
         }
 
-        VDISPATCH_SDPA_SC(sdpa_online_softmax::configure(fp_, online_conf_),
+        VDISPATCH_SDPA_SC(sdpa_online_softmax::configure(p, online_conf_),
                 "sdpa_online_softmax configuration failed");
         nthr_ = online_conf_.nthr;
         scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
@@ -207,35 +207,30 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
         return status::success;
     }
 
-    auto &bp_ = full_conf_.params;
-    bp_ = sdpa_full_softmax_params_t();
-    bp_.batch = desc()->batch();
-    bp_.num_head_q = desc()->num_q_heads();
-    bp_.group_head = desc()->num_q_heads() / desc()->num_kv_heads();
-    bp_.seq_q = desc()->queries();
-    bp_.seq_kv = desc()->keys();
-    bp_.hs_qk = desc()->head_size();
-    bp_.hs_v = desc()->values();
-    bp_.mm_dt = dt;
-    bp_.out_dt = dt;
-    bp_.q_strides.assign(
-            qry_mdw.strides(), qry_mdw.strides() + sdpa_pd_t::ndims);
-    bp_.k_strides.assign(
-            key_mdw.strides(), key_mdw.strides() + sdpa_pd_t::ndims);
-    bp_.v_strides.assign(
-            val_mdw.strides(), val_mdw.strides() + sdpa_pd_t::ndims);
-    bp_.o_strides.assign(
-            dst_mdw.strides(), dst_mdw.strides() + sdpa_pd_t::ndims);
-    bp_.has_select = with_select_mask();
-    bp_.invert_select = desc()->invert_select;
+    auto &p = full_conf_.params;
+    p = sdpa_full_softmax_params_t();
+    p.batch = desc()->batch();
+    p.num_head_q = desc()->num_q_heads();
+    p.group_head = desc()->num_q_heads() / desc()->num_kv_heads();
+    p.seq_q = desc()->queries();
+    p.seq_kv = desc()->keys();
+    p.hs_qk = desc()->head_size();
+    p.hs_v = desc()->values();
+    p.mm_dt = dt;
+    p.out_dt = dt;
+    p.q_strides.assign(qry_mdw.strides(), qry_mdw.strides() + sdpa_pd_t::ndims);
+    p.k_strides.assign(key_mdw.strides(), key_mdw.strides() + sdpa_pd_t::ndims);
+    p.v_strides.assign(val_mdw.strides(), val_mdw.strides() + sdpa_pd_t::ndims);
+    p.o_strides.assign(dst_mdw.strides(), dst_mdw.strides() + sdpa_pd_t::ndims);
+    p.has_select = with_select_mask();
+    p.invert_select = desc()->invert_select;
     if (with_select_mask()) {
         const memory_desc_wrapper cond_mdw(desc()->attn_mask_md());
-        bp_.cond_strides.assign(
+        p.cond_strides.assign(
                 cond_mdw.strides(), cond_mdw.strides() + sdpa_pd_t::ndims);
-        bp_.cond_dims.assign(
-                cond_mdw.dims(), cond_mdw.dims() + sdpa_pd_t::ndims);
+        p.cond_dims.assign(cond_mdw.dims(), cond_mdw.dims() + sdpa_pd_t::ndims);
     }
-    bp_.softmax_inf_as_zero
+    p.softmax_inf_as_zero
             = desc()->softmax_alg == alg_kind::softmax_accurate_inf_as_zero;
 
     // Debugging/perf overrides of the full-softmax strategies:
@@ -246,24 +241,24 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking).
     const std::string schedule = getenv_string_user("SDPA_SCHEDULE");
     if (schedule == "per_head")
-        bp_.schedule = sdpa_full_softmax_schedule_t::per_head;
+        p.schedule = sdpa_full_softmax_schedule_t::per_head;
     else if (schedule == "kv_head_group")
-        bp_.schedule = sdpa_full_softmax_schedule_t::kv_head_group;
+        p.schedule = sdpa_full_softmax_schedule_t::kv_head_group;
     else if (schedule == "split_kv")
-        bp_.schedule = sdpa_full_softmax_schedule_t::split_kv;
+        p.schedule = sdpa_full_softmax_schedule_t::split_kv;
     else
         VDISPATCH_SDPA(
                 utils::one_of(schedule, std::string(), std::string("auto")),
                 "unknown ONEDNN_SDPA_SCHEDULE value '%s'", schedule.c_str());
-    bp_.split_kv_chunks = getenv_int_user("SDPA_SPLIT_KV_CHUNKS", 0);
-    VDISPATCH_SDPA(bp_.split_kv_chunks >= 0,
+    p.split_kv_chunks = getenv_int_user("SDPA_SPLIT_KV_CHUNKS", 0);
+    VDISPATCH_SDPA(p.split_kv_chunks >= 0,
             "invalid ONEDNN_SDPA_SPLIT_KV_CHUNKS value %lld",
-            static_cast<long long>(bp_.split_kv_chunks));
+            static_cast<long long>(p.split_kv_chunks));
     const std::string kv_packing = getenv_string_user("SDPA_KV_PACKING");
     if (kv_packing == "ahead")
-        bp_.kv_packing = sdpa_full_softmax_kv_packing_t::ahead;
+        p.kv_packing = sdpa_full_softmax_kv_packing_t::ahead;
     else if (kv_packing == "per_tile")
-        bp_.kv_packing = sdpa_full_softmax_kv_packing_t::per_tile;
+        p.kv_packing = sdpa_full_softmax_kv_packing_t::per_tile;
     else
         VDISPATCH_SDPA(
                 utils::one_of(kv_packing, std::string(), std::string("auto")),
@@ -273,7 +268,7 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_SDPA(utils::one_of(stack_heads, std::string(), std::string("0"),
                            std::string("1"), std::string("auto")),
             "unknown ONEDNN_SDPA_STACK_HEADS value '%s'", stack_heads.c_str());
-    bp_.allow_stack_heads = stack_heads != "0";
+    p.allow_stack_heads = stack_heads != "0";
 
     if (with_attn_scale()) {
         sdpa_mm1_post_op_t sc;
@@ -281,7 +276,7 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
         sc.is_binary = true;
         sc.rhs_is_scalar = true;
         sc.rhs_dt = f32;
-        bp_.mm1_post_ops.push_back(sc);
+        p.mm1_post_ops.push_back(sc);
     }
     if (with_buffer_mask()) {
         const memory_desc_wrapper mask_mdw(desc()->attn_mask_md());
@@ -293,10 +288,10 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
         mk.rhs_dims.assign(mask_mdw.dims(), mask_mdw.dims() + sdpa_pd_t::ndims);
         mk.rhs_strides.assign(
                 mask_mdw.strides(), mask_mdw.strides() + sdpa_pd_t::ndims);
-        bp_.mm1_post_ops.push_back(mk);
+        p.mm1_post_ops.push_back(mk);
     }
 
-    VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(bp_, full_conf_),
+    VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(p, full_conf_),
             "sdpa_full_softmax configuration failed");
     nthr_ = full_conf_.nthr;
     scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
@@ -406,7 +401,7 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
     args.scratch = scratch;
     args.fill = fill_val;
     // rhs base pointers for the mm1 binary post-ops, in the same order they
-    // were appended to bp_.mm1_post_ops: scale (scalar) then attention mask.
+    // were appended to p.mm1_post_ops: scale (scalar) then attention mask.
     if (pd()->with_attn_scale()) args.mm1_post_op_rhs.push_back(&scale_val);
     if (pd()->with_buffer_mask())
         args.mm1_post_op_rhs.push_back(

@@ -1216,13 +1216,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
 status_t create_kernels(cpu_isa_t isa_for_ir,
         const sdpa_full_softmax_conf_t &conf, engine_t *engine,
         sdpa_full_softmax_kernels_t &kernels) {
-    const sdpa_full_softmax_params_t &p_ = conf.params;
-    const dim_t q_block_ = conf.q_block;
-    auto &softmax_pd_ = kernels.softmax_pd;
-    auto &softmax_kernel_ = kernels.softmax_kernel;
-    auto &select_kernel_ = kernels.select_kernel;
+    const sdpa_full_softmax_params_t &p = conf.params;
 
-    const dim_t seq_kv = p_.seq_kv;
+    const dim_t seq_kv = p.seq_kv;
     constexpr int ndims = sdpa_pd_t::ndims;
     constexpr int row_dim = ndims - 2;
 
@@ -1237,25 +1233,25 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
             if (!rows[i] || !cols[i]) continue;
             packers[i].reset(new sdpa_brgemm_copy::b_packer_t());
             CHECK(packers[i]->init(
-                    rows[i], cols[i], row_stride, col_stride, p_.mm_dt));
+                    rows[i], cols[i], row_stride, col_stride, p.mm_dt));
         }
         return status::success;
     };
     const bool per_tile
             = conf.kv_packing == sdpa_full_softmax_kv_packing_t::per_tile;
     if (conf.pack_k) {
-        const dim_t rows[2] = {p_.hs_qk, p_.hs_qk};
+        const dim_t rows[2] = {p.hs_qk, p.hs_qk};
         const dim_t cols[2] = {per_tile ? conf.mm1_n_block : seq_kv,
                 per_tile ? conf.mm1_n_tail : 0};
-        CHECK(init_packers(kernels.k_packers, rows, cols, p_.k_strides[row_dim],
-                p_.k_strides[ndims - 1]));
+        CHECK(init_packers(kernels.k_packers, rows, cols, p.k_strides[row_dim],
+                p.k_strides[ndims - 1]));
     }
     if (conf.pack_v) {
         const dim_t rows[2] = {per_tile ? conf.mm2_k_block : seq_kv,
                 per_tile ? conf.mm2_k_tail : 0};
-        const dim_t cols[2] = {p_.hs_v, p_.hs_v};
-        CHECK(init_packers(kernels.v_packers, rows, cols, p_.v_strides[row_dim],
-                p_.v_strides[ndims - 1]));
+        const dim_t cols[2] = {p.hs_v, p.hs_v};
+        CHECK(init_packers(kernels.v_packers, rows, cols, p.v_strides[row_dim],
+                p.v_strides[ndims - 1]));
     }
     if (conf.schedule == sdpa_full_softmax_schedule_t::split_kv
             && conf.split_kv.mm2_chunks > 1) {
@@ -1281,18 +1277,18 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     // kernel is per-row, so the same instance serves the query-tail block too.
     {
         memory_desc_t sm_src_md, sm_dst_md;
-        dims_t sm_dims = {q_block_, seq_kv};
+        dims_t sm_dims = {conf.q_block, seq_kv};
         CHECK(memory_desc_init_by_tag(
                 sm_src_md, 2, sm_dims, data_type::f32, format_tag::ab));
         CHECK(memory_desc_init_by_tag(
-                sm_dst_md, 2, sm_dims, p_.mm_dt, format_tag::ab));
+                sm_dst_md, 2, sm_dims, p.mm_dt, format_tag::ab));
         softmax_desc_t sd {};
         sd.primitive_kind = primitive_kind::softmax;
         sd.prop_kind = prop_kind::forward_inference;
         // inf_as_zero: a fully-masked row (all -inf) must produce an
         // all-zero row instead of NaN. The jit softmax kernel implements
         // this natively for the softmax_accurate_inf_as_zero alg.
-        sd.alg_kind = p_.softmax_inf_as_zero
+        sd.alg_kind = p.softmax_inf_as_zero
                 ? alg_kind::softmax_accurate_inf_as_zero
                 : alg_kind::softmax_accurate;
         sd.src_desc = sm_src_md;
@@ -1311,7 +1307,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
         while (++it != it.end()) {
             if (auto *p = dynamic_cast<jit_uni_softmax_fwd_t::pd_t *>(
                         (*it).get())) {
-                softmax_pd_ = *it;
+                kernels.softmax_pd = *it;
                 jit_pd = p;
                 break;
             }
@@ -1328,7 +1324,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
             delete k;
             return st;
         }
-        softmax_kernel_.reset(k);
+        kernels.softmax_kernel.reset(k);
     }
 
     // Build the standalone select-mask pre-pass kernel when a select mask is
@@ -1337,18 +1333,18 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     // runtime argument, so one instance serves both the full and query-tail
     // tiles. The condition is dense along seq_kv (cond_col == 1) because the
     // pd requires the key axis to be full and plain.
-    if (p_.has_select && !conf.mm1_select_postop) {
-        const dim_t cond_row = p_.cond_dims[sdpa_pd_t::mask_q_index] == 1
+    if (p.has_select && !conf.mm1_select_postop) {
+        const dim_t cond_row = p.cond_dims[sdpa_pd_t::mask_q_index] == 1
                 ? 0
-                : p_.cond_strides[sdpa_pd_t::mask_q_index];
+                : p.cond_strides[sdpa_pd_t::mask_q_index];
         std::shared_ptr<jit_generator_t> k(
                 sdpa_full_softmax_select_ir::create_select_ir_kernel(isa_for_ir,
                         /*wseq_kv=*/seq_kv,
-                        /*invert_select=*/p_.invert_select,
+                        /*invert_select=*/p.invert_select,
                         /*scores_row_stride=*/conf.ld_scores,
                         /*cond_row_stride=*/cond_row));
         CHECK(k->create_kernel());
-        select_kernel_ = std::move(k);
+        kernels.select_kernel = std::move(k);
     }
 
     return status::success;

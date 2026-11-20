@@ -107,21 +107,19 @@ float f32_tile_l2_set_load(
     return static_cast<float>(max_occupancy) / ways;
 }
 
-// Tensor descriptor for a buffer, its memory descriptor, optional copy
-// descriptor, and scratch pointer. Templated to distinguish between const
-// and non-const byte buffers.
-template <typename T>
-struct tensor_desc_t {
-    sdpa_arg_buf_t<T> arg;
+// A B operand (K or V) of the mm1/mm2 BRGEMM: the user buffer with its memory
+// descriptor and, when the tensor is packed ahead, its copy descriptor and
+// scratch pointer.
+struct b_tensor_desc_t {
+    sdpa_arg_buf_t<const char> arg;
     const tensor_copy_desc_t *copy_desc = nullptr;
     char *scratch_ptr = nullptr;
 };
 
-template <typename T>
-tensor_desc_t<T> get_tensor_desc(const sdpa_arg_buf_t<T> &arg,
+b_tensor_desc_t get_b_tensor_desc(const sdpa_arg_buf_t<const char> &arg,
         const utils::optional_t<tensor_copy_desc_t> &copy_desc,
         char *scratch_ptr, size_t shared_area_offset) {
-    tensor_desc_t<T> td;
+    b_tensor_desc_t td;
     td.arg = arg;
     if (copy_desc) {
         td.copy_desc = &*copy_desc;
@@ -133,20 +131,18 @@ tensor_desc_t<T> get_tensor_desc(const sdpa_arg_buf_t<T> &arg,
 
 // Get the pointer to the argument buffer for the given batch and head indices.
 template <typename T>
-T *get_arg_ptr(const tensor_desc_t<T> &td, dim_t batch_idx, dim_t head_idx,
+T *get_arg_ptr(const sdpa_arg_buf_t<T> &arg, dim_t batch_idx, dim_t head_idx,
         dim_t row_idx = 0) {
-    const memory_desc_wrapper mdw(td.arg.md);
+    const memory_desc_wrapper mdw(arg.md);
     dim_t offset = 0;
     if (mdw.dims()[0] != 1) offset += batch_idx * mdw.strides()[0];
     if (mdw.dims()[1] != 1) offset += head_idx * mdw.strides()[1];
     if (mdw.dims()[2] != 1) offset += row_idx * mdw.strides()[2];
-    return td.arg.buffer + offset * types::data_type_size(mdw.data_type());
+    return arg.buffer + offset * types::data_type_size(mdw.data_type());
 }
 
 // Get the pointer to the copy buffer for the given batch and head indices.
-template <typename T>
-char *get_copy_ptr(
-        const tensor_desc_t<T> &td, dim_t batch_idx, dim_t head_idx) {
+char *get_copy_ptr(const b_tensor_desc_t &td, dim_t batch_idx, dim_t head_idx) {
     const auto *copy_desc = td.copy_desc;
     assert(copy_desc);
     return td.scratch_ptr + batch_idx * copy_desc->batch_stride
@@ -155,16 +151,15 @@ char *get_copy_ptr(
 
 // Get the pointer to the tile buffer for the given batch and head indices
 // depending on whether a copy buffer is used.
-template <typename T>
-T *get_tile_ptr(const tensor_desc_t<T> &td, dim_t batch_idx, dim_t head_idx) {
+const char *get_tile_ptr(
+        const b_tensor_desc_t &td, dim_t batch_idx, dim_t head_idx) {
     if (td.copy_desc) return get_copy_ptr(td, batch_idx, head_idx);
-    return get_arg_ptr(td, batch_idx, head_idx);
+    return get_arg_ptr(td.arg, batch_idx, head_idx);
 }
 
 // Return the B-matrix offset in elements for logical coordinates [k0, n0].
-template <typename T>
 size_t get_tile_offset_in_elements(
-        const tensor_desc_t<T> &td, dim_t k0, dim_t n0) {
+        const b_tensor_desc_t &td, dim_t k0, dim_t n0) {
     if (!td.copy_desc) {
         constexpr int row_dim = sdpa_pd_t::ndims - 2;
         constexpr int col_dim = sdpa_pd_t::ndims - 1;
@@ -185,8 +180,8 @@ class b_operand_t {
 public:
     using packer_t = sdpa_brgemm_copy::b_packer_t;
 
-    b_operand_t(const tensor_desc_t<const char> &td, dim_t batch_idx,
-            dim_t kv_head_idx, const std::unique_ptr<packer_t> (&packers)[2],
+    b_operand_t(const b_tensor_desc_t &td, dim_t batch_idx, dim_t kv_head_idx,
+            const std::unique_ptr<packer_t> (&packers)[2],
             const utils::optional_t<tensor_copy_desc_t> &tile_desc,
             char *thread_scratch, size_t dt_sz)
         : td_(td)
@@ -221,7 +216,7 @@ public:
     }
 
 private:
-    const tensor_desc_t<const char> &td_;
+    const b_tensor_desc_t &td_;
     const char *head_;
     const std::unique_ptr<packer_t> (&packers_)[2];
     const tensor_copy_desc_t *tile_desc_;
@@ -1373,16 +1368,10 @@ struct exec_state_t {
         , mm_dt_sz(types::data_type_size(conf.params.mm_dt))
         , scratch(static_cast<char *>(args.scratch))
         , shared_area_offset(conf.scratch_per_thread * nthr)
-        , q_td(get_tensor_desc(
-                  args.q, conf.q_copy_desc, scratch, shared_area_offset))
-        , k_td(get_tensor_desc(
+        , k_td(get_b_tensor_desc(
                   args.k, conf.k_copy_desc, scratch, shared_area_offset))
-        , v_td(get_tensor_desc(
-                  args.v, conf.v_copy_desc, scratch, shared_area_offset))
-        , cond_td(get_tensor_desc(
-                  args.cond, conf.cond_copy_desc, scratch, shared_area_offset))
-        , o_td(get_tensor_desc(
-                  args.out, conf.o_copy_desc, scratch, shared_area_offset)) {}
+        , v_td(get_b_tensor_desc(
+                  args.v, conf.v_copy_desc, scratch, shared_area_offset)) {}
 
     char *thread_scratch(int tid) const {
         return scratch + tid * conf.scratch_per_thread;
@@ -1394,7 +1383,7 @@ struct exec_state_t {
     const uint8_t *cond(dim_t batch_idx, dim_t head, dim_t q0) const {
         if (!p.has_select) return nullptr;
         return reinterpret_cast<const uint8_t *>(
-                get_arg_ptr(cond_td, batch_idx, head, q0));
+                get_arg_ptr(args.cond, batch_idx, head, q0));
     }
 
     const sdpa_full_softmax_conf_t &conf;
@@ -1404,8 +1393,7 @@ struct exec_state_t {
     const size_t mm_dt_sz;
     char *const scratch;
     const size_t shared_area_offset;
-    const tensor_desc_t<const char> q_td, k_td, v_td, cond_td;
-    const tensor_desc_t<char> o_td;
+    const b_tensor_desc_t k_td, v_td;
 };
 
 // When packing ahead, materialise mm1's B (K as a dense [hs_qk, seq_kv]
@@ -1466,7 +1454,7 @@ void pack_kv_ahead(const exec_state_t &st, int nthr) {
 
             const dim_t batch_idx = head_idx / num_head_kv;
             const dim_t kv_head_idx = head_idx % num_head_kv;
-            const char *src = get_arg_ptr(td, batch_idx, kv_head_idx);
+            const char *src = get_arg_ptr(td.arg, batch_idx, kv_head_idx);
             char *dst = get_copy_ptr(td, batch_idx, kv_head_idx);
 
             if (!fine_grained) {
@@ -1603,8 +1591,8 @@ public:
         for (dim_t h = 0; h < conf_.query_heads_per_item; ++h) {
             const dim_t head = head0 + h;
             auto &hp = heads[h];
-            hp.q = get_arg_ptr(st.q_td, batch_idx, head, q0);
-            hp.out = get_arg_ptr(st.o_td, batch_idx, head, q0);
+            hp.q = get_arg_ptr(st.args.q, batch_idx, head, q0);
+            hp.out = get_arg_ptr(st.args.out, batch_idx, head, q0);
             hp.cond = st.cond(batch_idx, head, q0);
             if (has_mm1_postops_)
                 append_mm1_rhs(rhs, st.p, st.args, batch_idx, head, q0,
@@ -1909,7 +1897,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
             add_f32_tile(acc_ker, acc, src, m, p.hs_v, conf.ld_pv);
         }
 
-        char *out = get_arg_ptr(st.o_td, batch_idx, head, q0);
+        char *out = get_arg_ptr(st.args.out, batch_idx, head, q0);
         if (fuse_add_and_convert_to_xf16) {
             add_tile_and_cvt_to_xf16(acc, acc + last_chunk * partial_floats,
                     conf.ld_pv, out, o_row_stride, p.out_dt, m, p.hs_v);

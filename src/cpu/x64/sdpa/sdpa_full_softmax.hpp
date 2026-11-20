@@ -296,10 +296,9 @@ struct sdpa_full_softmax_conf_t {
     sdpa_full_softmax_brgemm_t brgemm;
     sdpa_full_softmax_split_kv_t split_kv;
 
-    // The optional copy descriptors describe whole tensors packed ahead into
-    // the shared scratch area.
-    utils::optional_t<tensor_copy_desc_t> q_copy_desc, k_copy_desc, v_copy_desc,
-            o_copy_desc, cond_copy_desc;
+    // The optional copy descriptors describe whole K / V tensors packed ahead
+    // into the shared scratch area.
+    utils::optional_t<tensor_copy_desc_t> k_copy_desc, v_copy_desc;
     // Tile buffers for packing per tile: scratch_offset is relative to the
     // thread's scratch block, padded_k is that of a full (non-tail) tile.
     utils::optional_t<tensor_copy_desc_t> k_tile_desc, v_tile_desc;

@@ -3932,6 +3932,18 @@ void CopyPlan::optimizeConcatenate(bool initial)
 {
     const auto grf = ngen::GRF::bytes(hw);
     auto ninsn = insns.size();
+
+    // A whole-GRF temporary written in full by one instruction only, so it can be appended to another.
+    std::vector<int> writers(temps.size());
+    for (const auto &i: insns)
+        if (!i.isInvalid() && i.dst.temp) writers[i.dst.value]++;
+    auto soleTemp = [&](const CopyInstruction &i) {
+        const auto &d = i.dst;
+        if (!d.temp || d.kind != CopyOperand::GRF || d.grf || d.offset || d.stride != 1) return false;
+        const auto &t = temps[d.value];
+        return writers[d.value] == 1 && !t.offset && t.bytes % grf == 0
+                && t.bytes == elementsToBytes(i.simd, d.type);
+    };
     for (size_t n1 = 0; n1 < ninsn; n1++) {
         for (size_t n2 = n1 + 1; n2 < ninsn; n2++) {
             auto &i1 = insns[n1];
@@ -3960,8 +3972,16 @@ void CopyPlan::optimizeConcatenate(bool initial)
                 return (elems == simd1) && ((lead & (o1.stride - 1)) == 0) && (lead >= 0) && (lead <= breadth);
             };
 
+            // Place a separate destination temporary right after i1's.
+            auto dst2 = i2.dst;
+            bool merge = soleTemp(i1) && soleTemp(i2);
+            if (merge) {
+                dst2.value = i1.dst.value;
+                dst2.grf = temps[i1.dst.value].bytes / grf;
+            }
+
             bool tooFar = false;
-            bool doJoin = joinable(i1.dst, i2.dst, &tooFar) && joinable(i1.src0, i2.src0)
+            bool doJoin = joinable(i1.dst, dst2, &tooFar) && joinable(i1.src0, i2.src0)
                        && joinable(i1.src1, i2.src1) && joinable(i1.src2, i2.src2);
 
             int simd = std::max(simd1 + i2.simd, i1.simd);
@@ -3976,8 +3996,16 @@ void CopyPlan::optimizeConcatenate(bool initial)
                 if (simd == i1.simd)
                     // i1 completely overlaps i2; remove it.
                     i2.invalidate();
-                else if (auto &i = join(i1, i2))
+                else if (auto &i = join(i1, i2)) {
                     i.simd = simd;
+                    if (merge) {
+                        auto t1 = dst2.value, t2 = i2.dst.value;
+                        for (auto &j: insns)
+                            for (auto o: {&j.dst, &j.src0, &j.src1, &j.src2})
+                                if (o->temp && o->value == t2) o->value = t1, o->grf += dst2.grf;
+                        temps[t1].bytes += temps[t2].bytes;
+                    }
+                }
             }
         }
     }

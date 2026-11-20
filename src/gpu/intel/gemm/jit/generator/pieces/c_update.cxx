@@ -1628,9 +1628,6 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
     bool surface = !strategy.C.base.isStateless();
     bool loadOnly = (op == COperation::Load);
 
-    bool fbfEmulate = (!strategy.systolicAvailable && op == COperation::UpdateStore
-            && state.Tacc.real() == Type::f32 && Tc_ext.real() == Type::bf16);
-
     // Vector length in inner loop.
     const auto nbytes = 64;
     auto nec = std::min(nbytes / Tc, nbytes / Tc_ext);
@@ -1767,11 +1764,6 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
     state.raVFlag.claim(f0[0]);
     state.raVFlag.claim(f0[1]);
     state.raVFlag.claim(f1[0]);
-    if (fbfEmulate) {
-        state.raVFlag.claim(f1[1]);
-        state.emulate.flag = f1[1];
-        state.emulate.flagOffset = 0;
-    }
 
     // Clear f0[1] for any16h trick.
     if (strategy.fused && !lateYLoopCheck) {
@@ -2092,9 +2084,6 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
     state.raVFlag.release(f0[1]);
     state.raVFlag.release(f1[0]);
     state.ra.safeRelease(bases);
-
-    if (fbfEmulate)
-        state.raVFlag.safeRelease(state.emulate.flag);
 
     state.ra.safeRelease(indexVec);
     state.ra.safeRelease(Cload);

@@ -4067,3 +4067,197 @@ TEST(sdpa_probs_scales, Validation) {
                       /* vs_dst = */ true),
             dnnl_unimplemented);
 }
+
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include "gemmstone/microkernel/shim.hpp"
+#include "gemmstone/microkernel_selector.hpp"
+#include "ngen_gen12.hpp"
+
+namespace {
+
+constexpr uint32_t sdpa_make_gmdid(
+        uint32_t arch, uint32_t release, uint32_t revision = 0) {
+    return (arch << 22) | (release << 14) | revision;
+}
+
+struct sdpa_microkernel_bf16_zp_params_t {
+    const char *name;
+    uint32_t gmdid;
+    int eu_count;
+    int subgroup_size;
+    int unroll_m;
+    int unroll_n;
+    int wg_m;
+    int wg_n;
+    gemmstone::Type ta_ext;
+    bool with_scales;
+    bool per_channel;
+};
+
+struct sdpa_microkernel_bf16_zp_test_t
+    : public ::testing::TestWithParam<sdpa_microkernel_bf16_zp_params_t> {};
+
+TEST_P(sdpa_microkernel_bf16_zp_test_t, SelectAndGenerateShim) {
+    using namespace gemmstone;
+    using namespace gemmstone::microkernel;
+
+    const auto &p = GetParam();
+
+    HWInformation hw_info {};
+    hw_info.gmdid = p.gmdid;
+    hw_info.euCount = p.eu_count;
+    hw_info.systolicAvailable = true;
+    hw_info.isEfficient64Bit = false;
+
+    GEMMProblem problem;
+    problem.Ta_ext = p.ta_ext;
+    problem.Tb_ext = Type::bf16;
+    problem.Ta = Type::bf16;
+    problem.Tb = Type::bf16;
+    problem.Tc = Type::f32;
+    problem.Tc_ext = Type::f32;
+    problem.Ts = Type::f32;
+
+    const int head_size = 128;
+    const int seq_len = 64;
+
+    problem.A.layout = p.per_channel ? MatrixLayout::N : MatrixLayout::T;
+    problem.B.layout = MatrixLayout::Pr;
+    problem.C.layout = p.per_channel ? MatrixLayout::N : MatrixLayout::T;
+
+    problem.A.setAlignment(
+            alignmentForLD(static_cast<int>(head_size * problem.Ta_ext)));
+    problem.B.setAlignment(64);
+    if (p.per_channel) {
+        problem.B.crosspack = 16;
+    } else {
+        problem.B.crosspack = 2;
+        problem.B.tileR = head_size;
+        problem.B.tileC = p.subgroup_size;
+    }
+
+    // 2D BF16 zero points for quantized matrix A (asymmetric dequantization).
+    problem.Tao = Type::bf16;
+    problem.AO.setAlignment(Type(Type::bf16).size());
+    problem.AO.layout = MatrixLayout::N;
+    problem.aoPtrDims = 2;
+    problem.aOffset = ABOffset::Calc;
+
+    if (p.with_scales) {
+        problem.Ta_scale = Type::bf16;
+        problem.A_scale.setAlignment(Type(Type::bf16).size());
+        problem.A_scale.layout = MatrixLayout::N;
+        problem.asPtrDims = 2;
+    }
+
+    if (p.per_channel) {
+        problem.aqGroupM = head_size;
+        problem.aqGroupK = 1;
+    } else {
+        problem.aqGroupM = 1;
+        problem.aqGroupK = head_size;
+    }
+
+    GEMMOptions opts;
+    opts.localB = true;
+    opts.slmPtr = true;
+    opts.scaleA = p.with_scales;
+    opts.offsetA = true;
+
+    SizeParams sizes;
+    sizes.m = p.per_channel ? head_size : seq_len;
+    sizes.n = p.unroll_n * p.wg_n;
+    sizes.k = p.per_channel ? seq_len : head_size;
+    sizes.batch = 1;
+
+    std::vector<StrategyRequirement> reqs;
+    reqs.push_back(StrategyRequirement::UnrollM == p.unroll_m);
+    reqs.push_back(StrategyRequirement::UnrollN == p.unroll_n);
+    reqs.push_back(StrategyRequirement::WGM == p.wg_m);
+    reqs.push_back(StrategyRequirement::WGN == p.wg_n);
+
+    HostPayload host(p.subgroup_size, /*argumentBytes=*/128, /*liveBytes=*/0);
+
+    Package pkg;
+    ASSERT_NO_THROW(
+            pkg = selectGEMM(opts, host, hw_info, sizes, problem, reqs));
+    EXPECT_FALSE(pkg.binary.empty());
+    EXPECT_EQ(pkg.status, Package::Status::Success);
+
+    // Intel Xe hardware does not support binary add with two bf16 sources
+    // (mixed-mode bf16 + f32 is required). Verify that asymmetric bf16
+    // zero-point subtraction promotes the zero-point operand to f32 instead
+    // of emitting an illegal add(bf, bf, bf) instruction.
+    ASSERT_EQ(pkg.binary.size() % sizeof(ngen::Instruction12), 0u);
+    const unsigned bf_tc = ngen::getTypecode12(ngen::DataType::bf);
+    for (size_t off = 0; off < pkg.binary.size();
+            off += sizeof(ngen::Instruction12)) {
+        ngen::Instruction12 insn {};
+        std::memcpy(&insn, pkg.binary.data() + off, sizeof(insn));
+        if (insn.common.cmptCtrl) continue;
+        if (insn.opcode() == ngen::Opcode::add) {
+            const bool both_bf = (insn.src0Typecode() == bf_tc)
+                    && (insn.src1Typecode() == bf_tc);
+            ASSERT_FALSE(both_bf)
+                    << "Illegal add instruction with two bf16 sources at byte "
+                       "offset "
+                    << off << " (dst_tc=" << insn.dstTypecode() << ")";
+        }
+    }
+
+    ShimOptions shim_opts;
+    shim_opts.subgroupSize = p.subgroup_size;
+    shim_opts.useTileOps = true;
+    shim_opts.decorator = "ugemm_kq";
+    shim_opts.microkernelID = 0;
+
+    std::string shim;
+    ASSERT_NO_THROW(shim = generateShim(pkg, HostLanguage::OpenCL_C, shim_opts));
+    EXPECT_FALSE(shim.empty());
+}
+
+INSTANTIATE_TEST_SUITE_P(BF16AsymmetricDequant, sdpa_microkernel_bf16_zp_test_t,
+        ::testing::Values(
+                sdpa_microkernel_bf16_zp_params_t {
+                        "Xe2_s8_bf16zp_bf16scale_per_token",
+                        sdpa_make_gmdid(20, 1), 160, 16, 16, 32, 4, 1,
+                        gemmstone::Type::s8, true, false},
+                sdpa_microkernel_bf16_zp_params_t {
+                        "Xe2_u4_bf16zp_bf16scale_per_token",
+                        sdpa_make_gmdid(20, 1), 160, 16, 16, 32, 4, 1,
+                        gemmstone::Type::u4, true, false},
+                sdpa_microkernel_bf16_zp_params_t {
+                        "Xe2_s8_bf16zp_noscale_per_token",
+                        sdpa_make_gmdid(20, 1), 160, 16, 16, 32, 4, 1,
+                        gemmstone::Type::s8, false, false},
+                sdpa_microkernel_bf16_zp_params_t {
+                        "XeHPG_s8_bf16zp_bf16scale_per_token",
+                        sdpa_make_gmdid(12, 55), 512, 8, 8, 32, 8, 2,
+                        gemmstone::Type::s8, true, false},
+                sdpa_microkernel_bf16_zp_params_t {
+                        "XeHPG_u4_bf16zp_bf16scale_per_channel",
+                        sdpa_make_gmdid(12, 55), 512, 8, 8, 32, 8, 2,
+                        gemmstone::Type::u4, true, true},
+                sdpa_microkernel_bf16_zp_params_t {
+                        "XeHPC_s8_bf16zp_bf16scale_per_token",
+                        sdpa_make_gmdid(12, 60), 512, 16, 16, 32, 4, 1,
+                        gemmstone::Type::s8, true, false},
+                sdpa_microkernel_bf16_zp_params_t {
+                        "Xe3_s8_bf16zp_bf16scale_per_token",
+                        sdpa_make_gmdid(30, 0), 96, 16, 16, 32, 4, 1,
+                        gemmstone::Type::s8, true, false},
+                sdpa_microkernel_bf16_zp_params_t {
+                        "Xe3_u4_bf16zp_bf16scale_per_token",
+                        sdpa_make_gmdid(30, 0), 96, 16, 16, 32, 4, 1,
+                        gemmstone::Type::u4, true, false}),
+        [](const ::testing::TestParamInfo<sdpa_microkernel_bf16_zp_params_t>
+                        &info) { return std::string(info.param.name); });
+
+} // namespace
+#endif

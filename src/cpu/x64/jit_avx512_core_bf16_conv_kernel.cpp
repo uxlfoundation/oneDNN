@@ -308,10 +308,7 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::store_dst(int ur_w) {
                     size_t aux_dst_offset = get_dst_offset(j, k);
                     auto addr = EVEX_compress_addr(reg_dst, aux_dst_offset);
                     vcvtneps2bf16(vmm_down, vmm);
-                    // for xmm, upper half is zero after conversion to
-                    // bf16, so mask always & mask for tails
-                    bool mask_flag = jcp.simd_w == 4 || oc_tail;
-                    vmovdqu16(addr, may_be_mask_vmm(vmm_down, mask_flag));
+                    vmovdqu16(addr, may_be_mask_vmm(vmm_down, oc_tail));
                 }
             }
         } else if (isa_has_bf16(jcp.isa) /* !is_dst_layout_nxc() */) {
@@ -333,10 +330,7 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::store_dst(int ur_w) {
                     auto addr = EVEX_compress_addr(reg_dst, aux_dst_offset);
                     auto vmm_down_str = vmm_src_down(j, jcp.nb_oc_blocking);
                     vcvtneps2bf16(vmm_down_str, vmm_dst(j, k));
-                    // for xmm, upper half is zero after conversion to
-                    // bf16, so mask always.
-                    const bool mask_flag = jcp.simd_w == 4;
-                    vmovdqu16(addr, may_be_mask_vmm(vmm_down_str, mask_flag));
+                    vmovdqu16(addr, vmm_down_str);
                 }
             }
         } else {
@@ -348,11 +342,8 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::store_dst(int ur_w) {
                     auto vmm_down = vmm_src_down(0, jcp.nb_oc_blocking);
                     bf16_emu_->vcvtneps2bf16(
                             Ymm(vmm_down.getIdx()), Zmm(vmm.getIdx()));
-                    bool mask_flag = (oc_tail && k + 1 == jcp.nb_oc_blocking
-                                             && is_dst_layout_nxc())
-                            // for xmm, upper half is zero after conversion to
-                            // bf16, so mask always & mask for tails
-                            || jcp.simd_w == 4;
+                    bool mask_flag = oc_tail && k + 1 == jcp.nb_oc_blocking
+                            && is_dst_layout_nxc();
                     vmovdqu16(addr, may_be_mask_vmm(vmm_down, mask_flag));
                 }
         }
@@ -607,18 +598,10 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::generate() {
         kmovq(even_load_mask, reg_alt_mask);
     }
 
-    if (jcp.simd_w == 4) {
-        auto reg_tail_32 = reg_oc.cvt32();
-        mov(reg_tail_32, (1 << jcp.simd_w) - 1);
-        kmovb(k_oc_tail_mask, reg_tail_32);
-    }
-
     if (jcp.oc_tail) {
         Label done;
         // dummy mask all 1's
-        if (jcp.simd_w != 4) { // simd_w == 4, has its dummy mask set already
-            kxnord(k_oc_tail_mask, k_oc_tail_mask, k_oc_tail_mask);
-        }
+        kxnord(k_oc_tail_mask, k_oc_tail_mask, k_oc_tail_mask);
         // To account for special store optimization, where two oc_blocks are
         // combined with one single write, extend the mask for 32bits (32 bf16s)
         const bool need_extended_mask = jcp.dst_dt == data_type::bf16
@@ -913,13 +896,12 @@ status_t jit_avx512_core_bf16_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     const auto dat_tag_nxc = pick(ndims - 3, nwc, nhwc, ndhwc);
     const auto dat_tag_ncx = pick(ndims - 3, ncw, nchw, ncdhw);
-    const auto dat_tag_nCx4c = pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
     const auto dat_tag_nCx8c = pick(ndims - 3, nCw8c, nChw8c, nCdhw8c);
     const auto dat_tag_nCx16c = pick(ndims - 3, nCw16c, nChw16c, nCdhw16c);
-    auto curr_src_tag = src_d.mb_stride_relaxed_match(dat_tag_nxc,
-            dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_nCx4c, dat_tag_ncx);
+    auto curr_src_tag = src_d.mb_stride_relaxed_match(
+            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_ncx);
     auto curr_dst_tag = dst_d.mb_stride_relaxed_match(
-            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_nCx4c);
+            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c);
     bool is_data_layout_nxc = IMPLICATION(curr_src_tag != dat_tag_nxc,
                                       src_d.format_kind() == format_kind::any)
             && IMPLICATION(curr_dst_tag != dat_tag_nxc,
@@ -939,14 +921,8 @@ status_t jit_avx512_core_bf16_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             && !jcp.is_1stconv && !ok_to_pad_channels
             && (jcp.ic % jcp.simd_w != 0 || jcp.oc % jcp.simd_w != 0);
 
-    if (ok_to_try_lower_zmm) {
-        for (auto simd : {8, 4}) {
-            if (jcp.ic % simd == 0 && jcp.oc % simd == 0) {
-                jcp.simd_w = simd;
-                break;
-            }
-        }
-    }
+    if (ok_to_try_lower_zmm && jcp.ic % 8 == 0 && jcp.oc % 8 == 0)
+        jcp.simd_w = 8;
 
     jcp.oc_block = jcp.simd_w;
     jcp.ic_block = jcp.is_1stconv ? jcp.ic : jcp.simd_w;
@@ -967,10 +943,6 @@ status_t jit_avx512_core_bf16_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         assert(with_groups);
         dst_tag = src_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx8c;
         wei_tag = pick(ndims - 3, gOIw4i8o2i, gOIhw4i8o2i, gOIdhw4i8o2i);
-    } else if (jcp.simd_w == 4) {
-        assert(with_groups);
-        dst_tag = src_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
-        wei_tag = pick(ndims - 3, gOIw2i4o2i, gOIhw2i4o2i, gOIdhw2i4o2i);
     } else if (jcp.is_1stconv) {
         dst_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx16c;
         src_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_ncx;
@@ -1175,10 +1147,7 @@ void jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Vmm>::store_output(int ur_w) {
                     size_t aux_dsrc_offset = get_diff_src_offset(j, k);
                     auto addr = EVEX_compress_addr(reg_src, aux_dsrc_offset);
                     vcvtneps2bf16(vmm_down, vmm);
-                    // for xmm, upper half is zero after conversion to
-                    // bf16, so mask always & mask for tails
-                    bool mask_flag = jcp.simd_w == 4 || ic_tail;
-                    vmovdqu16(addr, may_be_mask_vmm(vmm_down, mask_flag));
+                    vmovdqu16(addr, may_be_mask_vmm(vmm_down, ic_tail));
                 }
             }
         } else if (isa_has_bf16(jcp.isa) /* && !is_ddst_layout_nxc() */) {
@@ -1214,10 +1183,7 @@ void jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Vmm>::store_output(int ur_w) {
                             = EVEX_compress_addr(reg_src, aux_diff_src_offset);
                     auto vmm_down_str = Vmm_down_t(reg_idx);
                     vcvtneps2bf16(vmm_down_str, vmm_dsrc(j, k));
-                    // for xmm, upper half is zero after conversion to
-                    // bf16, so mask always.
-                    bool mask_flag = jcp.simd_w == 4;
-                    vmovdqu16(addr, may_be_mask_vmm(vmm_down_str, mask_flag));
+                    vmovdqu16(addr, vmm_down_str);
                     store_idx++;
                 }
             }
@@ -1231,11 +1197,8 @@ void jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Vmm>::store_output(int ur_w) {
                     auto vmm_down = vmm_ddst_down(0);
                     bf16_emu_->vcvtneps2bf16(
                             Ymm(vmm_down.getIdx()), Zmm(vmm.getIdx()));
-                    bool mask_flag = (ic_tail && k + 1 == jcp.nb_ic_blocking
-                                             && is_dsrc_layout_nxc())
-                            // for xmm, upper half is zero after conversion to
-                            // bf16, so mask always & mask for tails
-                            || jcp.simd_w == 4;
+                    bool mask_flag = ic_tail && k + 1 == jcp.nb_ic_blocking
+                            && is_dsrc_layout_nxc();
                     vmovdqu16(addr, may_be_mask_vmm(vmm_down, mask_flag));
                 }
         }
@@ -1400,17 +1363,10 @@ void jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Vmm>::generate() {
 
     preamble();
 
-    if (jcp.simd_w == 4) {
-        Reg32 reg_tail_32 = reg_oc.cvt32();
-        mov(reg_tail_32, (1 << jcp.simd_w) - 1);
-        kmovb(k_ic_tail_mask, reg_tail_32);
-    }
-
     if (jcp.ic_tail) {
         Label done;
         // dummy mask all 1's
-        if (jcp.simd_w != 4)
-            kxnord(k_ic_tail_mask, k_ic_tail_mask, k_ic_tail_mask);
+        kxnord(k_ic_tail_mask, k_ic_tail_mask, k_ic_tail_mask);
         // To account for special store optimization, where two ic_blocks are
         // combined with one single write, extend the mask for 32bits (32 bf16s)
         const bool need_extended_mask
@@ -1655,13 +1611,12 @@ status_t jit_avx512_core_bf16_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.aligned_threads = 0;
 
     const auto dat_tag_nxc = pick(ndims - 3, nwc, nhwc, ndhwc);
-    const auto dat_tag_nCx4c = pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
     const auto dat_tag_nCx8c = pick(ndims - 3, nCw8c, nChw8c, nCdhw8c);
     const auto dat_tag_nCx16c = pick(ndims - 3, nCw16c, nChw16c, nCdhw16c);
     auto curr_src_tag = diff_src_d.mb_stride_relaxed_match(
-            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_nCx4c);
+            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c);
     auto curr_dst_tag = diff_dst_d.mb_stride_relaxed_match(
-            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_nCx4c);
+            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c);
     bool is_data_layout_nxc
             = IMPLICATION(curr_src_tag != dat_tag_nxc,
                       diff_src_d.format_kind() == format_kind::any)
@@ -1680,14 +1635,8 @@ status_t jit_avx512_core_bf16_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
             && !ok_to_pad_channels
             && (jcp.ic % jcp.simd_w != 0 || jcp.oc % jcp.simd_w != 0);
 
-    if (ok_to_try_lower_zmm) {
-        for (auto simd : {8, 4}) {
-            if (jcp.ic % simd == 0 && jcp.oc % simd == 0) {
-                jcp.simd_w = simd;
-                break;
-            }
-        }
-    }
+    if (ok_to_try_lower_zmm && jcp.ic % 8 == 0 && jcp.oc % 8 == 0)
+        jcp.simd_w = 8;
 
     jcp.oc_block = jcp.simd_w;
     jcp.ic_block = jcp.simd_w;
@@ -1710,9 +1659,6 @@ status_t jit_avx512_core_bf16_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     if (jcp.simd_w == 8) {
         dat_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx8c;
         wei_tag = utils::pick(ndims - 3, gOIw4o8i2o, gOIhw4o8i2o, gOIdhw4o8i2o);
-    } else if (jcp.simd_w == 4) {
-        dat_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
-        wei_tag = utils::pick(ndims - 3, gOIw2o4i2o, gOIhw2o4i2o, gOIdhw2o4i2o);
     } else {
         dat_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx16c;
         wei_tag = pick(2 * ndims - 6 + with_groups, OIw8o16i2o, gOIw8o16i2o,

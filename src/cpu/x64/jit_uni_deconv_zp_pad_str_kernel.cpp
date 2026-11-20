@@ -225,11 +225,8 @@ struct helper_create_deconv_ker_t {
         const dim_t ch_block = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
         switch (ch_block) {
             case 8:
-                if (isa == avx2) {
-                    return new jit_uni_deconv_zp_pad_str_kernel_t<avx2,
-                            Xbyak::Ymm>(jcp);
-                } else
-                    assert(!"invalid channel blocking for current ISA");
+                return new jit_uni_deconv_zp_pad_str_kernel_t<avx2, Xbyak::Ymm>(
+                        jcp);
             default: assert(!"invalid channel blocking");
         }
 

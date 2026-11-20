@@ -208,10 +208,7 @@ private:
         bf16_emu_->vcvtneps2bf16(
                 Xbyak::Ymm(vmm_down_idx), Xbyak::Zmm(vmm_dst_idx));
 
-        // for xmm, upper half is zero after conversion to
-        // bf16, so mask always & mask for tails
-        vmovdqu16(addr,
-                maybe_mask_vmm_down(vmm_down, mask_flag || jcp.simd_w == 4));
+        vmovdqu16(addr, maybe_mask_vmm_down(vmm_down, mask_flag));
     }
 
     void prepare_output(dim_t ur_w);

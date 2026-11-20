@@ -159,9 +159,12 @@ struct matmul_pd_t : public primitive_desc_t {
     dim_t batch() const {
         return utils::array_product(dst_md_.dims, ndims() - 2);
     }
-    dim_t M() const { return dst_md_.dims[ndims() - 2]; }
+    // For a grouped variable dim, M and K are its size summed over all groups
+    dim_t M() const { return memory_desc_wrapper(dst_md_).extent(ndims() - 2); }
     dim_t N() const { return dst_md_.dims[ndims() - 1]; }
-    dim_t K() const { return src_md_.dims[src_md_.ndims - 1]; }
+    dim_t K() const {
+        return memory_desc_wrapper(src_md_).extent(src_md_.ndims - 1);
+    }
 
     bool is_bias_1xN() const {
         if (!with_bias()) return false;

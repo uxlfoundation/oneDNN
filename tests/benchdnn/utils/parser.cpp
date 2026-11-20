@@ -424,9 +424,9 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
 
                 // parse tag input - processed for both src1/2 tensors.
                 //
-                // WARNING: "grouped" in the tag position means post-op tensor
-                // follows dst layout (e.g., offsets, layout, strides),
-                // in this case tag is left as default (any)
+                // WARNING: "grouped" in the tag position makes the post-op
+                // tensor grouped with the dst groups and offsets, in the
+                // default layout, in this case tag is left as default (any)
                 const auto tag_str = get_substr(s, src_subpos, delim);
                 if (tag_str == "grouped") {
                     e.binary.grouped = true;

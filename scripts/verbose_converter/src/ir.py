@@ -108,11 +108,10 @@ class MemoryDescriptor(Mapping):
 
     @dataclass
     class GroupedDesc:
-        variable_dim_idx: int
-        group_count: int
+        strides: str
 
         def __str__(self):
-            return f"grouped:{self.variable_dim_idx}:{self.group_count}"
+            return f"grouped:{self.strides}"
 
     arg: str
     data_type: str

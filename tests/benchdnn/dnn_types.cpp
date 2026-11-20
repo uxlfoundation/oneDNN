@@ -1441,20 +1441,11 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
 } // namespace
 
 dnnl_status_t attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
-        const dnnl_dims_t prb_dims, dnnl_primitive_kind_t prim_kind,
-        const sparse_options_t *sparse_options) {
+        const dnnl_dims_t prb_dims, dnnl_primitive_kind_t prim_kind) {
     const auto &po = attr.post_ops;
     dnnl_dims_t dims;
     for (int d = 0; d < ndims; ++d)
         dims[d] = prb_dims[d];
-
-    int grouped_var_dim_idx = -1;
-    dnnl_dim_t grouped_count = 0;
-    if (sparse_options) {
-        grouped_var_dim_idx
-                = sparse_options->get_variable_dim_idx(DNNL_ARG_SRC);
-        grouped_count = sparse_options->get_group_count();
-    }
 
     // iterate over all post ops and prepare md for each binary
     for (int idx = 0; idx < po.len(); ++idx) {
@@ -1466,29 +1457,24 @@ dnnl_status_t attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
 
             // deduce binary, prelu dims based on input policy
             dnnl_dims_t rhs_tensor_dims = {};
-            // Overload mask 0 meaning for when binary post-op is applied
-            // to grouped memory, changing it to be per-group (i.e. one value
-            // per concatenated tensor, for instance for NVFP4 global scale).
-            // The grouped dst has no explicit num_groups in dims,
-            // so form a [group_count, 1, ...] descriptor manually
-            if (grouped_count > 0 && mask == 0) {
-                for (auto d = 0; d < ndims; ++d)
-                    rhs_tensor_dims[d]
-                            = (d == grouped_var_dim_idx) ? grouped_count : 1;
-            } else {
-                for (auto d = 0; d < ndims; ++d)
-                    rhs_tensor_dims[d] = (!(mask & (1 << d))) ? 1 : dims[d];
-            }
+            for (auto d = 0; d < ndims; ++d)
+                rhs_tensor_dims[d] = (!(mask & (1 << d))) ? 1 : dims[d];
 
             benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> rhs_tensor_desc;
             DNN_SAFE_STATUS(dnn_mem_t::init_md(rhs_tensor_desc, ndims,
                     rhs_tensor_dims, po_rhs_tensor_entry.dt,
                     po_rhs_tensor_entry.tag, po_rhs_tensor_entry.strides));
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            // A grouped tensor takes the groups of the grouped dst {G, *, N},
+            // whose dims hold the total size at the variable dim
             if (e.binary.grouped) {
+                rhs_tensor_dims[0] = dims[0];
+                rhs_tensor_dims[1] = DNNL_VARIABLE_DIM_VAL;
                 DNN_SAFE_STATUS(dnn_mem_t::init_grouped_md(rhs_tensor_desc,
                         ndims, rhs_tensor_dims, po_rhs_tensor_entry.dt,
-                        grouped_var_dim_idx, grouped_count));
+                        dims[1], {}));
             }
+#endif
             mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                                 | po_rhs_tensor_entry.arg_attr_mask),
                     std::move(rhs_tensor_desc));

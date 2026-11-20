@@ -86,6 +86,28 @@ struct memory_desc_wrapper {
 #endif
     }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // The dim of a grouped md with variable size per group, and its size
+    // summed over all groups
+    int grouped_variable_dim() const {
+        assert(is_grouped_desc());
+        return impl::grouped_variable_dim(dims());
+    }
+    dim_t grouped_total() const {
+        assert(is_grouped_desc());
+        return impl::grouped_total(sparse_desc(), dims());
+    }
+#endif
+
+    // Size of dim `d`, `total` at the variable dim of a grouped md
+    dim_t extent(int d) const {
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        if (is_grouped_desc() && d == grouped_variable_dim())
+            return grouped_total();
+#endif
+        return dims()[d];
+    }
+
     bool is_host_scalar_desc() const {
         return format_kind() == format_kind::host_scalar;
     }
@@ -209,6 +231,9 @@ struct memory_desc_wrapper {
     dim_t nelems(bool with_padding = false, int start_dim = 0) const {
         if (is_zero()) return 0;
         if (has_runtime_dims()) return runtime_value_for<dim_t>();
+        // Grouped values are `total` long along the variable dim, the group
+        // dim adds no elements
+        if (is_grouped_desc()) return nnz();
         return utils::array_product(
                 (with_padding ? padded_dims() : dims()) + start_dim,
                 nstl::max(0, ndims() - start_dim));
@@ -438,10 +463,9 @@ struct memory_desc_wrapper {
                         // Return size for values.
                         return types::elements_to_bytes(data_type(), nnz());
                     case 1: {
-                        // Return size for offsets (group_count offsets).
+                        // Return size for offsets (one per group).
                         const auto offsets_dt = metadata_type(0);
-                        return (sparse_desc().grouped_desc.group_count)
-                                * types::data_type_size(offsets_dt);
+                        return dims()[0] * types::data_type_size(offsets_dt);
                     }
                     default: assert(!"unknown index"); return 0;
                 }

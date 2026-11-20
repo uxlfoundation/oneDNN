@@ -150,8 +150,8 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
     auto abo    = saveData[0].ud(5);
     auto ao     = saveData[0].w(10);
     auto bo     = saveData[0].w(11);
-    auto alpha  = saveData[0].ud(6).reinterpret(0, problem.Ts.ngen());
-    auto beta   = saveData[0].ud(7).reinterpret(0, problem.Ts.ngen());
+    auto alpha  = problem.Ts.isValid() ? saveData[0].ud(6).reinterpret(0, problem.Ts.ngen()) : Subregister();
+    auto beta   = problem.Ts.isValid() ? saveData[0].ud(7).reinterpret(0, problem.Ts.ngen()) : Subregister();
     auto remFusedStorage = saveData[1].ud(0);
     auto diagC  = saveData[1].ud(1);
     auto effCO  = saveData[1].uq(1);
@@ -181,9 +181,9 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
         if (state.inputs.bo.isValid())
             mov(1, bo, state.inputs.bo);
     }
-    if (state.inputs.alpha_real.isValid())
+    if (alpha.isValid() && state.inputs.alpha_real.isValid())
         mov(1, alpha, state.inputs.alpha_real);
-    if (state.inputs.beta_real.isValid())
+    if (beta.isValid() && state.inputs.beta_real.isValid())
         mov(1, beta, state.inputs.beta_real);
     shr(1, kLoops, kLoops, ilog2(params.ksys));
     if (state.remFusedStorage.isValid())
@@ -223,8 +223,8 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
     state.ra.release(state.inputs.abo);
     state.ra.release(state.inputs.ao);
     state.ra.release(state.inputs.bo);
-    state.ra.release(state.inputs.alpha_real);
-    state.ra.release(state.inputs.beta_real);
+    if (alpha.isValid()) state.ra.release(state.inputs.alpha_real);
+    if (beta.isValid()) state.ra.release(state.inputs.beta_real);
     state.ra.release(state.remFusedStorage);
     state.ra.release(state.diagC);
     state.ra.release(state.effCO);
@@ -271,9 +271,9 @@ bool Generator<hw>::sysgemmAccumulateC(GEMMProblem &problem, const GEMMStrategy 
         state.inputs.ao = ao;
     if (state.inputs.bo.isValid())
         state.inputs.bo = bo;
-    if (state.inputs.alpha_real.isValid())
+    if (alpha.isValid() && state.inputs.alpha_real.isValid())
         state.inputs.alpha_real = alpha;
-    if (state.inputs.beta_real.isValid())
+    if (beta.isValid() && state.inputs.beta_real.isValid())
         state.inputs.beta_real = beta;
     if (state.remFusedStorage.isValid()) {
         state.remFusedStorage = remFusedStorage;
@@ -1516,8 +1516,8 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
     auto abo    = saveData[0].ud(5);
     auto ao     = saveData[0].w(10);
     auto bo     = saveData[0].w(11);
-    auto alpha  = saveData[0].ud(6).reinterpret(0, problem.Ts.ngen());
-    auto beta   = saveData[0].ud(7).reinterpret(0, problem.Ts.ngen());
+    auto alpha  = problem.Ts.isValid() ? saveData[0].ud(6).reinterpret(0, problem.Ts.ngen()) : Subregister();
+    auto beta   = problem.Ts.isValid() ? saveData[0].ud(7).reinterpret(0, problem.Ts.ngen()) : Subregister();
     auto remFusedStorage = saveData[1].ud(0);
     auto diagC  = saveData[1].ud(1);
     auto effCO  = saveData[1].uq(1);
@@ -1549,9 +1549,9 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
         if (state.inputs.bo.isValid())
             mov(1, bo, state.inputs.bo);
     }
-    if (state.inputs.alpha_real.isValid())
+    if (alpha.isValid() && state.inputs.alpha_real.isValid())
         mov(1, alpha, state.inputs.alpha_real);
-    if (state.inputs.beta_real.isValid())
+    if (beta.isValid() && state.inputs.beta_real.isValid())
         mov(1, beta, state.inputs.beta_real);
     shr(1, kLoops, kLoops, ilog2(params.ksys));
     if (state.remFusedStorage.isValid())
@@ -1600,8 +1600,8 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
     state.ra.release(state.inputs.abo);
     state.ra.release(state.inputs.ao);
     state.ra.release(state.inputs.bo);
-    state.ra.release(state.inputs.alpha_real);
-    state.ra.release(state.inputs.beta_real);
+    if (alpha.isValid()) state.ra.release(state.inputs.alpha_real);
+    if (beta.isValid()) state.ra.release(state.inputs.beta_real);
     state.ra.release(state.remFusedStorage);
     state.ra.release(state.diagC);
     state.ra.release(state.effCO);
@@ -1646,9 +1646,9 @@ bool Generator<hw>::sysgemm2AccumulateC(GEMMProblem &problem, const GEMMStrategy
         state.inputs.ao = ao;
     if (state.inputs.bo.isValid())
         state.inputs.bo = bo;
-    if (state.inputs.alpha_real.isValid())
+    if (alpha.isValid() && state.inputs.alpha_real.isValid())
         state.inputs.alpha_real = alpha;
-    if (state.inputs.beta_real.isValid())
+    if (beta.isValid() && state.inputs.beta_real.isValid())
         state.inputs.beta_real = beta;
     if (state.remFusedStorage.isValid()) {
         state.remFusedStorage = remFusedStorage;

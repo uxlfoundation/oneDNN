@@ -226,6 +226,7 @@ public:
     CopyInstruction &append(int phase, ngen::Opcode op, int simd, ngen::InstructionModifier mod, const CopyOperand &dst, const CopyOperand &src0, const CopyOperand &src1 = CopyOperand(), const CopyOperand &src2 = CopyOperand());
     CopyInstruction &appendDestructiveMov(int simd, const CopyOperand &dst, const CopyOperand &src0, bool overwriteStride = false);
     CopyInstruction &appendDestructiveMov(int simd, ngen::InstructionModifier mod, const CopyOperand &dst, const CopyOperand &src0, bool overwriteStride = false);
+    CopyOperand newTemp(ngen::DataType type, int elems, int stride, int offset = 0);
 
     void transform();
     void materializeTemps(const GRFAllocator &grfAllocator, const FlagAllocator &flagAllocator);
@@ -256,7 +257,6 @@ protected:
         PhaseOnly, Register, SourceOrder
     };
 
-    CopyOperand newTemp(ngen::DataType type, int elems, int stride, int offset = 0);
     CopyOperand newFlag(int bits = 16);
 
     CopyOperand getResource(CopyResource::Kind kind);

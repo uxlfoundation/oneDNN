@@ -680,14 +680,10 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
     }
 
     /* Main repacking logic */
-    struct WorkItem {
-        Subregister C, Cr;
-        int simd;
-        std::array<Subregister, 2> scale;
-        std::array<int, 2> scaleStride;
-    };
-
-    std::vector<WorkItem> items;
+    // Cr is dead after repacking, so the copy planner updates it in place.
+    CopyPlan plan(getProductFamily(), strategy.systolicAvailable);
+    struct Product { int vBase, n; Subregister s; CopyOperand op; };
+    std::vector<Product> products;
 
     for (int x1 = 0; x1 < nx; x1 += 2 * nec) {
         int x = x0 + x1, xr = xr0 + x1;
@@ -746,28 +742,40 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
             if (ne < xchunk) stub();
             if (C_block->crosspack != 1 || Cr_block->crosspack != 1) stub();
 
-            items.push_back({C, Cr, ne, scale, scaleStride});
+            CopyOperand Cop = C(1), src = Cr(1);
+            src.overwrite = true;
+            if (src.type != Tc.ngen()) {
+                CopyOperand dst = src;
+                dst.type = Tc.ngen();
+                plan.append(0, Opcode::mov, ne, dst, src);
+                src = dst;
+            }
+            CopyOperand sop;
+            if (scale[1].isValid()) {
+                // Multiply the broadcast scale into whole registers of the other scale, once per pair.
+                int iv = scaleStride[0] ? 0 : 1;
+                auto &v = scale[iv], &bs = scale[1 - iv];
+                int nev = elementsPerGRF(hw, v.getType());
+                int n = (scaleStride[iv] ? div_up(v.getOffset() + ne, nev) : 1) * nev;
+                auto it = std::find_if(products.begin(), products.end(), [&](const Product &p) {
+                    return p.vBase == v.getBase() && p.n == n && p.s == bs;
+                });
+                if (it == products.end()) {
+                    it = products.insert(products.end(), {v.getBase(), n, bs, plan.newTemp(Tc.ngen(), n, 1)});
+                    plan.append(1, Opcode::mul, n, it->op, GRF(v.getBase()).retype(v.getType()), bs(0));
+                }
+                sop = it->op;
+                sop.offset = v.getOffset();
+                sop.stride = scaleStride[iv];
+            } else if (scale[0].isValid())
+                sop = scale[0](scaleStride[0]);
+            if (sop)
+                plan.append(2, Opcode::mad, ne, Cop, Cop, src, sop);
+            else
+                plan.append(2, Opcode::add, ne, Cop, Cop, src);
         }
     }
 
-    // Cr is dead after repacking, so the copy planner updates it in place.
-    CopyPlan plan(getProductFamily(), strategy.systolicAvailable);
-    for (const auto &i: items) {
-        CopyOperand C = i.C(1), src = i.Cr(1);
-        src.overwrite = true;
-        if (src.type != Tc.ngen()) {
-            CopyOperand dst = src;
-            dst.type = Tc.ngen();
-            plan.append(0, Opcode::mov, i.simd, dst, src);
-            src = dst;
-        }
-        if (i.scale[1].isValid())
-            plan.append(1, Opcode::mul, i.simd, src, src, i.scale[1](i.scaleStride[1]));
-        if (i.scale[0].isValid())
-            plan.append(2, Opcode::mad, i.simd, C, C, src, i.scale[0](i.scaleStride[0]));
-        else
-            plan.append(2, Opcode::add, i.simd, C, C, src);
-    }
     copyExecute(std::move(plan), state);
 }
 

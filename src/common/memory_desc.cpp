@@ -171,16 +171,22 @@ status_t memory_desc_strides_check(
     for (int idx = 0; idx < md.ndims; ++idx) {
         const int d = perm[idx];
 
-        // Make an exception for strides[d] == 0 as it has broadcast semantics
-        // Note: owing to being sorted, these are the initial strides
+        VCONDCHECK(common, create, check, memory, strides[d] >= 0,
+                status::invalid_arguments, VERBOSE_BAD_DIM, "strides", d);
 
         // FIXME: make an exception for dims[d] == 1 with the
         // assumption that no code applies that stride when the only
         // index accessed for that dimension is 0. This is because PT
         // can use "dummy" padding in those situations
-        if ((strides[d] == 0) || (md.padded_dims[d] == 1))
-            continue;
-        else if (strides[d] < min_stride)
+        if (md.padded_dims[d] == 1) continue;
+
+        // A zero stride aliases all indices of a non-unit dimension to the
+        // same memory, which primitives do not support. Broadcast is
+        // expressed by a unit dimension instead.
+        VCONDCHECK(common, create, check, memory, strides[d] != 0,
+                status::invalid_arguments, VERBOSE_BAD_DIM, "strides", d);
+
+        if (strides[d] < min_stride)
             VCONDCHECK(common, create, check, memory, false,
                     status::invalid_arguments, VERBOSE_INTEGRAL_OVERFLOW_DIM,
                     "strides", d);

@@ -74,9 +74,9 @@ struct avx2_backend_t {
         else { JIT_ASSERT(!"vload: dtype not implemented"); }
     }
 
-    // Store a full vector.
+    // Store a full vector. No form converts, so `free_regs` is not read.
     void vstore(int base, dim_t disp, int s, data_type_t mem_dt,
-            data_type_t reg_dt) {
+            data_type_t reg_dt, uint32_t /*free_regs*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
             gen().vmovups(addr, Xbyak::Ymm(s));
@@ -184,9 +184,10 @@ struct avx2_backend_t {
         }
     }
 
-    // Store the elements of `src` selected by `mask`.
+    // Store the elements of `src` selected by `mask`. `free_regs` is not read,
+    // as for `vstore`.
     void vstore_masked(int base, dim_t disp, int s, int mask,
-            data_type_t mem_dt, data_type_t reg_dt) {
+            data_type_t mem_dt, data_type_t reg_dt, uint32_t /*free_regs*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {

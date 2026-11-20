@@ -95,13 +95,27 @@ struct avx512_backend_t {
         }
     }
 
-    // Store a full vector.
+    // Store a full vector. The pair of data types selects the form:
+    //   f32 -> f32   plain move
+    //   f32 -> bf16  converted into a register of `free_regs`, then half a
+    //                register written
+    // `free_regs` holds the vector registers free at the store, bit `r` for
+    // register `r`. The conversion cannot write `s`, since the store leaves it
+    // unchanged.
     void vstore(int base, dim_t disp, int s, data_type_t mem_dt,
-            data_type_t reg_dt) {
+            data_type_t reg_dt, uint32_t free_regs) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
             gen().vmovups(addr, Xbyak::Zmm(s));
-        else { JIT_ASSERT(!"vstore: dtype not implemented"); }
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
+            JIT_ASSERT(is_superset(isa, avx512_core_bf16)
+                    && "vstore: bf16 needs avx512_core_bf16");
+            const Xbyak::Ymm tmp(free_reg(free_regs));
+            gen().vcvtneps2bf16(tmp, Xbyak::Zmm(s));
+            gen().vmovdqu16(addr, tmp);
+        } else {
+            JIT_ASSERT(!"vstore: dtype not implemented");
+        }
     }
 
     // Load one element and zero the rest of `dst`.
@@ -235,19 +249,37 @@ struct avx512_backend_t {
     }
 
     // Store the elements of `src` selected by `mask`. There is no `T_z` here,
-    // since masking a store is already a merge into memory.
+    // since masking a store is already a merge into memory. The forms and
+    // `free_regs` are as for `vstore`.
     void vstore_masked(int base, dim_t disp, int s, int mask,
-            data_type_t mem_dt, data_type_t reg_dt) {
+            data_type_t mem_dt, data_type_t reg_dt, uint32_t free_regs) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        const Xbyak::Opmask k(mask);
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
-            gen().vmovups(addr | Xbyak::Opmask(mask), Xbyak::Zmm(s));
+            gen().vmovups(addr | k, Xbyak::Zmm(s));
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
+            JIT_ASSERT(is_superset(isa, avx512_core_bf16)
+                    && "vstore_masked: bf16 needs avx512_core_bf16");
+            const Xbyak::Ymm tmp(free_reg(free_regs));
+            gen().vcvtneps2bf16(tmp, Xbyak::Zmm(s));
+            gen().vmovdqu16(addr | k, tmp);
         } else {
             JIT_ASSERT(!"vstore_masked: dtype not implemented");
         }
     }
 
 private:
+    // Returns the lowest register of `free_regs`. An empty set fails the
+    // kernel, since the allocator never spills to free a register.
+    int free_reg(uint32_t free_regs) {
+        JIT_ASSERT_RET(free_regs != 0 && "free_reg: no free register", 0);
+        int r = 0;
+        while (!(free_regs & (1u << r)))
+            r++;
+        return r;
+    }
+
     // The backend is used during the emitter step, which is called from an
     // IR-based kernel during kernel generation. The kernel owns `gen_`.
     jit_generator_t &gen_;

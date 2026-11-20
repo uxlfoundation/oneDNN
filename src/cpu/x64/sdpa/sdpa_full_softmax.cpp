@@ -1234,15 +1234,15 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     // Packers for B = [rows x cols] with the given source strides. Packing ahead
     // packs the whole tensor; packing per tile packs one full block of the
     // tiled axis ([0]) or its tail ([1]).
-    auto init_packers =
-            [&](std::unique_ptr<sdpa_brgemm_copy::b_packer_t>(&packers)[2],
-                    const dim_t(&rows)[2], const dim_t(&cols)[2],
-                    dim_t row_stride, dim_t col_stride, dim_t ld) -> status_t {
+    auto init_packers
+            = [&](std::unique_ptr<sdpa_brgemm_copy::b_packer_t>(&packers)[2],
+                      const dim_t(&rows)[2], const dim_t(&cols)[2],
+                      dim_t row_stride, dim_t col_stride) -> status_t {
         for (int i = 0; i < 2; ++i) {
             if (!rows[i] || !cols[i]) continue;
             packers[i].reset(new sdpa_brgemm_copy::b_packer_t());
             CHECK(packers[i]->init(
-                    rows[i], cols[i], row_stride, col_stride, ld, p_.mm_dt));
+                    rows[i], cols[i], row_stride, col_stride, p_.mm_dt));
         }
         return status::success;
     };
@@ -1253,14 +1253,14 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
         const dim_t cols[2] = {per_tile ? conf.mm1_n_block : seq_kv,
                 per_tile ? conf.mm1_n_tail : 0};
         CHECK(init_packers(kernels.k_packers, rows, cols, p_.k_strides[row_dim],
-                p_.k_strides[ndims - 1], conf.ldk));
+                p_.k_strides[ndims - 1]));
     }
     if (conf.pack_v) {
         const dim_t rows[2] = {per_tile ? conf.mm2_k_block : seq_kv,
                 per_tile ? conf.mm2_k_tail : 0};
         const dim_t cols[2] = {p_.hs_v, p_.hs_v};
         CHECK(init_packers(kernels.v_packers, rows, cols, p_.v_strides[row_dim],
-                p_.v_strides[ndims - 1], conf.ldv));
+                p_.v_strides[ndims - 1]));
     }
     if (conf.schedule == sdpa_full_softmax_schedule_t::split_kv
             && conf.split_kv.mm2_chunks > 1) {

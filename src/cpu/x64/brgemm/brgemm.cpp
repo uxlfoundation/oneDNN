@@ -681,16 +681,16 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     // runs one batch element for a zero var_bs batch, which the uker skips.
     // Virtual padding stays on the uker: the new blocking may give a bd_block
     // below max_vpad, which the check below rejects.
-    if (brg->is_ace() && !brg->is_dgmm && brg->brgattr.use_uker
-            && brg->brgattr.enable_size_driven_roll
+    const bool base_kernel_can_replace_ace_uker = brg->is_ace() && !brg->is_dgmm
+            && brg->brgattr.use_uker && brg->brgattr.enable_size_driven_roll
             && brg->type != brgemm_static_offs && !brg->brgattr.var_bs
             && utils::one_of(brg->dt_c, data_type::f32, data_type::s32)
             && brg->brgattr.bd_mask_level == 0 && !brg->fused_copy_a
             && !brg->has_per_call_acc() && brg->LDA2 == brg->LDA
             && brg->LDC2_M == brg->LDC
             && IMPLICATION(brg->load_dim > brg->LDC, brg->LDC2_N == brg->LDC)
-            && max_vpad == 0 && base_ker_d_stride_ok()
-            && !ace_uker_small_enough(*brg)) {
+            && max_vpad == 0 && base_ker_d_stride_ok();
+    if (base_kernel_can_replace_ace_uker && !ace_uker_small_enough(*brg)) {
         const bool uker_ils = brg->brgattr.use_interleave_stores;
         brg->brgattr.use_uker = false;
         brg->brgattr.use_interleave_stores = false;

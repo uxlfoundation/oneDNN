@@ -192,6 +192,56 @@ void expect_valid_temps(const ir_t &ir, const reg_pools_t &pools,
     }
 }
 
+// Check the registers recorded unused at each operation. Each one is in the
+// pool of its file, holds no value live at the operation, and is no temp of it.
+// In a file with no spilled value, the rest of the pool is recorded unused.
+void expect_valid_unused_regs(const ir_t &ir, const reg_pools_t &pools,
+        const reg_alloc_result_t &res) {
+    const auto iv = linear_code_intervals(ir);
+    const int n_ops = ir.n_ops();
+    const int n_files = (int)pools.files.size();
+    ASSERT_EQ(res.unused_regs_at.size(), (size_t)(n_files * n_ops));
+
+    std::vector<uint32_t> pool(n_files, 0);
+    for (int f = 0; f < n_files; f++)
+        for (int phys : pools.files[f].regs)
+            pool[f] |= 1u << phys;
+
+    std::vector<bool> file_has_spill(n_files, false);
+    for (int v = 0; v < ir.n_vregs(); v++) {
+        const int f = pools.file_of(ir.vreg_info()[v]);
+        if (f >= 0 && iv[v].used() && res.assignments[v].spilled)
+            file_has_spill[f] = true;
+    }
+
+    for (int i = 0; i < n_ops; i++) {
+        // Per file, registers that hold a value live at `i` or a temp of `i`.
+        std::vector<uint32_t> held(n_files, 0);
+        auto hold = [&](int v, int phys) {
+            const int f = pools.file_of(ir.vreg_info()[v]);
+            if (f >= 0) held[f] |= 1u << phys;
+        };
+        for (const temp_reg_t &t : res.temps[i])
+            hold((int)t.vreg, t.phys);
+        for (int v = 0; v < ir.n_vregs(); v++)
+            if (iv[v].start <= i && i <= iv[v].end
+                    && !res.assignments[v].spilled)
+                hold(v, res.assignments[v].phys);
+
+        for (int f = 0; f < n_files; f++) {
+            const uint32_t unused = res.unused_regs_at[f * n_ops + i];
+            EXPECT_EQ(unused & ~pool[f], 0u)
+                    << "op " << i << ", file " << f << ": outside the pool";
+            EXPECT_EQ(unused & held[f], 0u)
+                    << "op " << i << ", file " << f << ": register in use";
+            if (!file_has_spill[f]) {
+                EXPECT_EQ(unused, pool[f] & ~held[f])
+                        << "op " << i << ", file " << f << ": register missing";
+            }
+        }
+    }
+}
+
 // Build an IR where all GPRs in the live set are live at the same time.
 // Each register is initialized first, then they are all used together by adding
 // them into an accumulator. The live set size controls the register pressure to
@@ -697,7 +747,7 @@ TEST(RegConfigTests, BuildsOneTileFilePerShape) {
 //
 // Checks that there are no register collisions. If all values are live at the
 // same time and there are enough registers, each value gets its own register
-// and no values are spilled.
+// and no values are spilled. A register that holds no value is recorded unused.
 TEST(AllocatorTests, DoesNotDoubleAllocateSimultaneouslyLiveValues) {
     const int live_set_size = 6;
     // Create an IR that uses `live_set_size` GPRs for values plus 1 additional
@@ -712,6 +762,7 @@ TEST(AllocatorTests, DoesNotDoubleAllocateSimultaneouslyLiveValues) {
     EXPECT_FALSE(res.any_spill);
     EXPECT_EQ(res.frame_bytes, 0u);
     expect_no_reg_conflicts(ir, pools, res);
+    expect_valid_unused_regs(ir, pools, res);
 }
 
 // Checks that registers are reused correctly. A temporary that is no longer
@@ -748,7 +799,8 @@ TEST(AllocatorTests, ReusesRegisterOfExpiredTemporary) {
 // Checks allocator behavior under register pressure. If the pool doesn't have
 // enough registers for all active values, the allocator spills some values to
 // the stack. It also reserves frame space, keeps the remaining values from
-// overlapping, and assigns each spilled value its own slot offset.
+// overlapping, assigns each spilled value its own slot offset, and records no
+// register in use as unused.
 TEST(AllocatorTests, SpillsUnderRegisterPressure) {
     const int live_set_size = 6;
     // Create an IR that uses `live_set_size` GPRs for values plus 1 additional
@@ -765,10 +817,12 @@ TEST(AllocatorTests, SpillsUnderRegisterPressure) {
     EXPECT_TRUE(res.any_spill);
     EXPECT_GT(res.frame_bytes, 0u);
 
-    // Check that non-spilled registers do not share the same register, and that
-    // every spilled operand gets a temp that clobbers nothing.
+    // Check that non-spilled registers do not share the same register, that
+    // every spilled operand gets a temp that clobbers nothing, and that no
+    // register recorded unused holds a value or a temp.
     expect_no_reg_conflicts(ir, pools, res);
     expect_valid_temps(ir, pools, res);
+    expect_valid_unused_regs(ir, pools, res);
 
     // Collect spill slots and check that they are unique, slot-aligned, and
     // inside the reserved frame.

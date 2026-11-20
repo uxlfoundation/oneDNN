@@ -340,8 +340,8 @@ std::vector<int64_t> compute_spill_weights(
 //   4. Hand out registers:
 //      Intervals that start at `i` take theirs and become active. An interval
 //      left without one is spilled. Then each spilled operand counted in step
-//      2 takes a temp while registers last. Temps return to the free pool
-//      after `i`.
+//      2 takes a temp while registers last. The registers still free are
+//      recorded in `unused_regs_at`. Temps return to the free pool after `i`.
 //
 // A value spilled in step 3 is on the stack at all its references, including
 // those before `i` that the scan has already passed, and they need temps too.
@@ -444,6 +444,7 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
     //               handed out next, and a freed register goes on top. It
     //               starts as the pool reversed, so the pool is handed out
     //               front to back.
+    // free_bits:    bit `phys` is set for each register in `free_regs`.
     // active:       intervals that hold a register.
     // still_active: step 1's buffer for the intervals that stay active.
     // wanted:       spilled operands of the current operation that want a
@@ -451,15 +452,35 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
     //               each one a temp while registers last.
     // last_ref:     latest operation so far that references each vreg.
     std::vector<int> free_regs(file.regs.rbegin(), file.regs.rend());
+    uint32_t free_bits = 0;
+    for (int phys : file.regs) {
+        assert(phys < 32 && "register index does not fit `free_bits`");
+        free_bits |= 1u << phys;
+    }
     std::vector<int> active, still_active, wanted;
     std::vector<int> last_ref(n_vregs, -1);
+
+    // Puts `phys` on top of `free_regs` and sets its bit in `free_bits`.
+    auto release = [&](int phys) {
+        free_regs.push_back(phys);
+        free_bits |= 1u << phys;
+    };
+
+    // Takes the top register off `free_regs`, clears its bit in `free_bits`,
+    // and returns it.
+    auto hand_out = [&]() {
+        const int phys = free_regs.back();
+        free_regs.pop_back();
+        free_bits &= ~(1u << phys);
+        return phys;
+    };
 
     for (int i = 0; i < n_ops; i++) {
         // 1. Expire intervals that ended before `i`.
         still_active.clear();
         for (int a : active) {
             if (end[a] < i)
-                free_regs.push_back(res.assignments[a].phys);
+                release(res.assignments[a].phys);
             else
                 still_active.push_back(a);
         }
@@ -512,7 +533,7 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
                     res.temps[j].push_back({(vreg_t)victim, phys});
             }
             active.erase(std::find(active.begin(), active.end(), victim));
-            free_regs.push_back(phys);
+            release(phys);
             spill(victim);
         }
 
@@ -524,22 +545,23 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
                 spill(v);
                 continue;
             }
-            res.assignments[v].phys = free_regs.back();
-            free_regs.pop_back();
+            res.assignments[v].phys = hand_out();
             active.push_back(v);
         }
 
         const size_t first_temp = res.temps[i].size();
         for (int v : wanted) {
             if (free_regs.empty()) break;
-            res.temps[i].push_back({(vreg_t)v, free_regs.back()});
-            free_regs.pop_back();
+            res.temps[i].push_back({(vreg_t)v, hand_out()});
         }
+
+        res.unused_regs_at[file_idx * n_ops + i] = free_bits;
+
         // Temps return to the pool after `i`. `temps[i]` can already hold the
         // temps of files allocated before this one, so return only the ones
         // handed out here.
         for (size_t t = first_temp; t < res.temps[i].size(); t++)
-            free_regs.push_back(res.temps[i][t].phys);
+            release(res.temps[i][t].phys);
     }
 }
 
@@ -547,7 +569,8 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
 
 // Run full register allocation pipeline.
 // Returns, for each virtual register, either a physical register or a spill
-// slot, and for each operation the temps of its spilled operands.
+// slot, and for each operation the temps of its spilled operands. Also returns
+// the registers unused at each operation.
 //
 // The pipeline:
 //   1. Compute liveness (live_in for each operation).
@@ -639,6 +662,7 @@ reg_alloc_result_t allocate_registers(
     reg_alloc_result_t res;
     res.assignments.assign(n_vregs, assignment_t());
     res.temps.assign(n_ops, std::vector<temp_reg_t>());
+    res.unused_regs_at.assign(pools.files.size() * n_ops, 0);
 
     size_t frame = 0;
     for (int f = 0; f < (int)pools.files.size(); f++)

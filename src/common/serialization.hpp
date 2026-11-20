@@ -147,7 +147,9 @@ struct serialization_stream_t {
             assert(!"unexpected");
             return;
         }
-        std::memcpy(ptr, &data_[idx], size);
+        // An empty read at the end has `idx == data_.size()`, which is
+        // out of range for `operator[]`.
+        std::memcpy(ptr, data_.data() + idx, size);
     }
 
     size_t get_hash() const { return hash_range(data_.data(), data_.size()); }

@@ -31,3 +31,14 @@ set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
 target_include_directories(${OBJ_LIB} PRIVATE
     ${PROJECT_SOURCE_DIR}/third_party
 )
+
+# rvjit is a header-only library vendored in third_party/rvjit. It emits
+# vector code through xbyak_riscv, and reports failures through oneDNN's
+# debuginfo log in developer mode.
+target_include_directories(${OBJ_LIB} PRIVATE
+    ${PROJECT_SOURCE_DIR}/third_party/rvjit
+)
+target_compile_definitions(${OBJ_LIB} PRIVATE
+    RVJIT_VERBOSE_HEADER="cpu/rv64/rvjit/rvjit_verbose.hpp"
+    $<$<BOOL:${DNNL_DEV_MODE}>:RVJIT_DEBUG>
+)

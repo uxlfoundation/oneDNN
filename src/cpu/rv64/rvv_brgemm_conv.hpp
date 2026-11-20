@@ -51,6 +51,8 @@ struct rvv_brgemm_convolution_fwd_t : public primitive_t {
         cpu_isa_t isa_ = v;
         brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
         std::shared_ptr<brgemm_kernel_t> brg_kernel_;
+        // Elements of the weights between groups and kernel positions
+        dim_t wei_g_str_ = 0, wei_kd_str_ = 0, wei_kh_str_ = 0, wei_kw_str_ = 0;
     };
 
     rvv_brgemm_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}

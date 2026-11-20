@@ -441,6 +441,7 @@ status_t device_info_t::init_serialized_device_info(
     serialized_device_info_.append(is_efficient_64bit_);
 
     serialized_device_info_.append(name_);
+    serialized_device_info_.append(platform_name_);
 
     return status::success;
 }
@@ -499,6 +500,7 @@ status_t device_info_t::init_from_cache_blob(
     d.pop(is_efficient_64bit_);
 
     d.pop(name_);
+    d.pop(platform_name_);
     VERROR_ENGINE(d.empty(), status::invalid_arguments,
             "cache blob has unexpected trailing data");
 

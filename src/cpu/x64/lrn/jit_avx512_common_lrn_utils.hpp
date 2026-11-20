@@ -49,8 +49,7 @@ struct nChw16c_across_t {
 
 enum class tail_mode { NoTail, NextTail, CurrentTail };
 
-template <data_type_t d_type>
-cpu_isa_t get_isa() {
+inline cpu_isa_t get_isa(data_type_t d_type) {
     return utils::map(true, avx512_core,
             d_type == data_type::bf16 && mayiuse(avx512_core_bf16),
             avx512_core_bf16,

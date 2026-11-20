@@ -23,27 +23,26 @@ namespace cpu {
 namespace x64 {
 namespace lrn {
 
-template <data_type_t d_type>
-jit_avx512_common_lrn_kernel_fwd_nhwc_t<
-        d_type>::jit_avx512_common_lrn_kernel_fwd_nhwc_t(unsigned C,
-        prop_kind_t prop_kind, float alpha, float beta, float k, int local_size)
-    : jit_avx512_common_lrn_kernel_fwd_t<d_type>(
-              prop_kind, alpha, beta, k, local_size, jit_name())
+jit_avx512_common_lrn_kernel_fwd_nhwc_t::
+        jit_avx512_common_lrn_kernel_fwd_nhwc_t(data_type_t dt, unsigned C,
+                prop_kind_t prop_kind, float alpha, float beta, float k,
+                int local_size)
+    : jit_avx512_common_lrn_kernel_fwd_t(
+              dt, prop_kind, alpha, beta, k, local_size, jit_name())
     , tmp_mask_prev_ {[this]() {
         std::vector<int> v(this->local_size_ / 2);
-        std::iota(v.begin(), v.end(), this->zc_ + 2);
+        std::iota(v.begin(), v.end(), zc_ + 2);
         return v;
     }()}
     , tmp_mask_next_ {[this]() {
         std::vector<int> v(this->local_size_ / 2);
-        std::iota(v.begin(), v.end(), this->zc_ + 2 + this->local_size_ / 2);
+        std::iota(v.begin(), v.end(), zc_ + 2 + this->local_size_ / 2);
         return v;
     }()}
     , half_ls_ {(local_size - 1) / 2}
     , C(C) {}
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::generate() {
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::generate() {
 
     const auto res = std::div(C, 16);
     const auto &C_tail = res.rem;
@@ -59,28 +58,21 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::generate() {
     this->postamble();
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::reserve_stack_space(
-        int space) {
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::reserve_stack_space(int space) {
     this->sub(rsp, space);
     this->uni_vpxor(zmm4, zmm4, zmm4);
     for (int i = 0; i < 2; ++i)
         this->vmovups(ptr[rsp + i * zmm_size], zmm4);
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::unreserve_stack_space(
-        int space) {
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::unreserve_stack_space(int space) {
     this->add(rsp, space);
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::set_up_ker_params() {
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::set_up_ker_params() {
 
 #define GET_OFF(field) \
-    offsetof(typename jit_avx512_common_lrn_kernel_fwd_t< \
-                     d_type>::jit_args_fwd_t, \
-            field)
+    offsetof(jit_avx512_common_lrn_kernel_fwd_t::jit_args_fwd_t, field)
     this->mov(this->src_, ptr[this->param_ + GET_OFF(src)]);
     this->mov(this->dst_, ptr[this->param_ + GET_OFF(dst)]);
     if (this->pk_ != prop_kind::forward_inference) {
@@ -99,8 +91,7 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::set_up_ker_params() {
     this->vbroadcastss(this->zk_, this->xk_);
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::execute_compute_loop(
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::execute_compute_loop(
         unsigned num_full_16c_blocks, unsigned C_tail) {
 
     if ((num_full_16c_blocks == 1u && !C_tail)
@@ -140,7 +131,7 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::execute_compute_loop(
                 increment_loop_params(this->reg_block_ * this->vlen_);
                 this->sub(this->blockC_, this->reg_block_);
                 this->cmp(this->blockC_, 0);
-                this->jne(lrn_loop, this->T_NEAR);
+                this->jne(lrn_loop, T_NEAR);
             }
         }
 
@@ -162,8 +153,7 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::execute_compute_loop(
     }
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::increment_loop_params(
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::increment_loop_params(
         int offset) {
 
     this->add(this->src_, offset);
@@ -174,8 +164,7 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::increment_loop_params(
     }
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::compute_loop(
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::compute_loop(
         across_version version, tail_mode tail_proc, unsigned C_tail,
         int loop_size_param) {
 
@@ -186,8 +175,7 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::compute_loop(
     store_compute_data(loop_size_param, tail_proc, C_tail);
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_data_to_stack(
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::load_data_to_stack(
         unsigned C_tail, across_version version, tail_mode tail_proc) {
     if (version != across_version::Single) {
         const int previousChunkOffset
@@ -203,15 +191,14 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_data_to_stack(
     static constexpr int tail_dst_stack_offset = zmm_size;
     this->load_tail(C_tail, this->src_, tail_src_mem_offset,
             tail_dst_stack_offset,
-            jit_avx512_common_lrn_kernel_fwd_nhwc_t<
-                    d_type>::tmp_load_to_stack_idx_tail_);
+            jit_avx512_common_lrn_kernel_fwd_nhwc_t::
+                    tmp_load_to_stack_idx_tail_);
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_compute_data(
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::load_compute_data(
         across_version version, tail_mode tail_proc, int loop_size_param) {
 
-    static constexpr int acc_size = utils::one_of(d_type, bf16, f16)
+    const int acc_size = utils::one_of(this->dt_, bf16, f16)
             ? sizeof(acc_data_bf16_t)
             : sizeof(acc_data_t);
 
@@ -228,10 +215,10 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_compute_data(
     };
 
     if (tail_proc == tail_mode::CurrentTail) {
-        this->load_data(this->zreg(0, this->zc_),
+        this->load_data(this->zreg(0, zc_),
                 this->EVEX_compress_addr(rsp, zmm_size), true);
     } else {
-        IRB_LOOP(this->load_data(this->zreg(irb, this->zc_),
+        IRB_LOOP(this->load_data(this->zreg(irb, zc_),
                 this->EVEX_compress_addr(this->src_, irb * this->vlen_)));
     }
 
@@ -248,8 +235,8 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_compute_data(
     }
     if (version == across_version::First || version == across_version::Single) {
         for (const auto &entry : prev_v) {
-            load_shifted_padded_with_zeros(entry.reg, this->zc_, entry.mask,
-                    -1 * entry.pos * mask_shift);
+            load_shifted_padded_with_zeros(
+                    entry.reg, zc_, entry.mask, -1 * entry.pos * mask_shift);
         }
     } else {
         if (tail_proc == tail_mode::CurrentTail) {
@@ -278,7 +265,7 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_compute_data(
     if (version == across_version::Last || version == across_version::Single) {
         for (const auto &entry : next_v) {
             load_shifted_padded_with_zeros(
-                    entry.reg, this->zc_, entry.mask, entry.pos * mask_shift);
+                    entry.reg, zc_, entry.mask, entry.pos * mask_shift);
         }
     } else {
         if (tail_proc == tail_mode::NextTail) {
@@ -298,14 +285,12 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_compute_data(
     }
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::compute(
-        int loop_size_param) {
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::compute(int loop_size_param) {
 
     const int loop_size = loop_size_param;
 
-    IRB_LOOP(this->vmulps(this->zreg(irb, this->zsum_),
-            this->zreg(irb, this->zc_), this->zreg(irb, this->zc_)));
+    IRB_LOOP(this->vmulps(this->zreg(irb, this->zsum_), this->zreg(irb, zc_),
+            this->zreg(irb, zc_)));
 
     for (const auto reg : this->z_prev_)
         IRB_LOOP(this->vfmadd231ps(this->zreg(irb, this->zsum_),
@@ -317,13 +302,13 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::compute(
     IRB_LOOP(this->vfmadd132ps(
             this->zreg(irb, this->zsum_), this->zk_, this->zalpha_));
     IRB_LOOP(this->vmovaps(
-            this->zreg(irb, this->zbase_), this->zreg(irb, this->zsum_)));
+            this->zreg(irb, zbase_), this->zreg(irb, this->zsum_)));
 
     if (this->beta_ != 1) {
-        IRB_LOOP(this->vmulps(this->zreg(irb, this->zsum2_),
+        IRB_LOOP(this->vmulps(this->zreg(irb, zsum2_),
                 this->zreg(irb, this->zsum_), this->zreg(irb, this->zsum_)));
         IRB_LOOP(this->vmulps(this->zreg(irb, this->zsum_),
-                this->zreg(irb, this->zsum_), this->zreg(irb, this->zsum2_)));
+                this->zreg(irb, this->zsum_), this->zreg(irb, zsum2_)));
 
         for (unsigned i = 0; i < 2; ++i)
             IRB_LOOP(this->vsqrtps(this->zreg(irb, this->zsum_),
@@ -331,12 +316,11 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::compute(
     }
 }
 
-template <data_type_t d_type>
-void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::store_compute_data(
+void jit_avx512_common_lrn_kernel_fwd_nhwc_t::store_compute_data(
         int loop_size_param, tail_mode tail_proc, unsigned C_tail) {
 
     const int loop_size = loop_size_param;
-    static const int ytmp = this->zsum2_;
+    static const int ytmp = zsum2_;
 
     if (this->pk_ != prop_kind::forward_inference) {
         // save intermediate results for lrn backward
@@ -348,22 +332,22 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::store_compute_data(
                     this->EVEX_compress_addr(this->ws0_, irb * this->vlen_),
                     this->zreg(irb, this->zsum_), this->yreg(irb, ytmp)));
     }
-    IRB_LOOP(this->vdivps(this->zreg(irb, this->zdst_),
-            this->zreg(irb, this->zsrc_), this->zreg(irb, this->zsum_)));
+    IRB_LOOP(this->vdivps(this->zreg(irb, zdst_), this->zreg(irb, zsrc_),
+            this->zreg(irb, this->zsum_)));
     // storing to dst
     if (tail_proc == tail_mode::CurrentTail)
-        this->store_tail(C_tail, this->zreg(0, this->zdst_), this->dst_, 0,
+        this->store_tail(C_tail, this->zreg(0, zdst_), this->dst_, 0,
                 2 * zmm_size, tmp_store_from_stack_idx_tail_);
     else
         IRB_LOOP(this->store_data(
                 this->EVEX_compress_addr(this->dst_, irb * this->vlen_),
-                this->zreg(irb, this->zdst_), this->yreg(irb, ytmp)));
+                this->zreg(irb, zdst_), this->yreg(irb, ytmp)));
 
     if (this->pk_ != prop_kind::forward_inference) {
         // calculate and save more intermediate results for lrn backward
         /* ws1 = zdst / zbase = zsrc / (zbase^1.75) */
         IRB_LOOP(this->vdivps(this->zreg(irb, this->zsum_),
-                this->zreg(irb, this->zdst_), this->zreg(irb, this->zbase_)));
+                this->zreg(irb, zdst_), this->zreg(irb, zbase_)));
 
         if (tail_proc == tail_mode::CurrentTail)
             this->store_tail(C_tail, this->zreg(0, this->zsum_), this->ws1_, 0,
@@ -374,10 +358,6 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::store_compute_data(
                     this->zreg(irb, this->zsum_), this->yreg(irb, ytmp)));
     }
 }
-
-template class jit_avx512_common_lrn_kernel_fwd_nhwc_t<f32>;
-template class jit_avx512_common_lrn_kernel_fwd_nhwc_t<bf16>;
-template class jit_avx512_common_lrn_kernel_fwd_nhwc_t<f16>;
 
 } // namespace lrn
 } // namespace x64

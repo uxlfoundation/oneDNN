@@ -40,7 +40,6 @@ size_t strided_offset(const dim_t _n, const size_t _sn, const dim_t _d,
         const size_t _sw);
 }
 
-template <data_type_t d_type>
 struct nhwc_pooling_fwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
@@ -59,14 +58,12 @@ struct nhwc_pooling_fwd_t : public primitive_t {
                                       pooling_avg_exclude_padding),
                     VERBOSE_BAD_ALGORITHM);
 
-            // Disabling verbose dispatch messages for unsupported dt for better
-            // readability.
-            // TODO: restore once `d_type` template argument is removed.
-            if (!utils::everyone_is(
-                        d_type, src_md()->data_type, dst_md()->data_type)) {
-                return status::unimplemented;
-            }
-
+            const data_type_t d_type = src_md()->data_type;
+            VDISPATCH_POOLING(utils::one_of(d_type, data_type::f32,
+                                      data_type::bf16, data_type::f16,
+                                      data_type::f8_e5m2, data_type::f8_e4m3)
+                            && dst_md()->data_type == d_type,
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
@@ -118,7 +115,6 @@ struct nhwc_pooling_fwd_t : public primitive_t {
 
     nhwc_pooling_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    using data_t = typename prec_traits_t<d_type>::type;
     using ker_data_t = typename prec_traits_t<data_type::f32>::type;
 
     status_t init(engine_t *engine) override {
@@ -130,11 +126,14 @@ struct nhwc_pooling_fwd_t : public primitive_t {
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_forward(ctx);
+        return pd()->src_md()->data_type == data_type::f32
+                ? execute_forward_f32(ctx)
+                : execute_forward_cvt(ctx);
     }
 
 private:
-    status_t execute_forward(const exec_ctx_t &ctx) const;
+    status_t execute_forward_f32(const exec_ctx_t &ctx) const;
+    status_t execute_forward_cvt(const exec_ctx_t &ctx) const;
     void array_div_by_const(const dim_t n, const ker_data_t *src,
             const size_t num, ker_data_t *dst) const;
     void array_add(const dim_t n, const ker_data_t *src, ker_data_t *dst) const;
@@ -142,14 +141,13 @@ private:
             unsigned char *ws, const size_t ws_offset, const data_type_t ws_dt,
             const dim_t index) const;
     void array_nhwc_initialize(const dim_t n, ker_data_t *dst,
-            unsigned char *ws, const size_t ws_offset,
-            const data_type_t ws_dt) const;
+            unsigned char *ws, const size_t ws_offset, const data_type_t ws_dt,
+            const ker_data_t lowest) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<ref_post_ops_t> ref_post_ops_;
 };
 
-template <impl::data_type_t d_type>
 struct nhwc_pooling_bwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_bwd_pd_t {
         using cpu_pooling_bwd_pd_t::cpu_pooling_bwd_pd_t;
@@ -167,9 +165,10 @@ struct nhwc_pooling_bwd_t : public primitive_t {
                                       pooling_avg_include_padding,
                                       pooling_avg_exclude_padding),
                     VERBOSE_BAD_ALGORITHM);
-            VDISPATCH_POOLING(
-                    utils::everyone_is(d_type, diff_dst_md()->data_type,
-                            diff_src_md()->data_type),
+            const data_type_t d_type = diff_dst_md()->data_type;
+            VDISPATCH_POOLING(utils::one_of(d_type, data_type::f32,
+                                      data_type::bf16, data_type::f16)
+                            && diff_src_md()->data_type == d_type,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -216,14 +215,16 @@ struct nhwc_pooling_bwd_t : public primitive_t {
     };
 
     nhwc_pooling_bwd_t(const pd_t *apd) : primitive_t(apd) {}
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_backward(ctx);
+        return pd()->diff_dst_md()->data_type == data_type::f32
+                ? execute_backward_f32(ctx)
+                : execute_backward_cvt(ctx);
     }
 
 private:
-    status_t execute_backward(const exec_ctx_t &ctx) const;
+    status_t execute_backward_f32(const exec_ctx_t &ctx) const;
+    status_t execute_backward_cvt(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 

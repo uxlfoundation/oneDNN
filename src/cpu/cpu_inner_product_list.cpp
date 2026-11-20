@@ -61,15 +61,14 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_gemm_inner_product_fwd_t)
-            CPU_INSTANCE(gemm_inner_product_fwd_t<f32>)
+            CPU_INSTANCE(gemm_inner_product_fwd_t)
             CPU_INSTANCE(ref_inner_product_fwd_t)
             nullptr,
         }},
         {{forward, "bf16:bf16:*"}, {
             CPU_INSTANCE_X64_ZEN(zen_inner_product_fwd_t)
             CPU_INSTANCE_X64(matmul_inner_product_fwd_t)
-            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_fwd_t<f32>)
-            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_fwd_t<bf16>)
+            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE(ref_inner_product_fwd_t)
@@ -90,14 +89,13 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         }},
         {{backward_data, "*:xf:f32"}, REG_BWD_PK({
             CPU_INSTANCE_X64(matmul_inner_product_bwd_data_t)
-            CPU_INSTANCE(gemm_inner_product_bwd_data_t<f32>)
+            CPU_INSTANCE(gemm_inner_product_bwd_data_t)
             CPU_INSTANCE(ref_inner_product_bwd_data_t)
             nullptr,
         })},
         {{backward_data, "*:bf16:bf16"}, REG_BWD_PK({
             CPU_INSTANCE_X64(matmul_inner_product_bwd_data_t)
-            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_bwd_data_t<f32>)
-            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_bwd_data_t<bf16>)
+            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_bwd_data_t)
             CPU_INSTANCE(ref_inner_product_bwd_data_t)
             nullptr,
         })},
@@ -108,14 +106,13 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         })},
         {{backward_weights, "f32:*:f32"}, REG_BWD_PK({
             CPU_INSTANCE_X64(matmul_inner_product_bwd_weights_t)
-            CPU_INSTANCE(gemm_inner_product_bwd_weights_t<f32>)
+            CPU_INSTANCE(gemm_inner_product_bwd_weights_t)
             CPU_INSTANCE(ref_inner_product_bwd_weights_t)
             nullptr,
         })},
         {{backward_weights, "bf16:*:bf16"}, REG_BWD_PK({
             CPU_INSTANCE_X64(matmul_inner_product_bwd_weights_t)
-            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_bwd_weights_t<f32>)
-            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_bwd_weights_t<bf16>)
+            CPU_INSTANCE_AVX512(gemm_bf16_inner_product_bwd_weights_t)
             CPU_INSTANCE(ref_inner_product_bwd_weights_t)
             nullptr,
         })},

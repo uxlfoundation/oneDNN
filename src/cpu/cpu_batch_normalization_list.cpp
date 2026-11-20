@@ -58,20 +58,13 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_RV64(jit_uni_batch_normalization_fwd_t<v>)
             CPU_INSTANCE_RV64(jit_uni_batch_normalization_fwd_t<zvfh>)
             CPU_INSTANCE_RV64(jit_uni_batch_normalization_fwd_t<zvfbfwma>)
-            CPU_INSTANCE(ncsp_batch_normalization_fwd_t<f32>)
-            CPU_INSTANCE(ncsp_batch_normalization_fwd_t<bf16>)
-            CPU_INSTANCE(ncsp_batch_normalization_fwd_t<f16>)
-            CPU_INSTANCE(nspc_batch_normalization_fwd_t<f32>)
-            CPU_INSTANCE(nspc_batch_normalization_fwd_t<bf16>)
-            CPU_INSTANCE(nspc_batch_normalization_fwd_t<f16>)
-            CPU_INSTANCE(ref_batch_normalization_fwd_t<f32>)
-            CPU_INSTANCE(ref_batch_normalization_fwd_t<bf16>)
-            CPU_INSTANCE(ref_batch_normalization_fwd_t<f16>)
+            CPU_INSTANCE(ncsp_batch_normalization_fwd_t)
+            CPU_INSTANCE(nspc_batch_normalization_fwd_t)
             /* int */
             CPU_INSTANCE_X64(jit_uni_batch_normalization_s8_fwd_t<avx512_core>)
             CPU_INSTANCE_X64(jit_uni_batch_normalization_s8_fwd_t<avx2>)
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_s8_fwd_t<sve_512>)
-            CPU_INSTANCE(ref_batch_normalization_fwd_t<s8>)
+            CPU_INSTANCE(ref_batch_normalization_fwd_t)
             nullptr,
         }},
         {{backward}, REG_BWD_PK({
@@ -84,15 +77,9 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_RV64(jit_uni_batch_normalization_bwd_t<v>)
             CPU_INSTANCE_RV64(jit_uni_batch_normalization_bwd_t<zvfh>)
             CPU_INSTANCE_RV64(jit_uni_batch_normalization_bwd_t<zvfbfwma>)
-            CPU_INSTANCE(ncsp_batch_normalization_bwd_t<f32>)
-            CPU_INSTANCE(ncsp_batch_normalization_bwd_t<bf16>)
-            CPU_INSTANCE(ncsp_batch_normalization_bwd_t<f16>)
-            CPU_INSTANCE(nspc_batch_normalization_bwd_t<f32>)
-            CPU_INSTANCE(nspc_batch_normalization_bwd_t<bf16>)
-            CPU_INSTANCE(nspc_batch_normalization_bwd_t<f16>)
-            CPU_INSTANCE(ref_batch_normalization_bwd_t<f32>)
-            CPU_INSTANCE(ref_batch_normalization_bwd_t<bf16>)
-            CPU_INSTANCE(ref_batch_normalization_bwd_t<f16>)
+            CPU_INSTANCE(ncsp_batch_normalization_bwd_t)
+            CPU_INSTANCE(nspc_batch_normalization_bwd_t)
+            CPU_INSTANCE(ref_batch_normalization_bwd_t)
             nullptr,
         })},
     });

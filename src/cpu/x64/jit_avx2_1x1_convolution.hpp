@@ -134,8 +134,7 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
 
     protected:
         template <cpu_isa_t isa>
-        using dw_pd_t = typename jit_uni_dw_convolution_fwd_t<isa,
-                data_type::f32>::pd_t;
+        using dw_pd_t = typename jit_uni_dw_convolution_fwd_t<isa>::pd_t;
 
         bool set_default_formats() {
             using namespace format_tag;
@@ -330,7 +329,7 @@ private:
     std::unique_ptr<rtus_driver_t<avx2>> rtus_driver_;
 
     template <cpu_isa_t isa>
-    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_t<isa, data_type::f32>;
+    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_t<isa>;
 
     std::unique_ptr<dw_conv_kernel_t<avx2>> kernel_dw_avx2;
 };

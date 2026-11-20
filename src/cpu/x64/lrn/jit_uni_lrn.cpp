@@ -27,16 +27,28 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, data_type_t d_type>
-DEFINE_PD_CREATE(jit_uni_lrn_fwd_t<isa, d_type>::pd_t)
-template <cpu_isa_t isa, data_type_t d_type>
-DEFINE_PD_CREATE(jit_uni_lrn_bwd_t<isa, d_type>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_lrn_fwd_t<isa>::pd_t)
+template <cpu_isa_t isa>
+DEFINE_PD_CREATE(jit_uni_lrn_bwd_t<isa>::pd_t)
 
 using namespace dnnl::impl::format_tag;
 using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;
 
 static constexpr int MAX_LOCAL_SIZE = 32u;
+
+// Limits each isa to the data types its kernel is validated for.
+static bool is_isa_dt_supported(cpu_isa_t isa, data_type_t dt) {
+    using namespace data_type;
+    switch (isa) {
+        case avx512_core_fp16: return dt == f16;
+        case avx512_core: return one_of(dt, f32, bf16);
+        case avx2_vnni_2: return one_of(dt, bf16, f16);
+        case avx2: return dt == f32;
+        default: return false;
+    }
+}
 
 static dnnl_dim_t compute_n_summands(
         dnnl_dim_t size, int ndims, const dnnl_alg_kind_t &alg_kind) {
@@ -45,18 +57,18 @@ static dnnl_dim_t compute_n_summands(
             : static_cast<dnnl_dim_t>(std::pow(size, ndims - 2));
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_fwd_t<isa, d_type>::jit_uni_lrn_fwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_lrn_fwd_t<isa>::jit_uni_lrn_fwd_t(const pd_t *apd)
     : primitive_t(apd)
     , ker_(nullptr)
     , ker_first_(nullptr)
     , ker_last_(nullptr) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_fwd_t<isa, d_type>::~jit_uni_lrn_fwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_lrn_fwd_t<isa>::~jit_uni_lrn_fwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_lrn_fwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_lrn_fwd_t<isa>::init(engine_t *engine) {
     using namespace alg_kind;
 
     const int C = static_cast<int>(pd()->C());
@@ -69,31 +81,31 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::init(engine_t *engine) {
     const auto ak = pd()->desc()->alg_kind;
     const auto dat_tag = pd()->dat_tag_;
     const float A = pd()->desc()->lrn_alpha / compute_n_summands(ls, ndims, ak);
+    const data_type_t dt = pd()->src_md()->data_type;
 
     if (dat_tag == nChw8c && ls == 5 && ak == lrn_across_channels) {
-        ker_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa, d_type>>(
-                nchw8c_across_t(H, W, 0), A, K, pk);
-        ker_first_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa, d_type>>(
-                nchw8c_across_t(H, W, -1), A, K, pk);
-        ker_last_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa, d_type>>(
-                nchw8c_across_t(H, W, +1), A, K, pk);
+        ker_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa>>(
+                dt, nchw8c_across_t(H, W, 0), A, K, pk);
+        ker_first_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa>>(
+                dt, nchw8c_across_t(H, W, -1), A, K, pk);
+        ker_last_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa>>(
+                dt, nchw8c_across_t(H, W, +1), A, K, pk);
     } else if (one_of(dat_tag, nhwc, nChw8c, nChw16c)
             && ak == lrn_within_channel) {
 
-        ker_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa, d_type>>(
-                within_config_t(H, W, C, ls, dat_tag), A, K, pk);
+        ker_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa>>(
+                dt, within_config_t(H, W, C, ls, dat_tag), A, K, pk);
     } else if (dat_tag == nchw && ls == 5 && ak == lrn_across_channels) {
-        ker_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa, d_type>>(
-                nchw_across_t(C, H * W, 0), A, K, pk);
+        ker_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa>>(
+                dt, nchw_across_t(C, H * W, 0), A, K, pk);
         const int remind = (H * W) % VECTOR_LENGTH;
         if (remind != 0) {
-            ker_last_
-                    = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa, d_type>>(
-                            nchw_across_t(C, H * W, remind), A, K, pk);
+            ker_last_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa>>(
+                    dt, nchw_across_t(C, H * W, remind), A, K, pk);
         }
     } else {
-        ker_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa, d_type>>(
-                nhwc_across_t(C), A, K, pk);
+        ker_ = utils::make_unique<jit_uni_lrn_fwd_kernel_t<isa>>(
+                dt, nhwc_across_t(C), A, K, pk);
     }
     CHECK(ker_->create_kernel());
     if (ker_first_) CHECK(ker_first_->create_kernel());
@@ -101,18 +113,18 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::init(engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+status_t jit_uni_lrn_fwd_t<isa>::execute_forward(const exec_ctx_t &ctx) const {
     using namespace alg_kind;
 
     status_t status = status::success;
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_CLEAN_MEM(char *, DNNL_ARG_DST, status);
     CHECK(status);
-    auto ws = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_WORKSPACE, status);
+    auto ws = CTX_OUT_CLEAN_MEM(char *, DNNL_ARG_WORKSPACE, status);
     CHECK(status);
+    const size_t dt_size = types::data_type_size(pd()->src_md()->data_type);
 
     const dim_t N = pd()->MB();
     const dim_t C = pd()->C();
@@ -128,8 +140,9 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
     if (dat_tag == nChw8c && ls == 5 && ak == lrn_across_channels) {
         parallel_nd(N, C / VECTOR_LENGTH, [=](dim_t n, dim_t c8) {
             const auto offset = n * HW * C + c8 * HW * VECTOR_LENGTH;
-            auto ws_ptr = ws ? &ws[offset] : nullptr;
-            jit_args_fwd_t args {&src[offset], &dst[offset], ws_ptr, nullptr};
+            auto ws_ptr = ws ? ws + offset * dt_size : nullptr;
+            jit_args_fwd_t args {src + offset * dt_size, dst + offset * dt_size,
+                    ws_ptr, nullptr};
             if (c8 == 0)
                 (*ker_first)(&args);
             else if (c8 == C / VECTOR_LENGTH - 1)
@@ -143,17 +156,19 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
             const std::size_t offset = dat_tag == nhwc
                     ? n * HW * C + c * VECTOR_LENGTH
                     : n * HW * C + c * HW * VECTOR_LENGTH;
-            auto ws0_ptr = ws ? &ws[offset] : nullptr;
-            auto ws1_ptr = ws ? &ws[offset + N * C * HW] : nullptr;
-            jit_args_fwd_t args {&src[offset], &dst[offset], ws0_ptr, ws1_ptr};
+            auto ws0_ptr = ws ? ws + offset * dt_size : nullptr;
+            auto ws1_ptr = ws ? ws + (offset + N * C * HW) * dt_size : nullptr;
+            jit_args_fwd_t args {src + offset * dt_size, dst + offset * dt_size,
+                    ws0_ptr, ws1_ptr};
             (*ker)(&args);
         });
     } else if (dat_tag == nchw && ls == 5 && ak == lrn_across_channels) {
         parallel_nd(N, (HW + VECTOR_LENGTH - 1) / VECTOR_LENGTH,
                 [=](dim_t n, dim_t hw8) {
             const auto offset = n * HW * C + hw8 * VECTOR_LENGTH;
-            auto ws0_ptr = ws ? &ws[offset] : nullptr;
-            jit_args_fwd_t args {&src[offset], &dst[offset], ws0_ptr, nullptr};
+            auto ws0_ptr = ws ? ws + offset * dt_size : nullptr;
+            jit_args_fwd_t args {src + offset * dt_size, dst + offset * dt_size,
+                    ws0_ptr, nullptr};
 
             if ((hw8 + 1) * VECTOR_LENGTH > HW)
                 (*ker_last)(&args);
@@ -163,16 +178,17 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
     } else { // nhwc
         parallel_nd(N, HW, [=](dim_t n, dim_t hw) {
             const auto offset = n * HW * C + hw * C;
-            auto ws_ptr = ws ? &ws[offset] : nullptr;
-            jit_args_fwd_t args {&src[offset], &dst[offset], ws_ptr, nullptr};
+            auto ws_ptr = ws ? ws + offset * dt_size : nullptr;
+            jit_args_fwd_t args {src + offset * dt_size, dst + offset * dt_size,
+                    ws_ptr, nullptr};
             (*ker)(&args);
         });
     }
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_lrn_fwd_t<isa, d_type>::pd_t::init(const engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_lrn_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace prop_kind;
     using namespace alg_kind;
 
@@ -185,8 +201,9 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::pd_t::init(const engine_t *engine) {
     if (!mayiuse(isa)) return status::unimplemented;
 
     VDISPATCH_LRN(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
-    VDISPATCH_LRN(everyone_is(d_type, src_d.data_type(), dst_d.data_type()),
-            VERBOSE_UNSUPPORTED_DT);
+    const data_type_t d_type = src_d.data_type();
+    VDISPATCH_LRN(is_isa_dt_supported(isa, d_type), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_LRN(dst_d.data_type() == d_type, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LRN(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_LRN(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_LRN(src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
@@ -231,18 +248,18 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::pd_t::init(const engine_t *engine) {
     return status;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_bwd_t<isa, d_type>::jit_uni_lrn_bwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_lrn_bwd_t<isa>::jit_uni_lrn_bwd_t(const pd_t *apd)
     : primitive_t(apd)
     , ker_(nullptr)
     , ker_first_(nullptr)
     , ker_last_(nullptr) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_lrn_bwd_t<isa, d_type>::~jit_uni_lrn_bwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_lrn_bwd_t<isa>::~jit_uni_lrn_bwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_lrn_bwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_lrn_bwd_t<isa>::init(engine_t *engine) {
     using namespace alg_kind;
     const int C = static_cast<int>(pd()->C());
     const int H = static_cast<int>(pd()->H());
@@ -253,24 +270,23 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::init(engine_t *engine) {
     const float A = pd()->desc()->lrn_alpha / compute_n_summands(ls, ndims, ak);
     const float &B = pd()->desc()->lrn_beta;
     const auto &dat_tag = pd()->dat_tag_;
+    const data_type_t dt = pd()->src_md()->data_type;
 
     if (one_of(dat_tag, nhwc, nChw8c, nChw16c) && ak == lrn_within_channel) {
-        ker_ = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa, d_type>>(
-                within_config_t(H, W, C, ls, dat_tag), A, B);
+        ker_ = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa>>(
+                dt, within_config_t(H, W, C, ls, dat_tag), A, B);
     } else {
         int use_h_parallelism = 0; // XXX
         if (C / VECTOR_LENGTH == 1) {
-            ker_ = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa, d_type>>(
-                    nchw8c_across_t(H, W, 3), A, B, use_h_parallelism);
+            ker_ = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa>>(
+                    dt, nchw8c_across_t(H, W, 3), A, B, use_h_parallelism);
         } else {
-            ker_ = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa, d_type>>(
-                    nchw8c_across_t(H, W, 0), A, B, use_h_parallelism);
-            ker_first_
-                    = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa, d_type>>(
-                            nchw8c_across_t(H, W, -1), A, B, use_h_parallelism);
-            ker_last_
-                    = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa, d_type>>(
-                            nchw8c_across_t(H, W, +1), A, B, use_h_parallelism);
+            ker_ = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa>>(
+                    dt, nchw8c_across_t(H, W, 0), A, B, use_h_parallelism);
+            ker_first_ = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa>>(
+                    dt, nchw8c_across_t(H, W, -1), A, B, use_h_parallelism);
+            ker_last_ = utils::make_unique<jit_uni_lrn_bwd_kernel_t<isa>>(
+                    dt, nchw8c_across_t(H, W, +1), A, B, use_h_parallelism);
         }
     }
     CHECK(ker_->create_kernel());
@@ -279,15 +295,15 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::init(engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_lrn_bwd_t<isa, d_type>::execute_backward(
-        const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+status_t jit_uni_lrn_bwd_t<isa>::execute_backward(const exec_ctx_t &ctx) const {
     status_t status = status::success;
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
-    auto ws = CTX_IN_MEM(const data_t *, DNNL_ARG_WORKSPACE);
-    auto diff_src = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DIFF_SRC, status);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
+    auto ws = CTX_IN_MEM(const char *, DNNL_ARG_WORKSPACE);
+    auto diff_src = CTX_OUT_CLEAN_MEM(char *, DNNL_ARG_DIFF_SRC, status);
     CHECK(status);
+    const size_t dt_size = types::data_type_size(pd()->src_md()->data_type);
 
     const dim_t N = pd()->MB();
     const dim_t C = pd()->C();
@@ -309,16 +325,19 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::execute_backward(
             const std::size_t offset = dat_tag == nhwc
                     ? n * H * W * C + c * VECTOR_LENGTH
                     : n * H * W * C + c * H * W * VECTOR_LENGTH;
-            jit_args_bwd_t args {&src[offset], &diff_dst[offset], &ws[offset],
-                    &ws[offset + tensor_size], &diff_src[offset]};
+            jit_args_bwd_t args {src + offset * dt_size,
+                    diff_dst + offset * dt_size, ws + offset * dt_size,
+                    ws + (offset + tensor_size) * dt_size,
+                    diff_src + offset * dt_size};
             (*ker)(&args);
         });
     } else if (use_h_parallelism) {
         parallel_nd(N, C / VECTOR_LENGTH, H, [=](dim_t n, dim_t c8, dim_t h) {
             const std::size_t offset = n * C * H * W
                     + c8 * H * W * VECTOR_LENGTH + h * W * VECTOR_LENGTH;
-            jit_args_bwd_t args {&src[offset], &diff_dst[offset], &ws[offset],
-                    nullptr, &diff_src[offset]};
+            jit_args_bwd_t args {src + offset * dt_size,
+                    diff_dst + offset * dt_size, ws + offset * dt_size, nullptr,
+                    diff_src + offset * dt_size};
             if (C / VECTOR_LENGTH == 1)
                 (*ker)(&args);
             else if (c8 == 0)
@@ -332,8 +351,9 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::execute_backward(
         parallel_nd(N, C / VECTOR_LENGTH, [=](dim_t n, dim_t c8) {
             const std::size_t offset
                     = n * C * H * W + c8 * H * W * VECTOR_LENGTH;
-            jit_args_bwd_t args {&src[offset], &diff_dst[offset], &ws[offset],
-                    nullptr, &diff_src[offset]};
+            jit_args_bwd_t args {src + offset * dt_size,
+                    diff_dst + offset * dt_size, ws + offset * dt_size, nullptr,
+                    diff_src + offset * dt_size};
             if (C / VECTOR_LENGTH == 1)
                 (*ker)(&args);
             else if (c8 == 0)
@@ -347,8 +367,8 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::execute_backward(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_lrn_bwd_t<isa, d_type>::pd_t::init(const engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_lrn_bwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace prop_kind;
     using namespace alg_kind;
 
@@ -359,11 +379,13 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::pd_t::init(const engine_t *engine) {
     VDISPATCH_LRN(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
     // disabling verbose dispatch checks for unsupported isa for better readability
-    if (!mayiuse(avx512_core)) return status::unimplemented;
+    if (!mayiuse(isa)) return status::unimplemented;
 
     VDISPATCH_LRN(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
-    VDISPATCH_LRN(utils::everyone_is(d_type, src_d.data_type(),
-                          diff_src_d.data_type(), diff_dst_d.data_type()),
+    const data_type_t d_type = src_d.data_type();
+    VDISPATCH_LRN(is_isa_dt_supported(isa, d_type), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_LRN(utils::everyone_is(d_type, diff_src_d.data_type(),
+                          diff_dst_d.data_type()),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LRN(src_d.ndims() == 4, VERBOSE_BAD_NDIMS, "src", src_d.ndims());
     VDISPATCH_LRN(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -401,22 +423,19 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::pd_t::init(const engine_t *engine) {
             && src_d.dims()[3] >= desc()->local_size
             && IMPLICATION(d_type == data_type::bf16, mayiuse(avx512_core))
             && IMPLICATION(d_type == data_type::f16, mayiuse(avx512_core_fp16))
-            && (isa == avx512_core ? one_of(dat_tag_, nhwc, nChw16c)
-                                   : one_of(dat_tag_, nhwc, nChw8c));
+            && (is_superset(isa, avx512_core) ? one_of(dat_tag_, nhwc, nChw16c)
+                                              : one_of(dat_tag_, nhwc, nChw8c));
 
     return args_ok_across || args_ok_within ? success : unimplemented;
 }
 
-template struct jit_uni_lrn_fwd_t<avx512_core, data_type::f32>;
-template struct jit_uni_lrn_fwd_t<avx512_core, data_type::bf16>;
-template struct jit_uni_lrn_fwd_t<avx512_core_fp16, data_type::f16>;
-template struct jit_uni_lrn_fwd_t<avx2_vnni_2, data_type::bf16>;
-template struct jit_uni_lrn_fwd_t<avx2_vnni_2, data_type::f16>;
-template struct jit_uni_lrn_fwd_t<avx2, data_type::f32>;
-template struct jit_uni_lrn_bwd_t<avx512_core, data_type::f32>;
-template struct jit_uni_lrn_bwd_t<avx512_core, data_type::bf16>;
-template struct jit_uni_lrn_bwd_t<avx512_core_fp16, data_type::f16>;
-template struct jit_uni_lrn_bwd_t<avx2, data_type::f32>;
+template struct jit_uni_lrn_fwd_t<avx512_core>;
+template struct jit_uni_lrn_fwd_t<avx512_core_fp16>;
+template struct jit_uni_lrn_fwd_t<avx2_vnni_2>;
+template struct jit_uni_lrn_fwd_t<avx2>;
+template struct jit_uni_lrn_bwd_t<avx512_core>;
+template struct jit_uni_lrn_bwd_t<avx512_core_fp16>;
+template struct jit_uni_lrn_bwd_t<avx2>;
 
 } // namespace x64
 } // namespace cpu

@@ -35,17 +35,18 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
-DEFINE_PD_CREATE(nspc_batch_normalization_fwd_t<d_type>::pd_t)
-template <data_type_t d_type>
-DEFINE_PD_CREATE(nspc_batch_normalization_bwd_t<d_type>::pd_t)
+DEFINE_PD_CREATE(nspc_batch_normalization_fwd_t::pd_t)
+DEFINE_PD_CREATE(nspc_batch_normalization_bwd_t::pd_t)
 
 using namespace memory_tracking::names;
 using namespace data_type;
 
-template <data_type_t d_type>
-status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
+status_t nspc_batch_normalization_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
+    const data_type_t d_type = pd()->src_md()->data_type;
+    const bool is_xf16 = utils::one_of(d_type, bf16, f16);
+    const size_t dt_size = types::data_type_size(d_type);
+
     const bool save_stats = pd()->is_training();
     const bool is_training = pd()->is_training();
     const bool fuse_norm_relu = pd()->fuse_norm_relu();
@@ -60,7 +61,7 @@ status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
     auto tmp_var = scratchpad.template get<acc_data_t>(key_bnorm_tmp_var);
     auto *ws_reduce = scratchpad.template get<acc_data_t>(key_bnorm_reduction);
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto scale = CTX_IN_MEM(const float *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const float *, DNNL_ARG_SHIFT);
 
@@ -80,7 +81,7 @@ status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
         }
     }
 
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(uint8_t *, DNNL_ARG_WORKSPACE);
     acc_data_t *tmp_data_ = scratchpad.template get<acc_data_t>(key_bnorm_cvt);
 
@@ -105,14 +106,15 @@ status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
                 for (dim_t sp = 0; sp < SP; sp++) {
                     const acc_data_t *_src;
                     const size_t s_off = (size_t)n * SP * C + sp * C;
-                    if (utils::one_of(d_type, bf16, f16)) {
+                    if (is_xf16) {
                         // convert src from xf16 to f32
                         acc_data_t *tmp_src = tmp_data_ + ithr * C_align;
-                        types::cvt_to_float(tmp_src, src + s_off, C);
+                        types::cvt_to_float(
+                                d_type, tmp_src, src + s_off * dt_size, C);
                         _src = tmp_src;
                     } else {
                         _src = reinterpret_cast<const acc_data_t *>(
-                                src + s_off);
+                                src + s_off * dt_size);
                     }
                     PRAGMA_OMP_SIMD()
                     for (dim_t c = 0; c < C; c++) {
@@ -145,14 +147,15 @@ status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
                 for (dim_t sp = 0; sp < SP; sp++) {
                     const acc_data_t *_src;
                     const size_t s_off = (size_t)n * SP * C + sp * C;
-                    if (utils::one_of(d_type, bf16, f16)) {
+                    if (is_xf16) {
                         // convert src from xf16 to f32
                         acc_data_t *tmp_src = tmp_data_ + ithr * C_align;
-                        types::cvt_to_float(tmp_src, src + s_off, C);
+                        types::cvt_to_float(
+                                d_type, tmp_src, src + s_off * dt_size, C);
                         _src = tmp_src;
                     } else {
                         _src = reinterpret_cast<const acc_data_t *>(
-                                src + s_off);
+                                src + s_off * dt_size);
                     }
                     PRAGMA_OMP_SIMD()
                     for (dim_t c = 0; c < C; c++) {
@@ -195,16 +198,19 @@ status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
                 acc_data_t *_dst;
                 const acc_data_t *_src;
                 const size_t s_off = (size_t)n * SP * C + sp * C;
-                if (utils::one_of(d_type, bf16, f16)) {
+                if (is_xf16) {
                     // store dst to f32 buffer
                     _dst = tmp_data_ + ithr * C_align;
                     // convert src from xf16 to f32
                     acc_data_t *tmp_src = tmp_data_ + (nthr + ithr) * C_align;
-                    types::cvt_to_float(tmp_src, src + s_off, C);
+                    types::cvt_to_float(
+                            d_type, tmp_src, src + s_off * dt_size, C);
                     _src = tmp_src;
                 } else {
-                    _dst = reinterpret_cast<acc_data_t *>(dst + s_off);
-                    _src = reinterpret_cast<const acc_data_t *>(src + s_off);
+                    _dst = reinterpret_cast<acc_data_t *>(
+                            dst + s_off * dt_size);
+                    _src = reinterpret_cast<const acc_data_t *>(
+                            src + s_off * dt_size);
                 }
 #if CLANG_WA_02_SAFE_TO_USE_OMP_SIMD
                 PRAGMA_OMP_SIMD()
@@ -230,9 +236,10 @@ status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
                     _dst[c] = with_relu ? math::relu_fwd(bn_res, pd()->alpha())
                                         : bn_res;
                 }
-                if (utils::one_of(d_type, bf16, f16)) {
+                if (is_xf16) {
                     // convert dst from f32 to xf16
-                    types::cvt_from_float(dst + s_off, _dst, C);
+                    types::cvt_from_float(
+                            d_type, dst + s_off * dt_size, _dst, C);
                 }
             }
         }
@@ -240,24 +247,22 @@ status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
     return status::success;
 }
 
-template struct nspc_batch_normalization_fwd_t<f32>;
-template struct nspc_batch_normalization_fwd_t<bf16>;
-template struct nspc_batch_normalization_fwd_t<f16>;
-
-template <data_type_t d_type>
-status_t nspc_batch_normalization_bwd_t<d_type>::execute_backward(
+status_t nspc_batch_normalization_bwd_t::execute_backward(
         const exec_ctx_t &ctx) const {
+    const data_type_t d_type = pd()->src_md()->data_type;
+    const bool is_xf16 = utils::one_of(d_type, bf16, f16);
+    const size_t dt_size = types::data_type_size(d_type);
 
     const auto use_scale = pd()->use_scale();
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto mean = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN);
     auto variance = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE);
     auto scale = CTX_IN_MEM(acc_data_t *, DNNL_ARG_SCALE);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
     auto ws = CTX_IN_MEM(const uint8_t *, DNNL_ARG_WORKSPACE);
 
-    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
+    auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
     auto diff_scale = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SCALE);
     auto diff_shift = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SHIFT);
 
@@ -306,19 +311,22 @@ status_t nspc_batch_normalization_bwd_t<d_type>::execute_backward(
                 const acc_data_t *_diff_dst;
                 const acc_data_t *_src;
                 const size_t s_off = (size_t)n * SP * C + sp * C;
-                if (utils::one_of(d_type, bf16, f16)) {
+                if (is_xf16) {
                     // convert diff_dst to f32
                     acc_data_t *tmp_diff_dst = tmp_data_ + ithr * C_align;
-                    types::cvt_to_float(tmp_diff_dst, diff_dst + s_off, C);
+                    types::cvt_to_float(d_type, tmp_diff_dst,
+                            diff_dst + s_off * dt_size, C);
                     _diff_dst = tmp_diff_dst;
                     // convert src to f32
                     acc_data_t *tmp_src = tmp_data_ + (nthr + ithr) * C_align;
-                    types::cvt_to_float(tmp_src, src + s_off, C);
+                    types::cvt_to_float(
+                            d_type, tmp_src, src + s_off * dt_size, C);
                     _src = tmp_src;
                 } else {
                     _diff_dst = reinterpret_cast<const acc_data_t *>(
-                            diff_dst + s_off);
-                    _src = reinterpret_cast<const acc_data_t *>(src + s_off);
+                            diff_dst + s_off * dt_size);
+                    _src = reinterpret_cast<const acc_data_t *>(
+                            src + s_off * dt_size);
                 }
 #if CLANG_WA_02_SAFE_TO_USE_OMP_SIMD
                 PRAGMA_OMP_SIMD()
@@ -367,27 +375,30 @@ status_t nspc_batch_normalization_bwd_t<d_type>::execute_backward(
                 const acc_data_t *_diff_dst;
                 const acc_data_t *_src;
                 const size_t s_off = (size_t)n * SP * C + sp * C;
-                if (utils::one_of(d_type, bf16, f16)) {
+                if (is_xf16) {
                     // store diff_src to f32 buffer
                     _diff_src = tmp_data_ + ithr * C_align;
                     // convert diff_dst to f32
                     acc_data_t *tmp_diff_dst = tmp_data_ + ithr * C_align;
-                    types::cvt_to_float(tmp_diff_dst, diff_dst + s_off, C);
+                    types::cvt_to_float(d_type, tmp_diff_dst,
+                            diff_dst + s_off * dt_size, C);
                     _diff_dst = tmp_diff_dst;
                     if (calculate_diff_stats) {
                         // convert src to f32
                         acc_data_t *tmp_src
                                 = tmp_data_ + (2 * nthr + ithr) * C_align;
-                        types::cvt_to_float(tmp_src, src + s_off, C);
+                        types::cvt_to_float(
+                                d_type, tmp_src, src + s_off * dt_size, C);
                         _src = tmp_src;
                     } else
                         _src = nullptr; // to avoid compiler warning w/ gcc483
                 } else {
-                    _diff_src
-                            = reinterpret_cast<acc_data_t *>(diff_src + s_off);
+                    _diff_src = reinterpret_cast<acc_data_t *>(
+                            diff_src + s_off * dt_size);
                     _diff_dst = reinterpret_cast<const acc_data_t *>(
-                            diff_dst + s_off);
-                    _src = reinterpret_cast<const acc_data_t *>(src + s_off);
+                            diff_dst + s_off * dt_size);
+                    _src = reinterpret_cast<const acc_data_t *>(
+                            src + s_off * dt_size);
                 }
 
 #if CLANG_WA_02_SAFE_TO_USE_OMP_SIMD
@@ -433,9 +444,10 @@ status_t nspc_batch_normalization_bwd_t<d_type>::execute_backward(
                     v_diff_src *= gamma * sqrt_variance;
                     _diff_src[nb_c_blk * c_blk + c] = v_diff_src;
                 }
-                if (utils::one_of(d_type, bf16, f16)) {
+                if (is_xf16) {
                     // convert diff_src from f32
-                    types::cvt_from_float(diff_src + s_off, _diff_src, C);
+                    types::cvt_from_float(
+                            d_type, diff_src + s_off * dt_size, _diff_src, C);
                 }
             }
         }
@@ -443,9 +455,6 @@ status_t nspc_batch_normalization_bwd_t<d_type>::execute_backward(
     return status::success;
 }
 
-template struct nspc_batch_normalization_bwd_t<f32>;
-template struct nspc_batch_normalization_bwd_t<bf16>;
-template struct nspc_batch_normalization_bwd_t<f16>;
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

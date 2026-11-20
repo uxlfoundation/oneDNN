@@ -23,6 +23,7 @@
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
 
+#include "cpu/ref_io_helper.hpp"
 #include "cpu/simple_q10n.hpp"
 
 #include "cpu/nchw_pooling.hpp"
@@ -31,16 +32,13 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
-DEFINE_PD_CREATE(nchw_pooling_fwd_t<d_type>::pd_t)
-template <data_type_t d_type>
-DEFINE_PD_CREATE(nchw_pooling_bwd_t<d_type>::pd_t)
+DEFINE_PD_CREATE(nchw_pooling_fwd_t::pd_t)
+DEFINE_PD_CREATE(nchw_pooling_bwd_t::pd_t)
 
 using namespace nstl;
 
-template <>
-status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t nchw_pooling_fwd_t::execute_forward_f32(const exec_ctx_t &ctx) const {
+    using data_t = float;
     const auto alg = pd()->desc()->alg_kind;
     auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
@@ -235,14 +233,12 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
     return status::success;
 }
 
-template <data_type_t d_type>
-status_t nchw_pooling_fwd_t<d_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t nchw_pooling_fwd_t::execute_forward_cvt(const exec_ctx_t &ctx) const {
 
     auto alg = pd()->desc()->alg_kind;
 
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(unsigned char *, DNNL_ARG_WORKSPACE);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
@@ -251,6 +247,10 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
 
     const memory_desc_wrapper ws_d(pd()->workspace_md());
     const data_type_t ws_dt = ws ? ws_d.data_type() : data_type::undef;
+    const data_type_t src_dt = pd()->src_md()->data_type;
+    const size_t src_dt_size = types::data_type_size(src_dt);
+    const data_type_t dst_dt = pd()->dst_md()->data_type;
+    const float lowest = types::lowest_value<float>(dst_dt);
 
     const dim_t MB = pd()->MB();
     const dim_t C = pd()->OC();
@@ -361,12 +361,13 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
     };
 
     parallel_nd(blocked_size, [=](size_t i) {
-        types::cvt_to_float(&cvt_wsp[i * simd_w], &src[i * simd_w], simd_w);
+        types::cvt_to_float(src_dt, &cvt_wsp[i * simd_w],
+                src + i * simd_w * src_dt_size, simd_w);
     });
     if (tail_size) {
         parallel(1, [=](int, int) {
-            types::cvt_to_float(&cvt_wsp[blocked_size * simd_w],
-                    &src[blocked_size * simd_w], tail_size);
+            types::cvt_to_float(src_dt, &cvt_wsp[blocked_size * simd_w],
+                    src + blocked_size * simd_w * src_dt_size, tail_size);
         });
     }
 
@@ -382,7 +383,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
                 size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
-                float d_fp32 = numeric_limits<data_t>::lowest();
+                float d_fp32 = lowest;
 
                 set_ws(mb, c, od, oh, ow, 0);
 
@@ -394,7 +395,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
                 args.dst_md = pd()->dst_md();
                 ref_post_ops_->execute(d_fp32, args);
 
-                dst[dst_offset] = static_cast<data_t>(d_fp32);
+                io::store_float_value(dst_dt, d_fp32, dst, dst_offset);
             });
         } else {
             parallel_nd(MB, C, OD, OH, OW,
@@ -402,13 +403,13 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
                 size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
-                float d_fp32 = numeric_limits<data_t>::lowest();
+                float d_fp32 = lowest;
 
                 set_ws(mb, c, od, oh, ow, 0);
 
                 ker_max(&d_fp32, mb, c, od, oh, ow);
 
-                dst[dst_offset] = static_cast<data_t>(d_fp32);
+                io::store_float_value(dst_dt, d_fp32, dst, dst_offset);
             });
         }
     } else {
@@ -426,7 +427,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
                 args.l_offset = dst_offset;
                 args.dst_md = pd()->dst_md();
                 ref_post_ops_->execute(d_fp32, args);
-                dst[dst_offset] = static_cast<data_t>(d_fp32);
+                io::store_float_value(dst_dt, d_fp32, dst, dst_offset);
             });
         } else {
             parallel_nd(MB, C, OD, OH, OW,
@@ -437,7 +438,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
                 float d_fp32 = 0.0f;
                 ker_avg(&d_fp32, mb, c, od, oh, ow);
 
-                dst[dst_offset] = static_cast<data_t>(d_fp32);
+                io::store_float_value(dst_dt, d_fp32, dst, dst_offset);
             });
         }
     }
@@ -445,9 +446,8 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
     return status::success;
 }
 
-template <>
-status_t nchw_pooling_bwd_t<data_type::f32>::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t nchw_pooling_bwd_t::execute_backward_f32(const exec_ctx_t &ctx) const {
+    using data_t = float;
     auto alg = pd()->desc()->alg_kind;
     const bool is_3d = pd()->desc()->diff_src_desc.ndims == 5;
     const bool is_2d = pd()->desc()->diff_src_desc.ndims == 4;
@@ -588,16 +588,18 @@ status_t nchw_pooling_bwd_t<data_type::f32>::execute_backward(
     return status::success;
 }
 
-template <data_type_t d_type>
-status_t nchw_pooling_bwd_t<d_type>::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t nchw_pooling_bwd_t::execute_backward_cvt(const exec_ctx_t &ctx) const {
 
     auto alg = pd()->desc()->alg_kind;
     const bool is_3d = pd()->desc()->diff_src_desc.ndims == 5;
     const bool is_2d = pd()->desc()->diff_src_desc.ndims == 4;
 
-    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
+    auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
+    const data_type_t diff_src_dt = pd()->diff_src_md()->data_type;
+    const data_type_t diff_dst_dt = pd()->diff_dst_md()->data_type;
+    const size_t diff_src_dt_size = types::data_type_size(diff_src_dt);
+    const size_t diff_dst_dt_size = types::data_type_size(diff_dst_dt);
     auto ws = CTX_IN_MEM(const unsigned char *, DNNL_ARG_WORKSPACE);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
@@ -724,7 +726,8 @@ status_t nchw_pooling_bwd_t<d_type>::execute_backward(
 
             ker_zero(diff_src_fp32, curr_c_block);
 
-            types::cvt_to_float(diff_dst_fp32, &diff_dst[diff_dst_offset_b],
+            types::cvt_to_float(diff_dst_dt, diff_dst_fp32,
+                    diff_dst + diff_dst_offset_b * diff_dst_dt_size,
                     dst_sp_size * curr_c_block);
 
             for_(dim_t c = 0; c < curr_c_block; ++c)
@@ -738,8 +741,9 @@ status_t nchw_pooling_bwd_t<d_type>::execute_backward(
                             cb * c_blk + c, od, oh, ow);
                 }
             }
-            types::cvt_from_float(&diff_src[diff_src_offset], diff_src_fp32,
-                    src_sp_size * curr_c_block);
+            types::cvt_from_float(diff_src_dt,
+                    diff_src + diff_src_offset * diff_src_dt_size,
+                    diff_src_fp32, src_sp_size * curr_c_block);
         });
     } else {
         parallel_nd_ext(nthr, MB, utils::div_up(C, c_blk),
@@ -757,7 +761,8 @@ status_t nchw_pooling_bwd_t<d_type>::execute_backward(
 
             ker_zero(diff_src_fp32, curr_c_block);
 
-            types::cvt_to_float(diff_dst_fp32, &diff_dst[diff_dst_offset_b],
+            types::cvt_to_float(diff_dst_dt, diff_dst_fp32,
+                    diff_dst + diff_dst_offset_b * diff_dst_dt_size,
                     dst_sp_size * curr_c_block);
             for_(dim_t c = 0; c < curr_c_block; ++c)
             for_(dim_t od = od_start; od < od_end; ++od)
@@ -770,21 +775,14 @@ status_t nchw_pooling_bwd_t<d_type>::execute_backward(
                             cb * c_blk + c, od, oh, ow);
                 }
             }
-            types::cvt_from_float(&diff_src[diff_src_offset], diff_src_fp32,
-                    src_sp_size * curr_c_block);
+            types::cvt_from_float(diff_src_dt,
+                    diff_src + diff_src_offset * diff_src_dt_size,
+                    diff_src_fp32, src_sp_size * curr_c_block);
         });
     }
 
     return status::success;
 }
-template struct nchw_pooling_fwd_t<data_type::f32>;
-template struct nchw_pooling_bwd_t<data_type::f32>;
-template struct nchw_pooling_fwd_t<data_type::bf16>;
-template struct nchw_pooling_bwd_t<data_type::bf16>;
-template struct nchw_pooling_fwd_t<data_type::f16>;
-template struct nchw_pooling_fwd_t<data_type::f8_e5m2>;
-template struct nchw_pooling_fwd_t<data_type::f8_e4m3>;
-template struct nchw_pooling_bwd_t<data_type::f16>;
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

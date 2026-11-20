@@ -32,21 +32,19 @@ using namespace data_type;
 using namespace Xbyak;
 using namespace Xbyak::util;
 
-template <data_type_t d_type>
 class jit_avx512_common_lrn_kernel_bwd_blocked_t
-    : public jit_avx512_common_lrn_kernel_bwd_t<d_type> {
+    : public jit_avx512_common_lrn_kernel_bwd_t {
 public:
-    using data_t = typename prec_traits_t<d_type>::type;
-
     struct jit_args_bwd_t {
-        const data_t *src, *diff_dst, *ws0, *ws1;
-        data_t *diff_src;
+        const void *src, *diff_dst, *ws0, *ws1;
+        void *diff_src;
     };
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_common_lrn_kernel_bwd_blocked_t)
 
-    jit_avx512_common_lrn_kernel_bwd_blocked_t(const struct nChw16c_across_t &J,
-            float alpha, float beta, int local_size, int use_h_parallel);
+    jit_avx512_common_lrn_kernel_bwd_blocked_t(data_type_t dt,
+            const struct nChw16c_across_t &J, float alpha, float beta,
+            int local_size, int use_h_parallel);
 
 private:
     void generate() override;

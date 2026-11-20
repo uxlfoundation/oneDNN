@@ -27,10 +27,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <data_type_t d_type>
-DEFINE_PD_CREATE(jit_avx512_common_lrn_fwd_t<d_type>::pd_t)
-template <data_type_t d_type>
-DEFINE_PD_CREATE(jit_avx512_common_lrn_bwd_t<d_type>::pd_t)
+DEFINE_PD_CREATE(jit_avx512_common_lrn_fwd_t::pd_t)
+DEFINE_PD_CREATE(jit_avx512_common_lrn_bwd_t::pd_t)
 
 static constexpr int vsize = 16;
 
@@ -38,9 +36,7 @@ using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;
 using namespace data_type;
 
-template <data_type_t d_type>
-status_t jit_avx512_common_lrn_fwd_t<d_type>::pd_t::init(
-        const engine_t *engine) {
+status_t jit_avx512_common_lrn_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace prop_kind;
     using namespace alg_kind;
 
@@ -53,8 +49,9 @@ status_t jit_avx512_common_lrn_fwd_t<d_type>::pd_t::init(
     if (!mayiuse(avx512_core)) return status::unimplemented;
 
     VDISPATCH_LRN(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
-    VDISPATCH_LRN(everyone_is(d_type, src_d.data_type(), dst_d.data_type()),
-            VERBOSE_UNSUPPORTED_DT);
+    const data_type_t d_type = src_d.data_type();
+    VDISPATCH_LRN(one_of(d_type, f32, bf16, f16), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_LRN(dst_d.data_type() == d_type, VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LRN(IMPLICATION(d_type == f16, mayiuse(avx512_core_fp16)),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_LRN(src_d.ndims() == 4, VERBOSE_BAD_NDIMS, "src", src_d.ndims());
@@ -87,24 +84,14 @@ status_t jit_avx512_common_lrn_fwd_t<d_type>::pd_t::init(
     return success;
 }
 
-template <data_type_t d_type>
-jit_avx512_common_lrn_fwd_t<d_type>::jit_avx512_common_lrn_fwd_t(
-        const pd_t *apd)
+jit_avx512_common_lrn_fwd_t::jit_avx512_common_lrn_fwd_t(const pd_t *apd)
     : primitive_t(apd)
-    , lrn_executor_(lrn::lrn_executor_factory_t::create_executor<d_type,
-              typename jit_avx512_common_lrn_fwd_t<d_type>::pd_t>(
+    , lrn_executor_(lrn::lrn_executor_factory_t::create_executor(
               pd(), lrn::direction::forward)) {}
 
-template <data_type_t d_type>
-jit_avx512_common_lrn_fwd_t<d_type>::~jit_avx512_common_lrn_fwd_t() = default;
+jit_avx512_common_lrn_fwd_t::~jit_avx512_common_lrn_fwd_t() = default;
 
-template struct jit_avx512_common_lrn_fwd_t<f32>;
-template struct jit_avx512_common_lrn_fwd_t<bf16>;
-template struct jit_avx512_common_lrn_fwd_t<f16>;
-
-template <data_type_t d_type>
-status_t jit_avx512_common_lrn_bwd_t<d_type>::pd_t::init(
-        const engine_t *engine) {
+status_t jit_avx512_common_lrn_bwd_t::pd_t::init(const engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper src_d(src_md());
@@ -117,8 +104,10 @@ status_t jit_avx512_common_lrn_bwd_t<d_type>::pd_t::init(
     if (!mayiuse(avx512_core)) return status::unimplemented;
 
     VDISPATCH_LRN(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
-    VDISPATCH_LRN(utils::everyone_is(d_type, src_d.data_type(),
-                          diff_src_d.data_type(), diff_dst_d.data_type()),
+    const data_type_t d_type = src_d.data_type();
+    VDISPATCH_LRN(one_of(d_type, f32, bf16, f16), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_LRN(utils::everyone_is(d_type, diff_src_d.data_type(),
+                          diff_dst_d.data_type()),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LRN(IMPLICATION(d_type == f16, mayiuse(avx512_core_fp16)),
             VERBOSE_ISA_DT_MISMATCH);
@@ -153,20 +142,12 @@ status_t jit_avx512_common_lrn_bwd_t<d_type>::pd_t::init(
     return success;
 }
 
-template <data_type_t d_type>
-jit_avx512_common_lrn_bwd_t<d_type>::jit_avx512_common_lrn_bwd_t(
-        const pd_t *apd)
+jit_avx512_common_lrn_bwd_t::jit_avx512_common_lrn_bwd_t(const pd_t *apd)
     : primitive_t(apd)
-    , lrn_executor_(lrn::lrn_executor_factory_t::create_executor<d_type,
-              typename jit_avx512_common_lrn_bwd_t<d_type>::pd_t>(
+    , lrn_executor_(lrn::lrn_executor_factory_t::create_executor(
               pd(), lrn::direction::backward)) {}
 
-template <data_type_t d_type>
-jit_avx512_common_lrn_bwd_t<d_type>::~jit_avx512_common_lrn_bwd_t() = default;
-
-template struct jit_avx512_common_lrn_bwd_t<f32>;
-template struct jit_avx512_common_lrn_bwd_t<bf16>;
-template struct jit_avx512_common_lrn_bwd_t<f16>;
+jit_avx512_common_lrn_bwd_t::~jit_avx512_common_lrn_bwd_t() = default;
 
 } // namespace x64
 } // namespace cpu

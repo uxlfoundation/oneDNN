@@ -32,10 +32,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, data_type_t src_type, data_type_t dst_type = src_type>
+template <cpu_isa_t isa>
 struct jit_uni_dw_convolution_fwd_t : public primitive_t {
-    using jit_uni_dw_conv_fwd_kernel_inst_t
-            = jit_uni_dw_conv_fwd_kernel_t<isa, src_type>;
+    using jit_uni_dw_conv_fwd_kernel_inst_t = jit_uni_dw_conv_fwd_kernel_t<isa>;
 
     struct pd_t : public cpu_convolution_fwd_pd_t {
         // Note: check `USING_INHERITED_IS_IMPOSSIBLE` comment in other files
@@ -50,15 +49,23 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
         status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(src_type, src_type,
-                                   data_type::undef, dst_type, f32),
+            const data_type_t src_dt = src_md()->data_type;
+            const data_type_t dst_dt = dst_md()->data_type;
+            const bool src_dt_ok = isa == avx512_core_fp16 ? src_dt == f16
+                    : isa == avx512_core ? utils::one_of(src_dt, f32, bf16)
+                                         : src_dt == f32;
+            VDISPATCH_CONV(src_dt_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(
+                    utils::one_of(dst_dt, src_dt, f32), VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(expect_data_types(src_dt, src_dt, data_type::undef,
+                                   dst_dt, f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_CONV(
                     attr()->has_default_values(
-                            primitive_attr_t::skip_mask_t::post_ops, dst_type),
+                            primitive_attr_t::skip_mask_t::post_ops, dst_dt),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_CONV(
                     IMPLICATION(this->with_bias(),
@@ -82,12 +89,6 @@ struct jit_uni_dw_convolution_fwd_t : public primitive_t {
 
     jit_uni_dw_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    using f32_data_t = typename prec_traits_t<data_type::f32>::type;
-    using bf16_data_t = typename prec_traits_t<data_type::bf16>::type;
-    using f16_data_t = typename prec_traits_t<data_type::f16>::type;
-    using data_t = typename prec_traits_t<src_type>::type;
-    using dst_data_t = typename prec_traits_t<dst_type>::type;
-
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
                 new jit_uni_dw_conv_fwd_kernel_inst_t(
@@ -107,13 +108,7 @@ private:
     std::unique_ptr<jit_uni_dw_conv_fwd_kernel_inst_t> kernel_;
 };
 
-using jit_avx512_common_dw_convolution_fwd_t
-        = jit_uni_dw_convolution_fwd_t<avx512_core, data_type::f32>;
-using jit_avx2_dw_convolution_fwd_t
-        = jit_uni_dw_convolution_fwd_t<avx2, data_type::f32>;
-
-template <cpu_isa_t isa, data_type_t diff_dst_type,
-        data_type_t diff_src_type = diff_dst_type>
+template <cpu_isa_t isa>
 struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_data_pd_t {
         using cpu_convolution_bwd_data_pd_t::cpu_convolution_bwd_data_pd_t;
@@ -125,8 +120,16 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
             using namespace data_type;
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(diff_src_type, diff_dst_type,
-                                   data_type::undef, diff_dst_type, f32),
+            const data_type_t diff_src_dt = diff_src_md()->data_type;
+            const data_type_t diff_dst_dt = diff_dst_md()->data_type;
+            const bool diff_dst_dt_ok = isa == avx512_core
+                    ? utils::one_of(diff_dst_dt, f32, bf16)
+                    : diff_dst_dt == f32;
+            VDISPATCH_CONV(diff_dst_dt_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(utils::one_of(diff_src_dt, diff_dst_dt, f32),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(expect_data_types(diff_src_dt, diff_dst_dt,
+                                   data_type::undef, diff_dst_dt, f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -136,13 +139,13 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
             using jit_uni_dw_conv_bwd_data_kernel_inst
-                    = jit_uni_dw_conv_bwd_data_kernel_t<isa, diff_dst_type>;
+                    = jit_uni_dw_conv_bwd_data_kernel_t<isa>;
             CHECK(jit_uni_dw_conv_bwd_data_kernel_inst::init_conf(
                     jcp_, *desc(), diff_src_md_, weights_md_, diff_dst_md_));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_uni_dw_conv_bwd_data_kernel_t<isa,
-                    diff_dst_type>::init_scratchpad(scratchpad, jcp_);
+            jit_uni_dw_conv_bwd_data_kernel_t<isa>::init_scratchpad(
+                    scratchpad, jcp_);
 
             return status::success;
         }
@@ -152,14 +155,9 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
 
     jit_uni_dw_convolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}
 
-    using diff_src_data_t = typename prec_traits_t<diff_src_type>::type;
-    using diff_dst_data_t = typename prec_traits_t<diff_dst_type>::type;
-    using wei_data_t = typename prec_traits_t<diff_dst_type>::type;
-
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_uni_dw_conv_bwd_data_kernel_t<isa, diff_dst_type>(
-                        pd()->jcp_)));
+                new jit_uni_dw_conv_bwd_data_kernel_t<isa>(pd()->jcp_)));
         return kernel_->create_kernel();
     }
 
@@ -172,34 +170,32 @@ private:
     void execute_backward_data(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_uni_dw_conv_bwd_data_kernel_t<isa, diff_dst_type>>
-            kernel_;
+    std::unique_ptr<jit_uni_dw_conv_bwd_data_kernel_t<isa>> kernel_;
 };
 
-using jit_avx512_common_dw_convolution_bwd_data_t
-        = jit_uni_dw_convolution_bwd_data_t<avx512_core, data_type::f32>;
-using jit_avx2_dw_convolution_bwd_data_t
-        = jit_uni_dw_convolution_bwd_data_t<avx2, data_type::f32>;
-
-template <cpu_isa_t isa, data_type_t src_type,
-        data_type_t diff_weights_type = src_type>
+template <cpu_isa_t isa>
 struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_weights_pd_t {
         using cpu_convolution_bwd_weights_pd_t::
                 cpu_convolution_bwd_weights_pd_t;
 
-        using jit_uni_dw_convolution_bwd_weights
-                = jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-                        diff_weights_type>;
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_dw:", jcp_.isa, ""),
-                jit_uni_dw_convolution_bwd_weights);
+                jit_uni_dw_convolution_bwd_weights_t);
 
         status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(src_type, diff_weights_type,
-                                   data_type::undef, src_type, f32),
+            const data_type_t src_dt = src_md()->data_type;
+            const data_type_t diff_wei_dt = diff_weights_md()->data_type;
+            const bool src_dt_ok = isa == avx512_core
+                    ? utils::one_of(src_dt, f32, bf16)
+                    : src_dt == f32;
+            VDISPATCH_CONV(src_dt_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(utils::one_of(diff_wei_dt, src_dt, f32),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(expect_data_types(src_dt, diff_wei_dt,
+                                   data_type::undef, src_dt, f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -218,14 +214,14 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
             using jit_uni_dw_conv_bwd_weights_kernel_inst
-                    = jit_uni_dw_conv_bwd_weights_kernel_t<isa, src_type>;
+                    = jit_uni_dw_conv_bwd_weights_kernel_t<isa>;
             CHECK(jit_uni_dw_conv_bwd_weights_kernel_inst::init_conf(jcp_,
                     *desc(), src_md_, diff_weights_md_, diff_bias_md_,
                     diff_dst_md_, max_threads));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_uni_dw_conv_bwd_weights_kernel_t<isa,
-                    src_type>::init_scratchpad(scratchpad, jcp_);
+            jit_uni_dw_conv_bwd_weights_kernel_t<isa>::init_scratchpad(
+                    scratchpad, jcp_);
 
             return status::success;
         }
@@ -234,16 +230,9 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
     };
     jit_uni_dw_convolution_bwd_weights_t(const pd_t *apd);
 
-    using f32_data_t = typename prec_traits_t<data_type::f32>::type;
-    using bf16_data_t = typename prec_traits_t<data_type::bf16>::type;
-    using src_data_t = typename prec_traits_t<src_type>::type;
-    using diff_dst_data_t = typename prec_traits_t<src_type>::type;
-    using diff_weights_data_t = typename prec_traits_t<diff_weights_type>::type;
-
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_uni_dw_conv_bwd_weights_kernel_t<isa, src_type>(
-                        pd()->jcp_)));
+                new jit_uni_dw_conv_bwd_weights_kernel_t<isa>(pd()->jcp_)));
         CHECK(kernel_->create_kernel());
 
         const auto jcp = &pd()->jcp_;
@@ -261,19 +250,14 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
 private:
     void execute_backward_weights(const exec_ctx_t &ctx) const;
     void execute_reduction(const exec_ctx_t &ctx) const;
+    void execute_reduction_bf16(const exec_ctx_t &ctx) const;
     void execute_backward_weights_nxc(const exec_ctx_t &ctx) const;
     void execute_reduction_nxc(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_;
-    std::unique_ptr<jit_uni_dw_conv_bwd_weights_kernel_t<isa, src_type>>
-            kernel_;
+    std::unique_ptr<jit_uni_dw_conv_bwd_weights_kernel_t<isa>> kernel_;
 };
-
-using jit_avx512_common_dw_convolution_bwd_weights_t
-        = jit_uni_dw_convolution_bwd_weights_t<avx512_core, data_type::f32>;
-using jit_avx2_dw_convolution_bwd_weights_t
-        = jit_uni_dw_convolution_bwd_weights_t<avx2, data_type::f32>;
 
 } // namespace x64
 } // namespace cpu

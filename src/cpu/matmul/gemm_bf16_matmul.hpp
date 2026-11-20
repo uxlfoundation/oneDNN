@@ -34,7 +34,6 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
-template <impl::data_type_t dst_type>
 struct gemm_bf16_matmul_t : public primitive_t {
     struct pd_t : public cpu_matmul_pd_t {
         using cpu_matmul_pd_t::cpu_matmul_pd_t;
@@ -95,7 +94,6 @@ struct gemm_bf16_matmul_t : public primitive_t {
 
     using src_data_t = typename prec_traits_t<src_type>::type;
     using weights_data_t = typename prec_traits_t<weights_type>::type;
-    using dst_data_t = typename prec_traits_t<dst_type>::type;
     using acc_data_t = typename prec_traits_t<acc_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {

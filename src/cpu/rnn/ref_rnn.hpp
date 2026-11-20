@@ -89,6 +89,58 @@ template <impl::data_type_t src_type, impl::data_type_t weights_type,
         impl::data_type_t acc_type>
 struct ref_rnn_bwd_t;
 
+// Data type agnostic part of the RNN primitive descriptor. It is templated
+// only on the propagation kind to keep the number of instantiations low.
+template <prop_kind_t aprop>
+struct ref_rnn_common_pd_t
+    : public utils::conditional<aprop == prop_kind::forward, cpu_rnn_fwd_pd_t,
+              cpu_rnn_bwd_pd_t>::type {
+    using base_pd_t = typename utils::conditional<aprop == prop_kind::forward,
+            cpu_rnn_fwd_pd_t, cpu_rnn_bwd_pd_t>::type;
+    using base_pd_t::base_pd_t;
+#if DNNL_X64 || DNNL_AARCH64
+    using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<aprop>;
+#endif
+
+    const char *impl_name() const {
+#if DNNL_X64 || DNNL_AARCH64
+        return rnn_.is_brgemm
+                ? JIT_IMPL_NAME_HELPER("brgemm:", rnn_.brgemm_isa, "")
+                : rnn_.use_matmul ? "ref+matmul"
+                                  : "ref";
+#else
+        return "ref";
+#endif
+    }
+
+    rnn_utils::rnn_conf_t rnn_;
+    std::shared_ptr<primitive_desc_t> matmul_layer_1_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_layer_2_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_layer_3_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_iter_1_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_iter_2_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_iter_3_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_part2_1_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_part2_2_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_part2_3_pd_;
+    std::shared_ptr<primitive_desc_t> matmul_part2_4_pd_;
+#if DNNL_X64
+    std::shared_ptr<primitive_desc_t> bf32_wei_layer_reorder_pd_;
+    std::shared_ptr<primitive_desc_t> bf32_wei_iter_reorder_pd_;
+#endif
+
+protected:
+    status_t init(const engine_t *engine, data_type_t src_type,
+            data_type_t weights_type, data_type_t acc_type);
+
+private:
+    status_t init_ref(const engine_t *engine, data_type_t src_type,
+            data_type_t weights_type, data_type_t acc_type);
+    status_t init_brgemm(const engine_t *engine, data_type_t src_type,
+            data_type_t weights_type, data_type_t acc_type);
+    void init_scratchpad(size_t scratchpad_sz, data_type_t acc_type);
+};
+
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 struct ref_rnn_common_t : public primitive_t {
@@ -136,47 +188,15 @@ struct ref_rnn_common_t : public primitive_t {
     using weights_assign_t
             = void (class_name::*)(rnn_weights_assign_sig_args) const;
 
-    using base_pd_t =
-            typename utils::conditional<false || aprop == prop_kind::forward,
-                    cpu_rnn_fwd_pd_t, cpu_rnn_bwd_pd_t>::type;
+    struct pd_t : public ref_rnn_common_pd_t<aprop> {
+        using ref_rnn_common_pd_t<aprop>::ref_rnn_common_pd_t;
 
-    struct pd_t : public base_pd_t {
-        using base_pd_t::base_pd_t;
+        DECLARE_COMMON_PD_T(this->impl_name(), impl_t, USE_GLOBAL_SCRATCHPAD);
 
-        const char *impl_name() const {
-#if DNNL_X64 || DNNL_AARCH64
-            return rnn_.is_brgemm
-                    ? JIT_IMPL_NAME_HELPER("brgemm:", rnn_.brgemm_isa, "")
-                    : rnn_.use_matmul ? "ref+matmul"
-                                      : "ref";
-#else
-            return "ref";
-#endif
+        status_t init(const engine_t *engine) {
+            return ref_rnn_common_pd_t<aprop>::init(
+                    engine, src_type, weights_type, acc_type);
         }
-
-        DECLARE_COMMON_PD_T(impl_name(), impl_t, USE_GLOBAL_SCRATCHPAD);
-
-        status_t init_ref(const engine_t *engine);
-        status_t init_brgemm(const engine_t *engine);
-        status_t init(const engine_t *engine);
-
-        rnn_utils::rnn_conf_t rnn_;
-        std::shared_ptr<primitive_desc_t> matmul_layer_1_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_layer_2_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_layer_3_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_iter_1_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_iter_2_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_iter_3_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_part2_1_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_part2_2_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_part2_3_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_part2_4_pd_;
-#if DNNL_X64
-        std::shared_ptr<primitive_desc_t> bf32_wei_layer_reorder_pd_;
-        std::shared_ptr<primitive_desc_t> bf32_wei_iter_reorder_pd_;
-#endif
-    protected:
-        void init_scratchpad(size_t scratchpad_sz);
     };
 
     ref_rnn_common_t(const pd_t *apd) : primitive_t(apd) {}

@@ -32,10 +32,8 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
-DEFINE_PD_CREATE(nhwc_pooling_fwd_t<d_type>::pd_t)
-template <impl::data_type_t d_type>
-DEFINE_PD_CREATE(nhwc_pooling_bwd_t<d_type>::pd_t)
+DEFINE_PD_CREATE(nhwc_pooling_fwd_t::pd_t)
+DEFINE_PD_CREATE(nhwc_pooling_bwd_t::pd_t)
 
 // Intel's LLVM-based compiler on Windows generates incorrect code with
 // PRAGMA_OMP_SIMD in some particular cases.
@@ -67,8 +65,7 @@ size_t strided_offset(const dim_t _n, const size_t _sn, const dim_t _d,
 }
 } // namespace nhwc_pooling
 
-template <data_type_t d_type>
-void nhwc_pooling_fwd_t<d_type>::array_div_by_const(const dim_t n,
+void nhwc_pooling_fwd_t::array_div_by_const(const dim_t n,
         const ker_data_t *src, const size_t num, ker_data_t *dst) const {
     for (dim_t i = 0; i < n; ++i) {
         const float ftmp = ((float)src[i]) / num;
@@ -76,16 +73,14 @@ void nhwc_pooling_fwd_t<d_type>::array_div_by_const(const dim_t n,
     }
 }
 
-template <data_type_t d_type>
-void nhwc_pooling_fwd_t<d_type>::array_add(
+void nhwc_pooling_fwd_t::array_add(
         const dim_t n, const ker_data_t *src, ker_data_t *dst) const {
     for (dim_t i = 0; i < n; ++i) {
         dst[i] += src[i];
     }
 }
 
-template <data_type_t d_type>
-void nhwc_pooling_fwd_t<d_type>::array_nhwc_max(const dim_t n, ker_data_t *dst,
+void nhwc_pooling_fwd_t::array_nhwc_max(const dim_t n, ker_data_t *dst,
         const ker_data_t *src, unsigned char *ws, const size_t ws_offset,
         const data_type_t ws_dt, const dim_t index) const {
     assert(ws);
@@ -134,10 +129,9 @@ void nhwc_pooling_fwd_t<d_type>::array_nhwc_max(const dim_t n, ker_data_t *dst,
     }
 }
 
-template <data_type_t d_type>
-void nhwc_pooling_fwd_t<d_type>::array_nhwc_initialize(const dim_t n,
-        ker_data_t *dst, unsigned char *ws, const size_t ws_offset,
-        const data_type_t ws_dt) const {
+void nhwc_pooling_fwd_t::array_nhwc_initialize(const dim_t n, ker_data_t *dst,
+        unsigned char *ws, const size_t ws_offset, const data_type_t ws_dt,
+        const ker_data_t lowest) const {
     assert(ws && (ws_dt == data_type::u8 || ws_dt == data_type::s32));
 #if SAFE_TO_USE_OMP_SIMD
     PRAGMA_OMP_SIMD()
@@ -147,16 +141,15 @@ void nhwc_pooling_fwd_t<d_type>::array_nhwc_initialize(const dim_t n,
             ws[ws_offset + oc] = 0;
         else
             reinterpret_cast<int *>(ws)[ws_offset + oc] = 0;
-        dst[oc] = nstl::numeric_limits<data_t>::lowest();
+        dst[oc] = lowest;
     }
 }
 
 using namespace nstl;
 using namespace nhwc_pooling;
 
-template <>
-status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t nhwc_pooling_fwd_t::execute_forward_f32(const exec_ctx_t &ctx) const {
+    using data_t = float;
 
     const auto alg = pd()->desc()->alg_kind;
 
@@ -229,8 +222,9 @@ status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
                     d[oc] = nstl::numeric_limits<data_t>::lowest();
                 }
             } else {
-                array_nhwc_initialize(
-                        OC, dst + dst_offset_init, ws, ws_offset_init, ws_dt);
+                array_nhwc_initialize(OC, dst + dst_offset_init, ws,
+                        ws_offset_init, ws_dt,
+                        nstl::numeric_limits<data_t>::lowest());
             }
 
             for_(dim_t kd = 0; kd < KD; ++kd)
@@ -316,15 +310,18 @@ status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
     return status::success;
 }
 
-template <data_type_t d_type>
-status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t nhwc_pooling_fwd_t::execute_forward_cvt(const exec_ctx_t &ctx) const {
 
     const auto alg = pd()->desc()->alg_kind;
 
-    const auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+    const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(unsigned char *, DNNL_ARG_WORKSPACE);
+    const data_type_t src_dt = pd()->src_md()->data_type;
+    const size_t src_dt_size = types::data_type_size(src_dt);
+    const data_type_t dst_dt = pd()->dst_md()->data_type;
+    const size_t dst_dt_size = types::data_type_size(dst_dt);
+    const float lowest = types::lowest_value<float>(dst_dt);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
     float *const cvt_src_wsp = scratchpad.template get<float>(
@@ -398,10 +395,11 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
             if (!ws) {
                 PRAGMA_OMP_SIMD()
                 for (dim_t oc = 0; oc < OC; ++oc) {
-                    dst_f32[oc] = nstl::numeric_limits<data_t>::lowest();
+                    dst_f32[oc] = lowest;
                 }
             } else {
-                array_nhwc_initialize(OC, dst_f32, ws, ws_offset_init, ws_dt);
+                array_nhwc_initialize(
+                        OC, dst_f32, ws, ws_offset_init, ws_dt, lowest);
             }
 
             for_(dim_t kd = 0; kd < KD; ++kd)
@@ -418,7 +416,8 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
                 const size_t src_offset_init = strided_offset(mb, src_n_stride,
                         id, src_d_stride, ih, src_h_stride, iw, src_w_stride);
 
-                types::cvt_to_float(src_f32, &src[src_offset_init], OC);
+                types::cvt_to_float(src_dt, src_f32,
+                        src + src_offset_init * src_dt_size, OC);
 
                 if (!ws) {
                     PRAGMA_OMP_SIMD()
@@ -450,7 +449,8 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
             for (dim_t iw = iw_start; iw < iw_end; ++iw) {
                 size_t src_offset_init = strided_offset(mb, src_n_stride, id,
                         src_d_stride, ih, src_h_stride, iw, src_w_stride);
-                types::cvt_to_float(src_f32, &src[src_offset_init], OC);
+                types::cvt_to_float(src_dt, src_f32,
+                        src + src_offset_init * src_dt_size, OC);
 
                 // need to move the loop to separate function
                 // for GCC 4.8.5 to vectorize
@@ -478,14 +478,14 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
                 args.l_offset += OSP;
             }
         }
-        types::cvt_from_float(dst + dst_offset_init, dst_f32, OC);
+        types::cvt_from_float(
+                dst_dt, dst + dst_offset_init * dst_dt_size, dst_f32, OC);
     });
     return status::success;
 }
 
-template <>
-status_t nhwc_pooling_bwd_t<data_type::f32>::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t nhwc_pooling_bwd_t::execute_backward_f32(const exec_ctx_t &ctx) const {
+    using data_t = float;
     auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
     auto ws = CTX_IN_MEM(const unsigned char *, DNNL_ARG_WORKSPACE);
     auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
@@ -621,13 +621,15 @@ status_t nhwc_pooling_bwd_t<data_type::f32>::execute_backward(
     return status::success;
 }
 
-template <data_type_t d_type>
-status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
-        const exec_ctx_t &ctx) const {
+status_t nhwc_pooling_bwd_t::execute_backward_cvt(const exec_ctx_t &ctx) const {
 
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
     auto ws = CTX_IN_MEM(const unsigned char *, DNNL_ARG_WORKSPACE);
-    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
+    auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
+    const data_type_t diff_src_dt = pd()->diff_src_md()->data_type;
+    const data_type_t diff_dst_dt = pd()->diff_dst_md()->data_type;
+    const size_t diff_src_dt_size = types::data_type_size(diff_src_dt);
+    const size_t diff_dst_dt_size = types::data_type_size(diff_dst_dt);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
     float *cvt_dsrc = scratchpad.template get<float>(
@@ -679,10 +681,11 @@ status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
         float *diff_dst_fp32 = &cvt_ddst[ithr * OC];
         float *diff_src_fp32 = &cvt_dsrc[ithr * OC];
 
-        for (dim_t oc = 0; oc < OC; ++oc) {
+        for (dim_t oc = 0; oc < OC; ++oc)
             diff_src_fp32[oc] = 0.f;
-            diff_src[src_offset_init + oc] = (bfloat16_t)0.f;
-        }
+        types::cvt_from_float(diff_src_dt,
+                diff_src + src_offset_init * diff_src_dt_size, diff_src_fp32,
+                OC);
 
         // Find out which output cells may correspond to current
         // input position. Current input postition divided by
@@ -714,7 +717,8 @@ status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
             size_t dst_offset_init = strided_offset(mb, diff_dst_n_stride, od,
                     diff_dst_d_stride, oh, diff_dst_h_stride, ow,
                     diff_dst_w_stride);
-            types::cvt_to_float(diff_dst_fp32, &diff_dst[dst_offset_init], OC);
+            types::cvt_to_float(diff_dst_dt, diff_dst_fp32,
+                    diff_dst + dst_offset_init * diff_dst_dt_size, OC);
 
             if (alg == alg_kind::pooling_max) {
                 DECLARE_READ_STRIDES(ws);
@@ -767,21 +771,13 @@ status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
                         diff_src_fp32[oc] = diff_dst_fp32[oc] / num_summands;
                 }
             }
-            types::cvt_from_float(
-                    &diff_src[src_offset_init], diff_src_fp32, OC);
+            types::cvt_from_float(diff_src_dt,
+                    diff_src + src_offset_init * diff_src_dt_size,
+                    diff_src_fp32, OC);
         }
     });
     return status::success;
 }
-
-template struct nhwc_pooling_fwd_t<data_type::f32>;
-template struct nhwc_pooling_bwd_t<data_type::f32>;
-template struct nhwc_pooling_fwd_t<data_type::bf16>;
-template struct nhwc_pooling_bwd_t<data_type::bf16>;
-template struct nhwc_pooling_fwd_t<data_type::f16>;
-template struct nhwc_pooling_fwd_t<data_type::f8_e5m2>;
-template struct nhwc_pooling_fwd_t<data_type::f8_e4m3>;
-template struct nhwc_pooling_bwd_t<data_type::f16>;
 
 } // namespace cpu
 } // namespace impl

@@ -34,7 +34,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <data_type_t d_type>
 struct ncsp_batch_normalization_fwd_t : public primitive_t {
     struct pd_t : public cpu_batch_normalization_fwd_pd_t {
         using cpu_batch_normalization_fwd_pd_t::
@@ -49,8 +48,9 @@ struct ncsp_batch_normalization_fwd_t : public primitive_t {
             VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_BNORM(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
-            VDISPATCH_BNORM(utils::everyone_is(d_type, src_md()->data_type,
-                                    dst_md()->data_type),
+            const data_type_t d_type = src_md()->data_type;
+            VDISPATCH_BNORM(utils::one_of(d_type, f32, bf16, f16)
+                            && dst_md()->data_type == d_type,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -102,7 +102,8 @@ struct ncsp_batch_normalization_fwd_t : public primitive_t {
                 }
             }
 
-            if (utils::one_of(d_type, data_type::bf16, data_type::f16)) {
+            if (utils::one_of(
+                        src_md()->data_type, data_type::bf16, data_type::f16)) {
                 static constexpr dim_t simd_w = 16;
                 const dim_t SP = D() * H() * W();
                 const int nbufs = 2;
@@ -113,7 +114,6 @@ struct ncsp_batch_normalization_fwd_t : public primitive_t {
         }
     };
 
-    using data_t = typename prec_traits_t<d_type>::type;
     using acc_data_t = float;
 
     ncsp_batch_normalization_fwd_t(const pd_t *apd) : primitive_t(apd) {}
@@ -128,7 +128,6 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
-template <data_type_t d_type>
 struct ncsp_batch_normalization_bwd_t : public primitive_t {
     struct pd_t : public cpu_batch_normalization_bwd_pd_t {
         using cpu_batch_normalization_bwd_pd_t::
@@ -143,9 +142,11 @@ struct ncsp_batch_normalization_bwd_t : public primitive_t {
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_BNORM(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
-            VDISPATCH_BNORM(
-                    utils::everyone_is(d_type, src_md()->data_type,
-                            diff_dst_md()->data_type, diff_src_md()->data_type),
+            const data_type_t d_type = src_md()->data_type;
+            VDISPATCH_BNORM(utils::one_of(d_type, f32, bf16, f16)
+                            && utils::everyone_is(d_type,
+                                    diff_dst_md()->data_type,
+                                    diff_src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -200,7 +201,8 @@ struct ncsp_batch_normalization_bwd_t : public primitive_t {
                 scratchpad.template book<acc_data_t>(
                         key_bnorm_tmp_diff_ss, ss_size);
 
-            if (utils::one_of(d_type, data_type::bf16, data_type::f16)) {
+            if (utils::one_of(
+                        src_md()->data_type, data_type::bf16, data_type::f16)) {
                 static constexpr dim_t simd_w = 16;
                 const dim_t SP = D() * H() * W();
                 const int nbufs = 2 + !use_global_stats();
@@ -211,7 +213,6 @@ struct ncsp_batch_normalization_bwd_t : public primitive_t {
         }
     };
 
-    using data_t = typename prec_traits_t<d_type>::type;
     using acc_data_t = float;
 
     ncsp_batch_normalization_bwd_t(const pd_t *apd) : primitive_t(apd) {}

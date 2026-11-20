@@ -39,7 +39,6 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <impl::data_type_t dst_type>
 struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
@@ -58,8 +57,10 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
             if (!mayiuse(avx512_core)) return status::unimplemented;
 
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(bf16, bf16, data_type::undef,
-                                   dst_type, data_type::undef),
+            const data_type_t dst_dt = invariant_dst_md()->data_type;
+            VDISPATCH_CONV(utils::one_of(dst_dt, f32, bf16)
+                            && expect_data_types(bf16, bf16, data_type::undef,
+                                    dst_dt, data_type::undef),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -70,7 +71,7 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_CONV(
                     attr()->has_default_values(
-                            primitive_attr_t::skip_mask_t::post_ops, dst_type),
+                            primitive_attr_t::skip_mask_t::post_ops, dst_dt),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_CONV(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_CONV(
@@ -145,9 +146,7 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
         std::unique_ptr<cpu_convolution_fwd_pd_t> dw_conv_pd_;
 
     protected:
-        template <data_type_t ddt>
-        using dw_pd_t = typename jit_uni_dw_convolution_fwd_t<avx512_core,
-                data_type::bf16, ddt>::pd_t;
+        using dw_pd_t = jit_uni_dw_convolution_fwd_t<avx512_core>::pd_t;
 
         bool set_default_formats() {
             using namespace format_tag;
@@ -186,21 +185,7 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
                 dw_conv_pd_.reset(static_cast<cpu_convolution_fwd_pd_t *>(
                         other.dw_conv_pd_->clone()));
                 if (!dw_conv_pd_) return status::out_of_memory;
-                auto dw_dst_dt = dw_conv_pd_->dst_md()->data_type;
-
-                switch (dw_dst_dt) {
-                    case bf16:
-                        jcp_dw_ = &(
-                                static_cast<dw_pd_t<bf16> *>(dw_conv_pd_.get())
-                                        ->jcp_);
-                        break;
-                    case f32:
-                        jcp_dw_ = &(
-                                static_cast<dw_pd_t<f32> *>(dw_conv_pd_.get())
-                                        ->jcp_);
-                        break;
-                    default: assert(!"unreachable");
-                }
+                jcp_dw_ = &(static_cast<dw_pd_t *>(dw_conv_pd_.get())->jcp_);
             }
             return status::success;
         }
@@ -250,26 +235,17 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
             CHECK(get_depthwise_conv_desc(
                     cd_dw, src_md, attr_1x1, attr_dw, dw_po_index));
 
-            auto dw_dst_dt = cd_dw.dst_desc.data_type;
-
-#define CASE(dt) \
-    case (dt): { \
-        auto fusable_pd \
-                = make_unique_pd<dw_pd_t<(dt)>>(&cd_dw, &attr_dw, nullptr); \
-        CHECK(fusable_pd->init(engine)); \
-        jcp_dw = &(fusable_pd->jcp_); \
-        dw_conv_pd_ = std::move(fusable_pd); \
-        break; \
-    }
-            if (jcp_1x1.dst_dt == data_type::bf16) {
-                switch (dw_dst_dt) {
-                    CASE(data_type::bf16);
-                    CASE(data_type::f32);
-                    default: return status::unimplemented;
-                }
-            } else
+            const auto dw_dst_dt = cd_dw.dst_desc.data_type;
+            if (jcp_1x1.dst_dt != data_type::bf16
+                    || !utils::one_of(
+                            dw_dst_dt, data_type::bf16, data_type::f32))
                 return status::unimplemented;
-#undef CASE
+
+            auto fusable_pd
+                    = make_unique_pd<dw_pd_t>(&cd_dw, &attr_dw, nullptr);
+            CHECK(fusable_pd->init(engine));
+            jcp_dw = &(fusable_pd->jcp_);
+            dw_conv_pd_ = std::move(fusable_pd);
 
             VDISPATCH_CONV_IC(
                     dnnl_memory_desc_equal(&src_md, dw_conv_pd_->src_md(0)),
@@ -326,10 +302,10 @@ struct jit_avx512_core_bf16_1x1_convolution_fwd_t : public primitive_t {
 
     using src_data_t = typename prec_traits_t<data_type::bf16>::type;
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
-    using dst_data_t = typename prec_traits_t<dst_type>::type;
-    // Note: In case of fused depthwise convolution, the final output datatype
-    // may not be dst_data_t.
-    using dw_wei_data_t = typename prec_traits_t<dst_type>::type;
+    // Depthwise fusion is supported for bf16 1x1 output only, which implies
+    // bf16 depthwise weights and a bf16 intermediate buffer.
+    using dw_wei_data_t = typename prec_traits_t<data_type::bf16>::type;
+    using dw_buf_data_t = typename prec_traits_t<data_type::bf16>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
@@ -364,12 +340,10 @@ private:
 
     std::unique_ptr<jit_avx512_core_bf16_1x1_conv_kernel_t> kernel_;
     std::unique_ptr<rtus_driver_t<avx512_core>> rtus_driver_;
-    using dw_conv_kernel_t
-            = jit_uni_dw_conv_fwd_kernel_t<avx512_core, data_type::bf16>;
+    using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_t<avx512_core>;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 
-template <impl::data_type_t diff_src_type>
 struct jit_avx512_core_bf16_1x1_convolution_bwd_data_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_data_pd_t {
         using cpu_convolution_bwd_data_pd_t::cpu_convolution_bwd_data_pd_t;
@@ -383,8 +357,10 @@ struct jit_avx512_core_bf16_1x1_convolution_bwd_data_t : public primitive_t {
             if (!mayiuse(avx512_core)) return status::unimplemented;
 
             VDISPATCH_CONV(is_bwd_d(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(diff_src_type, bf16,
-                                   data_type::undef, bf16, data_type::undef),
+            const data_type_t diff_src_dt = invariant_src_md()->data_type;
+            VDISPATCH_CONV(utils::one_of(diff_src_dt, f32, bf16)
+                            && expect_data_types(diff_src_dt, bf16,
+                                    data_type::undef, bf16, data_type::undef),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -452,7 +428,6 @@ struct jit_avx512_core_bf16_1x1_convolution_bwd_data_t : public primitive_t {
 
     using diff_dst_data_t = typename prec_traits_t<data_type::bf16>::type;
     using wei_data_t = typename prec_traits_t<data_type::bf16>::type;
-    using diff_src_data_t = typename prec_traits_t<diff_src_type>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
@@ -471,7 +446,7 @@ struct jit_avx512_core_bf16_1x1_convolution_bwd_data_t : public primitive_t {
 private:
     void execute_backward_data(const exec_ctx_t &ctx) const;
     void execute_backward_data_thr(const int, const int,
-            const diff_dst_data_t *, const wei_data_t *, diff_src_data_t *,
+            const diff_dst_data_t *, const wei_data_t *, char *,
             const memory_tracking::grantor_t &scratchpad) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
@@ -480,7 +455,6 @@ private:
     std::unique_ptr<rtus_driver_t<avx512_core>> rtus_driver_;
 };
 
-template <impl::data_type_t diff_weights_type>
 struct jit_avx512_core_bf16_1x1_convolution_bwd_weights_t : public primitive_t {
     struct pd_t : public cpu_convolution_bwd_weights_pd_t {
         using cpu_convolution_bwd_weights_pd_t::
@@ -497,8 +471,10 @@ struct jit_avx512_core_bf16_1x1_convolution_bwd_weights_t : public primitive_t {
             if (!mayiuse(avx512_core)) return status::unimplemented;
 
             VDISPATCH_CONV(is_bwd_w(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(bf16, diff_weights_type,
-                                   data_type::undef, bf16, data_type::undef),
+            const data_type_t diff_wei_dt = invariant_wei_md()->data_type;
+            VDISPATCH_CONV(utils::one_of(diff_wei_dt, f32, bf16)
+                            && expect_data_types(bf16, diff_wei_dt,
+                                    data_type::undef, bf16, data_type::undef),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -580,8 +556,6 @@ struct jit_avx512_core_bf16_1x1_convolution_bwd_weights_t : public primitive_t {
 
     using src_data_t = typename prec_traits_t<data_type::bf16>::type;
     using diff_dst_data_t = typename prec_traits_t<data_type::bf16>::type;
-
-    using diff_wei_data_t = typename prec_traits_t<diff_weights_type>::type;
 
 private:
     void execute_backward_weights(const exec_ctx_t &ctx) const;

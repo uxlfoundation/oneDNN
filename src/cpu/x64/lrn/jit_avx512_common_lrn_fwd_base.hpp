@@ -38,18 +38,16 @@ using namespace data_type;
 using namespace Xbyak;
 using namespace Xbyak::util;
 
-template <data_type_t d_type>
 class jit_avx512_common_lrn_kernel_fwd_t : public jit_generator_t {
 public:
-    jit_avx512_common_lrn_kernel_fwd_t(prop_kind_t prop_kind, float alpha,
-            float beta, float k, int local_size, const char *name = jit_name());
-
-    using data_t = typename prec_traits_t<d_type>::type;
+    jit_avx512_common_lrn_kernel_fwd_t(data_type_t dt, prop_kind_t prop_kind,
+            float alpha, float beta, float k, int local_size,
+            const char *name = jit_name());
 
     struct jit_args_fwd_t {
         jit_args_fwd_t();
-        const data_t *src;
-        data_t *dst, *ws0, *ws1;
+        const void *src;
+        void *dst, *ws0, *ws1;
         static const int32_t mask[48];
         const int32_t *mask_ptr;
     };
@@ -68,6 +66,7 @@ protected:
     void store_tail(int tail_value, Zmm src, Reg64 dst, int dst_mem_offset,
             int tmp_stack_offset, int tmp_idx);
 
+    const data_type_t dt_;
     prop_kind_t pk_;
     float alpha_, beta_, k_;
     static constexpr int xmm_size_ = 4 * sizeof(acc_data_t);
@@ -106,7 +105,7 @@ protected:
     const bool emulateBfloat_;
     const int regs_used_per_block_;
     const int reg_block_;
-    static constexpr int vlen_ = utils::one_of(d_type, bf16, f16) ? 32 : 64;
+    const int vlen_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_ = nullptr;
 };
 

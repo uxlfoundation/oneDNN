@@ -219,6 +219,28 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(
 
     CHECK(update_config_from_devenv_values(config, quantized));
 
+    const memory_desc_wrapper key_mdw(desc()->key_md());
+    auto ldk = static_cast<int>(
+            gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
+    const int k_align = alignment_for_md(key_mdw, ldk);
+    const bool unaligned_decode_k
+            = k_align < 4 && desc()->queries() == 1 && desc()->keys() > 64;
+
+    // Rows that are not dword aligned are loaded with one scattered block
+    // and one A64 address range each. Halve the keys handled per subgroup
+    // (keeping the work-group tile) so that these registers fit on xe3p.
+    fwd_config_t unaligned_config;
+    if (unaligned_decode_k && arch() == compute::gpu_arch_t::xe3p
+            && config->unroll_m_kq > 16 && config->unroll_m_kq % 2 == 0
+            && config->unroll_m_vs > 16 && config->unroll_m_vs % 2 == 0) {
+        unaligned_config = *config;
+        unaligned_config.unroll_m_kq /= 2;
+        unaligned_config.wg_m_kq *= 2;
+        unaligned_config.unroll_m_vs /= 2;
+        unaligned_config.wg_m_vs *= 2;
+        config = &unaligned_config;
+    }
+
     VDEBUGINFO(4, primitive, sdpa,
             "D=%d,K=%d,%s%s%s"
             "kq_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d,"
@@ -354,16 +376,11 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(
 
     problem_kq.B.layout = MatrixLayout::Pr;
     problem_kq.C.layout = MatrixLayout::T;
-    const memory_desc_wrapper key_mdw(desc()->key_md());
-    auto ldk = static_cast<int>(
-            gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
-    const int k_align = alignment_for_md(key_mdw, ldk);
-    VDISPATCH_SDPA(!(utils::one_of(arch(), compute::gpu_arch_t::xe2,
-                             compute::gpu_arch_t::xe3)
-                           && utils::one_of(key_mdw.data_type(), data_type::f16,
-                                   data_type::bf16)
-                           && k_align < 4 && desc()->queries() == 1
-                           && desc()->keys() > 64),
+    VDISPATCH_SDPA(!(unaligned_decode_k
+                           && utils::one_of(arch(), compute::gpu_arch_t::xe2,
+                                   compute::gpu_arch_t::xe3)
+                           && utils::one_of(key_mdw.data_type(),
+                                   data_type::f16, data_type::bf16)),
             "decode over keys with %d-byte aligned rows is not supported on "
             "xe2/xe3",
             k_align);

@@ -95,13 +95,27 @@ struct avx512_backend_t {
         }
     }
 
-    // Store a full vector.
+    // Store a full vector. The pair of data types selects the form:
+    //   f32 -> f32   plain move
+    //   f32 -> bf16  converted into a register of `unused_regs`, then half a
+    //                register written
+    // `unused_regs` holds the vector registers unused at the store, as a bit
+    // set indexed by physical register. The conversion cannot write `s`, since
+    // the store leaves it unchanged.
     void vstore(int base, dim_t disp, int s, data_type_t mem_dt,
-            data_type_t reg_dt) {
+            data_type_t reg_dt, uint32_t unused_regs) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
             gen().vmovups(addr, Xbyak::Zmm(s));
-        else { JIT_ASSERT(!"vstore: dtype not implemented"); }
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
+            JIT_ASSERT(is_superset(isa, avx512_core_bf16)
+                    && "vstore: bf16 needs avx512_core_bf16");
+            const Xbyak::Ymm cvt(lowest_unused_reg(unused_regs));
+            gen().vcvtneps2bf16(cvt, Xbyak::Zmm(s));
+            gen().vmovdqu16(addr, cvt);
+        } else {
+            JIT_ASSERT(!"vstore: dtype not implemented");
+        }
     }
 
     // Load one element and zero the rest of `dst`.
@@ -235,19 +249,37 @@ struct avx512_backend_t {
     }
 
     // Store the elements of `src` selected by `mask`. There is no `T_z` here,
-    // since masking a store is already a merge into memory.
+    // since masking a store is already a merge into memory. The forms and
+    // `unused_regs` are as for `vstore`.
     void vstore_masked(int base, dim_t disp, int s, int mask,
-            data_type_t mem_dt, data_type_t reg_dt) {
+            data_type_t mem_dt, data_type_t reg_dt, uint32_t unused_regs) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        const Xbyak::Opmask k(mask);
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
-            gen().vmovups(addr | Xbyak::Opmask(mask), Xbyak::Zmm(s));
+            gen().vmovups(addr | k, Xbyak::Zmm(s));
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::f32) {
+            JIT_ASSERT(is_superset(isa, avx512_core_bf16)
+                    && "vstore_masked: bf16 needs avx512_core_bf16");
+            const Xbyak::Ymm cvt(lowest_unused_reg(unused_regs));
+            gen().vcvtneps2bf16(cvt, Xbyak::Zmm(s));
+            gen().vmovdqu16(addr | k, cvt);
         } else {
             JIT_ASSERT(!"vstore_masked: dtype not implemented");
         }
     }
 
 private:
+    // Returns the lowest register of `unused_regs`. An empty set fails the
+    // kernel, since the allocator does not spill to leave a register unused.
+    int lowest_unused_reg(uint32_t unused_regs) {
+        JIT_ASSERT_RET(unused_regs != 0 && "lowest_unused_reg: empty set", 0);
+        int r = 0;
+        while (!(unused_regs & (1u << r)))
+            r++;
+        return r;
+    }
+
     // The backend is used during the emitter step, which is called from an
     // IR-based kernel during kernel generation. The kernel owns `gen_`.
     jit_generator_t &gen_;

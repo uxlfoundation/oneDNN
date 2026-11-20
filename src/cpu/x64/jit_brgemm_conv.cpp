@@ -183,8 +183,8 @@ status_t brgemm_convolution_fwd_base_t::pd_t::add_brg_descriptor(dim_t vM,
 
     if (do_init && is_K_tail && jcp_.K > 0) return status::success;
 
-    const auto src_type = src_md(0)->data_type;
-    const auto wei_type = weights_md(0)->data_type;
+    const auto src_type = jcp_.src_dt;
+    const auto wei_type = jcp_.wei_dt;
     const auto is_amx = brgemm_convolution_utils::is_amx(jcp_.isa);
 
     const float alpha = 1.0f;
@@ -268,7 +268,8 @@ status_t brgemm_convolution_fwd_base_t::pd_t::add_brg_descriptor(dim_t vM,
     brg.req_cal_comp_pads = jcp_.req_brg_comp_pad;
     brg.req_comp_pads_with_bcast
             = jcp_.req_cal_comp_pad && jcp_.exec_type != exec_vpad;
-    brg.fp8_with_f16_vnni_block = jcp_.is_fp8 && jcp_.vnni_block == 2;
+    brg.fp8_with_f16_vnni_block
+            = jcp_.is_fp8 && !jcp_.req_precvt_fp8 && jcp_.vnni_block == 2;
     const auto strides_ptr
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
     CHECK(brgemm_desc_init(&brg, jcp_.isa, jcp_.brg_type, src_type, wei_type,
@@ -895,6 +896,20 @@ status_t brgemm_convolution_fwd_base_t::init(engine_t *engine) {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
 
+    if (jcp.req_precvt_fp8) {
+        jit_brgemm_conv_fp8_cvt_kernel_t::cfg_t cfg;
+        cfg.isa = jcp.isa;
+        cfg.src_dt = _pd->src_md()->data_type;
+        cfg.dst_dt = f16;
+        CHECK(safe_ptr_assign(
+                fp8_src_cvt_, new jit_brgemm_conv_fp8_cvt_kernel_t(cfg)));
+        CHECK(fp8_src_cvt_->create_kernel());
+        cfg.src_dt = _pd->weights_md()->data_type;
+        CHECK(safe_ptr_assign(
+                fp8_weights_cvt_, new jit_brgemm_conv_fp8_cvt_kernel_t(cfg)));
+        CHECK(fp8_weights_cvt_->create_kernel());
+    }
+
     bia_dsz = jcp.bia_dsz;
     acc_dsz = jcp.acc_dsz;
     src_dsz = jcp.src_dsz;
@@ -1349,6 +1364,31 @@ status_t brgemm_convolution_fwd_base_t::execute(const exec_ctx_t &ctx) const {
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     brgemm_exec_ctx_t brgemm_ctx(ctx, _pd);
+
+    if (jcp_ptr->req_precvt_fp8) {
+        auto *src_f16 = scratchpad.template get<char>(key_brgemm_conv_fp8_src);
+        auto *wei_f16 = scratchpad.template get<char>(key_brgemm_conv_fp8_wei);
+        const auto src_nelems = memory_desc_wrapper(_pd->src_md()).nelems(true);
+        const auto wei_nelems
+                = memory_desc_wrapper(_pd->weights_md()).nelems(true);
+        parallel(jcp_ptr->nthr, [&](int ithr, int nthr) {
+            dim_t start = 0, end = 0;
+            balance211(src_nelems, nthr, ithr, start, end);
+            jit_brgemm_conv_fp8_cvt_kernel_t::ctx_t p;
+            p.src = brgemm_ctx.src + start;
+            p.dst = src_f16 + start * jcp_ptr->src_dsz;
+            p.nelems = end - start;
+            (*fp8_src_cvt_)(&p);
+
+            balance211(wei_nelems, nthr, ithr, start, end);
+            p.src = brgemm_ctx.weights + start;
+            p.dst = wei_f16 + start * jcp_ptr->wei_dsz;
+            p.nelems = end - start;
+            (*fp8_weights_cvt_)(&p);
+        });
+        brgemm_ctx.src = src_f16;
+        brgemm_ctx.weights = wei_f16;
+    }
 
     const char *const __restrict src = brgemm_ctx.src;
     const char *__restrict wei = brgemm_ctx.weights;

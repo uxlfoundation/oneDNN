@@ -198,53 +198,6 @@ private:
 
     void generate() override;
 
-    void avx_vpadd1(const Ymm &y0, const Xmm &x1, const Xmm &xtmp) {
-        assert(y0.getIdx() != x1.getIdx());
-        vextractf128(xtmp, y0, 0);
-        vpaddd(xtmp, xtmp, x1);
-        vinsertf128(y0, y0, xtmp, 0);
-        vextractf128(xtmp, y0, 1);
-        vpaddd(xtmp, xtmp, x1);
-        vinsertf128(y0, y0, xtmp, 1);
-    }
-
-    void avx_vpadd1(const Xmm &x0, const Xmm &x1, const Xmm &) {
-        assert(false /*function should not be used*/);
-        paddd(x0, x1);
-    }
-
-    void avx_pmovzxbd(const Ymm &y0, const Xmm &x1, const Xmm &xtmp) {
-        Xmm x0(y0.getIdx());
-        pshufd(xmm_tmp, x1, 1);
-        pmovzxbd(x0, x1);
-        pmovzxbd(xmm_tmp, xmm_tmp);
-        vinsertf128(y0, y0, xmm_tmp, 1);
-    }
-
-    void avx_pmovzxbd(const Xmm &x0, const Xmm &x1, const Xmm &) {
-        assert(false /*function should not be used*/);
-        pmovzxbd(x0, x1);
-    }
-
-    void avx_pcmpeqd(
-            const Ymm &y0, const Ymm &y1, const Ymm &y2, const Xmm &xtmp) {
-        assert(y0.getIdx() != y1.getIdx());
-        assert(y0.getIdx() != y2.getIdx());
-        Xmm x0(y0.getIdx());
-        Xmm x2(y2.getIdx());
-        vextractf128(x0, y1, 1);
-        vextractf128(xtmp, y2, 1);
-        pcmpeqd(xtmp, x0);
-        vextractf128(x0, y1, 0);
-        pcmpeqd(x0, x2);
-        vinsertf128(y0, y0, xtmp, 1);
-    }
-
-    void avx_pcmpeqd(const Xmm &x0, const Xmm &x1, const Xmm &, const Xmm &) {
-        assert(false /*function should not be used*/);
-        pcmpeqd(x0, x1);
-    }
-
     void apply_postops(int ur_bc, int ur_w, int c_block,
             const std::function<bool(int, bool)> &is_tail_predicate);
 

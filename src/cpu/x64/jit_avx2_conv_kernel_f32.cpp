@@ -108,14 +108,8 @@ void jit_avx2_conv_fwd_kernel_f32_t::oh_step_unroll_kw(
                                     get_kernel_offset(ii, ki, ifm2),
                                     reg_long_offt));
                     for (int jj = jj_start; jj < jj_end; jj++)
-                        if (mayiuse(avx2))
-                            vfmadd231ps(Ymm(ur_w * ii + jj),
-                                    Ymm(oc_blocks * ur_w + jj), ymm15);
-                        else { // Intel(R) Advanced Vector Extensions (Intel(R) AVX) support
-                            vmulps(ytmp, ymm15, Ymm(oc_blocks * ur_w + jj));
-                            vaddps(Ymm(ur_w * ii + jj), Ymm(ur_w * ii + jj),
-                                    ytmp);
-                        }
+                        vfmadd231ps(Ymm(ur_w * ii + jj),
+                                Ymm(oc_blocks * ur_w + jj), ymm15);
                 }
             }
         };
@@ -166,13 +160,8 @@ void jit_avx2_conv_fwd_kernel_f32_t::oh_step_nopad(
                         make_safe_addr(aux_reg_kernel,
                                 get_kernel_offset(ii, 0, ifm2), reg_long_offt));
                 for (int jj = jj_start; jj < jj_end; jj++)
-                    if (mayiuse(avx2))
-                        vfmadd231ps(Ymm(ur_w * ii + jj),
-                                Ymm(oc_blocks * ur_w + jj), ymm15);
-                    else { // Intel AVX support
-                        vmulps(ytmp, ymm15, Ymm(oc_blocks * ur_w + jj));
-                        vaddps(Ymm(ur_w * ii + jj), Ymm(ur_w * ii + jj), ytmp);
-                    }
+                    vfmadd231ps(Ymm(ur_w * ii + jj), Ymm(oc_blocks * ur_w + jj),
+                            ymm15);
             }
         }
         safe_add(aux_reg_kernel, get_kernel_offset(0, 1, 0), reg_long_offt);
@@ -712,10 +701,6 @@ status_t jit_avx2_conv_fwd_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
         if (mimo) jcp.ic = rnd_up(jcp.ic, simd_w);
     }
 
-    if (jcp.with_eltwise || jcp.with_binary)
-        VDISPATCH_CONV_IC(mayiuse(avx2), VERBOSE_UNSUPPORTED_FEATURE,
-                "eltwise and binary post-ops not implemented on isa");
-
     using namespace injector;
     static constexpr bool sum_at_pos_0_only = true;
     static constexpr bool sum_requires_scale_one = true;
@@ -761,30 +746,8 @@ status_t jit_avx2_conv_fwd_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
 
     jcp.nb_oc_blocking = 4; /* the optimal value for the kernel */
 
-    // Intel AVX and Intel AVX2 kernels need 2 and 1 temporary YMMs, respectively
-    // Thus, we can only assign 14 or 15 YMMs for data storage
-    const int num_avail_regs = mayiuse(avx2) ? 15 : 14;
-    if (!mayiuse(avx2)) {
-        if ((jcp.nb_oc_blocking + 1) * jcp.ur_w > num_avail_regs) {
-            // current register assignment requires more YMMs than available
-            // adjust one of nb_oc_block, ur_w preserving to ur_w >= l_pad
-            if (jcp.ur_w > jcp.l_pad && jcp.ur_w > 1)
-                jcp.ur_w -= 1;
-            else {
-                for (int b = 3; b > 1; b--) {
-                    if (jcp.nb_oc % b == 0) {
-                        jcp.nb_oc_blocking = b;
-                        break;
-                    }
-                }
-                if ((jcp.nb_oc_blocking + 1) * jcp.ur_w > num_avail_regs) {
-                    // No optimal size for 'nb_oc_blocking' with regards to
-                    // 'nb_oc', default to only unroll by 'ur_w'.
-                    jcp.nb_oc_blocking = 1;
-                }
-            }
-        }
-    }
+    // One YMM is reserved for weights, the rest hold data.
+    const int num_avail_regs = 15;
 
     if (jcp.ow < jcp.ur_w) jcp.ur_w = static_cast<int>(jcp.ow);
     jcp.ur_w_tail = jcp.ow % jcp.ur_w;

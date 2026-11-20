@@ -86,25 +86,23 @@ status_t pd_t::init_post_ops(const impl::engine_t *engine) {
                 ok &= supported_binary_op(e.binary.alg)
                         && is_md_gemm_compatible_plain_format(
                                 &e.binary.src1_desc, false, true);
-                binary_srcs_.push_back(
-                        binary_src_t {binary_src_t::binary, int(i)});
+                binary_srcs_.emplace_back(binary_src_t::binary, int(i));
                 non_scale_po_ = true;
                 break;
             case sum:
                 ok &= !with_sum_;
                 with_sum_ = true;
                 sum_at_begin_ = (i == 0);
-                binary_srcs_.push_back(binary_src_t {binary_src_t::none, 0});
+                binary_srcs_.emplace_back(binary_src_t::none, 0);
                 beta_ = e.sum.scale;
                 break;
             case eltwise:
                 ok &= eltwise_injector_f32_is_supported(e.eltwise.alg);
-                binary_srcs_.push_back(binary_src_t {binary_src_t::none, 0});
+                binary_srcs_.emplace_back(binary_src_t::none, 0);
                 non_scale_po_ = true;
                 break;
             case prelu:
-                binary_srcs_.push_back(
-                        binary_src_t {binary_src_t::prelu, int(i)});
+                binary_srcs_.emplace_back(binary_src_t::prelu, int(i));
                 ok &= get_prelu_md(e.prelu.mask, dst_md()->dims, prelu_wei_md,
                               dst_md()->ndims)
                         == status::success;
@@ -595,8 +593,8 @@ status_t transfer_post_ops(
         for (size_t i = 0; i < po_count; i++) {
             const auto &entry = post_ops[i];
             if (!entry.is_binary()) {
-                problem.Tbinary.push_back(Type::invalid);
-                problem.binary.push_back(MatrixAddressing {});
+                problem.Tbinary.emplace_back(Type::invalid);
+                problem.binary.emplace_back();
                 continue;
             }
 

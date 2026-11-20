@@ -82,7 +82,13 @@ step. They are omitted above for clarity.
   which takes any number of accumulators, can run out. On AVX2\* a mask is a
   vector register and spills like one. AVX-512 k-registers are never spilled.
   Tiles are never spilled either, and a tile allocates only from the file of
-  its shape.
+  its shape. For each operation and file, the scan also records the registers
+  that hold no value live at the operation and are no temp of it. They are for
+  a lowering that needs a register no operand provides. The scan spills values
+  to make room for temps, but never to free a register. Only the lowering
+  knows whether it needs one. The record is exact in a file without spills. In
+  a file with spills, it can miss a register that a spill at a later operation
+  frees.
 * **Emitter.** The only part aware of the ISA and data types, because it produces
   the code. It walks the allocated IR once and lowers each operation to
   instructions using the physical registers the allocator chose. Spilled values

@@ -56,6 +56,15 @@ inline size_t align64(size_t n) {
     return (n + 63) & ~static_cast<size_t>(63);
 }
 
+// Data type of the mm1/mm2 BRGEMM inputs (f32/f16/bf16): Q, K, V and P. The
+// scores and pv tiles are always accumulated in f32 (BRGEMM C is f32); the
+// packed K/V buffers and P (mm2's A operand) are materialised in this type,
+// and the softmax runs on the f32 scores. The pd requires Q, K, V and dst to
+// share one data type, so it is read from Q.
+inline data_type_t mm_data_type(const sdpa_pd_t &pd) {
+    return pd.desc()->qry_md()->data_type;
+}
+
 // Key range [first, second) of split_kv chunk c out of n_chunks. The keys are
 // split evenly and each boundary is rounded down to a multiple of block; the
 // last chunk ends at seq_kv. With n_chunks <= seq_kv / block, the evenly split
@@ -111,34 +120,32 @@ float f32_tile_l2_set_load(
 // descriptor and, when the tensor is packed ahead, its copy descriptor and
 // scratch pointer.
 struct b_tensor_desc_t {
-    sdpa_arg_buf_t<const char> arg;
-    const tensor_copy_desc_t *copy_desc = nullptr;
-    char *scratch_ptr = nullptr;
+    b_tensor_desc_t(const char *buffer, const memory_desc_t *md,
+            const utils::optional_t<tensor_copy_desc_t> &copy_desc,
+            char *scratch_ptr, size_t shared_area_offset)
+        : buffer(buffer)
+        , md(md)
+        , copy_desc(copy_desc ? &*copy_desc : nullptr)
+        , scratch_ptr(copy_desc ? scratch_ptr + shared_area_offset
+                                  + copy_desc->scratch_offset
+                                : nullptr) {}
+
+    const char *buffer;
+    memory_desc_wrapper md;
+    const tensor_copy_desc_t *copy_desc;
+    char *scratch_ptr;
 };
 
-b_tensor_desc_t get_b_tensor_desc(const sdpa_arg_buf_t<const char> &arg,
-        const utils::optional_t<tensor_copy_desc_t> &copy_desc,
-        char *scratch_ptr, size_t shared_area_offset) {
-    b_tensor_desc_t td;
-    td.arg = arg;
-    if (copy_desc) {
-        td.copy_desc = &*copy_desc;
-        td.scratch_ptr
-                = scratch_ptr + shared_area_offset + copy_desc->scratch_offset;
-    }
-    return td;
-}
-
-// Get the pointer to the argument buffer for the given batch and head indices.
+// Get the pointer into a user buffer laid out as mdw for the given batch,
+// head and row indices.
 template <typename T>
-T *get_arg_ptr(const sdpa_arg_buf_t<T> &arg, dim_t batch_idx, dim_t head_idx,
-        dim_t row_idx = 0) {
-    const memory_desc_wrapper mdw(arg.md);
+T *get_arg_ptr(T *buffer, const memory_desc_wrapper &mdw, dim_t batch_idx,
+        dim_t head_idx, dim_t row_idx = 0) {
     dim_t offset = 0;
     if (mdw.dims()[0] != 1) offset += batch_idx * mdw.strides()[0];
     if (mdw.dims()[1] != 1) offset += head_idx * mdw.strides()[1];
     if (mdw.dims()[2] != 1) offset += row_idx * mdw.strides()[2];
-    return arg.buffer + offset * types::data_type_size(mdw.data_type());
+    return buffer + offset * types::data_type_size(mdw.data_type());
 }
 
 // Get the pointer to the copy buffer for the given batch and head indices.
@@ -154,7 +161,7 @@ char *get_copy_ptr(const b_tensor_desc_t &td, dim_t batch_idx, dim_t head_idx) {
 const char *get_tile_ptr(
         const b_tensor_desc_t &td, dim_t batch_idx, dim_t head_idx) {
     if (td.copy_desc) return get_copy_ptr(td, batch_idx, head_idx);
-    return get_arg_ptr(td.arg, batch_idx, head_idx);
+    return get_arg_ptr(td.buffer, td.md, batch_idx, head_idx);
 }
 
 // Return the B-matrix offset in elements for logical coordinates [k0, n0].
@@ -163,9 +170,8 @@ size_t get_tile_offset_in_elements(
     if (!td.copy_desc) {
         constexpr int row_dim = sdpa_pd_t::ndims - 2;
         constexpr int col_dim = sdpa_pd_t::ndims - 1;
-        const memory_desc_wrapper mdw(td.arg.md);
-        return static_cast<size_t>(k0) * mdw.strides()[row_dim]
-                + static_cast<size_t>(n0) * mdw.strides()[col_dim];
+        return static_cast<size_t>(k0) * td.md.strides()[row_dim]
+                + static_cast<size_t>(n0) * td.md.strides()[col_dim];
     }
 
     return sdpa_brgemm_copy::b_packer_t::panel_offset(
@@ -239,12 +245,12 @@ void for_each_block(dim_t begin, dim_t end, dim_t block, const F &f) {
 // head and the first query row q0. Its key column comes from the output
 // pointer at execution.
 void append_mm1_rhs(std::vector<const void *> &rhs,
-        const sdpa_full_softmax_params_t &p,
+        const std::vector<sdpa_mm1_post_op_t> &mm1_post_ops,
         const sdpa_full_softmax_run_args_t &args, dim_t batch_idx,
         dim_t query_head_idx, dim_t q0, bool select_in_mm1,
         const uint8_t *cond) {
-    for (size_t pi = 0; pi < p.mm1_post_ops.size(); ++pi) {
-        const auto &pop = p.mm1_post_ops[pi];
+    for (size_t pi = 0; pi < mm1_post_ops.size(); ++pi) {
+        const auto &pop = mm1_post_ops[pi];
         if (!pop.is_binary) continue;
         const char *base = static_cast<const char *>(args.mm1_post_op_rhs[pi]);
         if (!pop.rhs_is_scalar) {
@@ -272,34 +278,35 @@ void append_mm1_rhs(std::vector<const void *> &rhs,
 // back to scalar stores.
 // TODO: Implement optimized handling for strided output columns or skip
 // support of non-dense columns.
-void store_pv_tile(const float *pv, dim_t ld_pv, char *out, dim_t o_row_stride,
-        dim_t o_col_stride, data_type_t out_dt, dim_t m, dim_t n) {
+void store_pv_tile(const float *pv, dim_t ld_pv, char *out,
+        dim_t out_row_stride, dim_t out_col_stride, data_type_t out_dt, dim_t m,
+        dim_t n) {
     const size_t o_dt_sz = types::data_type_size(out_dt);
-    const bool dense_col = o_col_stride == 1;
+    const bool dense_col = out_col_stride == 1;
     for (dim_t i = 0; i < m; ++i) {
         const float *prow = pv + i * ld_pv;
-        char *out_row = out + i * o_row_stride * o_dt_sz;
+        char *out_row = out + i * out_row_stride * o_dt_sz;
         if (out_dt == data_type::f32) {
             float *dst = reinterpret_cast<float *>(out_row);
             if (dense_col)
                 std::memcpy(dst, prow, static_cast<size_t>(n) * sizeof(float));
             else
                 for (dim_t d = 0; d < n; ++d)
-                    dst[d * o_col_stride] = prow[d];
+                    dst[d * out_col_stride] = prow[d];
         } else if (out_dt == data_type::f16) {
             float16_t *dst = reinterpret_cast<float16_t *>(out_row);
             if (dense_col)
                 cvt_float_to_float16(dst, prow, static_cast<size_t>(n));
             else
                 for (dim_t d = 0; d < n; ++d)
-                    dst[d * o_col_stride] = float16_t(prow[d]);
+                    dst[d * out_col_stride] = float16_t(prow[d]);
         } else if (out_dt == data_type::bf16) {
             bfloat16_t *dst = reinterpret_cast<bfloat16_t *>(out_row);
             if (dense_col)
                 cvt_float_to_bfloat16(dst, prow, static_cast<size_t>(n));
             else
                 for (dim_t d = 0; d < n; ++d)
-                    dst[d * o_col_stride] = bfloat16_t(prow[d]);
+                    dst[d * out_col_stride] = bfloat16_t(prow[d]);
         }
     }
 }
@@ -432,36 +439,35 @@ status_t finalize_brgemm_desc(brgemm_desc_t &brg, bool b_is_vnni) {
     return brgemm_desc_finalize(&brg);
 }
 
-status_t build_mm1_brgemm_desc(brgemm_desc_t &brg,
+status_t build_mm1_brgemm_desc(brgemm_desc_t &brg, const sdpa_pd_t &pd,
         const sdpa_full_softmax_conf_t &conf, dim_t M, dim_t N) {
-    const auto &p = conf.params;
-    CHECK(init_brgemm_desc(brg, p.mm_dt, /*beta=*/0.0f, M, N, p.hs_qk,
-            conf.mm1_lda, conf.ldk, conf.ld_scores));
+    const sdpa_desc_t &desc = *pd.desc();
+    CHECK(init_brgemm_desc(brg, mm_data_type(pd), /*beta=*/0.0f, M, N,
+            desc.head_size(), conf.mm1_lda, conf.ldk, conf.ld_scores));
 
     // N is the kv-block width, but post-op descriptors cover the full
     // [M, seq_kv] score tile. At execution, data_C_ptr_ anchors that full tile
     // while ptr_D points at the current N-block; the binary injector uses
     // their difference to recover each element's row and global column.
     // This handles per-element and broadcast masks.
-    CHECK(set_mm1_post_ops(brg, M, p.seq_kv, conf.ld_scores, &p.mm1_post_ops,
-            conf.mm1_select_postop, conf.stack_heads));
+    CHECK(set_mm1_post_ops(brg, M, desc.keys(), conf.ld_scores,
+            &conf.mm1_post_ops, conf.mm1_select_postop, conf.stack_heads));
 
     return finalize_brgemm_desc(brg, conf.mm1_needs_vnni_b);
 }
 
-status_t build_mm2_brgemm_desc(brgemm_desc_t &brg,
+status_t build_mm2_brgemm_desc(brgemm_desc_t &brg, const sdpa_pd_t &pd,
         const sdpa_full_softmax_conf_t &conf, float beta, dim_t M, dim_t N,
         dim_t K) {
-    const auto &p = conf.params;
-    CHECK(init_brgemm_desc(
-            brg, p.mm_dt, beta, M, N, K, conf.ld_prob, conf.ldv, conf.mm2_ldc));
+    CHECK(init_brgemm_desc(brg, mm_data_type(pd), beta, M, N, K, conf.ld_prob,
+            conf.ldv, conf.mm2_ldc));
 
     if (conf.mm2_postops) {
         memory_desc_t dst_md;
         dims_t dst_dims = {M, N};
         dims_t dst_strides = {conf.out_ld, 1};
         CHECK(memory_desc_init_by_strides(
-                dst_md, 2, dst_dims, p.out_dt, dst_strides));
+                dst_md, 2, dst_dims, pd.dst_md()->data_type, dst_strides));
         CHECK(brgemm_desc_set_postops(&brg, nullptr, &dst_md, conf.out_ld));
     }
 
@@ -502,32 +508,79 @@ sdpa_full_softmax_kernels_t::~sdpa_full_softmax_kernels_t() = default;
 
 namespace sdpa_full_softmax {
 
-status_t configure(const sdpa_full_softmax_params_t &params,
+status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
         sdpa_full_softmax_conf_t &conf) {
-    conf.params = params;
-    const sdpa_full_softmax_params_t &p_ = conf.params;
-
-    if (!utils::one_of(
-                p_.mm_dt, data_type::f32, data_type::f16, data_type::bf16))
-        return status::unimplemented;
-
-    if (!utils::one_of(
-                p_.out_dt, data_type::f32, data_type::f16, data_type::bf16))
-        return status::unimplemented;
-
-    const dim_t mm_dt_sz = static_cast<dim_t>(types::data_type_size(p_.mm_dt));
+    conf = sdpa_full_softmax_conf_t();
 
     constexpr int ndims = sdpa_pd_t::ndims;
     constexpr int row_dim = ndims - 2;
 
-    const dim_t k_seq_stride = p_.k_strides[ndims - 1];
-    const dim_t k_hs_stride = p_.k_strides[row_dim];
+    const sdpa_desc_t &desc = *pd.desc();
+    const memory_desc_wrapper q_mdw(desc.qry_md()), k_mdw(desc.key_md()),
+            v_mdw(desc.val_md()), out_mdw(pd.dst_md()),
+            cond_mdw(desc.attn_mask_md());
+    const dim_t batch = desc.batch();
+    const dim_t num_head_q = desc.num_q_heads();
+    const dim_t num_head_kv = desc.num_kv_heads();
+    // GQA group size (>= 1).
+    const dim_t group_head = num_head_q / num_head_kv;
+    const dim_t seq_q = desc.queries();
+    const dim_t seq_kv = desc.keys();
+    const dim_t hs_qk = desc.head_size();
+    const dim_t hs_v = desc.values();
+    const data_type_t mm_dt = mm_data_type(pd);
+    // SDPA output data type; f32 accumulators are converted to it.
+    const data_type_t out_dt = out_mdw.data_type();
+    const dims_t &q_strides = q_mdw.strides();
+    const dims_t &k_strides = k_mdw.strides();
+    const dims_t &v_strides = v_mdw.strides();
+    const dims_t &out_strides = out_mdw.strides();
+    const bool has_select = pd.with_select_mask();
+    // When true, keep scores where cond == 0; otherwise keep where cond != 0.
+    const bool invert_select = desc.invert_select;
+    // Null without a select mask.
+    const dim_t *cond_dims = has_select ? cond_mdw.dims() : nullptr;
+    const dim_t *cond_strides = has_select ? cond_mdw.strides() : nullptr;
+
+    if (!utils::one_of(mm_dt, data_type::f32, data_type::f16, data_type::bf16))
+        return status::unimplemented;
+
+    if (!utils::one_of(out_dt, data_type::f32, data_type::f16, data_type::bf16))
+        return status::unimplemented;
+
+    // mm1 post-ops in chain order: the scale (a scalar, read as f32 at
+    // execution) and then the additive attention mask. Select is handled
+    // separately.
+    if (pd.with_attn_scale()) {
+        sdpa_mm1_post_op_t sc;
+        sc.alg = alg_kind::binary_mul;
+        sc.is_binary = true;
+        sc.rhs_is_scalar = true;
+        sc.rhs_dt = data_type::f32;
+        conf.mm1_post_ops.push_back(sc);
+    }
+    if (pd.with_buffer_mask()) {
+        const memory_desc_wrapper mask_mdw(desc.attn_mask_md());
+        sdpa_mm1_post_op_t mk;
+        mk.alg = alg_kind::binary_add;
+        mk.is_binary = true;
+        mk.rhs_is_scalar = false;
+        mk.rhs_dt = mask_mdw.data_type();
+        mk.rhs_dims.assign(mask_mdw.dims(), mask_mdw.dims() + ndims);
+        mk.rhs_strides.assign(mask_mdw.strides(), mask_mdw.strides() + ndims);
+        conf.mm1_post_ops.push_back(mk);
+    }
+
+    const dim_t mm_dt_sz = static_cast<dim_t>(types::data_type_size(mm_dt));
+
+    const dim_t k_seq_stride = k_strides[ndims - 1];
+    const dim_t k_hs_stride = k_strides[row_dim];
 
     const bool mm1_transpose_k = k_seq_stride != 1;
-    const bool transpose_v = p_.v_strides[ndims - 1] != 1;
+    const bool transpose_v = v_strides[ndims - 1] != 1;
 
-    CHECK(is_vnni_b_required(p_.mm_dt, mm1_transpose_k, conf.mm1_needs_vnni_b));
-    CHECK(is_vnni_b_required(p_.mm_dt, transpose_v, conf.mm2_needs_vnni_b));
+    CHECK(is_vnni_b_required(mm_dt, mm1_transpose_k, conf.mm1_needs_vnni_b));
+    CHECK(is_vnni_b_required(mm_dt, transpose_v, conf.mm2_needs_vnni_b));
 
     const bool need_copy_v = conf.mm2_needs_vnni_b || transpose_v;
 
@@ -539,36 +592,33 @@ status_t configure(const sdpa_full_softmax_params_t &params,
             = static_cast<dim_t>(3 * platform::get_per_core_cache_size(2) / 4);
 
     bool is_amx = false;
-    CHECK(uses_amx_tiles(p_.mm_dt, is_amx));
+    CHECK(uses_amx_tiles(mm_dt, is_amx));
     conf.nthr = dnnl_get_max_threads();
-
-    const dim_t num_head_kv = p_.num_head_q / p_.group_head;
 
     // Fold non-inverted select into mm1 when condition rows match dense score
     // rows. The pd guarantees a full, contiguous key axis. A single query row
     // does not use its row stride; otherwise require non-broadcast query rows
     // with stride seq_kv.
     conf.mm1_select_postop = false;
-    if (p_.has_select) {
-        const bool dense_query_axis = p_.seq_q == 1
-                || (p_.cond_dims[sdpa_pd_t::mask_q_index] != 1
-                        && p_.cond_strides[sdpa_pd_t::mask_q_index]
-                                == p_.seq_kv);
-        conf.mm1_select_postop = !p_.invert_select && dense_query_axis;
+    if (has_select) {
+        const bool dense_query_axis = seq_q == 1
+                || (cond_dims[sdpa_pd_t::mask_q_index] != 1
+                        && cond_strides[sdpa_pd_t::mask_q_index] == seq_kv);
+        conf.mm1_select_postop = !invert_select && dense_query_axis;
     }
 
     // The binary injector requires tensor rhs data to share the score tile's
     // layout. Keep score rows dense when a tensor rhs is used; scalar rhs and
     // eltwise post-ops are layout-independent.
     bool dense_scores_required = conf.mm1_select_postop;
-    for (const auto &pop : p_.mm1_post_ops)
+    for (const auto &pop : conf.mm1_post_ops)
         if (pop.is_binary && !pop.rhs_is_scalar) dense_scores_required = true;
     conf.ld_scores
-            = scratch_row_ld(p_.seq_kv, sizeof(float), !dense_scores_required);
+            = scratch_row_ld(seq_kv, sizeof(float), !dense_scores_required);
     auto &thread_scratch = conf.thread_scratch;
-    thread_scratch.set_compute_type(p_.mm_dt, mm_dt_sz);
+    thread_scratch.set_compute_type(mm_dt, mm_dt_sz);
     conf.ld_prob = thread_scratch.has_prob
-            ? scratch_row_ld(p_.seq_kv, mm_dt_sz, /*allow_padding=*/true)
+            ? scratch_row_ld(seq_kv, mm_dt_sz, /*allow_padding=*/true)
             : conf.ld_scores;
 
     // Choose the query block by trading K/V streaming against score-tile
@@ -585,7 +635,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     const size_t score_row_bytes
             = thread_scratch.score_tile_row_bytes(conf.ld_scores, conf.ld_prob);
     // Empirical head-size scaling, normalized to 1 when both head sizes are 64.
-    const float head_scale = std::sqrt((p_.hs_qk + p_.hs_v) / 128.f);
+    const float head_scale = std::sqrt((hs_qk + hs_v) / 128.f);
     const float score_tile_target_bytes = score_tile_l2_ratio * head_scale
             * platform::get_per_core_cache_size(2);
     const float q_rows
@@ -607,23 +657,22 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // 8x8x16385x256 GQA: 3.2 s contiguous vs 1.9 s interleaved; 4x32x1024x128,
     // which fits: 4.3 ms vs 5.4 ms). Interleaving needs several query blocks
     // per head; q_block never exceeds q_block_max.
-    const dim_t kv_heads_total = p_.batch * num_head_kv;
+    const dim_t kv_heads_total = batch * num_head_kv;
     const double concurrent_kv_bytes
             = static_cast<double>(nstl::min<dim_t>(conf.nthr, kv_heads_total))
-            * p_.seq_kv * (p_.hs_qk + p_.hs_v) * mm_dt_sz;
+            * seq_kv * (hs_qk + hs_v) * mm_dt_sz;
     auto kv_overflows_l3 = [&](double score_tile_bytes) {
         const double l3_left_bytes = static_cast<double>(conf.nthr)
                 * (static_cast<double>(platform::get_per_core_cache_size(3))
                         - score_tile_bytes);
-        return p_.seq_q > q_block_max && concurrent_kv_bytes > l3_left_bytes;
+        return seq_q > q_block_max && concurrent_kv_bytes > l3_left_bytes;
     };
     // The schedule's actual score tile is known only after q_block is chosen;
     // see the second check there.
     conf.interleave_items = kv_overflows_l3(score_tile_target_bytes);
     const bool kv_shared_in_l3
             = 2 * kv_heads_total < conf.nthr || conf.interleave_items;
-    const float q_rows_min
-            = (p_.hs_qk + p_.hs_v) / (kv_shared_in_l3 ? 16.f : 8.f);
+    const float q_rows_min = (hs_qk + hs_v) / (kv_shared_in_l3 ? 16.f : 8.f);
     // Query rows of one work item: per-head q_block, or the rows of all heads
     // in a KV-head group.
     dim_t item_rows = q_granule
@@ -635,14 +684,13 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // fewer work items than threads.
     auto choose_q_block = [&](dim_t heads_per_item) {
         dim_t qb = item_rows / heads_per_item;
-        if (qb < p_.seq_q)
-            qb = nstl::max(q_granule, utils::rnd_dn(qb, q_granule));
-        qb = nstl::min(qb, p_.seq_q);
-        const dim_t head_items = p_.batch * p_.num_head_q / heads_per_item;
+        if (qb < seq_q) qb = nstl::max(q_granule, utils::rnd_dn(qb, q_granule));
+        qb = nstl::min(qb, seq_q);
+        const dim_t head_items = batch * num_head_q / heads_per_item;
         while (qb > q_granule
-                && head_items * utils::div_up(p_.seq_q, qb) < conf.nthr)
+                && head_items * utils::div_up(seq_q, qb) < conf.nthr)
             qb = utils::rnd_dn(qb - 1, q_granule);
-        return utils::saturate((dim_t)1, p_.seq_q, qb);
+        return utils::saturate((dim_t)1, seq_q, qb);
     };
 
     // Choose mm1's N block before estimating schedules so the split estimate
@@ -651,20 +699,19 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     constexpr dim_t kv_granule_medium = 32;
     constexpr dim_t kv_granule_min = 16;
     const dim_t b_panel_budget_bytes = l2_budget_bytes / 8;
-    dim_t kv_block = b_panel_budget_bytes / (p_.hs_qk * mm_dt_sz);
+    dim_t kv_block = b_panel_budget_bytes / (hs_qk * mm_dt_sz);
     const dim_t granule = kv_block >= kv_granule_large
             ? kv_granule_large
             : (kv_block >= kv_granule_medium ? kv_granule_medium
                                              : kv_granule_min);
     kv_block = nstl::max<dim_t>(
             utils::rnd_dn(kv_block, granule), kv_granule_min);
-    kv_block = nstl::min<dim_t>(kv_block, p_.seq_kv);
+    kv_block = nstl::min<dim_t>(kv_block, seq_kv);
 
-    const dim_t k_reuse_rows = p_.seq_q * p_.group_head;
+    const dim_t k_reuse_rows = seq_q * group_head;
     const float k_l2_set_load
-            = f32_tile_l2_set_load(p_.hs_qk, kv_block, k_hs_stride);
-    const bool pack_k_for_aliasing = p_.mm_dt == data_type::f32
-            && !mm1_transpose_k
+            = f32_tile_l2_set_load(hs_qk, kv_block, k_hs_stride);
+    const bool pack_k_for_aliasing = mm_dt == data_type::f32 && !mm1_transpose_k
             && ((k_reuse_rows >= 256 && k_l2_set_load > 0.5f)
                     || (k_reuse_rows >= 128 && k_l2_set_load >= 1.0f));
     const bool need_copy_k
@@ -696,7 +743,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     auto phase_work = [&](dim_t groups, dim_t heads_per_item, dim_t qb,
                               dim_t chunks, dim_t block, dim_t key_count) {
         phase_work_t peak;
-        const dim_t n_qblk = utils::div_up(p_.seq_q, qb);
+        const dim_t n_qblk = utils::div_up(seq_q, qb);
         const dim_t tasks_per_group = n_qblk * chunks;
         const dim_t work_amount = groups * tasks_per_group;
         if (work_amount == 0) return peak;
@@ -704,7 +751,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
         const int nthr
                 = static_cast<int>(nstl::min<dim_t>(conf.nthr, work_amount));
         const dim_t full_qblks = n_qblk - 1;
-        const dim_t tail_rows = p_.seq_q - full_qblks * qb;
+        const dim_t tail_rows = seq_q - full_qblks * qb;
         const dim_t full_rows = heads_per_item * qb;
         const dim_t tail_work_rows = heads_per_item * tail_rows;
         const dim_t full_mac_rows
@@ -765,48 +812,48 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // 37 bf16/f32 prefill GQA shapes: half the cost of the first read fits
     // best). Across GNR, SPR and ICX, group was slower than per_head for
     // nearly all seq_q = 2..16 GQA cases, where these calls have 2..16 rows.
-    const bool heads_may_stack = p_.seq_q == 1 && p_.allow_stack_heads;
+    const bool heads_may_stack = seq_q == 1 && knobs.allow_stack_heads;
     auto head_call_kv_reads = [&](dim_t heads_per_item) {
         return heads_may_stack ? 1.0 : 1.0 + 0.5 * (heads_per_item - 1);
     };
     auto schedule_cost = [&](dim_t heads_per_item, dim_t qb, dim_t chunks) {
-        const dim_t hs = p_.hs_qk + p_.hs_v;
+        const dim_t hs = hs_qk + hs_v;
         const double kv_bytes_per_key = static_cast<double>(hs) * mm_dt_sz;
-        const dim_t groups = p_.batch * p_.num_head_q / heads_per_item;
+        const dim_t groups = batch * num_head_q / heads_per_item;
         double t = 0;
         dim_t mm2_chunks = 1;
         if (chunks == 1) {
-            const phase_work_t work = phase_work(
-                    groups, heads_per_item, qb, 1, p_.seq_kv, p_.seq_kv);
+            const phase_work_t work
+                    = phase_work(groups, heads_per_item, qb, 1, seq_kv, seq_kv);
             t = coefs.kv_byte * work.keys * kv_bytes_per_key
                             * head_call_kv_reads(heads_per_item)
                     + coefs.mac * work.mac_rows_keys * hs
                     + coefs.score * 2 * work.row_keys;
         } else {
             const dim_t mm1_chunks = nstl::max<dim_t>(
-                    1, nstl::min(chunks, p_.seq_kv / mm1_n_block));
+                    1, nstl::min(chunks, seq_kv / mm1_n_block));
             mm2_chunks = nstl::max<dim_t>(
-                    1, nstl::min(chunks, p_.seq_kv / mm2_k_block));
+                    1, nstl::min(chunks, seq_kv / mm2_k_block));
             const phase_work_t mm1 = phase_work(groups, heads_per_item, qb,
-                    mm1_chunks, mm1_n_block, p_.seq_kv);
+                    mm1_chunks, mm1_n_block, seq_kv);
             const phase_work_t mm2 = phase_work(groups, heads_per_item, qb,
-                    mm2_chunks, mm2_k_block, p_.seq_kv);
-            const phase_work_t softmax = phase_work(
-                    p_.batch * p_.num_head_q, 1, qb, 1, p_.seq_kv, p_.seq_kv);
+                    mm2_chunks, mm2_k_block, seq_kv);
+            const phase_work_t softmax
+                    = phase_work(batch * num_head_q, 1, qb, 1, seq_kv, seq_kv);
             const phase_work_t merge
-                    = phase_work(p_.batch * p_.num_head_q, 1, qb, 1, 1, 1);
-            t = coefs.kv_byte * (mm1.keys * p_.hs_qk + mm2.keys * p_.hs_v)
-                            * mm_dt_sz * head_call_kv_reads(heads_per_item)
+                    = phase_work(batch * num_head_q, 1, qb, 1, 1, 1);
+            t = coefs.kv_byte * (mm1.keys * hs_qk + mm2.keys * hs_v) * mm_dt_sz
+                            * head_call_kv_reads(heads_per_item)
                     + coefs.mac
-                            * (mm1.mac_rows_keys * p_.hs_qk
-                                    + mm2.mac_rows_keys * p_.hs_v)
+                            * (mm1.mac_rows_keys * hs_qk
+                                    + mm2.mac_rows_keys * hs_v)
                     + coefs.score * (mm1.row_keys + softmax.row_keys);
             if (mm2_chunks > 1)
-                t += coefs.merge_elem * merge.row_keys * p_.hs_v
+                t += coefs.merge_elem * merge.row_keys * hs_v
                         * (mm2_chunks - 1);
         }
-        const dim_t kv_reads = heads_per_item == 1 ? p_.group_head : 1;
-        t += coefs.total_kv_byte * kv_reads * kv_heads_total * p_.seq_kv
+        const dim_t kv_reads = heads_per_item == 1 ? group_head : 1;
+        t += coefs.total_kv_byte * kv_reads * kv_heads_total * seq_kv
                 * kv_bytes_per_key;
         return t;
     };
@@ -820,46 +867,46 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // still run fewer chunks if its block is longer than mm2's (unpacked f32
     // K with a small head).
     using schedule_t = sdpa_full_softmax_schedule_t;
-    const dim_t group_q_block = choose_q_block(p_.group_head);
+    const dim_t group_q_block = choose_q_block(group_head);
     const dim_t group_items
-            = kv_heads_total * utils::div_up(p_.seq_q, group_q_block);
-    dim_t split_chunks = p_.split_kv_chunks;
+            = kv_heads_total * utils::div_up(seq_q, group_q_block);
+    dim_t split_chunks = knobs.split_kv_chunks;
     if (split_chunks <= 0) {
         split_chunks = 1;
-        double t_min = schedule_cost(p_.group_head, group_q_block, 1);
+        double t_min = schedule_cost(group_head, group_q_block, 1);
         const dim_t max_chunks
-                = nstl::min<dim_t>(conf.nthr, p_.seq_kv / mm2_k_block);
+                = nstl::min<dim_t>(conf.nthr, seq_kv / mm2_k_block);
         for (dim_t c = 2; c <= max_chunks; ++c) {
-            const double t = schedule_cost(p_.group_head, group_q_block, c);
+            const double t = schedule_cost(group_head, group_q_block, c);
             if (t < t_min) {
                 t_min = t;
                 split_chunks = c;
             }
         }
     }
-    conf.schedule = p_.schedule;
+    conf.schedule = knobs.schedule;
     if (conf.schedule == schedule_t::any) {
         conf.schedule = schedule_t::per_head;
         double best = schedule_cost(1, choose_q_block(1), 1);
-        if (p_.group_head > 1) {
-            const double t = schedule_cost(p_.group_head, group_q_block, 1);
+        if (group_head > 1) {
+            const double t = schedule_cost(group_head, group_q_block, 1);
             if (t < best) {
                 best = t;
                 conf.schedule = schedule_t::kv_head_group;
             }
         }
         if (group_items < conf.nthr && split_chunks > 1
-                && schedule_cost(p_.group_head, group_q_block, split_chunks)
+                && schedule_cost(group_head, group_q_block, split_chunks)
                         < best)
             conf.schedule = schedule_t::split_kv;
     }
     conf.query_heads_per_item
-            = conf.schedule == schedule_t::per_head ? 1 : p_.group_head;
+            = conf.schedule == schedule_t::per_head ? 1 : group_head;
     const bool split_kv = conf.schedule == schedule_t::split_kv;
 
     const dim_t q_block = choose_q_block(conf.query_heads_per_item);
     conf.q_block = q_block;
-    const dim_t q_tail = p_.seq_q % q_block;
+    const dim_t q_tail = seq_q % q_block;
     conf.q_tail = q_tail;
 
     // Repeat the L3 check with the chosen schedule's score tile. It exceeds
@@ -895,9 +942,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // same time, so the re-reads hit the shared cache. With split_kv, every
     // K/V tile is read by exactly one task, so packing per tile never repeats.
     using kv_packing_t = sdpa_full_softmax_kv_packing_t;
-    conf.kv_packing = p_.kv_packing;
+    conf.kv_packing = knobs.kv_packing;
     if (conf.kv_packing == kv_packing_t::any)
-        conf.kv_packing = split_kv || conf.q_block == p_.seq_q
+        conf.kv_packing = split_kv || conf.q_block == seq_q
                 ? kv_packing_t::per_tile
                 : kv_packing_t::ahead;
     const bool pack_per_tile = conf.kv_packing == kv_packing_t::per_tile;
@@ -915,13 +962,13 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // for f32, 512..1024-deep blocks performed best for head sizes 64..256
     // (GNR). The block depth is set before the schedule choice (mm2_k_block).
     conf.mm1_n_block = mm1_n_block;
-    conf.mm1_n_tail = p_.seq_kv % conf.mm1_n_block;
-    conf.mm2_k_block = nstl::min(p_.seq_kv, mm2_k_block);
-    conf.mm2_k_tail = p_.seq_kv % conf.mm2_k_block;
+    conf.mm1_n_tail = seq_kv % conf.mm1_n_block;
+    conf.mm2_k_block = nstl::min(seq_kv, mm2_k_block);
+    conf.mm2_k_tail = seq_kv % conf.mm2_k_block;
     // >1 block -> mm2 accumulates across blocks: the first block uses a beta = 0
     // kernel (fresh C) and the rest beta = 1, so no destination pre-zeroing is
     // needed. A single block keeps the original fresh-C (beta = 0) path.
-    const float mm2_beta = conf.mm2_k_block < p_.seq_kv ? 1.0f : 0.0f;
+    const float mm2_beta = conf.mm2_k_block < seq_kv ? 1.0f : 0.0f;
     conf.mm2_beta = mm2_beta;
 
     // split_kv splits each work item's seq_kv range into split_chunks chunks
@@ -931,8 +978,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // beta = 0 kernel.
     if (split_kv) {
         auto n_chunks = [&](dim_t block) {
-            return nstl::max<dim_t>(
-                    1, nstl::min(split_chunks, p_.seq_kv / block));
+            return nstl::max<dim_t>(1, nstl::min(split_chunks, seq_kv / block));
         };
         auto &sk = conf.split_kv;
         sk.mm1_chunks = n_chunks(conf.mm1_n_block);
@@ -944,15 +990,15 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // for f32 or converting in the final K block's epilogue for bf16/f16.
     // Multiple mm2 chunks must be summed before writing the output, and a
     // strided output column keeps pv+scatter.
-    const dim_t o_col_stride = p_.o_strides[ndims - 1];
+    const dim_t out_col_stride = out_strides[ndims - 1];
     const bool mm2_has_single_chunk
             = !split_kv || conf.split_kv.mm2_chunks == 1;
-    const bool mm2_direct = mm2_has_single_chunk && o_col_stride == 1
-            && p_.out_dt == data_type::f32;
+    const bool mm2_direct = mm2_has_single_chunk && out_col_stride == 1
+            && out_dt == data_type::f32;
     conf.mm2_direct = mm2_direct;
-    conf.mm2_postops = mm2_has_single_chunk && o_col_stride == 1
-            && utils::one_of(p_.out_dt, data_type::bf16, data_type::f16);
-    conf.ld_pv = scratch_row_ld(p_.hs_v, sizeof(float), /*allow_padding=*/true);
+    conf.mm2_postops = mm2_has_single_chunk && out_col_stride == 1
+            && utils::one_of(out_dt, data_type::bf16, data_type::f16);
+    conf.ld_pv = scratch_row_ld(hs_v, sizeof(float), /*allow_padding=*/true);
 
     // With seq_q == 1, the queries in a kv_head_group work item come from
     // different heads and can be processed together as BRGEMM rows.
@@ -967,19 +1013,19 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // strides, and the pd rejects zero dst strides on non-unit dimensions.
     constexpr int head_dim = 1;
     auto can_stack_heads = [&]() {
-        if (!p_.allow_stack_heads || p_.seq_q != 1
+        if (!knobs.allow_stack_heads || seq_q != 1
                 || conf.query_heads_per_item == 1)
             return false;
-        if (p_.q_strides[head_dim] < p_.hs_qk) return false;
-        for (const auto &pop : p_.mm1_post_ops) {
+        if (q_strides[head_dim] < hs_qk) return false;
+        for (const auto &pop : conf.mm1_post_ops) {
             if (!pop.is_binary || pop.rhs_is_scalar) continue;
             if (pop.rhs_dims[head_dim] != 1
                     && pop.rhs_strides[head_dim] != conf.ld_scores)
                 return false;
         }
         if (conf.mm1_select_postop
-                && (p_.cond_dims[head_dim] == 1
-                        || p_.cond_strides[head_dim] != conf.ld_scores))
+                && (cond_dims[head_dim] == 1
+                        || cond_strides[head_dim] != conf.ld_scores))
             return false;
         return true;
     };
@@ -989,8 +1035,8 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     conf.stack_heads = can_stack_heads();
     const int m_axis = conf.stack_heads ? head_dim : row_dim;
     conf.m_block = conf.stack_heads ? conf.query_heads_per_item : q_block;
-    conf.mm1_lda = p_.q_strides[m_axis];
-    conf.out_ld = p_.o_strides[m_axis];
+    conf.mm1_lda = q_strides[m_axis];
+    conf.out_ld = out_strides[m_axis];
     conf.mm2_ldc = mm2_direct ? conf.out_ld : conf.ld_pv;
 
     // A/B leading dims come from the user strides; scores/pv are dense.
@@ -1012,13 +1058,13 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     // b_panel_n-wide panels: ldb is then b_panel_n and one call covers at most
     // one panel. Only the plain-f32, already-[hs_qk, seq_kv] case reads K in
     // place. V is handled the same way, so v_block is one panel when packed.
-    conf.ldk = need_copy_k ? b_panel_n : p_.k_strides[row_dim];
-    conf.ldv = need_copy_v ? b_panel_n : p_.v_strides[row_dim];
+    conf.ldk = need_copy_k ? b_panel_n : k_strides[row_dim];
+    conf.ldv = need_copy_v ? b_panel_n : v_strides[row_dim];
     // BRGEMM requires ldb >= hs_v for unpacked V. When seq_kv == 1, V's row
     // stride is unused, so a smaller stride can be raised to hs_v.
-    if (!need_copy_v && p_.seq_kv == 1) conf.ldv = nstl::max(conf.ldv, p_.hs_v);
-    conf.v_block = need_copy_v ? nstl::min<dim_t>(p_.hs_v, b_panel_n) : p_.hs_v;
-    conf.v_tail = p_.hs_v % conf.v_block;
+    if (!need_copy_v && seq_kv == 1) conf.ldv = nstl::max(conf.ldv, hs_v);
+    conf.v_block = need_copy_v ? nstl::min<dim_t>(hs_v, b_panel_n) : hs_v;
+    conf.v_tail = hs_v % conf.v_block;
 
     // Build mm1/mm2 descriptors and size tile-store scratch for the largest
     // workspace. The descriptor container is shared across pd clones.
@@ -1057,7 +1103,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
             for (int ni = 0; ni < 2; ++ni) {
                 if (!ns[ni]) continue;
                 brgemm_desc_t brg;
-                CHECK(build_mm1_brgemm_desc(brg, conf, ms[qi], ns[ni]));
+                CHECK(build_mm1_brgemm_desc(brg, pd, conf, ms[qi], ns[ni]));
                 CHECK(add_brg_desc(
                         brg_conf.mm1[qi][ni], brg, conf.mm1_needs_vnni_b));
             }
@@ -1081,7 +1127,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                     if (!width) continue;
                     brgemm_desc_t brg;
                     CHECK(build_mm2_brgemm_desc(
-                            brg, conf, mm2_beta, ms[qi], width, ks[ki]));
+                            brg, pd, conf, mm2_beta, ms[qi], width, ks[ki]));
                     CHECK(add_brg_desc(brg_conf.mm2[qi][ki][vi], brg,
                             conf.mm2_needs_vnni_b));
                 }
@@ -1091,7 +1137,7 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                     const dim_t width = vi ? conf.v_tail : conf.v_block;
                     if (!width) continue;
                     brgemm_desc_t brg;
-                    CHECK(build_mm2_brgemm_desc(brg, conf, /*beta=*/0.0f,
+                    CHECK(build_mm2_brgemm_desc(brg, pd, conf, /*beta=*/0.0f,
                             ms[qi], width, conf.mm2_k_block));
                     CHECK(add_brg_desc(brg_conf.mm2_beta0[qi][vi], brg,
                             conf.mm2_needs_vnni_b));
@@ -1128,9 +1174,9 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                                     bool needs_vnni) {
         tensor_copy_desc_t copy_desc;
         copy_desc.scratch_offset = scratch_offset;
-        copy_desc.padded_k = b_packer_t::packed_k(rows, p_.mm_dt);
+        copy_desc.padded_k = b_packer_t::packed_k(rows, mm_dt);
         copy_desc.vnni_factor
-                = needs_vnni ? data_type_vnni_granularity(p_.mm_dt) : 1;
+                = needs_vnni ? data_type_vnni_granularity(mm_dt) : 1;
         copy_desc.head_stride = static_cast<size_t>(copy_desc.padded_k)
                 * b_packer_t::packed_ld(cols) * mm_dt_sz;
         copy_desc.batch_stride
@@ -1143,32 +1189,31 @@ status_t configure(const sdpa_full_softmax_params_t &params,
         // K block across all of hs_v.
         if (need_copy_k) {
             conf.k_tile_desc = make_b_copy_desc(
-                    ts.size, p_.hs_qk, conf.mm1_n_block, conf.mm1_needs_vnni_b);
+                    ts.size, hs_qk, conf.mm1_n_block, conf.mm1_needs_vnni_b);
             ts.size += align64(conf.k_tile_desc->head_stride);
         }
         if (need_copy_v) {
             conf.v_tile_desc = make_b_copy_desc(
-                    ts.size, conf.mm2_k_block, p_.hs_v, conf.mm2_needs_vnni_b);
+                    ts.size, conf.mm2_k_block, hs_v, conf.mm2_needs_vnni_b);
             ts.size += align64(conf.v_tile_desc->head_stride);
         }
     } else {
         if (need_copy_k) {
             conf.k_copy_desc = make_b_copy_desc(
-                    shared_offset, p_.hs_qk, p_.seq_kv, conf.mm1_needs_vnni_b);
-            shared_offset += static_cast<size_t>(p_.batch)
+                    shared_offset, hs_qk, seq_kv, conf.mm1_needs_vnni_b);
+            shared_offset += static_cast<size_t>(batch)
                     * conf.k_copy_desc->batch_stride;
         }
         if (need_copy_v) {
             conf.v_copy_desc = make_b_copy_desc(
-                    shared_offset, p_.seq_kv, p_.hs_v, conf.mm2_needs_vnni_b);
-            shared_offset += static_cast<size_t>(p_.batch)
+                    shared_offset, seq_kv, hs_v, conf.mm2_needs_vnni_b);
+            shared_offset += static_cast<size_t>(batch)
                     * conf.v_copy_desc->batch_stride;
         }
     }
     if (split_kv) {
         auto &sk = conf.split_kv;
-        const size_t rows
-                = static_cast<size_t>(p_.batch) * p_.num_head_q * p_.seq_q;
+        const size_t rows = static_cast<size_t>(batch) * num_head_q * seq_q;
         auto add_shared_buffer = [&](size_t bytes) {
             const size_t offset = align64(shared_offset);
             shared_offset = offset + bytes;
@@ -1192,12 +1237,10 @@ status_t configure(const sdpa_full_softmax_params_t &params,
                 "mm1_block=%lld mm2_block=%lld nthr=%d schedule=%d "
                 "mm1_chunks=%lld mm2_chunks=%lld l2_per_core=%u "
                 "l3_per_core=%u interleave=%d\n",
-                static_cast<long long>(p_.seq_q),
-                static_cast<long long>(p_.seq_kv),
-                static_cast<long long>(p_.num_head_q),
+                static_cast<long long>(seq_q), static_cast<long long>(seq_kv),
+                static_cast<long long>(num_head_q),
                 static_cast<long long>(num_head_kv),
-                static_cast<long long>(p_.hs_qk),
-                static_cast<long long>(p_.hs_v),
+                static_cast<long long>(hs_qk), static_cast<long long>(hs_v),
                 static_cast<long long>(mm_dt_sz),
                 static_cast<long long>(conf.q_block),
                 static_cast<long long>(conf.mm1_n_block),
@@ -1213,14 +1256,19 @@ status_t configure(const sdpa_full_softmax_params_t &params,
     return status::success;
 }
 
-status_t create_kernels(cpu_isa_t isa_for_ir,
+status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
         const sdpa_full_softmax_conf_t &conf, engine_t *engine,
         sdpa_full_softmax_kernels_t &kernels) {
-    const sdpa_full_softmax_params_t &p = conf.params;
-
-    const dim_t seq_kv = p.seq_kv;
     constexpr int ndims = sdpa_pd_t::ndims;
     constexpr int row_dim = ndims - 2;
+
+    const sdpa_desc_t &desc = *pd.desc();
+    const dim_t seq_kv = desc.keys();
+    const dim_t hs_qk = desc.head_size();
+    const dim_t hs_v = desc.values();
+    const data_type_t mm_dt = mm_data_type(pd);
+    const dims_t &k_strides = memory_desc_wrapper(desc.key_md()).strides();
+    const dims_t &v_strides = memory_desc_wrapper(desc.val_md()).strides();
 
     // Packers for B = [rows x cols] with the given source strides. Packing ahead
     // packs the whole tensor; packing per tile packs one full block of the
@@ -1233,25 +1281,25 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
             if (!rows[i] || !cols[i]) continue;
             packers[i].reset(new sdpa_brgemm_copy::b_packer_t());
             CHECK(packers[i]->init(
-                    rows[i], cols[i], row_stride, col_stride, p.mm_dt));
+                    rows[i], cols[i], row_stride, col_stride, mm_dt));
         }
         return status::success;
     };
     const bool per_tile
             = conf.kv_packing == sdpa_full_softmax_kv_packing_t::per_tile;
     if (conf.pack_k) {
-        const dim_t rows[2] = {p.hs_qk, p.hs_qk};
+        const dim_t rows[2] = {hs_qk, hs_qk};
         const dim_t cols[2] = {per_tile ? conf.mm1_n_block : seq_kv,
                 per_tile ? conf.mm1_n_tail : 0};
-        CHECK(init_packers(kernels.k_packers, rows, cols, p.k_strides[row_dim],
-                p.k_strides[ndims - 1]));
+        CHECK(init_packers(kernels.k_packers, rows, cols, k_strides[row_dim],
+                k_strides[ndims - 1]));
     }
     if (conf.pack_v) {
         const dim_t rows[2] = {per_tile ? conf.mm2_k_block : seq_kv,
                 per_tile ? conf.mm2_k_tail : 0};
-        const dim_t cols[2] = {p.hs_v, p.hs_v};
-        CHECK(init_packers(kernels.v_packers, rows, cols, p.v_strides[row_dim],
-                p.v_strides[ndims - 1]));
+        const dim_t cols[2] = {hs_v, hs_v};
+        CHECK(init_packers(kernels.v_packers, rows, cols, v_strides[row_dim],
+                v_strides[ndims - 1]));
     }
     if (conf.schedule == sdpa_full_softmax_schedule_t::split_kv
             && conf.split_kv.mm2_chunks > 1) {
@@ -1281,14 +1329,14 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
         CHECK(memory_desc_init_by_tag(
                 sm_src_md, 2, sm_dims, data_type::f32, format_tag::ab));
         CHECK(memory_desc_init_by_tag(
-                sm_dst_md, 2, sm_dims, p.mm_dt, format_tag::ab));
+                sm_dst_md, 2, sm_dims, mm_dt, format_tag::ab));
         softmax_desc_t sd {};
         sd.primitive_kind = primitive_kind::softmax;
         sd.prop_kind = prop_kind::forward_inference;
         // inf_as_zero: a fully-masked row (all -inf) must produce an
         // all-zero row instead of NaN. The jit softmax kernel implements
         // this natively for the softmax_accurate_inf_as_zero alg.
-        sd.alg_kind = p.softmax_inf_as_zero
+        sd.alg_kind = desc.softmax_alg == alg_kind::softmax_accurate_inf_as_zero
                 ? alg_kind::softmax_accurate_inf_as_zero
                 : alg_kind::softmax_accurate;
         sd.src_desc = sm_src_md;
@@ -1333,14 +1381,15 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     // runtime argument, so one instance serves both the full and query-tail
     // tiles. The condition is dense along seq_kv (cond_col == 1) because the
     // pd requires the key axis to be full and plain.
-    if (p.has_select && !conf.mm1_select_postop) {
-        const dim_t cond_row = p.cond_dims[sdpa_pd_t::mask_q_index] == 1
+    if (pd.with_select_mask() && !conf.mm1_select_postop) {
+        const memory_desc_wrapper cond_mdw(desc.attn_mask_md());
+        const dim_t cond_row = cond_mdw.dims()[sdpa_pd_t::mask_q_index] == 1
                 ? 0
-                : p.cond_strides[sdpa_pd_t::mask_q_index];
+                : cond_mdw.strides()[sdpa_pd_t::mask_q_index];
         std::shared_ptr<jit_generator_t> k(
                 sdpa_full_softmax_select_ir::create_select_ir_kernel(isa_for_ir,
                         /*wseq_kv=*/seq_kv,
-                        /*invert_select=*/p.invert_select,
+                        /*invert_select=*/desc.invert_select,
                         /*scores_row_stride=*/conf.ld_scores,
                         /*cond_row_stride=*/cond_row));
         CHECK(k->create_kernel());
@@ -1354,38 +1403,57 @@ namespace {
 
 // Inputs of one execute() call, shared by all of its tasks.
 struct exec_state_t {
-    exec_state_t(const sdpa_full_softmax_conf_t &conf,
+    exec_state_t(const sdpa_pd_t &pd, const sdpa_full_softmax_conf_t &conf,
             const sdpa_full_softmax_kernels_t &kernels,
             const sdpa_full_softmax_run_args_t &args, int nthr)
-        : conf(conf)
-        , p(conf.params)
+        : pd(pd)
+        , desc(*pd.desc())
+        , conf(conf)
         , kernels(kernels)
         , args(args)
-        , mm_dt_sz(types::data_type_size(conf.params.mm_dt))
+        , out_d(pd.dst_md())
+        , mm_dt(mm_data_type(pd))
+        , mm_dt_sz(types::data_type_size(mm_dt))
         , scratch(static_cast<char *>(args.scratch))
         , shared_area_offset(conf.scratch_per_thread * nthr)
-        , k_td(get_b_tensor_desc(
-                  args.k, conf.k_copy_desc, scratch, shared_area_offset))
-        , v_td(get_b_tensor_desc(
-                  args.v, conf.v_copy_desc, scratch, shared_area_offset)) {}
+        , k_td(args.k, desc.key_md(), conf.k_copy_desc, scratch,
+                  shared_area_offset)
+        , v_td(args.v, desc.val_md(), conf.v_copy_desc, scratch,
+                  shared_area_offset) {}
 
     char *thread_scratch(int tid) const {
         return scratch + tid * conf.scratch_per_thread;
     }
     char *shared_area() const { return scratch + shared_area_offset; }
 
+    // GQA group size: query heads per KV head (>= 1).
+    dim_t group_head() const {
+        return desc.num_q_heads() / desc.num_kv_heads();
+    }
+
+    // Query rows of a query head from query q0.
+    const char *q(dim_t batch_idx, dim_t head, dim_t q0) const {
+        return get_arg_ptr(args.q, desc.qry_md(), batch_idx, head, q0);
+    }
+    // Output rows of a query head from query q0.
+    char *out(dim_t batch_idx, dim_t head, dim_t q0) const {
+        return get_arg_ptr(args.out, out_d, batch_idx, head, q0);
+    }
     // Select condition rows of a query head from query q0, or null without a
     // select.
     const uint8_t *cond(dim_t batch_idx, dim_t head, dim_t q0) const {
-        if (!p.has_select) return nullptr;
-        return reinterpret_cast<const uint8_t *>(
-                get_arg_ptr(args.cond, batch_idx, head, q0));
+        if (!pd.with_select_mask()) return nullptr;
+        return reinterpret_cast<const uint8_t *>(get_arg_ptr(
+                args.cond, desc.attn_mask_md(), batch_idx, head, q0));
     }
 
+    const sdpa_pd_t &pd;
+    const sdpa_desc_t &desc;
     const sdpa_full_softmax_conf_t &conf;
-    const sdpa_full_softmax_params_t &p;
     const sdpa_full_softmax_kernels_t &kernels;
     const sdpa_full_softmax_run_args_t &args;
+    const memory_desc_wrapper out_d;
+    const data_type_t mm_dt;
     const size_t mm_dt_sz;
     char *const scratch;
     const size_t shared_area_offset;
@@ -1396,7 +1464,7 @@ struct exec_state_t {
 // matrix; the brgemm ukernel has no transposed-B mode) and mm2's B (V) once
 // per (batch, kv_head) into the shared area.
 void pack_kv_ahead(const exec_state_t &st, int nthr) {
-    const dim_t num_head_kv = st.p.num_head_q / st.p.group_head;
+    const dim_t num_head_kv = st.desc.num_kv_heads();
     const bool pack_k = st.k_td.copy_desc;
     const bool pack_v = st.v_td.copy_desc;
     if (!pack_k && !pack_v) return;
@@ -1412,20 +1480,21 @@ void pack_kv_ahead(const exec_state_t &st, int nthr) {
     const dim_t v_chunk_rows
             = pack_v ? chunk_rows_of(*st.kernels.v_packers[0]) : 0;
 
-    const dim_t batch_head_count = st.p.batch * num_head_kv;
+    const dim_t batch_head_count = st.desc.batch() * num_head_kv;
     const dim_t coarse_work = batch_head_count * (pack_k + pack_v);
     const bool fine_grained = coarse_work < nthr;
 
     constexpr dim_t packer_panel_n = sdpa_brgemm_copy::b_packer_t::panel_n;
     const dim_t k_n_panels
-            = fine_grained ? utils::div_up(st.p.seq_kv, packer_panel_n) : 1;
+            = fine_grained ? utils::div_up(st.desc.keys(), packer_panel_n) : 1;
     const dim_t k_k_chunks = fine_grained && pack_k
-            ? utils::div_up(st.p.hs_qk, k_chunk_rows)
+            ? utils::div_up(st.desc.head_size(), k_chunk_rows)
             : 1;
-    const dim_t v_n_panels
-            = fine_grained ? utils::div_up(st.p.hs_v, packer_panel_n) : 1;
+    const dim_t v_n_panels = fine_grained
+            ? utils::div_up(st.desc.values(), packer_panel_n)
+            : 1;
     const dim_t v_k_chunks = fine_grained && pack_v
-            ? utils::div_up(st.p.seq_kv, v_chunk_rows)
+            ? utils::div_up(st.desc.keys(), v_chunk_rows)
             : 1;
     const dim_t k_work
             = pack_k ? batch_head_count * k_n_panels * k_k_chunks : 0;
@@ -1450,7 +1519,8 @@ void pack_kv_ahead(const exec_state_t &st, int nthr) {
 
             const dim_t batch_idx = head_idx / num_head_kv;
             const dim_t kv_head_idx = head_idx % num_head_kv;
-            const char *src = get_arg_ptr(td.arg, batch_idx, kv_head_idx);
+            const char *src
+                    = get_arg_ptr(td.buffer, td.md, batch_idx, kv_head_idx);
             char *dst = get_copy_ptr(td, batch_idx, kv_head_idx);
 
             if (!fine_grained) {
@@ -1465,7 +1535,8 @@ void pack_kv_ahead(const exec_state_t &st, int nthr) {
             const dim_t chunk_rows = is_k ? k_chunk_rows : v_chunk_rows;
             const dim_t k0 = k_chunk_idx * chunk_rows;
 
-            const dim_t k_dim_size = is_k ? st.p.hs_qk : st.p.seq_kv;
+            const dim_t k_dim_size
+                    = is_k ? st.desc.head_size() : st.desc.keys();
             const dim_t k1 = nstl::min(k0 + chunk_rows, k_dim_size);
             packer.execute_panel_range(src, dst, n0, k0, k1);
         }
@@ -1499,7 +1570,7 @@ void softmax_rows(const exec_state_t &st, float *scores, char *prob,
         sa.n_rows = n_rows;
         (*st.kernels.select_kernel)(&sa);
     }
-    const bool is_f32 = st.p.mm_dt == data_type::f32;
+    const bool is_f32 = st.mm_dt == data_type::f32;
     for (dim_t i = 0; i < n_rows; ++i) {
         float *srow = scores + i * conf.ld_scores;
         void *prob_row = prob + i * conf.ld_prob * st.mm_dt_sz;
@@ -1510,7 +1581,7 @@ void softmax_rows(const exec_state_t &st, float *scores, char *prob,
         sp.interim = is_f32 ? nullptr : srow;
         sp.src_scales = nullptr;
         sp.dst_scales = nullptr;
-        sp.process_n_elems = static_cast<size_t>(st.p.seq_kv);
+        sp.process_n_elems = static_cast<size_t>(st.desc.keys());
         sp.dst_orig = prob_row;
         sp.post_ops_binary_rhs_arg_vec = nullptr;
         (*st.kernels.softmax_kernel)(&sp);
@@ -1530,8 +1601,8 @@ public:
                           : nullptr) {
         heads.reserve(st.conf.query_heads_per_item);
         // Upper bound: one rhs per mm1 post-op, plus fill and condition.
-        rhs.reserve(
-                st.conf.query_heads_per_item * (st.p.mm1_post_ops.size() + 2));
+        rhs.reserve(st.conf.query_heads_per_item
+                * (st.conf.mm1_post_ops.size() + 2));
     }
 
     ~thread_state_t() {
@@ -1569,15 +1640,16 @@ public:
         , thread_state_(thread_state)
         , batch_idx_(batch_idx)
         , kv_head_idx_(
-                  item_head_idx * conf_.query_heads_per_item / st.p.group_head)
-        , m_(nstl::min(conf_.q_block, st.p.seq_q - q_block_idx * conf_.q_block))
+                  item_head_idx * conf_.query_heads_per_item / st.group_head())
+        , m_(nstl::min(conf_.q_block,
+                  st.desc.queries() - q_block_idx * conf_.q_block))
         , qi_(m_ != conf_.q_block)
         , call_m_(qi_ ? conf_.q_tail : conf_.m_block)
         // Stacked heads: one BRGEMM call covers all heads of the work item,
         // with head 0's pointers and the head stride as the row stride.
         , brgemm_calls_(conf_.stack_heads ? 1 : conf_.query_heads_per_item)
         , has_mm1_postops_(
-                  !st.p.mm1_post_ops.empty() || conf_.mm1_select_postop) {
+                  !st.conf.mm1_post_ops.empty() || conf_.mm1_select_postop) {
         const dim_t head0 = item_head_idx * conf_.query_heads_per_item;
         const dim_t q0 = q_block_idx * conf_.q_block;
         auto &heads = thread_state_.heads;
@@ -1587,12 +1659,12 @@ public:
         for (dim_t h = 0; h < conf_.query_heads_per_item; ++h) {
             const dim_t head = head0 + h;
             auto &hp = heads[h];
-            hp.q = get_arg_ptr(st.args.q, batch_idx, head, q0);
-            hp.out = get_arg_ptr(st.args.out, batch_idx, head, q0);
+            hp.q = st.q(batch_idx, head, q0);
+            hp.out = st.out(batch_idx, head, q0);
             hp.cond = st.cond(batch_idx, head, q0);
             if (has_mm1_postops_)
-                append_mm1_rhs(rhs, st.p, st.args, batch_idx, head, q0,
-                        conf_.mm1_select_postop, hp.cond);
+                append_mm1_rhs(rhs, st.conf.mm1_post_ops, st.args, batch_idx,
+                        head, q0, conf_.mm1_select_postop, hp.cond);
         }
         rhs_per_head_ = rhs.size() / conf_.query_heads_per_item;
     }
@@ -1603,7 +1675,7 @@ public:
     // directly.
     item_tiles_t output_tiles() const {
         const size_t head_stride
-                = st_.p.o_strides[1] * types::data_type_size(st_.p.out_dt);
+                = st_.out_d.strides()[1] * st_.out_d.data_type_size();
         return {thread_state_.heads[0].out, head_stride};
     }
 
@@ -1671,8 +1743,8 @@ public:
             const bool last_k_block = kv0 + conf_.mm2_k_block >= kv_end;
             const bool apply_postops = conf_.mm2_postops && last_k_block;
             assert(!(use_beta0_kernel && k_tail));
-            for_each_block(
-                    0, st_.p.hs_v, conf_.v_block, [&](dim_t v0, bool v_tail) {
+            for_each_block(0, st_.desc.values(), conf_.v_block,
+                    [&](dim_t v0, bool v_tail) {
                 const brgemm_kernel_t *kernel = this->kernel(use_beta0_kernel
                                 ? brg.mm2_beta0[qi_][v_tail]
                                 : brg.mm2[qi_][k_tail][v_tail]);
@@ -1683,7 +1755,7 @@ public:
                     float *c_blk = c.f32(h) + v0;
                     if (apply_postops) {
                         char *dst = thread_state_.heads[h].out
-                                + v0 * types::data_type_size(st_.p.out_dt);
+                                + v0 * st_.out_d.data_type_size();
                         const brgemm_post_ops_data_t pod;
                         brgemm_kernel_execute_postops(kernel, 1, &be, c_blk,
                                 dst, pod, thread_state_.amx_wsp);
@@ -1698,11 +1770,12 @@ public:
 
     // Writes the item's f32 mm2 result tiles to the user output.
     void store(const item_tiles_t &pv) const {
-        const auto &p = st_.p;
-        const dim_t o_col_stride = p.o_strides[sdpa_pd_t::ndims - 1];
+        const sdpa_desc_t &desc = st_.desc;
+        const dim_t out_col_stride = st_.out_d.strides()[sdpa_pd_t::ndims - 1];
         for (dim_t h = 0; h < brgemm_calls_; ++h)
             store_pv_tile(pv.f32(h), conf_.ld_pv, thread_state_.heads[h].out,
-                    conf_.out_ld, o_col_stride, p.out_dt, call_m_, p.hs_v);
+                    conf_.out_ld, out_col_stride, st_.out_d.data_type(),
+                    call_m_, desc.values());
     }
 
 private:
@@ -1736,11 +1809,11 @@ private:
 // block in the thread's score, P and pv tiles.
 void execute_fused(const exec_state_t &st, int nthr) {
     const auto &conf = st.conf;
-    const auto &p = st.p;
+    const sdpa_desc_t &desc = st.desc;
     const auto &scratch_layout = conf.thread_scratch;
     const size_t q_block = static_cast<size_t>(conf.q_block);
-    const dim_t n_qblk = utils::div_up(p.seq_q, conf.q_block);
-    const dim_t n_items = p.num_head_q / conf.query_heads_per_item;
+    const dim_t n_qblk = utils::div_up(desc.queries(), conf.q_block);
+    const dim_t n_items = desc.num_q_heads() / conf.query_heads_per_item;
     auto body = [&](thread_state_t &thread_state, dim_t batch_idx,
                         dim_t item_head_idx, dim_t q_block_idx) {
         const item_tiles_t scores = {
@@ -1752,18 +1825,18 @@ void execute_fused(const exec_state_t &st, int nthr) {
 
         work_item_t item(
                 st, thread_state, batch_idx, item_head_idx, q_block_idx);
-        item.mm1(0, p.seq_kv, scores);
+        item.mm1(0, desc.keys(), scores);
         item.softmax(scores, prob);
         if (conf.mm2_direct) {
-            item.mm2(0, p.seq_kv, prob, item.output_tiles());
+            item.mm2(0, desc.keys(), prob, item.output_tiles());
         } else {
             const item_tiles_t pv = {thread_state.scratch + scratch_layout.pv,
                     q_block * conf.ld_pv * sizeof(float)};
-            item.mm2(0, p.seq_kv, prob, pv);
+            item.mm2(0, desc.keys(), prob, pv);
             if (!conf.mm2_postops) item.store(pv);
         }
     };
-    const dim_t work = p.batch * n_items * n_qblk;
+    const dim_t work = desc.batch() * n_items * n_qblk;
     parallel(adjust_num_threads(nthr, work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
         if (conf.interleave_items) {
@@ -1772,7 +1845,7 @@ void execute_fused(const exec_state_t &st, int nthr) {
                         (i / n_qblk) % n_items, i % n_qblk);
             return;
         }
-        for_nd(ithr, nthr, p.batch, n_items, n_qblk,
+        for_nd(ithr, nthr, desc.batch(), n_items, n_qblk,
                 [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx) {
             body(thread_state, batch_idx, item_head_idx, q_block_idx);
         });
@@ -1791,23 +1864,24 @@ void execute_fused(const exec_state_t &st, int nthr) {
 // P is normalized over all keys, so the chunk results are summed as is.
 void execute_split_kv(const exec_state_t &st, int nthr) {
     const auto &conf = st.conf;
-    const auto &p = st.p;
+    const sdpa_desc_t &desc = st.desc;
     const auto &sk = conf.split_kv;
-    const dim_t n_items = p.num_head_q / conf.query_heads_per_item;
-    const dim_t n_qblk = utils::div_up(p.seq_q, conf.q_block);
-    const dim_t item_work = p.batch * n_items * n_qblk;
+    const dim_t n_items = desc.num_q_heads() / conf.query_heads_per_item;
+    const dim_t n_qblk = utils::div_up(desc.queries(), conf.q_block);
+    const dim_t item_work = desc.batch() * n_items * n_qblk;
 
     const size_t score_row_bytes = conf.ld_scores * sizeof(float);
     const size_t prob_row_bytes = conf.thread_scratch.has_prob
             ? conf.ld_prob * st.mm_dt_sz
             : score_row_bytes;
     const size_t pv_row_bytes = conf.ld_pv * sizeof(float);
-    const size_t rows = static_cast<size_t>(p.batch) * p.num_head_q * p.seq_q;
+    const size_t rows = static_cast<size_t>(desc.batch()) * desc.num_q_heads()
+            * desc.queries();
     const size_t partial_bytes = rows * pv_row_bytes;
 
     auto row_index = [&](dim_t batch_idx, dim_t head, dim_t q0) {
         return static_cast<size_t>(
-                (batch_idx * p.num_head_q + head) * p.seq_q + q0);
+                (batch_idx * desc.num_q_heads() + head) * desc.queries() + q0);
     };
     // Rows of query head `head` from query q0 in a shared buffer.
     auto shared_rows = [&](size_t buffer, size_t row_bytes, dim_t batch_idx,
@@ -1821,25 +1895,25 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
         return item_tiles_t {shared_rows(buffer, row_bytes, batch_idx,
                                      item_head_idx * conf.query_heads_per_item,
                                      q_block_idx * conf.q_block),
-                p.seq_q * row_bytes};
+                desc.queries() * row_bytes};
     };
     const dim_t mm1_work = item_work * sk.mm1_chunks;
     parallel(adjust_num_threads(nthr, mm1_work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
-        for_nd(ithr, nthr, p.batch, n_items, n_qblk, sk.mm1_chunks,
+        for_nd(ithr, nthr, desc.batch(), n_items, n_qblk, sk.mm1_chunks,
                 [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx,
                         dim_t c) {
             work_item_t item(
                     st, thread_state, batch_idx, item_head_idx, q_block_idx);
             const auto kv = split_kv_chunk_keys(
-                    c, sk.mm1_chunks, conf.mm1_n_block, p.seq_kv);
+                    c, sk.mm1_chunks, conf.mm1_n_block, desc.keys());
             item.mm1(kv.first, kv.second,
                     item_tiles(sk.scores, score_row_bytes, batch_idx,
                             item_head_idx, q_block_idx));
         });
     });
 
-    parallel_nd_ext(nthr, p.batch, p.num_head_q, n_qblk,
+    parallel_nd_ext(nthr, desc.batch(), desc.num_q_heads(), n_qblk,
             [&](int, int, dim_t batch_idx, dim_t head, dim_t q_block_idx) {
         const dim_t q0 = q_block_idx * conf.q_block;
         softmax_rows(st,
@@ -1847,19 +1921,19 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                         sk.scores, score_row_bytes, batch_idx, head, q0)),
                 shared_rows(sk.prob, prob_row_bytes, batch_idx, head, q0),
                 st.cond(batch_idx, head, q0),
-                nstl::min(conf.q_block, p.seq_q - q0));
+                nstl::min(conf.q_block, desc.queries() - q0));
     });
 
     const dim_t mm2_work = item_work * sk.mm2_chunks;
     parallel(adjust_num_threads(nthr, mm2_work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
-        for_nd(ithr, nthr, p.batch, n_items, n_qblk, sk.mm2_chunks,
+        for_nd(ithr, nthr, desc.batch(), n_items, n_qblk, sk.mm2_chunks,
                 [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx,
                         dim_t c) {
             work_item_t item(
                     st, thread_state, batch_idx, item_head_idx, q_block_idx);
             const auto kv = split_kv_chunk_keys(
-                    c, sk.mm2_chunks, conf.mm2_k_block, p.seq_kv);
+                    c, sk.mm2_chunks, conf.mm2_k_block, desc.keys());
             const auto c_tile = conf.mm2_direct
                     ? item.output_tiles()
                     : item_tiles(sk.partials + c * partial_bytes, pv_row_bytes,
@@ -1874,45 +1948,47 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
     });
     if (sk.mm2_chunks == 1) return;
 
-    const dim_t o_row_stride = p.o_strides[sdpa_pd_t::ndims - 2];
-    const dim_t o_col_stride = p.o_strides[sdpa_pd_t::ndims - 1];
+    const dim_t out_row_stride = st.out_d.strides()[sdpa_pd_t::ndims - 2];
+    const dim_t out_col_stride = st.out_d.strides()[sdpa_pd_t::ndims - 1];
     const size_t partial_floats = partial_bytes / sizeof(float);
-    const bool fuse_add_and_convert_to_xf16 = o_col_stride == 1
-            && utils::one_of(p.out_dt, data_type::bf16, data_type::f16);
+    const bool fuse_add_and_convert_to_xf16 = out_col_stride == 1
+            && utils::one_of(
+                    st.out_d.data_type(), data_type::bf16, data_type::f16);
     auto &acc_ker = *st.kernels.split_kv_acc;
-    parallel_nd_ext(nthr, p.batch, p.num_head_q, n_qblk,
+    parallel_nd_ext(nthr, desc.batch(), desc.num_q_heads(), n_qblk,
             [&](int, int, dim_t batch_idx, dim_t head, dim_t q_block_idx) {
         const dim_t q0 = q_block_idx * conf.q_block;
-        const dim_t m = nstl::min(conf.q_block, p.seq_q - q0);
+        const dim_t m = nstl::min(conf.q_block, desc.queries() - q0);
         float *acc = reinterpret_cast<float *>(
                 shared_rows(sk.partials, pv_row_bytes, batch_idx, head, q0));
 
         const dim_t last_chunk = sk.mm2_chunks - 1;
         for (dim_t c = 1; c < last_chunk; ++c) {
             const float *src = acc + c * partial_floats;
-            add_f32_tile(acc_ker, acc, src, m, p.hs_v, conf.ld_pv);
+            add_f32_tile(acc_ker, acc, src, m, desc.values(), conf.ld_pv);
         }
 
-        char *out = get_arg_ptr(st.args.out, batch_idx, head, q0);
+        char *out = st.out(batch_idx, head, q0);
         if (fuse_add_and_convert_to_xf16) {
             add_tile_and_cvt_to_xf16(acc, acc + last_chunk * partial_floats,
-                    conf.ld_pv, out, o_row_stride, p.out_dt, m, p.hs_v);
+                    conf.ld_pv, out, out_row_stride, st.out_d.data_type(), m,
+                    desc.values());
         } else {
             const float *src = acc + last_chunk * partial_floats;
-            add_f32_tile(acc_ker, acc, src, m, p.hs_v, conf.ld_pv);
+            add_f32_tile(acc_ker, acc, src, m, desc.values(), conf.ld_pv);
 
-            store_pv_tile(acc, conf.ld_pv, out, o_row_stride, o_col_stride,
-                    p.out_dt, m, p.hs_v);
+            store_pv_tile(acc, conf.ld_pv, out, out_row_stride, out_col_stride,
+                    st.out_d.data_type(), m, desc.values());
         }
     });
 }
 
 } // namespace
 
-status_t execute(const sdpa_full_softmax_conf_t &conf,
+status_t execute(const sdpa_pd_t &pd, const sdpa_full_softmax_conf_t &conf,
         const sdpa_full_softmax_kernels_t &kernels,
         const sdpa_full_softmax_run_args_t &args, int nthr) {
-    const exec_state_t st(conf, kernels, args, nthr);
+    const exec_state_t st(pd, conf, kernels, args, nthr);
     if (conf.kv_packing == sdpa_full_softmax_kv_packing_t::ahead)
         pack_kv_ahead(st, nthr);
     if (conf.schedule == sdpa_full_softmax_schedule_t::split_kv)

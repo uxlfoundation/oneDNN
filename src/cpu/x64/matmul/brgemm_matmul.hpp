@@ -30,8 +30,8 @@
 #include "cpu/x64/jit_avx512_sparse_decompress_kernel.hpp"
 #include "cpu/x64/jit_brgemm_post_ops.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_copy_utils.hpp"
+#include "cpu/x64/matmul/brgemm_matmul_per_mn_comp.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
-#include "cpu/x64/matmul/jit_brgemm_matmul_per_mn_comp.hpp"
 #include "cpu/x64/matmul/jit_brgemm_matmul_reduce.hpp"
 
 namespace dnnl {
@@ -64,6 +64,9 @@ struct brgemm_matmul_base_t : public primitive_t {
         const brgemm_desc_t &get_brg_desc(int idx) const {
             return brg_descs_[idx];
         }
+        const brgemm_desc_t (&get_per_mn_comp_brg_descs() const)[2] {
+            return per_mn_comp_brg_descs_;
+        }
         const brgemm_matmul_conf_t &get_brgemm_matmul_conf() const {
             return bgmmc_;
         }
@@ -73,6 +76,7 @@ struct brgemm_matmul_base_t : public primitive_t {
 
     private:
         brgemm_desc_t brg_descs_[max_num_brg_kernels_matmul];
+        brgemm_desc_t per_mn_comp_brg_descs_[2];
         brgemm_matmul_conf_t bgmmc_;
     };
 
@@ -95,11 +99,6 @@ private:
             int ithr, dim_t b_idx, dim_t m_blk_idx, dim_t n_blk_idx,
             dim_t k_blk_idx, bool do_init, int &prev_ker_idx,
             bool prefetch) const;
-    void fill_per_mn_compensation(const brg_matmul_exec_ctx_t &brgmm_ctx,
-            int ithr, dim_t b_idx, dim_t m_blk_idx, dim_t n_blk_idx,
-            const char *A_data_batch_ptr, const char *B_data_batch_ptr,
-            dim_t m_kernel_size, dim_t n_kernel_size, dim_t k_blk_idx,
-            bool is_tail) const;
 
     bool determine_prefetch(const dim_t mc, const dim_t m_end, const dim_t nc,
             const dim_t n_end, const brgemm_matmul_conf_t &bgmmc,
@@ -135,8 +134,8 @@ private:
     std::unique_ptr<jit_avx512_sparse_decompress_kernel_t>
             sparse_decompress_kernel_;
 
-    // Per-(M, N) compensation kernel
-    std::unique_ptr<per_mn_comp_kernel_t> per_mn_comp_kernel_;
+    brgemm_matmul_per_mn_comp_t per_mn_comp_;
+    void prepare_per_mn_comp(const brg_matmul_exec_ctx_t &brgmm_ctx) const;
 
     // Holds `jit_brgemm_kernel_reduce_t<Vmm>`, whose `Vmm` is chosen at
     // runtime from `isa`.

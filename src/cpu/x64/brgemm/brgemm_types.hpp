@@ -327,11 +327,14 @@ struct brgemm_desc_t {
     dim_t src_scale_m_stride = 0;
     data_type_t dt_src_scales = data_type::undef;
 
-    bool with_per_mn_compensation = false;
-
     bool has_per_k_scales() const {
         return is_per_k_wei_scales || is_per_k_src_scales;
     }
+    // Int8: accumulate in f32, converting the int32 result of every call.
+    bool req_f32_acc = false;
+    // The result of every call is scaled and/or converted before it is
+    // accumulated into C.
+    bool has_per_call_acc() const { return has_per_k_scales() || req_f32_acc; }
 
     bool with_wei_scales = false;
     // `dst_scales` passed as a bare pointer making kernel change multiplication
@@ -391,6 +394,12 @@ struct brgemm_desc_t {
     bool with_bias = false;
     bool req_s8s8_compensation = false;
     bool req_src_s8_shift = false;
+    // s8 B taken as the unsigned vpdpbusd operand by the vector int8 kernels,
+    // after adding int8_b_shift to every byte (B + int8_b_shift must be
+    // non-negative, e.g. widened u4 with 0 or s4 with 8), so an s8 A needs no
+    // shift and no compensation. The caller accounts for the B shift.
+    bool int8_b_as_unsigned = false;
+    int int8_b_shift = 0;
     // `with_weights_scale_adjust` is controlled by the implementation and not
     // by kernel API.
     bool with_weights_scale_adjust = false;
@@ -552,11 +561,9 @@ struct brgemm_desc_t {
 
     // Determines if the accumulator dt is integer.
     //
-    // When the per-k scales or per-MN compensation are present, need to
-    // accumulate in f32 due to precision loss.
-    bool is_integer_acc() const {
-        return is_int8 && !has_per_k_scales() && !with_per_mn_compensation;
-    }
+    // When the per-k scales are present or f32 accumulation is requested,
+    // need to accumulate in f32 due to precision loss.
+    bool is_integer_acc() const { return is_int8 && !has_per_call_acc(); }
 
     // Determines if the DQ2PS conversion is needed for the accumulator.
     bool do_dq2ps_cvt() const {
@@ -911,7 +918,6 @@ struct brgemm_kernel_params_t {
     const void *b_zp_compensations = nullptr;
     const void *a_zp_values = nullptr;
     const void *c_zp_values = nullptr;
-    const void *ptr_per_mn_compensation = nullptr;
     size_t skip_accm = 0;
     int32_t zp_a_val = 1;
     dim_t dynamic_LDA = 0;
@@ -979,8 +985,7 @@ struct brgemm_post_ops_data_t {
             int32_t zp_a_val = 1, bool do_only_comp = false,
             bool do_only_zp_a_val = false, const void *src_scales = nullptr,
             const void *wei_scales = nullptr, const void *dst_scales = nullptr,
-            const void *a_zp_values = nullptr,
-            const void *per_mn_compensation = nullptr)
+            const void *a_zp_values = nullptr)
         : bias(bias)
         , binary_post_ops_rhs(binary_post_ops_rhs)
         , oc_logical_off(oc_logical_off)
@@ -997,8 +1002,7 @@ struct brgemm_post_ops_data_t {
         , src_scales(src_scales)
         , wei_scales(wei_scales)
         , dst_scales(dst_scales)
-        , a_zp_values(a_zp_values)
-        , per_mn_compensation(per_mn_compensation) {}
+        , a_zp_values(a_zp_values) {}
 
     const void *bias = nullptr;
     const void *binary_post_ops_rhs = nullptr;
@@ -1017,7 +1021,6 @@ struct brgemm_post_ops_data_t {
     const void *wei_scales = nullptr;
     const void *dst_scales = nullptr;
     const void *a_zp_values = nullptr;
-    const void *per_mn_compensation = nullptr;
 };
 
 } // namespace x64

@@ -253,10 +253,26 @@ struct brgemm_matmul_conf_t {
     int wei_packed_elems_per_byte = 0;
     bool is_f4_fused_decompress = false;
     bool with_int8_grouped_quantization = false;
-    // Enables the driver-side per-(M, N) f32 compensation tile that captures
-    // the symmetric src/wei zero-point + 128-shift correction in the grouped
-    // int8 quantization path. Mirrors brgemm_desc_t::with_per_mn_compensation.
+    // Mirrors brgemm_desc_t::int8_b_as_unsigned / int8_b_shift.
+    bool int8_b_as_unsigned = false;
+    int int8_b_shift() const {
+        return int8_b_as_unsigned && orig_wei_dt == data_type::s4 ? 8 : 0;
+    }
+    // Zero-point / s8-shift compensation of the grouped int8 path, computed by
+    // brgemm_matmul_per_mn_comp_t as C = -U * V, U (M x K'), V (K' x N).
     bool with_per_mn_compensation = false;
+    // K' = per_mn_comp_wei_rows + per_mn_comp_src_rows: the wei zp term has
+    // one row per group of per_mn_comp_wei_gsize K values, the src term
+    // (src zp or s8 shift) one row per per_mn_comp_src_gsize K values.
+    dim_t per_mn_comp_wei_gsize = 0;
+    dim_t per_mn_comp_wei_rows = 0;
+    dim_t per_mn_comp_src_gsize = 0;
+    dim_t per_mn_comp_src_rows = 0;
+    dim_t per_mn_comp_K = 0;
+    dim_t per_mn_comp_ldv = 0; // padded N of V
+    // The AMX ukernel applies a common src scale in every per-K call, the
+    // other kernels apply it once with the post-ops.
+    bool per_mn_comp_src_scale_per_call = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
     bool is_runtime_N = false;

@@ -192,7 +192,6 @@ private:
     const reg64_savable_t reg_zp_comp_b {regscratchpad_, rbx, r19};
     const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r20};
     const reg64_savable_t reg_src_scales_per_k {regscratchpad_, rbx, r21};
-    const reg64_savable_t reg_per_mn_comp {regscratchpad_, rbx, r22};
     const reg64_t reg_converted_stride = rsi;
     const reg64_t reg_zp_comp_pad_a = rsi;
 
@@ -717,8 +716,6 @@ private:
             int inp_bd, dim_t ldb) const noexcept;
     dim_t zp_comp_b_offset(dim_t bd) const noexcept;
     dim_t zp_c_values_offset(brgemm_iteration_t &bi, int ldb) const noexcept;
-    dim_t per_mn_comp_offset(const brgemm_iteration_t &bi, int bdb, int inp_bd,
-            dim_t ldb) const noexcept;
     bool is_out_bd(const bd_iteration_t *bdi, int bdb, int inp_bd) const;
     dim_t get_out_bd(const bd_iteration_t *bdi, int bdb, int inp_bd) const;
 
@@ -769,7 +766,7 @@ bool jit_brgemm_amx_uker_t::may_load_accumulators(const brgemm_desc_t &brg) {
     const auto tile_acc_dt = brg.is_int8 ? data_type::s32 : data_type::f32;
     return one_of(brg.alpha, 0.f, 1.f) && brg.beta == 1.f && !brg.is_ace()
             && brg.dt_c == tile_acc_dt && brg.dt_c == brg.dt_d
-            && !brg.has_per_k_scales() && !brg.with_per_mn_compensation
+            && !brg.has_per_call_acc()
             && IMPLICATION(brg.is_input_convert(), brg.is_fp8_via_convert())
             && brg.brgattr.bd_mask_level == 0;
 }
@@ -789,8 +786,8 @@ bool jit_brgemm_amx_uker_t::store_by_vectors(
             = !one_of(brg.dt_c, data_type::f32, data_type::s32);
     return need_to_apply_alpha_beta(brg)
             || (brg.are_post_ops_applicable() && apply_post_ops)
-            || brg.brgattr.bd_mask_level != 0 || brg.has_per_k_scales()
-            || brg.with_per_mn_compensation || c_dt_needs_cvt;
+            || brg.brgattr.bd_mask_level != 0 || brg.has_per_call_acc()
+            || c_dt_needs_cvt;
 }
 
 bool jit_brgemm_amx_uker_t::actual_ils(
@@ -859,7 +856,7 @@ jit_brgemm_amx_uker_t::roll_loops_t jit_brgemm_amx_uker_t::roll_loops(
     // and are not advanced by a rolled bd loop.
     const bool bd_can_roll = bd_is_outer && bdb2_to_unroll > 1
             && (store_by_vectors_ || !brg.interleave_tilestores_)
-            && !brg.with_per_mn_compensation && !brg.is_per_k_src_scales
+            && !brg.is_per_k_src_scales
             && brg.zp_type_b == brgemm_broadcast_t::none && bd_starts_are_out();
 
     // Mirror fill_imap() and find_similar(): the first, the interleaved and
@@ -914,8 +911,7 @@ jit_brgemm_amx_uker_t::roll_loops_t jit_brgemm_amx_uker_t::roll_loops(
     const bool ld_can_roll = may_roll && !use_ils_ && ldb2_to_unroll > 1
             && brg.zp_type_a == brgemm_broadcast_t::none
             && brg.zp_type_c != brgemm_broadcast_t::per_n
-            && !brg.with_per_mn_compensation && !brg.req_comp_pads_with_bcast
-            && ld_step_is_const();
+            && !brg.req_comp_pads_with_bcast && ld_step_is_const();
     const dim_t ldb2_rolled = ldb2_all - ldb2_to_unroll + 1;
 
     // Roll the one removing more bodies first. Both roll only with the ld
@@ -1223,20 +1219,6 @@ dim_t jit_brgemm_amx_uker_t::zp_c_values_offset(
     return 0;
 }
 
-dim_t jit_brgemm_amx_uker_t::per_mn_comp_offset(const brgemm_iteration_t &bi,
-        int bdb, int inp_bd, dim_t ldb) const noexcept {
-    const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
-    const auto bd = get_out_bd(bi.bdi, bdb, inp_bd);
-    assert(bd >= 0);
-    const auto bd_shift = bd - (roll_bd_loop ? bi_bd_start : 0);
-    const dim_t ldc_elem = (dim_t)ldb * brg.ld_block;
-    const dim_t bloc_idx = ldc_elem / brg.LDC;
-    const dim_t in_block = ldc_elem % brg.LDC;
-    return (dim_t)sizeof(float)
-            * ((dim_t)bd_shift * brg.LDC2_M + (dim_t)bloc_idx * brg.LDC2_N
-                    + in_block);
-}
-
 bool jit_brgemm_amx_uker_t::is_out_bd(
         const bd_iteration_t *bdi, int bdb, int inp_bd) const {
     const auto bd = bdi->pos(bdb) + inp_bd;
@@ -1313,11 +1295,6 @@ void jit_brgemm_amx_uker_t::read_params() {
     if (brg.is_per_k_src_scales) {
         mov(reg_src_scales_per_k, ptr[param1 + GET_OFF(ptr_src_scales)]);
         reg_src_scales_per_k.save();
-    }
-
-    if (brg.with_per_mn_compensation) {
-        mov(reg_per_mn_comp, ptr[param1 + GET_OFF(ptr_per_mn_compensation)]);
-        reg_per_mn_comp.save();
     }
 
     if (brg.with_bias) {
@@ -1922,30 +1899,11 @@ void jit_brgemm_amx_uker_t::process_output_range(
             vmovups(vreg_acc, ptr[reg_buf + buf_offset + wsp_offset]);
         }
 
-        // Per-(M,N) compensation: convert int32->float and subtract the
-        // unscaled delta BEFORE per-K scale multiply.
-        if (brg.with_per_mn_compensation && !bi.skip_accumulation) {
-            vcvtdq2ps(zmm, zmm);
-
-            reg_per_mn_comp.restore();
-            const auto global_ldb = bi.ldi->pos(ldb);
-            const auto delta_off = per_mn_comp_offset(bi, bdb, bd, global_ldb);
-            const auto delta_ptr = EVEX_compress_addr_safe(
-                    reg_per_mn_comp, delta_off, reg_long_offt);
-            const auto zmm_delta = zmm_tmp_1();
-            const Xbyak::Zmm zmm_delta_masked
-                    = vmm_mask(zmm_delta, true, false, k_mask);
-            vmovups(zmm_delta_masked, delta_ptr);
-            vsubps(zmm, zmm, zmm_delta);
-        }
-
-        // For K-scales (wei and/or src), convert int32->float (if not
-        // already done by per-MN compensation) and apply the current
-        // K-group's scales BEFORE alpha_beta accumulation. Non-integer
+        // For K-scales (wei and/or src), convert int32->float and apply the
+        // current K-group's scales BEFORE alpha_beta accumulation. Non-integer
         // accumulators (e.g. fp8/bf16 TMUL) are already f32.
-        if (brg.has_per_k_scales() && !bi.skip_accumulation) {
-            if (brg.is_int8 && !brg.with_per_mn_compensation)
-                vcvtdq2ps(zmm, zmm);
+        if (brg.has_per_call_acc() && !bi.skip_accumulation) {
+            if (brg.is_int8) vcvtdq2ps(zmm, zmm);
 
             const Xbyak::Zmm scaled_zmm = vmm_mask(zmm, true, false, k_mask);
             // Apply K-wei_scales if present (pre-loaded per-ldb vector).
@@ -1996,10 +1954,8 @@ void jit_brgemm_amx_uker_t::process_output_range(
 
         if (!bi.apply_postops) continue;
 
-        // When K-scales or per-MN comp are used, dq2ps already applied above.
-        if (dq2ps_required && !brg.has_per_k_scales()
-                && !brg.with_per_mn_compensation)
-            vcvtdq2ps(zmm, zmm);
+        // When K-scales are used, dq2ps already applied above.
+        if (dq2ps_required && !brg.has_per_call_acc()) vcvtdq2ps(zmm, zmm);
 
         if (brg.req_comp_pads_with_bcast)
             apply_comp_pad_to_vector(bi, bdb, bd, ldb, zmm.getIdx());
@@ -4014,7 +3970,7 @@ void jit_brgemm_amx_uker_t::init(brgemm_iteration_t &bi) {
                 = brg.alpha != 1.0f || brg.beta != 0.f;
         const bool beta_uses_vadd = brg.beta == 1.f
                 && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
-        dt_requires_saturation_ = brg.is_int8 && !brg.has_per_k_scales()
+        dt_requires_saturation_ = brg.is_int8 && !brg.has_per_call_acc()
                 && !IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
     }
     use_sat_cvt_ = dt_requires_saturation_

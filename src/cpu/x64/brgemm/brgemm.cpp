@@ -171,7 +171,6 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
     brgemm_p.a_zp_compensations = post_ops_data.a_zp_compensations;
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
-    brgemm_p.ptr_per_mn_compensation = post_ops_data.per_mn_compensation;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -216,7 +215,6 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.a_zp_values = post_ops_data.a_zp_values;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
-    brgemm_p.ptr_per_mn_compensation = post_ops_data.per_mn_compensation;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -683,16 +681,16 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     // runs one batch element for a zero var_bs batch, which the uker skips.
     // Virtual padding stays on the uker: the new blocking may give a bd_block
     // below max_vpad, which the check below rejects.
-    if (brg->is_ace() && !brg->is_dgmm && brg->brgattr.use_uker
-            && brg->brgattr.enable_size_driven_roll
+    const bool base_kernel_can_replace_ace_uker = brg->is_ace() && !brg->is_dgmm
+            && brg->brgattr.use_uker && brg->brgattr.enable_size_driven_roll
             && brg->type != brgemm_static_offs && !brg->brgattr.var_bs
             && utils::one_of(brg->dt_c, data_type::f32, data_type::s32)
             && brg->brgattr.bd_mask_level == 0 && !brg->fused_copy_a
-            && !brg->has_per_k_scales() && !brg->with_per_mn_compensation
-            && brg->LDA2 == brg->LDA && brg->LDC2_M == brg->LDC
+            && !brg->has_per_call_acc() && brg->LDA2 == brg->LDA
+            && brg->LDC2_M == brg->LDC
             && IMPLICATION(brg->load_dim > brg->LDC, brg->LDC2_N == brg->LDC)
-            && max_vpad == 0 && base_ker_d_stride_ok()
-            && !ace_uker_small_enough(*brg)) {
+            && max_vpad == 0 && base_ker_d_stride_ok();
+    if (base_kernel_can_replace_ace_uker && !ace_uker_small_enough(*brg)) {
         const bool uker_ils = brg->brgattr.use_interleave_stores;
         brg->brgattr.use_uker = false;
         brg->brgattr.use_interleave_stores = false;
@@ -733,8 +731,7 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     // Per-K (block-wise) scales and per-(M,N) compensation are applied to the
     // partial result of every brgemm call. Only the AMX uker implements that
     // for tile accumulators; the base kernel would silently drop them.
-    if (brg->is_tmm && !brg->can_dispatch_uker()
-            && (brg->has_per_k_scales() || brg->with_per_mn_compensation))
+    if (brg->is_tmm && !brg->can_dispatch_uker() && brg->has_per_call_acc())
         return status::unimplemented;
 
     if (!brg->can_dispatch_uker() && !base_ker_d_stride_ok())

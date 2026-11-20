@@ -51,15 +51,13 @@ std::size_t b_packer_t::panel_offset(
 }
 
 status_t b_packer_t::init(dim_t K, dim_t N, dim_t src_k_stride,
-        dim_t src_n_stride, dim_t dst_ld, data_type_t dt) {
-    if (K <= 0 || N <= 0 || src_k_stride <= 0 || src_n_stride <= 0
-            || dst_ld != panel_n)
+        dim_t src_n_stride, data_type_t dt) {
+    if (K <= 0 || N <= 0 || src_k_stride <= 0 || src_n_stride <= 0)
         return status::invalid_arguments;
     if (src_k_stride != 1 && src_n_stride != 1) return status::unimplemented;
 
     K_ = K;
     N_ = N;
-    dst_ld_ = dst_ld;
     dt_ = dt;
     if (src_n_stride == 1) {
         src_tag_ = format_tag::ab;
@@ -111,8 +109,8 @@ void b_packer_t::execute_panel_range(const void *src, void *dst, dim_t n0,
         const dim_t src_offset = src_tag_ == format_tag::ab ? k0 * src_ld_ + n0
                                                             : n0 * src_ld_ + k0;
         const dim_t dst_offset
-                = (k0 / k_vnni_ * dst_ld_ * k_vnni_
-                          + n0 / panel_n * packed_k(K_, dt_) * dst_ld_)
+                = (k0 / k_vnni_ * panel_n * k_vnni_
+                          + n0 / panel_n * packed_k(K_, dt_) * panel_n)
                 * dst_size;
 
         auto ctx = matmul::jit_brgemm_matmul_copy_b_t::ctx_t();

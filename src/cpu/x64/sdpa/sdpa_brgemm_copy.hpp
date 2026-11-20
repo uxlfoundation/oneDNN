@@ -31,10 +31,9 @@ namespace sdpa_brgemm_copy {
 
 // Packs a BRGEMM B operand [K x N] with the BRGEMM matmul copy-B kernels.
 // N is split into panel_n-wide panels, each stored as an independent
-// [packed_k(K, dt) x panel_n] matrix with dst_ld == panel_n; see
-// panel_offset(). A BRGEMM reading a packed panel uses ldb = panel_n and an N
-// block of at most panel_n. execute positions panels explicitly; the copy
-// kernels use LDB2 == 0.
+// [packed_k(K, dt) x panel_n] matrix; see panel_offset(). A BRGEMM reading a
+// packed panel uses ldb = panel_n and an N block of at most panel_n. execute
+// positions panels explicitly; the copy kernels use LDB2 == 0.
 class b_packer_t {
 public:
     // N width of one packed panel: the copy kernel's wei_n_blk and N_blk, so
@@ -52,7 +51,7 @@ public:
     static std::size_t panel_offset(dim_t k, dim_t n, dim_t padded_k, dim_t v);
 
     status_t init(dim_t K, dim_t N, dim_t src_k_stride, dim_t src_n_stride,
-            dim_t dst_ld, data_type_t dt);
+            data_type_t dt);
 
     // Panel height of this packer's destination.
     dim_t padded_k() const;
@@ -73,7 +72,6 @@ private:
     dim_t K_ = 0;
     dim_t N_ = 0;
     dim_t src_ld_ = 0;
-    dim_t dst_ld_ = 0;
     dim_t k_pad_block_ = 0;
     dim_t k_vnni_ = 0;
     data_type_t dt_ = data_type::undef;

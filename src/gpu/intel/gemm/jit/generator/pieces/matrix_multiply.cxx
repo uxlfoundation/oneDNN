@@ -664,7 +664,6 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
     if (state.C_buffers > 1) stub();
 
     int ny = strategy.unroll[globalCM ? LoopN : LoopM];
-    int nacc = AccumulatorRegister::count(hw, strategy.GRFs, Tc.real().ngen());
 
     /* Apply late A/B offsets to pre-repacked data */
     bool doAO2DLate = problem.needsBGroupSums();
@@ -681,36 +680,10 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
     }
 
     /* Main repacking logic */
-    struct WorkItem {
-        Subregister C, Cr;
-        int simd, iacc;
-        std::array<Subregister, 2> scale;
-        std::array<int, 2> scaleStride;
-
-        RegData acc(Type T) const {
-            return AccumulatorRegister(iacc).retype(T.ngen());
-        }
-    };
-
-    std::vector<WorkItem> items;
-    items.reserve(nacc);
-
-    auto processItems = [&] {
-        for (const auto &i: items)
-            mov(i.simd, i.acc(Tc), i.Cr(1));
-        for (const auto &i : items)
-            if (i.scale[1].isValid())
-                mul(i.simd, i.acc(Tc), i.acc(Tc), i.scale[1](i.scaleStride[1]));
-        for (const auto &i: items) {
-            if (i.scale[0].isValid())
-                mad(i.simd, i.C(1), i.C(1), i.acc(Tc), i.scale[0](i.scaleStride[0]));
-            else
-                add(i.simd, i.C(1), i.C(1), i.acc(Tc));
-        }
-        items.clear();
-    };
-
-    int iacc = 0;
+    // Cr is dead after repacking, so the copy planner updates it in place.
+    CopyPlan plan(getProductFamily(), strategy.systolicAvailable);
+    struct Product { int vBase, n; Subregister s; CopyOperand op; };
+    std::vector<Product> products;
 
     for (int x1 = 0; x1 < nx; x1 += 2 * nec) {
         int x = x0 + x1, xr = xr0 + x1;
@@ -769,41 +742,41 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
             if (ne < xchunk) stub();
             if (C_block->crosspack != 1 || Cr_block->crosspack != 1) stub();
 
-            WorkItem item = {C, Cr, ne, iacc, scale, scaleStride};
-            bool coalesce = false;
-
-            if (!items.empty()) {
-                auto &last = items.back();
-                coalesce = Tc.isFP();
-                coalesce &= (ne == nec && last.simd == nec);
-                coalesce &= (C.getBase() == last.C.getBase() + 1);
-                coalesce &= (Cr.getBase() == last.Cr.getBase() + 1);
-                for (int i = 0; i < 2; i++) if (scale[i].isValid()) {
-                    if (scaleStride[i] == 0)
-                        coalesce &= (scale[i] == last.scale[i]);
-                    else {
-                        coalesce &= (scale[i].getBase() == last.scale[i].getBase() + 1)
-                                 && (getBytes(scale[i].getType()) == Tc.size());
-                    }
+            CopyOperand Cop = C(1), src = Cr(1);
+            src.overwrite = true;
+            if (src.type != Tc.ngen()) {
+                CopyOperand dst = src;
+                dst.type = Tc.ngen();
+                plan.append(0, Opcode::mov, ne, dst, src);
+                src = dst;
+            }
+            CopyOperand sop;
+            if (scale[1].isValid()) {
+                // Multiply the broadcast scale into whole registers of the other scale, once per pair.
+                int iv = scaleStride[0] ? 0 : 1;
+                auto &v = scale[iv], &bs = scale[1 - iv];
+                int nev = elementsPerGRF(hw, v.getType());
+                int n = (scaleStride[iv] ? div_up(v.getOffset() + ne, nev) : 1) * nev;
+                auto it = std::find_if(products.begin(), products.end(), [&](const Product &p) {
+                    return p.vBase == v.getBase() && p.n == n && p.s == bs;
+                });
+                if (it == products.end()) {
+                    it = products.insert(products.end(), {v.getBase(), n, bs, plan.newTemp(Tc.ngen(), n, 1)});
+                    plan.append(1, Opcode::mul, n, it->op, GRF(v.getBase()).retype(v.getType()), bs(0));
                 }
-            }
-
-            if (coalesce)
-                items.back().simd += ne;
+                sop = it->op;
+                sop.offset = v.getOffset();
+                sop.stride = scaleStride[iv];
+            } else if (scale[0].isValid())
+                sop = scale[0](scaleStride[0]);
+            if (sop)
+                plan.append(2, Opcode::mad, ne, Cop, Cop, src, sop);
             else
-                items.push_back(item);
-
-            iacc += (ne > nec) ? 2 : 1;
-            if (Tc.isInteger() && (iacc & 1))
-                iacc++; /* only even accumulators allowed for integer types */
-            if (iacc >= nacc) {
-                processItems();
-                iacc = 0;
-            }
+                plan.append(2, Opcode::add, ne, Cop, Cop, src);
         }
     }
 
-    processItems();
+    copyExecute(std::move(plan), state);
 }
 
 template <HW hw>

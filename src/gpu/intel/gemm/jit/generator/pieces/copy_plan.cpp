@@ -3945,6 +3945,7 @@ void CopyPlan::optimizeConcatenate(bool initial)
                 if (o1.temp && (o1.value != o2.value)) return false;
                 if (o1.neg != o2.neg) return false;
                 if (o1.abs != o2.abs) return false;
+                if (o1.stride == 0 && !o1.width && !outTooFar) return o1 == o2;
                 auto lead = bytesToElements((o2.grf - o1.grf) * grf, o1.type) + (int)o2.offset - (int)o1.offset;
                 auto breadth = o1.stride * i1.simd;
                 auto elems = o1.stride ? lead / o1.stride : 0;

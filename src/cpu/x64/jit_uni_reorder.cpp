@@ -613,12 +613,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                         uni_vmovups(dst, src);
                     break;
                 case bf16:
-                    if (mayiuse(avx2)) {
-                        vpmovzxwd(dst, src);
-                        vpslld(dst, dst, 0x10);
-                        break;
-                    } else
-                        assert(!"unreachable!");
+                    vpmovzxwd(dst, src);
+                    vpslld(dst, dst, 0x10);
+                    break;
                 case f16: vcvtph2ps(dst, src); break;
                 case s32: uni_vcvtdq2ps(dst, src); break;
                 case f8_e5m2:
@@ -661,7 +658,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             }
             switch (odt) {
                 case bf16:
-                    if (!mayiuse(avx2)) assert(!"unreachable");
                     if (utils::one_of(
                                 idt, f32, f16, f8_e5m2, f8_e4m3, s8, u8)) {
                         if (!utils::one_of(idt, f32, f8_e5m2, f8_e4m3))
@@ -690,7 +686,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     }
                     break;
                 case f16:
-                    if (!mayiuse(avx2)) assert(!"unreachable");
                     if (utils::one_of(
                                 idt, f32, bf16, f8_e5m2, f8_e4m3, s8, u8)) {
                         if (!utils::one_of(idt, f32, f8_e5m2, f8_e4m3))
@@ -937,13 +932,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             } else {
                 for (int ur = 0; ur < reg_unroll; ur += load_step)
                     for (int r = 1; r < load_step; ++r) {
-                        if (mayiuse(avx2))
-                            vpalignr(Xmm(ur + r), Xmm(ur), Xmm(ur),
-                                    static_cast<uint8_t>(itype_sz_ * r));
-                        else {
-                            movups(Xmm(ur + r), Xmm(ur));
-                            palignr(Xmm(ur + r), Xmm(ur), itype_sz_ * r);
-                        }
+                        vpalignr(Xmm(ur + r), Xmm(ur), Xmm(ur),
+                                static_cast<uint8_t>(itype_sz_ * r));
                     }
             }
         }
@@ -1027,15 +1017,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             if (prb_.beta == 1.f) {
                 for (int ur = 0; ur < reg_unroll; ur += ur_step) {
                     if (prb_.otype == f32) {
-                        /* non VEX instructions do not support unaligned
-                         * memory for instructions other than movups. */
-                        if (mayiuse(avx2)) {
-                            vaddps(Xmm(ur), o_addr(o_off[ur]));
-                        } else {
-                            /* register xmm(1) is unused */
-                            movups(Xmm(1), o_addr(o_off[ur]));
-                            addps(Xmm(ur), Xmm(1));
-                        }
+                        vaddps(Xmm(ur), o_addr(o_off[ur]));
                     } else if (utils::one_of(prb_.otype, f8_e5m2, f8_e4m3)) {
                         /* Unlike every other data type, whose memory read
                          * width follows the `xmm` destination, the fp8
@@ -1153,17 +1135,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         }
 
         if (compensation_needed_) {
-            const bool mayiuse_avx2 = mayiuse(avx2);
             const auto uni_vpaddd_wrapper
                     = [&](const Xmm xmm, const Address &addr) {
-                if (mayiuse_avx2)
-                    vpaddd(xmm, xmm, addr);
-                else {
-                    //isas < avx2 demand paddd instruction addr to be aligned
-                    assert(xmm.getIdx() != xmm_tmp_.getIdx());
-                    uni_vmovups(xmm_tmp_, addr);
-                    paddd(xmm, xmm_tmp_);
-                }
+                vpaddd(xmm, xmm, addr);
             };
             if (can_store_xmm) {
                 enum class comp_load_type_t { bcast, load, gather };

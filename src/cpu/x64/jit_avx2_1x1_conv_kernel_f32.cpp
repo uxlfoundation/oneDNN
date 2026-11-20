@@ -447,14 +447,8 @@ void jit_avx2_1x1_conv_kernel_f32_t::generate_reduce_loop(
         for (int u = 0; u < u_end; ++u) {
             for (int j = 0; j < ur; ++j) {
                 for (int i = 0; i < load_loop_blk; ++i) {
-                    if (jcp.isa == avx2)
-                        vfmadd231ps(vreg_accum(load_loop_blk, i, j),
-                                vreg_load(i), vreg_bcast);
-                    else { // Intel(R) Advanced Vector Extensions (Intel(R) AVX) support
-                        vmulps(vtmp, vreg_bcast, vreg_load(i));
-                        vaddps(vreg_accum(load_loop_blk, i, j),
-                                vreg_accum(load_loop_blk, i, j), vtmp);
-                    }
+                    vfmadd231ps(vreg_accum(load_loop_blk, i, j), vreg_load(i),
+                            vreg_bcast);
                     if (j == ur - 1 && !(last_block && u == u_end - 1)) {
                         if (jcp.prop_kind == backward_weights
                                 && load_dim_tail > 0
@@ -835,14 +829,9 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     VDISPATCH_CONV_IC(jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1,
             VERBOSE_UNSUPPORTED_FEATURE, "non-unit kernel dimensions");
 
-    // TODO: remove this restriction
-    // optimized 1x1 bwd_w does not support Intel AVX
-    VDISPATCH_CONV_IC(!(jcp.prop_kind == backward_weights && jcp.isa != avx2),
-            VERBOSE_UNSUPPORTED_ISA);
-
     jcp.ic_block = jcp.oc_block = simd_w;
 
-    jcp.ur = 4; // Intel AVX2
+    jcp.ur = 4;
     if (jcp.with_dw_conv)
         jcp.ur = static_cast<int>(nstl::min<dim_t>(jcp.ow, jcp.ur));
 

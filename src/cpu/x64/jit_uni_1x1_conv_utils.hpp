@@ -76,10 +76,6 @@ inline void rtus_prepare(conv_pd_t *self, const convolution_desc_t *&conv_d,
                       format_tag::nChw16c, format_tag::nhwc);
     if (dat_tag == format_tag::undef) return;
 
-    const bool is_nspc
-            = utils::one_of(dat_tag, format_tag::nwc, format_tag::nhwc);
-    if (is_nspc && !mayiuse(avx2)) return;
-
     // rtus is applicable, configure it.
     self->rtus_.reduce_src_ = true;
     conv_d = &(self->rtus_.conv_d_ = *conv_d);

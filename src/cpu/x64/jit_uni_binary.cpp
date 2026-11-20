@@ -163,12 +163,6 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_BINARY(IMPLICATION((!attr()->scales_.has_default_values()),
                              check_scales_mask()),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VDISPATCH_BINARY((conf_.is_i8
-                             || IMPLICATION(!mayiuse(avx2),
-                                     src0_md_.consistent_with(src1_md_)
-                                             || src0_md_.is_plain())),
-            "unsupported isa or inconsistent mds");
-
     conf_.postops_per_oc_broadcast_exists
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
                     po, src0_md_, get_supported_postops_bcast_strategies());
@@ -258,8 +252,6 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
         conf_.src2_type = src_md(2)->data_type;
         VDISPATCH_BINARY(data_type_supported(conf_.src2_type, conf_.isa),
                 VERBOSE_ISA_DT_MISMATCH);
-        // The kernel requires AVX2 or newer.
-        VDISPATCH_BINARY(mayiuse(avx2), "unsupported isa for ternary op");
     }
     init_scratchpad();
 
@@ -592,14 +584,7 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
     return binary_injector::binary_args_broadcast_supported(
                    p, src0_d, get_supported_postops_bcast_strategies())
             && IMPLICATION(
-                    utils::one_of(src0_d.data_type(), s8, u8), !blocked_tail)
-            && IMPLICATION(postops_per_oc_broadcast_exists,
-                    binary_injector::all_binary_postop_rhs_per_oc_broadcast(p,
-                            src0_d, supported_strategies,
-                            [&src0_d](const memory_desc_wrapper &rhs_arg_md) {
-        return IMPLICATION(!mayiuse(avx2),
-                src0_d.consistent_with(rhs_arg_md) || src0_d.is_plain());
-    }));
+                    utils::one_of(src0_d.data_type(), s8, u8), !blocked_tail);
 }
 
 void jit_uni_binary_t::pd_t::init_scratchpad() {

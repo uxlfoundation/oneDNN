@@ -579,11 +579,7 @@ inline void jit_uni_pool_kernel_t<isa>::load_indices(
             } else {
                 vmovq(indxr, ptr[reg_index + step_index]);
             }
-            if (!mayiuse(avx2)) {
-                avx_pmovzxbd(indvr, indxr, xmm_tmp);
-            } else {
-                vpmovzxbd(indvr, indxr);
-            }
+            vpmovzxbd(indvr, indxr);
         } else {
             if (is_c_tail_processing && !jpp.is_c_padded) {
                 vpmovzxbd(indvr | k_c_tail_mask | T_z,
@@ -643,21 +639,10 @@ inline void jit_uni_pool_kernel_t<isa>::store_indices(const int indr_i,
                     vmovd(xmm_tmp, reg_shuf_mask);
                     uni_vpbroadcastd(vmm_tmp, xmm_tmp);
                 }
-                if (mayiuse(avx2)) {
-                    vpshufb(yr, yr, vmm_tmp);
-                    vmovd(ptr[reg_index + step_index], xr);
-                    vperm2i128(yr, yr, yr, 0x1u);
-                    vmovd(ptr[reg_index + step_index + (jpp.c_block / 2)], xr);
-                } else {
-                    Xmm t(vmm_mask.getIdx());
-                    vextractf128(t, yr, 0);
-                    vpshufb(t, t, xmm_tmp);
-                    vmovd(ptr[reg_index + step_index], t);
-                    vextractf128(t, yr, 1);
-                    vpshufb(t, t,
-                            xmm_tmp); // ymm_tmp[:128]==ymm_tmp[127:0]
-                    vmovd(ptr[reg_index + step_index + (jpp.c_block / 2)], t);
-                }
+                vpshufb(yr, yr, vmm_tmp);
+                vmovd(ptr[reg_index + step_index], xr);
+                vperm2i128(yr, yr, yr, 0x1u);
+                vmovd(ptr[reg_index + step_index + (jpp.c_block / 2)], xr);
             }
         } else {
             auto vr = vreg(indr_i);
@@ -1122,11 +1107,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
                 load(input_dt, reg_idx(inpr_i), aux_reg_input, inp_offset,
                         is_tail_processing(bci));
                 if (isa == avx2) {
-                    if (mayiuse(avx2)) {
-                        vpcmpeqd(cvtvr, indvr, vmm_k_offset);
-                    } else {
-                        avx_pcmpeqd(cvtvr, indvr, vmm_k_offset, xmm_tmp);
-                    }
+                    vpcmpeqd(cvtvr, indvr, vmm_k_offset);
                     uni_vpxor(vmm_tmp, vmm_tmp, vmm_tmp);
                     vblendvps(vmm_tmp, vmm_tmp, outvr, cvtvr);
                     vaddps(inpvr, inpvr, vmm_tmp);

@@ -18,7 +18,6 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <vector>
 
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
@@ -53,14 +52,14 @@ sdpa_online_softmax_kernels_t::~sdpa_online_softmax_kernels_t() {
 
 namespace sdpa_online_softmax {
 
-status_t configure(const sdpa_online_softmax_params_t &params,
-        sdpa_online_softmax_conf_t &conf) {
-    conf.params = params;
+status_t configure(const sdpa_pd_t &pd, sdpa_online_softmax_conf_t &conf) {
+    conf = sdpa_online_softmax_conf_t();
 
-    const dim_t seq_q = params.seq_q;
-    const dim_t seq_kv = params.seq_kv;
-    const dim_t hs_qk = params.head_size_qk;
-    const dim_t hs_v = params.head_size_v;
+    const sdpa_desc_t &desc = *pd.desc();
+    const dim_t seq_q = desc.queries();
+    const dim_t seq_kv = desc.keys();
+    const dim_t hs_qk = desc.head_size();
+    const dim_t hs_v = desc.values();
 
     const dim_t l2_budget_bytes
             = static_cast<dim_t>(3 * platform::get_per_core_cache_size(2) / 4);
@@ -143,34 +142,36 @@ status_t configure(const sdpa_online_softmax_params_t &params,
     return status::success;
 }
 
-status_t create_kernels(cpu_isa_t isa_for_ir,
+status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
         const sdpa_online_softmax_conf_t &conf, engine_t *engine,
         sdpa_online_softmax_kernels_t &kernels) {
     UNUSED(engine);
-    const sdpa_online_softmax_params_t &p_ = conf.params;
-    const dim_t kv_blk_ = conf.kv_blk;
+    constexpr int ndims = sdpa_pd_t::ndims;
+    constexpr int row_dim = ndims - 2;
 
-    const int ndims = p_.ndims;
-    const dim_t seq_kv = p_.seq_kv;
-    const dim_t hs_qk = p_.head_size_qk;
-    const dim_t hs_v = p_.head_size_v;
-    const dim_t row_dim = ndims - 2;
-    const dim_t kv_tail = seq_kv % kv_blk_;
-    const dim_t q_blk_ = conf.q_blk;
-    const dim_t q_tail = conf.q_tail;
+    const sdpa_desc_t &desc = *pd.desc();
+    const dim_t seq_kv = desc.keys();
+    const dim_t hs_qk = desc.head_size();
+    const dim_t hs_v = desc.values();
+    const dims_t &q_strides = memory_desc_wrapper(desc.qry_md()).strides();
+    const dims_t &k_strides = memory_desc_wrapper(desc.key_md()).strides();
+    const dims_t &v_strides = memory_desc_wrapper(desc.val_md()).strides();
+    const bool has_select = pd.with_select_mask();
+
+    const dim_t kv_tail = seq_kv % conf.kv_blk;
     // Query-block row counts indexed by the q-tail flag: [0] full block, [1]
     // ragged last block (only built when q_tail != 0).
-    const dim_t q_rows[2] = {q_blk_, q_tail};
+    const dim_t q_rows[2] = {conf.q_blk, conf.q_tail};
     // KV tile widths indexed by the kv-tail flag.
-    const dim_t kv_w[2] = {kv_blk_, kv_tail};
+    const dim_t kv_w[2] = {conf.kv_blk, kv_tail};
 
     // Create the BRGEMM kernels. Shapes differ only in the M (query-block rows)
     // and N/K (KV tile width) dims, so one kernel per (q full/tail, kv
     // full/tail) combination suffices.
     //   mm1 (beta=0): scores_tile[m, w] = Q[m, hs_qk] * K[hs_qk, w]
     //   mm2 (beta=0): pv_tile[m, hs_v]  = P_tile[m, w] * V[w, hs_v]
-    // where m is the query-block rows (q_blk_ or the seq_q % q_blk_ remainder)
-    // and w is the KV tile width (kv_blk_ or the seq_kv % kv_blk_ remainder).
+    // where m is the query-block rows (q_blk or the seq_q % q_blk remainder)
+    // and w is the KV tile width (kv_blk or the seq_kv % kv_blk remainder).
     auto create_brgemm
             = [&](brgemm_kernel_t **out, float beta, dim_t M, dim_t N, dim_t K,
                       dim_t lda, dim_t ldb, dim_t ldc) -> status_t {
@@ -194,15 +195,15 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     auto create_tile_kernels = [&](brgemm_kernel_t **mm1, brgemm_kernel_t **mm2,
                                        dim_t m, dim_t w) {
         CHECK(create_brgemm(mm1, /*beta=*/0.0f, m, w, hs_qk,
-                /*lda=*/p_.q_strides[row_dim],
-                /*ldb=*/p_.k_strides[row_dim],
+                /*lda=*/q_strides[row_dim],
+                /*ldb=*/k_strides[row_dim],
                 /*ldc=*/w));
         CHECK(create_brgemm(mm2, /*beta=*/0.0f, m, hs_v, w,
-                /*lda=*/w, /*ldb=*/p_.v_strides[row_dim], /*ldc=*/hs_v));
+                /*lda=*/w, /*ldb=*/v_strides[row_dim], /*ldc=*/hs_v));
         return status::success;
     };
 
-    const int n_qi = q_tail != 0 ? 2 : 1;
+    const int n_qi = conf.q_tail != 0 ? 2 : 1;
     const int n_ki = kv_tail != 0 ? 2 : 1;
     for (int qi = 0; qi < n_qi; ++qi)
         for (int ki = 0; ki < n_ki; ++ki)
@@ -216,16 +217,19 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     // Condition tensor row stride in elements; columns are contiguous. A
     // seq_q axis of extent 1 is a broadcast axis (meaningless stride), so
     // every query row reads the same condition row -> stride 0.
-    const int cond_stride = p_.has_select && p_.cond_dims[row_dim] != 1
-            ? static_cast<int>(p_.cond_strides[row_dim])
-            : 0;
+    int cond_stride = 0;
+    if (has_select) {
+        const memory_desc_wrapper cond_mdw(desc.attn_mask_md());
+        if (cond_mdw.dims()[row_dim] != 1)
+            cond_stride = static_cast<int>(cond_mdw.strides()[row_dim]);
+    }
     for (int qi = 0; qi < n_qi; ++qi) {
         const int m = static_cast<int>(q_rows[qi]);
         for (int ki = 0; ki < n_ki; ++ki) {
             std::unique_ptr<jit_generator_t> k(
                     sdpa_softmax_ir::create_softmax_tile_ir_kernel(isa_for_ir,
-                            m, static_cast<int>(kv_w[ki]), p_.has_select,
-                            p_.invert_select, cond_stride));
+                            m, static_cast<int>(kv_w[ki]), has_select,
+                            desc.invert_select, cond_stride));
             CHECK(k->create_kernel());
             kernels.softmax_ir_kernel[qi][ki] = std::move(k);
         }
@@ -239,20 +243,17 @@ status_t create_kernels(cpu_isa_t isa_for_ir,
     return status::success;
 }
 
-status_t execute(const sdpa_online_softmax_conf_t &conf,
+status_t execute(const sdpa_pd_t &pd, const sdpa_online_softmax_conf_t &conf,
         const sdpa_online_softmax_kernels_t &kernels,
         const sdpa_online_softmax_run_args_t &args, void *scratch_base,
         int nthr) {
-    // Aliases so the loop below reads the pd-owned conf and primitive-owned
-    // kernels directly, without copying any state into this call.
-    const sdpa_online_softmax_params_t &p_ = conf.params;
-    const dim_t kv_blk_ = conf.kv_blk;
-    const dim_t q_blk_ = conf.q_blk;
-    const size_t off_scores_ = conf.off_scores, off_acc_ = conf.off_acc,
-                 off_pv_ = conf.off_pv, off_row_max_ = conf.off_row_max,
-                 off_row_denom_ = conf.off_row_denom,
-                 off_old_coef_ = conf.off_old_coef;
-    const size_t scratch_per_thread_ = conf.scratch_per_thread;
+    constexpr int ndims = sdpa_pd_t::ndims;
+    constexpr int row_dim = ndims - 2;
+
+    const sdpa_desc_t &desc = *pd.desc();
+    const memory_desc_wrapper q_d(desc.qry_md()), k_d(desc.key_md()),
+            v_d(desc.val_md()), out_d(pd.dst_md()), cond_d(desc.attn_mask_md());
+    const bool has_select = pd.with_select_mask();
 
     auto *q_base = static_cast<const char *>(args.q);
     auto *k_base = static_cast<const char *>(args.k);
@@ -262,78 +263,63 @@ status_t execute(const sdpa_online_softmax_conf_t &conf,
     const float scale_val = args.scale;
     const float fill_val = args.fill;
 
-    const dim_t seq_q = p_.seq_q, seq_kv = p_.seq_kv, hs_v = p_.head_size_v;
-    const dim_t kv_blk = kv_blk_;
-    const dim_t group = p_.group_head;
-    const int ndims = p_.ndims;
-    const int row_dim = ndims - 2;
+    const dim_t seq_q = desc.queries(), seq_kv = desc.keys(),
+                hs_v = desc.values();
+    const dim_t kv_blk = conf.kv_blk;
+    const dim_t q_blk = conf.q_blk;
+    const dim_t group = desc.num_q_heads() / desc.num_kv_heads();
     // Element strides for addressing a KV tile within K / V.
-    const dim_t k_col = p_.k_strides[ndims - 1]; // K[.., hs, seq_kv]: seq step
-    const dim_t v_row = p_.v_strides[row_dim]; // V[.., seq_kv, hs_v]: kv step
-    const dim_t o_row = p_.o_strides[row_dim];
-    const dim_t o_col = p_.o_strides[ndims - 1];
+    const dim_t k_col = k_d.strides()[ndims - 1]; // K[.., hs, seq_kv]: seq step
+    const dim_t v_row = v_d.strides()[row_dim]; // V[.., seq_kv, hs_v]: kv step
+    const dim_t o_row = out_d.strides()[row_dim];
+    const dim_t o_col = out_d.strides()[ndims - 1];
     // Broadcast-aware select-condition strides: an axis with extent 1 is a
     // broadcast axis whose stride is meaningless and must contribute 0.
-    std::vector<dim_t> eff_cond_strides;
-    if (p_.has_select) {
-        eff_cond_strides = p_.cond_strides;
+    dims_t eff_cond_strides = {};
+    if (has_select)
         for (int d = 0; d < ndims; ++d)
-            if (p_.cond_dims[d] == 1) eff_cond_strides[d] = 0;
-    }
-    const dim_t cond_row = p_.has_select ? eff_cond_strides[row_dim] : 0;
-    const dim_t cond_col = p_.has_select ? eff_cond_strides[ndims - 1] : 0;
+            eff_cond_strides[d]
+                    = cond_d.dims()[d] == 1 ? 0 : cond_d.strides()[d];
+    const dim_t cond_row = eff_cond_strides[row_dim];
+    const dim_t cond_col = eff_cond_strides[ndims - 1];
     constexpr float neg_inf = -std::numeric_limits<float>::infinity();
 
-    // Q, output, and select-condition tensors use query-head/group coordinates;
-    // K and V use batch/KV-head coordinates shared by each GQA group.
-    const auto query_tensor_base_offset
-            = [&](const std::vector<dim_t> &strides, dim_t batch_idx,
-                      dim_t query_head_idx, dim_t kv_head_idx,
-                      dim_t group_idx) -> dim_t {
-        return ndims == 4 ? batch_idx * strides[0] + query_head_idx * strides[1]
-                          : batch_idx * strides[0] + kv_head_idx * strides[1]
-                        + group_idx * strides[2];
-    };
-    // K and V are shared by the query heads in each GQA group.
-    const auto kv_tensor_base_offset
-            = [&](const std::vector<dim_t> &strides, dim_t batch_idx,
-                      dim_t kv_head_idx) -> dim_t {
-        return batch_idx * strides[0] + kv_head_idx * strides[1];
+    // Q, output, and select-condition tensors use query-head coordinates; K
+    // and V use batch/KV-head coordinates shared by each GQA group.
+    const auto tensor_base_offset = [](const dims_t &strides, dim_t batch_idx,
+                                            dim_t head_idx) -> dim_t {
+        return batch_idx * strides[0] + head_idx * strides[1];
     };
 
-    const size_t block_size = scratch_per_thread_;
+    const size_t block_size = conf.scratch_per_thread;
     auto *scratch = static_cast<char *>(scratch_base);
 
     // Query-axis stride and block count: each work item owns one query block of
-    // up to q_blk_ rows, so the per-thread Q slice, scores tile and running
+    // up to q_blk rows, so the per-thread Q slice, scores tile and running
     // accumulator stay L2-resident across the KV sweep.
-    const dim_t q_row = p_.q_strides[row_dim];
-    const dim_t n_qblk = utils::div_up(seq_q, q_blk_);
+    const dim_t q_row = q_d.strides()[row_dim];
+    const dim_t n_qblk = utils::div_up(seq_q, q_blk);
 
-    parallel_nd_ext(nthr, p_.batch, p_.num_head_q, n_qblk,
+    parallel_nd_ext(nthr, desc.batch(), desc.num_q_heads(), n_qblk,
             [&](int tid, int, dim_t bo, dim_t bi, dim_t qblk) {
         const dim_t kvh = bi / group;
-        const dim_t gid = bi % group;
-        const dim_t q0 = qblk * q_blk_;
-        const dim_t m = nstl::min(q_blk_, seq_q - q0);
-        const int qi = m != q_blk_ ? 1 : 0;
+        const dim_t q0 = qblk * q_blk;
+        const dim_t m = nstl::min(q_blk, seq_q - q0);
+        const int qi = m != q_blk ? 1 : 0;
 
         const float *q_ptr = reinterpret_cast<const float *>(q_base
-                + (query_tensor_base_offset(p_.q_strides, bo, bi, kvh, gid)
-                          + q0 * q_row)
+                + (tensor_base_offset(q_d.strides(), bo, bi) + q0 * q_row)
                         * sizeof(float));
         const float *k_ptr = reinterpret_cast<const float *>(k_base
-                + kv_tensor_base_offset(p_.k_strides, bo, kvh) * sizeof(float));
+                + tensor_base_offset(k_d.strides(), bo, kvh) * sizeof(float));
         const float *v_ptr = reinterpret_cast<const float *>(v_base
-                + kv_tensor_base_offset(p_.v_strides, bo, kvh) * sizeof(float));
+                + tensor_base_offset(v_d.strides(), bo, kvh) * sizeof(float));
         float *o_ptr = reinterpret_cast<float *>(o_base
-                + (query_tensor_base_offset(p_.o_strides, bo, bi, kvh, gid)
-                          + q0 * o_row)
+                + (tensor_base_offset(out_d.strides(), bo, bi) + q0 * o_row)
                         * sizeof(float));
-        const uint8_t *c_ptr = p_.has_select
+        const uint8_t *c_ptr = has_select
                 ? reinterpret_cast<const uint8_t *>(cond_base
-                          + (query_tensor_base_offset(
-                                     eff_cond_strides, bo, bi, kvh, gid)
+                          + (tensor_base_offset(eff_cond_strides, bo, bi)
                                     + q0 * cond_row)
                                   * sizeof(uint8_t))
                 : nullptr;
@@ -343,15 +329,17 @@ status_t execute(const sdpa_online_softmax_conf_t &conf,
         // magnitude stays O(|V|). Per tile, mm2 produces the raw P_tile*V_tile
         // into pv, then acc is renormalized. row_max (m) and row_denom (l) are
         // the running max and denominator. Buffers are per-thread slices of
-        // the scratchpad (see init()), sized for one query block (q_blk_ rows).
+        // the scratchpad (see configure()), sized for one query block (q_blk
+        // rows).
         char *tblock = scratch + static_cast<size_t>(tid) * block_size;
-        float *scores = reinterpret_cast<float *>(tblock + off_scores_);
-        float *acc = reinterpret_cast<float *>(tblock + off_acc_);
-        float *pv = reinterpret_cast<float *>(tblock + off_pv_);
-        float *row_max = reinterpret_cast<float *>(tblock + off_row_max_);
-        float *row_denom = reinterpret_cast<float *>(tblock + off_row_denom_);
+        float *scores = reinterpret_cast<float *>(tblock + conf.off_scores);
+        float *acc = reinterpret_cast<float *>(tblock + conf.off_acc);
+        float *pv = reinterpret_cast<float *>(tblock + conf.off_pv);
+        float *row_max = reinterpret_cast<float *>(tblock + conf.off_row_max);
+        float *row_denom
+                = reinterpret_cast<float *>(tblock + conf.off_row_denom);
         // Per-row renormalization coefficient for the current tile.
-        float *old_coef = reinterpret_cast<float *>(tblock + off_old_coef_);
+        float *old_coef = reinterpret_cast<float *>(tblock + conf.off_old_coef);
         // acc/row_max/row_denom carry running state across tiles, so they must
         // be initialized (scratchpad memory is uninitialized).
         std::fill(row_max, row_max + m, neg_inf);

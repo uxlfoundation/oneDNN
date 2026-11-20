@@ -171,35 +171,7 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     auto scratchpad = scratchpad_registry().registrar();
 
     if (kind_ == sdpa_impl_kind_t::online_softmax) {
-        auto &p = online_conf_.params;
-        p = sdpa_online_softmax_params_t();
-        p.ndims = sdpa_pd_t::ndims;
-        p.batch = desc()->batch();
-        p.num_head_q = desc()->num_q_heads();
-        p.group_head = desc()->num_q_heads() / desc()->num_kv_heads();
-        p.seq_q = desc()->queries();
-        p.seq_kv = desc()->keys();
-        p.head_size_qk = desc()->head_size();
-        p.head_size_v = desc()->values();
-        p.q_strides.assign(
-                qry_mdw.strides(), qry_mdw.strides() + sdpa_pd_t::ndims);
-        p.k_strides.assign(
-                key_mdw.strides(), key_mdw.strides() + sdpa_pd_t::ndims);
-        p.v_strides.assign(
-                val_mdw.strides(), val_mdw.strides() + sdpa_pd_t::ndims);
-        p.o_strides.assign(
-                dst_mdw.strides(), dst_mdw.strides() + sdpa_pd_t::ndims);
-        p.has_select = with_select_mask();
-        p.invert_select = desc()->invert_select;
-        if (with_select_mask()) {
-            const memory_desc_wrapper cond_mdw(desc()->attn_mask_md());
-            p.cond_strides.assign(
-                    cond_mdw.strides(), cond_mdw.strides() + sdpa_pd_t::ndims);
-            p.cond_dims.assign(
-                    cond_mdw.dims(), cond_mdw.dims() + sdpa_pd_t::ndims);
-        }
-
-        VDISPATCH_SDPA_SC(sdpa_online_softmax::configure(p, online_conf_),
+        VDISPATCH_SDPA_SC(sdpa_online_softmax::configure(*this, online_conf_),
                 "sdpa_online_softmax configuration failed");
         nthr_ = online_conf_.nthr;
         scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
@@ -258,7 +230,7 @@ status_t brgemm_sdpa_fwd_t::init(engine_t *engine) {
     const auto isa_for_ir = mayiuse(avx512_core) ? avx512_core : avx2;
 
     if (pd()->impl_kind() == sdpa_impl_kind_t::online_softmax) {
-        return sdpa_online_softmax::create_kernels(isa_for_ir,
+        return sdpa_online_softmax::create_kernels(isa_for_ir, *pd(),
                 pd()->online_softmax_conf(), engine, online_kernels_);
     } else {
         return sdpa_full_softmax::create_kernels(isa_for_ir, *pd(),
@@ -335,7 +307,7 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
         args.out = out;
         args.scale = scale_val;
         args.fill = fill_val;
-        return sdpa_online_softmax::execute(pd()->online_softmax_conf(),
+        return sdpa_online_softmax::execute(*pd(), pd()->online_softmax_conf(),
                 online_kernels_, args, scratch, pd()->nthr());
     }
 

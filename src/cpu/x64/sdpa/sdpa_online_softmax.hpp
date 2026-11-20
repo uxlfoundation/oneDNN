@@ -18,10 +18,10 @@
 #define CPU_X64_SDPA_SDPA_ONLINE_SOFTMAX_HPP
 
 #include <memory>
-#include <vector>
 
 #include "common/c_types_map.hpp"
 #include "common/nstl.hpp"
+#include "common/sdpa_pd.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -46,25 +46,9 @@ class jit_generator_t;
 // compute only now (no bf16/f16/AMX path, no attention-mask post-op); the
 // full-key-axis path supports those data types and the additive attention mask.
 // -----------------------------------------------------------------------------
-struct sdpa_online_softmax_params_t {
-    int ndims = 0;
-    dim_t batch = 0;
-    dim_t num_head_q = 0;
-    // GQA group size: num_head_q / num_head_kv (>= 1).
-    dim_t group_head = 1;
-    dim_t seq_q = 0;
-    dim_t seq_kv = 0;
-    dim_t head_size_qk = 0;
-    dim_t head_size_v = 0;
 
-    std::vector<dim_t> q_strides, k_strides, v_strides, o_strides, cond_strides;
-    std::vector<dim_t> cond_dims;
-
-    bool has_select = false;
-    // When true, keep scores where cond == 0; otherwise keep where cond != 0.
-    bool invert_select = false;
-};
-
+// Runtime pointers / scalars, resolved per execute call. The buffers are laid
+// out as described by the pd's memory descriptors.
 struct sdpa_online_softmax_run_args_t {
     const void *q = nullptr;
     const void *k = nullptr;
@@ -76,9 +60,9 @@ struct sdpa_online_softmax_run_args_t {
 };
 
 // Derived compute configuration (KV tiling + per-thread scratch layout),
-// computed by configure()
+// computed by configure() from the pd. Problem shapes and strides are not
+// duplicated here; they are read from the pd.
 struct sdpa_online_softmax_conf_t {
-    sdpa_online_softmax_params_t params;
     // KV tiling width for the streaming softmax (seq_kv in tiles of kv_blk).
     dim_t kv_blk = 0;
     // Query-axis blocking: the seq_q rows are processed in blocks of q_blk so
@@ -135,15 +119,14 @@ struct sdpa_online_softmax_kernels_t {
 namespace sdpa_online_softmax {
 
 // Compute the derived configuration (KV tiling + per-thread scratch layout)
-// from the plain params.
-status_t configure(const sdpa_online_softmax_params_t &params,
-        sdpa_online_softmax_conf_t &conf);
+// from the pd's shapes.
+status_t configure(const sdpa_pd_t &pd, sdpa_online_softmax_conf_t &conf);
 
-status_t create_kernels(cpu_isa_t isa_for_ir,
+status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
         const sdpa_online_softmax_conf_t &conf, engine_t *engine,
         sdpa_online_softmax_kernels_t &kernels);
 
-status_t execute(const sdpa_online_softmax_conf_t &conf,
+status_t execute(const sdpa_pd_t &pd, const sdpa_online_softmax_conf_t &conf,
         const sdpa_online_softmax_kernels_t &kernels,
         const sdpa_online_softmax_run_args_t &args, void *scratch_base,
         int nthr);

@@ -6,8 +6,10 @@ Dropout {#dev_guide_op_dropout}
 Dropout operation is a regularization technique that randomly zeroes elements of
 the input tensor during training, scaling the outputs so that the expected sum
 of output elements matches the sum of input elements. It depends on a
-deterministic PRNG (current implementation uses a variation of Philox algorithm)
-and transforms the values as follows:
+deterministic PRNG (current implementation uses a variation of Philox algorithm
+with 7 rounds instead of the 10 of the reference algorithm, which makes random
+number generation cheaper when fused into a primitive such as SDPA) and
+transforms the values as follows:
 
 \f[
     \mathrm{mask}[:] = (\mathrm{PRNG}(seed, offset, :) > P) \\

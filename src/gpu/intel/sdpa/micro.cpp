@@ -1276,6 +1276,11 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
     kernel_ctx.define_int("DROPOUT_HOST_SCALARS", dropout_host_scalars);
     kernel_ctx.define_int("DROPOUT_OUTPUT_MASK", dropout_output_mask);
+    kernel_ctx.define_int("DROPOUT_USE_OFFSET", dropout_offset);
+    kernel_ctx.define_int("DROPOUT_PER_ELEMENT",
+            gpu_utils::dev_getenv("SDPA_DROPOUT_PER_ELEMENT", false));
+    // Xe-HPG needs volatile scale_tile (IGC miscompile); newer archs do not.
+    kernel_ctx.define_int("DROPOUT_VOLATILE_SCALE_WORKAROUND", !arch_gte_hpc);
 
     micro::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -1649,7 +1654,8 @@ static status_t append_dropout_args(const exec_ctx_t &ctx,
     if (is_fwd) {
         arg_list.append(CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
     }
-    arg_list.append(static_cast<int>(conf.dropout_offset));
+    // The forward kernel gets the offset flag as a JIT constant.
+    if (!is_fwd) arg_list.append(static_cast<int>(conf.dropout_offset));
     if (conf.dropout_host_scalars) {
         int64_t scalar_seed = 0;
         int64_t scalar_offset = 0;

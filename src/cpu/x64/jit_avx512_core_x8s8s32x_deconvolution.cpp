@@ -166,12 +166,9 @@ status_t jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
                         ? jcp.is_depthwise ? Goihw16g : gOIhw4i16o4i
                         : OIhw4i16o4i;
             }
-        } else if (jcp.ic_block == 8) {
-            assert(with_groups);
-            wei_tag = is_3d ? gOIdhw2i8o4i : is_2d ? gOIhw2i8o4i : gOIw2i8o4i;
         } else {
-            assert(with_groups && jcp.ic_block == 4);
-            wei_tag = is_3d ? gOIdhw4o4i : is_2d ? gOIhw4o4i : gOIw4o4i;
+            assert(with_groups && jcp.ic_block == 8);
+            wei_tag = is_3d ? gOIdhw2i8o4i : is_2d ? gOIhw2i8o4i : gOIw2i8o4i;
         }
 
         memory_desc_t want_wei_md = weights_md;
@@ -237,10 +234,9 @@ status_t jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
             /* For grouped deconvolutions, oneDNN doesn't support padding.
                 When channels per group is not multiple of 16:
                 - Use Ymm when channels per group is multiple of 8,
-                - Use Xmm when channels per group is multiple of 4,
                 - Otherwise return unimplemented. */
-            jcp.ic_block = (jcp.ic % 8 == 0) && (jcp.oc % 8 == 0) ? 8 : 4;
-            jcp.oc_block = jcp.ic_block;
+            jcp.ic_block = 8;
+            jcp.oc_block = 8;
         }
         VDISPATCH_DECONVOLUTION_IC(
                 !(jcp.ic % jcp.ic_block != 0 || jcp.oc % jcp.oc_block != 0),

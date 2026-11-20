@@ -470,8 +470,7 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
                     auto vmm_down = Vmm_down_t(vmm_accum.getIdx());
                     vcvtneps2bf16(vmm_down, vmm_accum);
                     vmovdqu16(output_ptr(i_load, i_ur),
-                            maybe_mask_vmm_down(vmm_down,
-                                    jcp.ic_block == 4 || mask_flag_in));
+                            maybe_mask_vmm_down(vmm_down, mask_flag_in));
                 }
             }
         } else {
@@ -497,8 +496,8 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
                             bf16_emu_->vcvtneps2bf16(
                                     ymm_store, Zmm(r.getIdx()));
                             vmovdqu16(output_ptr(i_load, i_ur),
-                                    maybe_mask_vmm_down(vmm_store(),
-                                            jcp.ic_block == 4 || mask_flag));
+                                    maybe_mask_vmm_down(
+                                            vmm_store(), mask_flag));
                         } break;
                         default: assert(!"unknown dst_dt");
                     }
@@ -661,12 +660,6 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
     mov(reg_reduce_loop_work, ptr[param1 + GET_OFF(reduce_dim)]);
     mov(reg_reduce_pos_flag, ptr[param1 + GET_OFF(first_last_flag)]);
 
-    if (jcp.ic_block == 4 && jcp.dst_dt == data_type::bf16) {
-        Reg32 reg_tail_32 = reg_load_dim_tail_mask.cvt32();
-        mov(reg_tail_32, (1 << jcp.ic_block) - 1);
-        kmovb(k_load_dim_tail_mask, reg_tail_32);
-    }
-
     const int load_dim_tail = static_cast<int>(
             (one_of(jcp.prop_kind, forward_training, forward_inference)
                             ? jcp.oc_without_padding
@@ -711,8 +704,6 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
             if (use_extended_mask)
                 kmovd(k_load_dim_mask_extended, k_load_dim_tail_mask_extended);
             L(no_update_mask);
-        } else if (jcp.ic_block == 4 && jcp.dst_dt == data_type::bf16) {
-            kmovw(k_load_dim_mask, k_load_dim_tail_mask);
         }
 
         bcast_loop(load_loop_blk);
@@ -955,22 +946,18 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
                                     post_ops, dst_d));
     VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
-    const int simd_w = (jcp.ic % 16 == 0 && jcp.oc % 16 == 0) ? 16
-            : (jcp.ic % 8 == 0 && jcp.oc % 8 == 0)            ? 8
-                                                              : 4;
+    const int simd_w = (jcp.ic % 16 == 0 && jcp.oc % 16 == 0) ? 16 : 8;
 
     auto set_or_check_wei_format = [&]() -> bool {
         using namespace format_tag;
         using namespace memory_extra_flags;
-        const format_tag_t wei_tags[3][2][3]
+        const format_tag_t wei_tags[2][2][3]
                 = {{{OIw4i16o4i, OIhw4i16o4i, OIdhw4i16o4i},
                            {gOIw4i16o4i, gOIhw4i16o4i, gOIdhw4i16o4i}},
                         {{OIw2i8o4i, OIhw2i8o4i, OIdhw2i8o4i},
-                                {gOIw2i8o4i, gOIhw2i8o4i, gOIdhw2i8o4i}},
-                        {{OIw4o4i, OIhw4o4i, OIdhw4o4i},
-                                {gOIw4o4i, gOIhw4o4i, gOIdhw4o4i}}};
+                                {gOIw2i8o4i, gOIhw2i8o4i, gOIdhw2i8o4i}}};
 
-        const int simd_idx = simd_w == 16 ? 0 : simd_w == 8 ? 1 : 2;
+        const int simd_idx = simd_w == 16 ? 0 : 1;
         const auto wei_tag = wei_tags[simd_idx][with_groups][ndims - 3];
         memory_desc_t want_wei_md = weights_md;
         CHECK_BOOL(memory_desc_init_by_tag(want_wei_md, wei_tag));

@@ -111,3 +111,34 @@
 1x3x33x16:1x3x16x35_n"4d_degen_batch0"
 3x1x33x16:3x1x16x35_n"4d_degen_batch1"
 1x1x33x16:1x1x16x35_n"4d_degen_batch01"
+
+# ==============================================================================
+# Additional Edge Cases:
+# 1. 5D GQA batch broadcasting in src/wei (real MFDNN-12303 pattern)
+# 2. 4D/5D M=1 GEMV (degenerate M dimension: dst_dims[ndims-2] == 1)
+# 3. Transposed stag=abdc + permuted dtag=bcad together on N=1 GEMV
+# 4. Chained `sum` + `shared_axes` binary post-op (tests load_acc_as_f32 reg reuse)
+# 5. Compare ops (gt, eq) on shared_axes (tests execute_cmp_binary path)
+# ==============================================================================
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16,s8:s8:s32
+--stag=abcd,abdc
+--wtag=abcd
+--dtag=abcd,acbd,bcad
+--attr-post-ops=add:f32:5,add:f32:6,add:f32:14,sum+add:f32:6,gt:f32:5,eq:s8:6
+2x3x1x16:2x3x16x35_n"4d_gemv_m1"
+2x3x32x16:2x3x16x1_n"4d_gemv_n1_abdc_bcad"
+2x3x33x16:1x3x16x35_n"4d_wei_batch_bcast"
+
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16,s8:s8:s32
+--stag=abcde,abced
+--wtag=abcde
+--dtag=abcde,acbde
+--attr-post-ops=add:f32:14,add:f32:17,add:f32:29,sum+add:f32:14,gt:f32:14
+2x4x2x33x16:2x4x1x16x35_n"5d_gqa_wei_bcast"
+2x2x3x1x16:2x2x3x16x35_n"5d_gemv_m1"

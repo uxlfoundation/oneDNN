@@ -79,7 +79,6 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     const bool is_1d = ndims == 3;
     const bool is_2d = ndims == 4;
     const bool is_3d = ndims == 5;
-    const bool is_avx2 = isa == avx2;
 
     jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
     jcp.oc = dst_d.dims()[1] / jcp.ngroups;
@@ -130,32 +129,14 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     auto set_or_check_wei_format = [&]() {
         using namespace format_tag;
         format_tag_t wei_tag;
-        if (jcp.ic_block == 8 || jcp.ch_block == 8) {
-            if (is_1d) {
-                wei_tag = with_groups ? jcp.is_depthwise ? Goiw8g : gOIw2i8o4i
-                                      : OIw2i8o4i;
-            } else if (is_2d) {
-                wei_tag = with_groups ? jcp.is_depthwise ? Goihw8g : gOIhw2i8o4i
-                                      : OIhw2i8o4i;
-            } else {
-                wei_tag = with_groups ? gOIdhw2i8o4i : OIdhw2i8o4i;
-            }
+        if (is_1d) {
+            wei_tag = with_groups ? jcp.is_depthwise ? Goiw8g : gOIw2i8o4i
+                                  : OIw2i8o4i;
+        } else if (is_2d) {
+            wei_tag = with_groups ? jcp.is_depthwise ? Goihw8g : gOIhw2i8o4i
+                                  : OIhw2i8o4i;
         } else {
-            if (is_avx2) {
-                assert(with_groups && jcp.ic_block == 4);
-                wei_tag = is_3d ? gOIdhw4o4i : is_2d ? gOIhw4o4i : gOIw4o4i;
-            } else {
-                if (is_1d) {
-                    wei_tag = with_groups ? jcp.is_depthwise ? Goiw4g : gOIw4o4i
-                                          : OIw4o4i;
-                } else if (is_2d) {
-                    wei_tag = with_groups
-                            ? jcp.is_depthwise ? Goihw4g : gOIhw4o4i
-                            : OIhw4o4i;
-                } else {
-                    wei_tag = with_groups ? gOIdhw4o4i : OIdhw4o4i;
-                }
-            }
+            wei_tag = with_groups ? gOIdhw2i8o4i : OIdhw2i8o4i;
         }
 
         memory_desc_t want_wei_md = weights_md;
@@ -203,25 +184,19 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     jcp.stride_w = cd.strides[ndims - 3];
 
     if (jcp.is_depthwise) {
-        jcp.ch_block = is_avx2 ? 8 : 4;
+        jcp.ch_block = 8;
         jcp.oc_block = 1;
         jcp.ic_block = 1;
     } else {
         jcp.ch_block = 1;
-        jcp.oc_block = is_avx2 ? 8 : 4;
-        jcp.ic_block = is_avx2 ? 8 : 4;
+        jcp.oc_block = 8;
+        jcp.ic_block = 8;
 
+        // Grouped deconvolutions don't support channel padding, only
+        // non-grouped ones are padded to the block.
         if (jcp.ngroups == 1) {
             jcp.oc = utils::rnd_up(jcp.oc_without_padding, jcp.oc_block);
             jcp.ic = utils::rnd_up(jcp.ic_without_padding, jcp.ic_block);
-        } else if (jcp.ngroups != 1
-                && ((jcp.ic % jcp.ic_block != 0)
-                        || (jcp.oc % jcp.oc_block != 0))) {
-            /* For grouped convolution, oneDNN doesn't support padding.
-             * When channel per group is not multiple of 8 in avx2:
-             * - Use Xmm when channels per groups is multiple of 4.
-             * - Otherwise return unimplemented */
-            jcp.oc_block = jcp.ic_block = 4;
         }
         VDISPATCH_DECONVOLUTION_IC(
                 !(jcp.ic % jcp.ic_block != 0 || jcp.oc % jcp.oc_block != 0),
@@ -362,23 +337,8 @@ template <cpu_isa_t isa>
 jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::jit_uni_x8s8s32x_deconv_fwd_kernel_t(
         const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
         const memory_desc_wrapper &dst_d)
-    : kernel_(nullptr) {
-
-    const dim_t ch_block = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
-    switch (ch_block) {
-        case 8:
-            if (isa == avx2) {
-                kernel_ = utils::make_unique<
-                        _jit_avx2_x8s8s32x_deconv_fwd_kernel>(
-                        ajcp, attr, dst_d);
-                return;
-            } else {
-                assert(!"invalid channel blocking for current ISA");
-            }
-            break;
-        default: assert(!"invalid channel blocking");
-    }
-}
+    : kernel_(utils::make_unique<_jit_avx2_x8s8s32x_deconv_fwd_kernel>(
+              ajcp, attr, dst_d)) {}
 
 template <cpu_isa_t isa>
 jit_uni_x8s8s32x_deconv_fwd_kernel_t<
@@ -1457,9 +1417,6 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::pd_t::init(
     CHECK(jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(jcp_, *desc(),
             src_md_, weights_md_, dst_md_, with_bias(), bias_md_, attr_,
             dnnl_get_max_threads()));
-    const dim_t ch_block = jcp_.is_depthwise ? jcp_.ch_block : jcp_.ic_block;
-    VDISPATCH_DECONVOLUTION(
-            ch_block != 4, VERBOSE_UNSUPPORTED_FEATURE, "block-4 layout");
 
     auto scratchpad = scratchpad_registry().registrar();
     jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_scratchpad(

@@ -84,12 +84,20 @@ struct temp_reg_t {
 //   indexed by virtual register id.
 // - `temps` contains, for each operation, one `temp_reg_t` per distinct spilled
 //   operand, up to `max_temps_per_op` of each kind. It is indexed by operation.
+// - `free_regs_at[f * n_ops + i]` holds the registers of file `f` free at
+//   operation `i`, bit `phys` for register `phys`. A free register holds no
+//   value live at `i` and is no temp of `i`. The allocator spills values to
+//   make room for temps, but never to free a register. Only the lowering knows
+//   whether it needs one. The set is exact in a file with no spilled value. In
+//   a file with spills, a set can miss a register that a spill at a later
+//   operation frees.
 // - `frame_bytes` is the total amount of stack space needed for spilled
 //   values. The kernel reserves this space with a single `sub rsp`.
 // - `any_spill` is true if any virtual register was spilled to the stack.
 struct reg_alloc_result_t {
     std::vector<assignment_t> assignments;
     std::vector<std::vector<temp_reg_t>> temps;
+    std::vector<uint32_t> free_regs_at;
     size_t frame_bytes = 0;
     bool any_spill = false;
 };

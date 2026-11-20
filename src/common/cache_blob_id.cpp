@@ -59,18 +59,21 @@ const std::vector<uint8_t> &cache_blob_id_t::get(
         auto pd_skip_idx = pd->skip_idx();
         sstream_.append(pd_skip_idx);
 
-        auto version = dnnl_version();
-        sstream_.append(version->major);
-        sstream_.append(version->minor);
-        sstream_.append(version->patch);
-
-        sstream_.append_array(std::strlen(version->hash), version->hash);
+        serialize_version(sstream_);
 
         is_initialized_ = true;
     };
 
     std::call_once(flag_, init_id);
     return sstream_.get_data();
+}
+
+void serialize_version(serialization_stream_t &sstream) {
+    auto version = dnnl_version();
+    sstream.append(version->major);
+    sstream.append(version->minor);
+    sstream.append(version->patch);
+    sstream.append_array(std::strlen(version->hash), version->hash);
 }
 
 } // namespace impl

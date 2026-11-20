@@ -120,6 +120,25 @@ inline engine make_engine(ze_driver_handle_t driver, ze_device_handle_t device,
     return engine(c_engine);
 }
 
+/// Constructs an engine without a Level Zero driver, device, or context from
+/// the given cache blob.
+///
+/// The engine describes the device that the cache blob was retrieved from
+/// with #dnnl::ze_interop::get_engine_cache_blob(const engine &) and makes no
+/// Level Zero calls. It supports primitive descriptor creation and cache blob
+/// retrieval only.
+///
+/// @param cache_blob Cache blob.
+///
+/// @returns An engine.
+inline engine make_deviceless_engine(const std::vector<uint8_t> &cache_blob) {
+    dnnl_engine_t c_engine;
+    error::wrap_c_api(dnnl_ze_interop_deviceless_engine_create(
+                              &c_engine, cache_blob.size(), cache_blob.data()),
+            "could not create a device-less engine from cache blob");
+    return engine(c_engine);
+}
+
 /// Constructs an engine from Level Zero device and context objects.
 ///
 /// @param adriver Level Zero driver.

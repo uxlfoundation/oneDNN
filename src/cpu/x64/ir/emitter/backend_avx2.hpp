@@ -26,6 +26,7 @@
 // constructs Xbyak `Ymm` registers, so each operation builds its own registers
 // from the indices it is given.
 
+#include <bitset>
 #include <utility>
 #include <vector>
 
@@ -76,7 +77,7 @@ struct avx2_backend_t {
 
     // Store a full vector.
     void vstore(int base, dim_t disp, int s, data_type_t mem_dt,
-            data_type_t reg_dt) {
+            data_type_t reg_dt, std::bitset<32> /*unused_regs*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
             gen().vmovups(addr, Xbyak::Ymm(s));
@@ -186,7 +187,8 @@ struct avx2_backend_t {
 
     // Store the elements of `src` selected by `mask`.
     void vstore_masked(int base, dim_t disp, int s, int mask,
-            data_type_t mem_dt, data_type_t reg_dt) {
+            data_type_t mem_dt, data_type_t reg_dt,
+            std::bitset<32> /*unused_regs*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {

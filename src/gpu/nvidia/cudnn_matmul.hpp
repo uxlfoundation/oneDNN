@@ -58,16 +58,9 @@ struct cudnn_matmul_t : public gpu::primitive_t {
             bool s8_case = utils::everyone_is(s8, src_dt, wei_dt)
                     && utils::one_of(dst_dt, s8, f32);
             // cuBLAS GemmEx supports f16*f16->f32 natively.
-            // f32*f32->f16 is handled via f32 output + reorder.
             bool f16_src_f32_dst
                     = utils::everyone_is(f16, src_dt, wei_dt) && dst_dt == f32;
-            bool f32_src_f16_dst
-                    = utils::everyone_is(f32, src_dt, wei_dt) && dst_dt == f16;
 
-            // In the reorder path (reorder_required_) the sum post-op is
-            // applied after eltwise, which does not match the oneDNN post-op
-            // order. f32*f32->f16 always takes the reorder path, so reject it
-            // when both sum and eltwise are present.
             const bool has_sum
                     = attr()->post_ops_.find(primitive_kind::sum) != -1;
             const bool has_eltwise
@@ -77,14 +70,9 @@ struct cudnn_matmul_t : public gpu::primitive_t {
 
             // The runtime-parameter path (cudnn_matmul_runtime_args_exec_t)
             // does not reconstruct post_op_sum_ or act_desc_, so post-ops are
-            // dropped there. Reject the mixed combinations with runtime
+            // dropped there. Reject the f16*f16->f32 combination with runtime
             // dims/strides and post-ops until that path preserves them.
-            const bool has_runtime_dims = memory_desc_wrapper(src_md())
-                                                  .has_runtime_dims_or_strides()
-                    || memory_desc_wrapper(weights_md(0))
-                               .has_runtime_dims_or_strides()
-                    || memory_desc_wrapper(dst_md())
-                               .has_runtime_dims_or_strides();
+            const bool has_runtime_dims = has_runtime_dims_or_strides();
 
             auto *sycl_engine_impl
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
@@ -98,18 +86,14 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                             has_bf16_support(sycl_engine_impl->device()))
                     && set_default_formats()
                     && (f32_case || f16_case || bf16_case || s8_case
-                            || f16_src_f32_dst || f32_src_f16_dst)
-                    && IMPLICATION(f32_src_f16_dst, !(has_sum && has_eltwise))
-                    && IMPLICATION((f16_src_f32_dst || f32_src_f16_dst)
-                                    && has_runtime_dims,
+                            || f16_src_f32_dst)
+                    && IMPLICATION(f16_src_f32_dst && has_runtime_dims,
                             !(has_sum || has_eltwise))
                     // The GEMM applies the destination scale to the product
                     // only, while sum adds the old destination unscaled, so a
                     // non-default dst scale with sum is applied in the wrong
-                    // order. Reject it for the new mixed combinations.
-                    && IMPLICATION((f16_src_f32_dst || f32_src_f16_dst)
-                                    && with_dst_scale,
-                            !has_sum)
+                    // order. Reject it for the new f16*f16->f32 combination.
+                    && IMPLICATION(f16_src_f32_dst && with_dst_scale, !has_sum)
                     && IMPLICATION(with_bias(),
                             (IMPLICATION(f32_case, utils::one_of(bia_dt, f32))
                                     && IMPLICATION(f16_case,
@@ -123,12 +107,6 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                                     // (bias_dt_mismatch_ sets dst_type_ to the
                                     // bias type), losing the f32 dst.
                                     && IMPLICATION(f16_src_f32_dst,
-                                            utils::one_of(bia_dt, f32))
-                                    // f32*f32->f16 reorders a f32 scratch to
-                                    // f16. A f16 bias would require a
-                                    // mixed-type cudnnAddTensor into that
-                                    // scratch, so only f32 bias is accepted.
-                                    && IMPLICATION(f32_src_f16_dst,
                                             utils::one_of(bia_dt, f32))))
                     && !(with_bias() && s8_case);
             if (!ok) return status::unimplemented;
@@ -152,14 +130,14 @@ struct cudnn_matmul_t : public gpu::primitive_t {
             const auto &supported_args
                     = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
             if (!scales.has_default_values(supported_args)) return false;
+            // The cuDNN path reads every scale as a device-side f32 value.
+            if (scales.has_host_scalars()) return false;
             // cuDNN does not support scaling per dimension.
             for (auto arg : supported_args) {
                 if (scales.has_default_values(arg)) continue;
 
                 if (scales.get_mask(arg) > 0) return false;
-                if (!utils::one_of(
-                            scales.get_data_type(arg), s8, s32, f32, f16, bf16))
-                    return false;
+                if (scales.get_data_type(arg) != f32) return false;
             }
             return true;
         }

@@ -3,7 +3,7 @@ Dequantization-Related Algorithms
 
 In deep learning, the weights matrix (A matrix in column-major GEMM terminology) is often reduced from its original precision to a smaller data type (_quantization_) to reduce memory usage ("compressed weights"). Sometimes a similar operation is performed on the activations matrix (B matrix), sometimes call "dynamic quantization."
 
-_Dequantization_ is the reverse process of approximately recovering the original data. In addition to upconversion (converting back to a higher-precision type), dequantization usually involves applying user-provided _scales_ and possibly _zero points_, or _offsets_, as they are termed in MKL and gemmstone. Mathematically, the kernel must compute
+_Dequantization_ is the reverse process of approximately recovering the original data. In addition to upconversion (converting back to a higher-precision type), dequantization usually involves applying user-provided _scales_ and possibly _zero points_, or _offsets_, as they are termed in oneMKL and gemmstone. Mathematically, the kernel must compute
 
 ```math
 C = \big[(A \pm A_{\text{offset}}) \odot A_{\text{scale}}\big]\cdot\big[(B \pm B_{\text{offset}}) \odot B_{\text{scale}}\big].
@@ -12,7 +12,7 @@ C = \big[(A \pm A_{\text{offset}}) \odot A_{\text{scale}}\big]\cdot\big[(B \pm B
 Here $\odot$ refers to elementwise multiplication of matrices, while $\cdot$ refers to regular matrix multiplication.
 
 > [!NOTE]
-> In oneDNN, and deep learning frameworks in general, zero points are subtracted from the data. That is, the $\pm$ in the formula above is a "$`-`$". MKL's int8 GEMM APIs, however, use the offset convention, with "$`+`$".
+> In oneDNN, and deep learning frameworks in general, zero points are subtracted from the data. That is, the $\pm$ in the formula above is a "$`-`$". oneMKL's int8 GEMM APIs, however, use the offset convention, with "$`+`$".
 >
 > Also, there are some quantization schemes where scales are applied before offsets &mdash; this is not currently supported in gemmstone or oneDNN.
 
@@ -132,7 +132,7 @@ Common and per-channel scales factor through the GEMM operation, so they can be 
 C = \big[(A \pm A_{\text{offset}})\cdot(B \pm B_{\text{offset}})\big]\odot A_{\text{scale}}\odot B_{\text{scale}}.
 ```
 
-Common scales, if known on the host side (always in MKL, an option in oneDNN), are merged into GEMM's alpha scaling parameter. Device-side common scales and per-channel scales are converted to equivalent binary post-ops in oneDNN.
+Common scales, if known on the host side (always in oneMKL, an option in oneDNN), are merged into GEMM's alpha scaling parameter. Device-side common scales and per-channel scales are converted to equivalent binary post-ops in oneDNN.
 
 
 ### Grouped

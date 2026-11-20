@@ -36,7 +36,7 @@ gemmstone consists of several major components:
 These components are the "production side" of gemmstone, and are embedded inside oneMKL and oneDNN. In addition, gemmstone comes with a number of development tools:
 
 * `frontend`: a command-line interface to the kernel generator, producing kernels in assembly text (with comments) or directly as binaries.
-* `benchstone`: functional and performance testing tool for individual kernels, running under either OpenCL or Level Zero.
+* `benchstone`: functional and performance tests for individual kernels, running under either OpenCL or Level Zero.
 * `ktool`: cataloging and kernel selection tool, also offering automated kernel testing and kernel performance modeling.
 * `multiderby`, `pvc_derby`: autotuners that identify good kernel strategies for a range of matrix sizes.
 
@@ -56,8 +56,8 @@ To start using gemmstone, you'll need:
 
 You may also want:
 
-* [MKL](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-download.html). Any version is fine, and GPU support is not required.
-  - *Note*: `benchstone`, `ktool`, and `multiderby` use MKL if present for faster CPU reference computations, and otherwise fall back to a slow built-in implementation.
+* [oneMKL](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-download.html). Any version is fine, and GPU support is not required.
+  - *Note*: `benchstone`, `ktool`, and `multiderby` use oneMKL if present for faster CPU reference computations, and otherwise fall back to a slow built-in implementation.
 * IGA (Intel Graphics Assembler), to assemble generated kernels manually.
   - The `iga64` binary may already be installed on your system as part of the GPU drivers.
 

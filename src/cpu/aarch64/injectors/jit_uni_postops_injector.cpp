@@ -112,20 +112,18 @@ void jit_uni_postops_injector_t<isa>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
 
-    std::size_t rhs_arg_idx = 0;
-    for (int i = 0; i < post_ops_.len(); i++) {
-        const auto &post_op = post_ops_.entry_[i];
+    binary_injector_utils::for_each_post_op_with_rhs_arg_idx(post_ops_,
+            [&](int i, const post_ops_t::entry_t &post_op, int rhs_arg_idx) {
         if (post_op.is_eltwise()) {
             alg_to_eltwise_injector_.at(i).compute_vector_range(vmm_idxs);
         } else if (post_op.is_binary()) {
             binary_injector_->compute_vector_range(
                     vmm_idxs, rhs_arg_idx, post_op, rhs_arg_params);
-            ++rhs_arg_idx;
         } else {
             const auto lam = lambda_jit_injectors_.find(post_op.kind);
             if (lam != lambda_jit_injectors_.end()) lam->second();
         }
-    }
+    });
 }
 template <cpu_isa_t isa>
 void jit_uni_postops_injector_t<isa>::compute_vector_range(

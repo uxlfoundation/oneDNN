@@ -210,9 +210,7 @@ struct brgemm_matmul_conf_utils_t {
     }
 
     inline bool get_blocked_B() const {
-        return bgmmc.use_mmla
-                || (blocked_B_layouts_allowed
-                        && check_b_layout_blocked_by_n(bgmmc.wei_tag));
+        return bgmmc.use_mmla || check_b_layout_blocked_by_n(bgmmc.wei_tag);
     }
 
     inline bool use_buffer_b(bool use_heuristic = true) const {

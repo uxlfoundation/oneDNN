@@ -908,7 +908,7 @@ struct tensor_t : public stringify_t<tensor_t> {
     tensor_t sub(const tile_t &tile, const icoord_t &coord) const {
         // coord is not measured relative to tile size
         for (auto &var : coord)
-            gemm_assert(coord[var] % tile.get(var) == 0);
+            gemm_assert(tile.get(var) != 0 && coord[var] % tile.get(var) == 0);
         tensor_t ret = *this;
         ret.coord_ = coord_ + coord;
         ret.tile_ = tile;

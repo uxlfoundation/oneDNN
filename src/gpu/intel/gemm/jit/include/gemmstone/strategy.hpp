@@ -231,7 +231,8 @@ struct GEMMStrategyPOD : public CommonStrategy {
     int optAlignAB = 0;                          // Optional alignment for A/B. If > 0, create two versions of k loop, one for A/B aligned to this value, one not.
     bool optAlignAB2D = false;                   //   If true, create two version of k loop, one for A/B aligned to block 2D requirements, one not.
                                     ZPAD(F, 3)
-    AccessType unalignedAccA, unalignedAccB;     // Access types to use for A/B on unaligned path.
+    AccessType unalignedAccA = AccessType::Scattered; // Access types to use for A on unaligned path.
+    AccessType unalignedAccB = AccessType::Scattered; // Access types to use for B on unaligned path.
                                     ZPAD(G, 2)
     int ka_prefetch = 0, kb_prefetch = 0;        // Chunk size for prefetching A/B.
     int ka_pfStride = 0, kb_pfStride = 0;        // k stride between A/B prefetches.

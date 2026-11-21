@@ -1050,6 +1050,15 @@ int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const base_prb_t *base_prb, res_t *res) {
     const prb_t *prb = prb_t::from(base_prb);
+    // A zero-size matmul is a no-op by contract: ref_matmul.cpp returns before
+    // writing dst when any of src/weights/dst has a zero dim, and the JIT
+    // implementations refuse such a PD outright (VERBOSE_EMPTY_TENSOR). There is
+    // therefore nothing to compare, and the destination still holds the 0xFF
+    // uninitialised-access sentinel.
+    if (prb->m == 0 || prb->n == 0 || prb->k == 0) {
+        res->state = SKIPPED;
+        return OK;
+    }
     if (has_bench_mode_bit(mode_bit_t::exec)) {
         const auto &prim_ref = v_prim[1];
         if (prim_ref) {

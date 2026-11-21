@@ -10,3 +10,7 @@
 # When a generator support must be expanded, leave a TODO note.
 
 --batch=harness_matmul_decompression_u3
+
+# Zero-size matmul: the primitive returns without writing dst by contract, so the
+# comparison is skipped rather than attempted against the 0xFF sentinel.
+--reset 8x0:0x8

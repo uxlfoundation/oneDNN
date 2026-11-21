@@ -18,6 +18,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -111,6 +112,16 @@ dnnl::memory::desc make_dnnl_memory_desc(const logical_tensor_t &lt) {
 
         const auto &td = dnnl_backend_t::get_singleton().get_mem_desc(
                 static_cast<size_t>(ltw.layout_id()));
+        if (!td.has_value()) {
+            // The descriptor of an opaque logical tensor is looked up by its
+            // layout id, so the id has to be registered in the backend before
+            // this point. An unregistered id means a pass produced an opaque
+            // tensor without registering it; report that instead of
+            // dereferencing an empty optional, which takes the process down.
+            throw std::runtime_error(
+                    "graph: opaque logical tensor has an "
+                    "unregistered layout id");
+        }
         return graph::utils::any_cast<memory::desc>(td.value());
     } else if (ltw.is_any()) {
         if (ltw.ndims() > 0) {

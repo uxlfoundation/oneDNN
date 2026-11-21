@@ -29,12 +29,12 @@ namespace aarch64 {
     VCONDCHECK(primitive, create, dispatch, post_ops_fallback, (cond), \
             status::unimplemented, __VA_ARGS__)
 
-status_t post_ops_fallback_t::init(const engine_t *engine, post_ops_t &post_ops,
-        const memory_desc_t &dst_md, int post_op_start_index) {
+status_t post_ops_fallback_t::init(const engine_t *engine,
+        const post_ops_t &post_ops, const memory_desc_t &dst_md,
+        int post_op_start_index) {
 
     post_op_start_index_ = post_op_start_index;
 
-    CHECK(post_ops.set_default_formats(&dst_md));
     dst_data_type = dst_md.data_type;
 
     // Reset properties derived from post_ops

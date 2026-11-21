@@ -308,6 +308,7 @@ struct acl_deconvolution_fwd_t : public primitive_t {
                 return status::unimplemented;
             }
 
+            CHECK(attr_.set_default_formats(&dst_md_));
             CHECK(post_ops.init(engine, attr_.post_ops_, dst_md_));
             acl_pd_conf.use_dst_acc_for_sum = post_ops.has_sum();
 

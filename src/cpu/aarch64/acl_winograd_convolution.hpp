@@ -102,6 +102,7 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
             CHECK(acl_utils::try_fuse_first_acl_post_op(attr_.post_ops_,
                     dst_md_.data_type, post_op_start_index, acp_.act_info,
                     post_op_start_index));
+            CHECK(attr_.set_default_formats(&dst_md_));
             CHECK(post_ops.init(
                     engine, attr_.post_ops_, dst_md_, post_op_start_index));
             acp_.use_dst_acc_for_sum = post_ops.has_sum();

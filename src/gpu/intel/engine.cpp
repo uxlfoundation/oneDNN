@@ -71,7 +71,10 @@ status_t engine_t::init() {
 }
 
 status_t engine_t::init(const std::vector<uint8_t> &cache_blob) {
-    if (device_info_cache_get(&device_info_, this)) return status::success;
+    // A cache blob is always parsed: a cached device info would let a blob
+    // from another build, runtime, or driver pass without verification.
+    if (cache_blob.empty() && device_info_cache_get(&device_info_, this))
+        return status::success;
     // Since init_device_info that takes a cache blob is only defined for
     // OpenCL we need to do manual dispatching here.
     if (cache_blob.empty())

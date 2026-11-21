@@ -448,17 +448,8 @@ status_t engine_t::init_device_info(const std::vector<uint8_t> &cache_blob) {
 }
 
 status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
-    size_t platform_name_len;
-    cl_int err = xpu::ocl::clGetPlatformInfo(impl()->platform(),
-            CL_PLATFORM_NAME, 0, nullptr, &platform_name_len);
-    OCL_CHECK(err);
-
-    std::vector<char> platform_name(platform_name_len);
-    err = xpu::ocl::clGetPlatformInfo(impl()->platform(), CL_PLATFORM_NAME,
-            platform_name.size(), platform_name.data(), nullptr);
-    OCL_CHECK(err);
-
-    sstream.append_array(platform_name.size(), platform_name.data());
+    sstream.append_array(device_info()->platform_name().size(),
+            device_info()->platform_name().data());
     sstream.append_array(
             device_info()->name().size(), device_info()->name().data());
     sstream.append(device_info()->runtime_version().major);

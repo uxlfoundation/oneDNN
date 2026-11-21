@@ -33,6 +33,7 @@ the type of tracing information to display.
 | \                          | `profile_exec`      | primitive execution timings                       |
 | \                          | `profile`           | primitive creation and execution timings          |
 | \                          | `dispatch`          | primitive dispatching information                 |
+| \                          | `trace`             | creation and execution trace markers              |
 | \                          | `all`               | enables all above flags but `none`                |
 | \                          | `debuginfo=<level>` | enables internal debug printing (for developers)  |
 | `ONEDNN_VERBOSE_TIMESTAMP` | **0**               | **display timestamps disabled (default)**         |
@@ -178,6 +179,33 @@ created while `profile_exec` is enabled; enabling it later with
 @ref dnnl::set_verbose falls back to host-measured times for existing streams.
 For the asynchronous threadpool, it can be enabled or disabled at any time.
 
+### Identifying a crashing primitive with `trace` markers
+
+`ONEDNN_VERBOSE=trace` prints `trace:start` and `trace:end` records around each
+primitive and compiled partition creation and execution. A `trace:start`
+without a matching `trace:end` identifies the primitive that crashed.
+
+~~~sh
+ONEDNN_VERBOSE=trace ./benchdnn --matmul 3x128x256:3x256x512
+~~~
+
+This produces the following output (shortened for brevity):
+
+~~~sh
+onednn_verbose,v1,primitive,trace:start,cpu,matmul,brg_matmul:avx512_core,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,,,3x128x256:3x256x512,create_id:13591497206375581441
+onednn_verbose,v1,primitive,trace:end,cpu,matmul,brg_matmul:avx512_core,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,,,3x128x256:3x256x512,create_id:13591497206375581441
+onednn_verbose,v1,primitive,trace:start,cpu,matmul,brg_matmul:avx512_core,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,,,3x128x256:3x256x512,exec_id:7023598612480132245
+onednn_verbose,v1,primitive,trace:end,cpu,matmul,brg_matmul:avx512_core,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,,,3x128x256:3x256x512,exec_id:7023598612480132245
+~~~
+
+Records of the same call share a trace ID (`create_id:<id>` or `exec_id:<id>`).
+Details such as a failed execution are printed as `trace:info` records.
+
+With `ONEDNN_VERBOSE=trace` alone, `trace:end` is printed as soon as the call
+returns, so on GPU the primitive may still be executing. With
+`ONEDNN_VERBOSE=trace,profile`, `trace:end` is printed only after the
+primitive has finished executing.
+
 ### Understanding why a given implementation is dispatched
 
 When performance is lower than expected, it is usually likely due to
@@ -261,7 +289,8 @@ line from left to right:
   this number represents amount of milliseconds since the last system start.
 * API kind: `primitive|graph|common` for API information
 * operation: `exec|create:<cache_hit|cache_miss|kernel_cache_hit|persistent_cache_hit|nested_primitive_cache_hit|compiled_partition_cache_hit>` for
-  profiling information, `error|check|dispatch` for other information.
+  profiling information, `error|check|dispatch` for other information,
+  `trace:<start|info|end>` for trace information.
 * engine kind: `cpu` or `gpu` (`cpu2gpu` or `gpu2cpu` for cross-engine reorder)
 * primitive name: `convolution`, `reorder`, `sum`, etc
 * primitive implementation
@@ -270,7 +299,9 @@ line from left to right:
 * primitive attributes
 * auxiliary information like algorithm name or number of inputs
 * a problem description in [benchdnn format](@ref dev_guide_benchdnn)
-* execution time in milliseconds
+* execution time in milliseconds (profiling records only)
+* trace ID in the form `<create|exec>_id:<id>` (trace records only), shared by
+  all trace records of the same call
 
 The information about a particular operation tensors has the following format:
 `tensor_name`_`data_type`:`properties`:`format_kind`:`format_tag`:`strides`:`extra_flags`,

@@ -185,6 +185,23 @@ static inline int format_type_checker(const char *, ...) {
                 duration); \
     }
 
+// Special syntactic sugar for trace markers (start, end) and details (info).
+// `phase` sets the trailing `<phase>_id:<trace_id>` field; info records also
+// carry the source location.
+#define VTRACE(subtype, apitype, phase, trace_id, msg, ...) \
+    do { \
+        if (dnnl::impl::get_verbose(dnnl::impl::verbose_t::exec_trace)) { \
+            const bool is_info_ = strcmp(#subtype, "info") == 0; \
+            VFORMAT(dnnl::impl::get_msec(), dnnl::impl::verbose_t::exec_trace, \
+                    apitype, trace, VERBOSE_trace_##subtype, \
+                    msg "%s%s%s," CONCAT2(VERBOSE_, phase) "_id:%llu", \
+                    ##__VA_ARGS__, is_info_ ? "," : "", \
+                    is_info_ ? __FILENAME__ : "", \
+                    is_info_ ? ":" STRINGIFY(__LINE__) : "", \
+                    static_cast<unsigned long long>(trace_id)); \
+        } \
+    } while (0)
+
 struct verbose_t {
     enum flag_kind : uint32_t {
         // we reserve the 24 lower bits for user info
@@ -199,6 +216,7 @@ struct verbose_t {
         exec_profile = 1 << 7,
         profile_externals = 1 << 8,
         warn = 1 << 9,
+        exec_trace = 1 << 10,
         // the upper 8 bits are reserved for devinfo levels
         debuginfo = 1 << 24,
         //

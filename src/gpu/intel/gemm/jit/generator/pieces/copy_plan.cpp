@@ -3326,14 +3326,9 @@ void CopyPlan::legalizeRegions()
                 return (bo == dstBO) && (bs == dstBS);
             };
 
-            if (!isFlat(i.src1)) {
-                if (isCommutative(i.op) && i.src0.kind == CopyOperand::GRF && isFlat(i.src0)) {
-                    std::swap(i.src0, i.src1);
-                    std::swap(src0BO, src1BO);
-                    std::swap(src0BS, src1BS);
-                } else
-                    canSwizzle = false;
-            }
+            /* For SIMD > 1, src regions must match dst. */
+            if (i.simd > 1 && i.op != Opcode::mov && !(isFlat(i.src0) && isFlat(i.src1)))
+                canSwizzle = false;
 
             if (hfIntConvert)
                 canSwizzle = false;
@@ -3377,8 +3372,21 @@ void CopyPlan::legalizeRegions()
 
             /* Check src1 */
             if (i.src1 && !isBroadcast(i.src1) && (!matchesDstBO(src1BO) || dstBS != src1BS)) {
-                if (!doRepositionSrc(1, s1t))
-                    stub("Cannot legalize src1 region");
+                if (!doRepositionSrc(1, s1t)) {
+                    /* Fallback: move dst to src1's layout via a temporary.
+                       src0 (if a region) must then be repositionable to that
+                       layout too, otherwise src0/src1 handling would ping-pong. */
+                    auto canExpress = [&](DataType t, int bo, int bs) {
+                        int stride = bs >> getLog2Bytes(t);
+                        int offset = bo >> getLog2Bytes(t);
+                        return (stride * getBytes(t) == bs) && (offset * getBytes(t) == bo);
+                    };
+                    bool src0OK = !i.src0 || isBroadcast(i.src0)
+                               || canExpress(s0t, src1BO, src1BS);
+                    if (!canExpress(dt, src1BO, src1BS) || !src0OK)
+                        stub("Cannot legalize src1 region");
+                    repositionDst(i, src1BS >> getLog2Bytes(dt), src1BO >> getLog2Bytes(dt));
+                }
                 continue;
             }
             /* Check src2 */

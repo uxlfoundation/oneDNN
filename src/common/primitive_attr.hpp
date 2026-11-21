@@ -154,6 +154,19 @@ struct rnn_create_time_scales_t {
 
     bool defined() const { return !is_runtime_value(scales_[0]); }
 
+    // Checks that `count_` equals the number of scales selected by `mask_`
+    // over the dimensions of `md`, i.e. the product of `md.dims[d]` for
+    // every bit `d` set in the mask. Implementations index `scales_` by the
+    // masked dimensions, so a smaller count leads to out-of-bounds reads.
+    bool is_consistent_with(const memory_desc_t &md) const {
+        if (mask_ == 0) return true;
+        if (md.ndims <= 0 || (mask_ >> md.ndims) != 0) return false;
+        dim_t expected_count = 1;
+        for (int d = 0; d < md.ndims; ++d)
+            if (mask_ & (1 << d)) expected_count *= md.dims[d];
+        return count_ == expected_count;
+    }
+
     void set_single_scale(float single_scale);
     status_t set(dim_t count, int mask, const float *scales);
     status_t set(float single_scale) {

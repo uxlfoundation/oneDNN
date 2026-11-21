@@ -90,10 +90,11 @@ struct brgemm_convolution_fwd_base_t : public primitive_t {
         Arrmap<4> batchsizes;
         int brg_indices_c {0};
         // Bounded kernel-variant lookup key/index, not tensor-scale.
-        Arrmap<8> brg_indices;
+        Arrmap<9> brg_indices;
 
         int get_brg_idx(int m, bool do_initialization, bool is_N_tail,
-                bool is_K_tail, int kd_b, int kd_e, int kh_b, int kh_e) const;
+                bool is_K_tail, int kd_b, int kd_e, int kh_b, int kh_e,
+                int vpad_cls = 0) const;
 
         inline int get_bs(
                 dim_t kd_b, dim_t kd_e, dim_t kh_b, dim_t kh_e) const {
@@ -126,7 +127,21 @@ struct brgemm_convolution_fwd_base_t : public primitive_t {
                 const void *&ptrB) const;
 
         status_t add_brg_descriptor(dim_t M, bool is_N_tail, bool is_K_tail,
-                bool do_init, int kd_b, int kd_e, int kh_b, int kh_e);
+                bool do_init, int kd_b, int kd_e, int kh_b, int kh_e,
+                int vpad_cls = 0);
+
+        void init_vpads();
+
+        // exec_vpad: virtual paddings by kw for each ow block
+        std::vector<dim_t> owb_kw_top_vpads;
+        std::vector<dim_t> owb_kw_bottom_vpads;
+        // brgemm_static_offs with exec_vpad: the kernels are specialized for
+        // each distinct (M, virtual paddings) class of ow blocks
+        std::vector<int> owb_vpad_cls;
+        std::vector<int> vpad_cls_owb; // representative ow block of a class
+        // exec_vpad: consecutive groups of a thread's work may be processed
+        // by a single ker_vpad call, see ker_vpad
+        bool vpad_group_runs = false;
 
     protected:
         status_t init(const engine_t *engine, cpu_isa_t isa);
@@ -192,7 +207,7 @@ private:
 
     void ker_base(brgemm_thread_ctx_t &btc) const;
     void ker_trans(brgemm_thread_ctx_t &btc) const;
-    void ker_vpad(brgemm_thread_ctx_t &btc) const;
+    void ker_vpad(brgemm_thread_ctx_t &btc, dim_t n_groups = 1) const;
 
     void perform_outwork(const brgemm_thread_ctx_t &btc, char *dst_base,
             const char *bias_w, dim_t ow, dim_t g_oc, bool is_oc_tail,
@@ -248,8 +263,6 @@ private:
     const memory_desc_wrapper bias_d;
 
     // pre - calculated values
-    std::vector<dim_t> owb_kw_top_vpads;
-    std::vector<dim_t> owb_kw_bottom_vpads;
     std::vector<dim_t> kd_bs, kd_es, kh_bs, kh_es, kw_bs, kw_es, oh_kh_b,
             oh_kh_e, comp_oh, comp_oh_kh_b, comp_oh_kh_e, comp_owb;
 

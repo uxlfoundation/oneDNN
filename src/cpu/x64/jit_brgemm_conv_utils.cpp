@@ -1308,6 +1308,30 @@ status_t brg_blocking_t::calc_blocks() {
         sp_block = os_block;
         ow_tail = 0;
     } else {
+        // When several groups share a src cache line and the
+        // groups are the innermost loop, consecutive kernel calls read the
+        // same src lines. Limit ow_block to one M block (ur) if this makes
+        // the src rows of one call fit into L1, so the lines are still there
+        // when the next group is processed. The pixel stride of nxc src maps
+        // the lines of a row to a fraction of the L1 sets only.
+        const auto src_fits_L1 = [&](dim_t owb) {
+            const dim_t L1_full = platform::get_per_core_cache_size(1);
+            const dim_t px_sz = ngroups * ic_without_padding * src_dsz;
+            const dim_t alias
+                    = nstl::max<dim_t>(1, math::gcd<dim_t>(px_sz, 4096) / 64);
+            const dim_t lines
+                    = kh_block * get_inp_size(iwp, owb, kw, stride_w, dilate_w);
+            return lines * alias * 64 <= L1_full;
+        };
+        if (!is_amx(isa) && exec_type != exec_trans && ngroups > 1
+                && loop_order == loop_ndhwgc && nb_oc == 1 && ic * src_dsz < 64
+                && ur > 0 && sp_block % ur == 0 && !src_fits_L1(sp_block)) {
+            // for 16-bit src half of the M block is tried as well
+            if (sp_block > ur && src_fits_L1(ur))
+                sp_block = ur;
+            else if (src_dsz == 2 && ur % 2 == 0 && src_fits_L1(ur / 2))
+                sp_block = ur / 2;
+        }
         ow_block = os_block = sp_block;
         os_block = sp_block = ow_block;
         ow_tail = ow % ow_block;
@@ -1924,7 +1948,10 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             && jcp.ic <= jcp.acc_simd_w
             // Enable the shapes not supported in direct convs
             && is_groups_ok(jcp);
-    const bool isa_has_small_group_perf = is_amx(isa) || jcp.isa == avx2;
+    // bf16 groups with up to 4 channels are not supported by the direct
+    // jit kernels, so brg is used instead of falling back to gemm
+    const bool isa_has_small_group_perf = is_amx(isa) || jcp.isa == avx2
+            || (jcp.wei_dt == data_type::bf16 && jcp.ic <= 4);
     if (is_grouped_small_ic && !isa_has_small_group_perf)
         VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
                 VERBOSE_IMPL_HEURISTIC_FAIL,
@@ -2438,6 +2465,19 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = (jcp.use_uker && one_of(jcp.exec_type, exec_base, exec_trans))
             ? brgemm_static_offs
             : brgemm_addr; // TODO: Choose right type of BRGEMM
+
+    // For small K the per-call overhead dominates, so build the batch at
+    // primitive creation (one kernel per kd/kh range and vpad pattern) and
+    // pass only the base pointers on execution.
+    const bool use_static_vpad = !jcp.use_uker && !is_amx(isa)
+            && jcp.exec_type == exec_vpad && jcp.K <= jcp.acc_simd_w
+            && jcp.max_batch * jcp.nb_ic_blocking <= 9 && jcp.kd_block == jcp.kd
+            && jcp.kh_block == jcp.kh && jcp.kw_block == jcp.kw
+            && jcp.nb_ic % jcp.nb_ic_blocking == 0
+            && IMPLICATION(jcp.ic % jcp.ic_block != 0, jcp.nb_ic_blocking == 1)
+            && !jcp.req_cal_comp_pad && !jcp.req_brg_comp_pad
+            && !jcp.src_zero_point && !jcp.s8s8_compensation_required;
+    if (use_static_vpad) jcp.brg_type = brgemm_static_offs;
 
     assert(IMPLICATION(!jcp.copy_input, !jcp.copy_block_only));
 

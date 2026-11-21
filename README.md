@@ -107,8 +107,9 @@ GitHub. It helps others discover it.
 You can download and install the oneDNN library using one of the following options:
 
 - [GitHub releases]: Pre-built packages for Linux and Windows on Intel
-  64/AMD64 architecture. See [Pre-built Packages](#pre-built-packages) for
-  the list of available configurations and their requirements.
+  64/AMD64 architecture and for Linux on RV64 architecture. See
+  [Pre-built Packages](#pre-built-packages) for the list of available
+  configurations and their requirements.
 - [conda-forge]: Conda packages for Linux, Windows, and macOS on Intel
   64/AMD64, AArch64, and PPC64 architectures.
 - Intel oneAPI:
@@ -201,13 +202,14 @@ The library is optimized for the following GPUs:
 
 ### Pre-built Packages
 
-[GitHub releases] include pre-built oneDNN packages for Intel 64/AMD64
-architecture in the following configurations:
+[GitHub releases] include pre-built oneDNN packages for Intel 64/AMD64 and
+RV64 architectures in the following configurations:
 
 | Package            | CPU runtime | GPU runtime | Runtime requirements
 | :----------------- | :---------- | :---------- | :-------------------
 | `omp-linux-x64`    | OpenMP      | none        | GNU C Library 2.28, GNU OpenMP runtime
 | `sycl-linux-x64`   | OpenMP      | SYCL        | GNU C Library 2.28, GNU OpenMP runtime, [Intel oneAPI DPC++/C++ Compiler Runtime] 2026.0
+| `omp-linux-rv64`   | OpenMP      | none        | GNU C Library 2.39, GNU OpenMP runtime
 | `omp-windows-x64`  | OpenMP      | none        | [Microsoft Visual C++ Redistributable] 14.44
 | `sycl-windows-x64` | OpenMP      | SYCL        | Microsoft Visual C++ Redistributable 14.44, Intel oneAPI DPC++/C++ Compiler Runtime 2026.0
 

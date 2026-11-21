@@ -2,6 +2,7 @@
 
 # *******************************************************************************
 # Copyright 2026 Intel Corporation
+# Copyright 2026 Institute of Software, Chinese Academy of Sciences
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +28,8 @@
 #   CPU_RUNTIME          value for ONEDNN_CPU_RUNTIME
 #   GPU_RUNTIME          value for ONEDNN_GPU_RUNTIME
 #   DEVTOOLSET_ROOTPATH  (optional) GCC toolset root, set in manylinux images
+#   CMAKE_TOOLCHAIN_FILE (optional) CMake toolchain file
+#   CTEST_INCLUDE_REGEX  (optional) include only matching smoke tests
 
 set -o errexit -o pipefail -o nounset
 
@@ -39,6 +42,13 @@ INSTALL_DIR="$1"
 GCC_ROOT="${DEVTOOLSET_ROOTPATH:+$DEVTOOLSET_ROOTPATH/usr}"
 GXX="${GCC_ROOT:+$GCC_ROOT/bin/}g++"
 CMAKE_EXTRA_ARGS=()
+CTEST_ARGS=(-E "gpu|cross-engine")
+if [ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]; then
+    CMAKE_EXTRA_ARGS+=(-DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE")
+fi
+if [ -n "${CTEST_INCLUDE_REGEX:-}" ]; then
+    CTEST_ARGS+=(--no-tests=error -R "$CTEST_INCLUDE_REGEX")
+fi
 
 case "$COMPILER" in
     gcc)
@@ -80,5 +90,5 @@ cmake --build build --parallel "$(nproc)"
 mkdir -p "$INSTALL_DIR/env"
 cp "$(dirname "$0")/env/vars.sh" "$INSTALL_DIR/env/"
 # Smoke test the CPU engine only, GPU is not expected to be available.
-ctest --test-dir build --output-on-failure -E "gpu|cross-engine"
+ctest --test-dir build --output-on-failure "${CTEST_ARGS[@]}"
 cmake --install build

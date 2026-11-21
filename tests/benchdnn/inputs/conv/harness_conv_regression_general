@@ -490,3 +490,12 @@ g1mb1ic48ih10iw1oc48kh128kw1ph64pw0
 --reset
 --dt=f8_e4m3:f8_e4m3:f8_e4m3
 mb1ic60ih30oc120oh15kh3sh2ph1
+
+# RVV Winograd must reject 3D and grouped problems, alg=auto must fall back
+--reset
+--dt=f32 --alg=wino --dir=FWD_I,FWD_B
+mb2_ic96oc96_id9od7kd3pd0_ih9oh7kh3ph0_iw9ow7kw3pw0n"wino_3d"
+g32mb2_ic96oc96_ih14oh14kh3ph1n"wino_grouped"
+--reset
+--dt=f32 --alg=auto --dir=FWD_I
+g43mb32_ic129oc258_ih28oh28kh3ph1n"wino_auto_grouped"

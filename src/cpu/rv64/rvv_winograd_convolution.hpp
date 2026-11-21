@@ -151,6 +151,10 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
 
             VDISPATCH_CONV(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_CONV(ndims() == 4, VERBOSE_UNSUPPORTED_FEATURE,
+                    "only 2D convolution is supported for winograd");
+            VDISPATCH_CONV(!with_groups(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "grouped convolution is not supported for winograd");
             const bool is_auto = desc()->alg_kind == alg_kind::convolution_auto;
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_winograd),
                     VERBOSE_BAD_ALGORITHM);

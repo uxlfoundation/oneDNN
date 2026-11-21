@@ -58,8 +58,11 @@ kernel void igc_check() {
 )"""";
 
 bool mayiuse_microkernels(const engine_t *engine) {
-    auto *device_info = engine->device_info();
-    if (device_info->runtime_version() >= xpu::runtime_version_t(24, 22, 29735))
+    const auto &runtime_version = engine->device_info()->runtime_version();
+    // Level Zero reports `1.<minor>.<build>`, which shares only the build
+    // number with the OpenCL driver version.
+    if (runtime_version >= xpu::runtime_version_t(24, 22, 29735)
+            || runtime_version.build >= 29735)
         return true;
 
     auto mayiuse_mk = [](const engine_t *engine) {

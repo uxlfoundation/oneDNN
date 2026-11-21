@@ -1242,6 +1242,16 @@ std::ostream &operator<<(std::ostream &s, memory_kind_ext_t memory_kind) {
     return s;
 }
 
+std::ostream &operator<<(std::ostream &s, memory_compression_t mc) {
+    switch (mc) {
+        case memory_compression_t::def: s << "def"; break;
+        case memory_compression_t::on: s << "on"; break;
+        case memory_compression_t::off: s << "off"; break;
+        default: assert(!"unexpected"); break;
+    }
+    return s;
+}
+
 std::ostream &dump_global_params(std::ostream &s) {
     // Need to dump mode and modifiers in front of the driver name to make all
     // updated default values (at least, scratchpad) take effect before parsing
@@ -1294,11 +1304,15 @@ std::ostream &dump_global_params(std::ostream &s) {
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     if (canonical || memory_kind != default_memory_kind)
         s << "--memory-kind=" << memory_kind << " ";
+    if (canonical || memory_compression != memory_compression_t::def)
+        s << "--memory-compression=" << memory_compression << " ";
     if (canonical || stream_kind != default_stream_kind)
         s << "--stream-kind=" << stream_kind << " ";
 #endif
     if (canonical || cold_cache_input != default_cold_cache_input())
         s << "--cold-cache=" << cold_cache_input << " ";
+    if (canonical || fill_input != fill_input_t::random)
+        s << "--fill=" << fill_input << " ";
     if (canonical || !buffer_prefix.empty())
         s << "--buffer-prefix=" << buffer_prefix << " ";
 

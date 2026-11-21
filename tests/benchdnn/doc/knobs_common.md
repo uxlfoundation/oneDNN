@@ -146,6 +146,14 @@ The check is enabled when `BOOL` is `true` (the default) and disabled otherwise.
 runtimes. `KIND` values can be `usm` (default), `buffer`, `usm_device`
 (to use malloc_device) or `usm_shared` (to use malloc_shared).
 
+### --memory-compression
+`--memory-compression=MODE` sets a compression hint for GPU memory that the
+driver allocates. `MODE` values can be `def` (the default) to use the runtime
+default, `on` to request compressed memory, or `off` to request uncompressed
+memory. Values other than `def` make the driver allocate device USM itself and
+require `--memory-kind=usm` or `usm_device`. Memory allocated by the library is
+not affected.
+
 ### --mode
 `--mode=MODE` specifies **benchdnn** mode to be used for benchmarking.
 `MODE` values can be:
@@ -266,6 +274,14 @@ functionality to emulate first access to data or branching cases. When `MODE` is
 set to `custom`, cold cache is enabled for specified arguments, but it requires
 source code adjustments. Refer to [cold cache](knob_cold_cache.md) for more
 information.
+
+### --fill
+`--fill=VALUE` specifies how the driver fills data with reference memory
+disabled (`--mode=F`, `--mode-modifier=M`, or `--mode=P` on a GPU engine). It
+cannot be used with `--mode=C`. `VALUE` can be:
+  - `random` (the default): pseudo-random data on Intel GPU to avoid memory
+    compression, a constant byte on other engines.
+  - `zero`: every element is set to zero. Allows memory compression.
 
 ### --fix-times-per-prb
 `--fix-times-per-prb=N` specifies the `N` number of rounds per problem to run,

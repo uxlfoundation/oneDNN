@@ -16,6 +16,8 @@
 
 #include "utils/engine.hpp"
 
+#include "dnnl_common.hpp"
+
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #endif
@@ -88,6 +90,20 @@ engine_t::engine_t(dnnl_engine_kind_t engine_kind) {
                     "cannot be used for correctness testing.");
             DNN_SAFE_V(dnnl_invalid_arguments);
         }
+    }
+    if (has_bench_mode_bit(mode_bit_t::corr)
+            && fill_input != fill_input_t::random) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: --fill cannot be used for correctness testing.");
+        DNN_SAFE_V(dnnl_invalid_arguments);
+    }
+    if (memory_compression != memory_compression_t::def
+            && memory_kind != memory_kind_ext_t::usm
+            && memory_kind != memory_kind_ext_t::usm_device) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: --memory-compression requires --memory-kind=usm or "
+                "usm_device.");
+        DNN_SAFE_V(dnnl_invalid_arguments);
     }
     // Temporary workaround.
     // TODO: make mode-modifier=M by default for perf on GPU.

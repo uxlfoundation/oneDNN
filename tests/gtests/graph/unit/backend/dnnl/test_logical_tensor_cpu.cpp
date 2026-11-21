@@ -14,11 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <string>
 #include <vector>
 #include <gtest/gtest.h>
 
 #include "graph/unit/utils.hpp"
 
+#include "backend/dnnl/common.hpp"
 #include "backend/dnnl/dnnl_backend.hpp"
 #include "interface/backend.hpp"
 #include "interface/logical_tensor.hpp"
@@ -51,4 +53,49 @@ TEST(test_logical_tensor, ImplicitEqualLayout) {
 
     ASSERT_TRUE(ltw(lt1).has_same_layout_as(ltw(lt2)));
     ASSERT_TRUE(ltw(lt2).has_same_layout_as(ltw(lt1)));
+}
+
+TEST(test_logical_tensor, MakeMemoryDescRejectsUnregisteredLayoutId) {
+    // A logical tensor may carry an opaque layout id that was never registered
+    // in the backend - either because a caller built one by hand or because a
+    // pass produced it. Looking such a tensor up must report the mistake; it
+    // used to dereference an empty optional and take the process down.
+    const auto backend_idx
+            = dnnl_impl::dnnl_backend_t::get_singleton().get_id();
+
+    // The layout id manager is a process-wide singleton, so a fixed number could
+    // be registered by an earlier test. Walk up until an index is provably free.
+    size_t unregistered_idx = 4096;
+    while (dnnl_impl::dnnl_backend_t::get_singleton()
+                    .get_mem_desc(unregistered_idx)
+                    .has_value()
+            && unregistered_idx < 100000) {
+        ++unregistered_idx;
+    }
+    ASSERT_LT(unregistered_idx, 100000)
+            << "could not find a free layout id index";
+    const size_t encoded_id = graph::backend_registry_t::encode_layout_id(
+            unregistered_idx, backend_idx);
+
+    graph::logical_tensor_t lt = utils::logical_tensor_init(
+            0, {64}, graph::data_type::f32, graph::layout_type::strided);
+    // the partition decodes the id before the backend sees the tensor
+    lt.layout_type = graph::layout_type::opaque;
+    lt.layout.layout_id
+            = graph::backend_registry_t::decode_layout_id(encoded_id).first;
+    ASSERT_EQ(lt.layout.layout_id, unregistered_idx);
+    ASSERT_FALSE(dnnl_impl::dnnl_backend_t::get_singleton()
+                         .get_mem_desc(lt.layout.layout_id)
+                         .has_value());
+
+    // The message has to say what went wrong: a plain any_cast failure on an
+    // empty optional says "bad any cast" and hides where the bad id came from.
+    try {
+        dnnl_impl::make_dnnl_memory_desc(lt);
+        FAIL() << "an unregistered layout id must not be accepted";
+    } catch (const std::exception &e) {
+        const std::string msg = e.what();
+        EXPECT_NE(msg.find("unregistered layout id"), std::string::npos)
+                << "unexpected message: " << msg;
+    }
 }

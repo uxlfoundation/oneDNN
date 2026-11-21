@@ -3360,8 +3360,21 @@ void CopyPlan::legalizeRegions()
 
             /* Check src1 */
             if (i.src1 && !isBroadcast(i.src1) && (!matchesDstBO(src1BO) || dstBS != src1BS)) {
-                if (!doRepositionSrc(1, s1t))
-                    stub("Cannot legalize src1 region");
+                if (!doRepositionSrc(1, s1t)) {
+                    /* Fallback: move dst to src1's layout via a temporary.
+                       src0 (if a region) must then be repositionable to that
+                       layout too, otherwise src0/src1 handling would ping-pong. */
+                    auto canExpress = [&](DataType t, int bo, int bs) {
+                        int stride = bs >> getLog2Bytes(t);
+                        int offset = bo >> getLog2Bytes(t);
+                        return (stride * getBytes(t) == bs) && (offset * getBytes(t) == bo);
+                    };
+                    bool src0OK = !i.src0 || isBroadcast(i.src0)
+                               || canExpress(s0t, src1BO, src1BS);
+                    if (!canExpress(dt, src1BO, src1BS) || !src0OK)
+                        stub("Cannot legalize src1 region");
+                    repositionDst(i, src1BS >> getLog2Bytes(dt), src1BO >> getLog2Bytes(dt));
+                }
                 continue;
             }
             /* Check src2 */

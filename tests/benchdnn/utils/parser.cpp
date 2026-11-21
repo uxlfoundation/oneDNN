@@ -22,6 +22,7 @@
 #include "utils/check.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/fill.hpp"
+#include "utils/gpu_freq.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
 #include "utils/stringstream.hpp"
@@ -1404,8 +1405,10 @@ bool parse_perf_template(const char *&pt, const char *pt_def,
         else
             return str_;
     };
-    return parse_single_value_option(
-            pt, pt_def, str2pt, str, option_name, help);
+    if (!parse_single_value_option(pt, pt_def, str2pt, str, option_name, help))
+        return false;
+    gpu_freq::request_for_template(pt);
+    return true;
 }
 
 bool parse_batch(const bench_f bench, const char *str,

@@ -757,16 +757,21 @@ dnnl_status_t DNNL_API dnnl_graph_graph_get_partition_num(
         const_dnnl_graph_graph_t graph, size_t *num);
 
 /// Returns the partitions from a filtered graph. Output partition instances
-/// will be written into the parameter `partitions`. Users need to make sure
-/// `partitions` is valid and has enough space to accept the partition
-/// instances. Each output partition instance should be destroyed via
+/// will be written into the parameter `partitions`. The @p num value must be
+/// equal to the number of partitions returned by
+/// #dnnl_graph_graph_get_partition_num. Otherwise, #dnnl_invalid_arguments is
+/// returned and `partitions` is left unmodified. Users need to make sure
+/// `partitions` is valid and has space for @p num partition instances. Each
+/// output partition instance should be destroyed via
 /// #dnnl_graph_partition_destroy explicitly after use.
 ///
 /// @param graph The target graph.
-/// @param num The number of partitions.
+/// @param num The number of partitions. Must be equal to the value returned
+///     by #dnnl_graph_graph_get_partition_num.
 /// @param partitions Output the partitions.
-/// @returns #dnnl_success on success or a status describing the error
-///     otherwise.
+/// @returns #dnnl_success on success, #dnnl_invalid_arguments if @p num does
+///     not match the number of partitions in @p graph, or a status describing
+///     the error otherwise.
 dnnl_status_t DNNL_API dnnl_graph_graph_get_partitions(dnnl_graph_graph_t graph,
         size_t num, dnnl_graph_partition_t *partitions);
 

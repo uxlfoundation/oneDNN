@@ -380,3 +380,83 @@ TEST(CAPI, DifferentLogicalTensorWithSameID) {
     DIFFERENT_LT_WITH_SAME_ID_DESTROY;
 #undef DIFFERENT_LT_WITH_SAME_ID_DESTROY
 }
+
+TEST(CAPI, GetPartitionsWrongNum) {
+    // two independent relu ops, so the graph has two partitions
+    dnnl_graph_graph_t agraph = nullptr;
+    dnnl_graph_op_t relu0 = nullptr, relu1 = nullptr;
+    dnnl_graph_partition_t partitions[3] = {nullptr, nullptr, nullptr};
+    dnnl_graph_op_create(&relu0, 0, dnnl_graph_op_relu, "relu0");
+    dnnl_graph_op_create(&relu1, 1, dnnl_graph_op_relu, "relu1");
+
+#define GET_PARTITIONS_WRONG_NUM_DESTROY \
+    do { \
+        dnnl_graph_partition_destroy(partitions[0]); \
+        partitions[0] = NULL; \
+        dnnl_graph_partition_destroy(partitions[1]); \
+        partitions[1] = NULL; \
+        dnnl_graph_graph_destroy(agraph); \
+        agraph = NULL; \
+        dnnl_graph_op_destroy(relu0); \
+        relu0 = NULL; \
+        dnnl_graph_op_destroy(relu1); \
+        relu1 = NULL; \
+    } while (0);
+
+    dnnl_graph_logical_tensor_t src0, dst0, src1, dst1;
+    ASSERT_EQ_SAFE(dnnl_graph_logical_tensor_init(&src0, 0, dnnl_f32, 0,
+                           dnnl_graph_layout_type_strided,
+                           dnnl_graph_tensor_property_undef),
+            dnnl_success, GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_logical_tensor_init(&dst0, 1, dnnl_f32, 0,
+                           dnnl_graph_layout_type_strided,
+                           dnnl_graph_tensor_property_undef),
+            dnnl_success, GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_logical_tensor_init(&src1, 2, dnnl_f32, 0,
+                           dnnl_graph_layout_type_strided,
+                           dnnl_graph_tensor_property_undef),
+            dnnl_success, GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_logical_tensor_init(&dst1, 3, dnnl_f32, 0,
+                           dnnl_graph_layout_type_strided,
+                           dnnl_graph_tensor_property_undef),
+            dnnl_success, GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_op_add_input(relu0, &src0), dnnl_success,
+            GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_op_add_output(relu0, &dst0), dnnl_success,
+            GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_op_add_input(relu1, &src1), dnnl_success,
+            GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_op_add_output(relu1, &dst1), dnnl_success,
+            GET_PARTITIONS_WRONG_NUM_DESTROY);
+
+    dnnl_graph_graph_create(&agraph, dnnl_cpu);
+    ASSERT_EQ_SAFE(dnnl_graph_add_op(agraph, relu0), dnnl_success,
+            GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_add_op(agraph, relu1), dnnl_success,
+            GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_graph_finalize(agraph), dnnl_success,
+            GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(
+            dnnl_graph_graph_filter(agraph, dnnl_graph_partition_policy_fusion),
+            dnnl_success, GET_PARTITIONS_WRONG_NUM_DESTROY);
+
+    size_t part_num = 0;
+    ASSERT_EQ_SAFE(dnnl_graph_graph_get_partition_num(agraph, &part_num),
+            dnnl_success, GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(part_num, 2U, GET_PARTITIONS_WRONG_NUM_DESTROY);
+
+    // fewer slots than partitions must be rejected without writing anything
+    ASSERT_EQ_SAFE(dnnl_graph_graph_get_partitions(agraph, 1, partitions),
+            dnnl_invalid_arguments, GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(partitions[0], nullptr, GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(dnnl_graph_graph_get_partitions(agraph, 3, partitions),
+            dnnl_invalid_arguments, GET_PARTITIONS_WRONG_NUM_DESTROY);
+    ASSERT_EQ_SAFE(partitions[0], nullptr, GET_PARTITIONS_WRONG_NUM_DESTROY);
+
+    ASSERT_EQ_SAFE(
+            dnnl_graph_graph_get_partitions(agraph, part_num, partitions),
+            dnnl_success, GET_PARTITIONS_WRONG_NUM_DESTROY);
+
+    GET_PARTITIONS_WRONG_NUM_DESTROY;
+#undef GET_PARTITIONS_WRONG_NUM_DESTROY
+}

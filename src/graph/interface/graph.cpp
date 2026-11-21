@@ -440,6 +440,7 @@ status_t dnnl_graph_graph_get_partitions(
     if (utils::any_null(graph, partition) || num == 0) {
         return status::invalid_graph;
     }
+    if (num != graph->get_num_partitions()) return status::invalid_arguments;
 
     // allocate partitions
     for (size_t i = 0; i < num; i++) {

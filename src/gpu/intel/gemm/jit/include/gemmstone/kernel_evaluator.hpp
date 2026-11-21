@@ -41,6 +41,7 @@ struct EvaluateParams {
     bool deterministic = false;
     bool noCAtomics = false;
     Type Tc_ext = Type::invalid;    // External C element type; Type::invalid = use catalog precision
+    Type Ts = Type::invalid;
 };
 
 struct DerivedEvaluateParams : public EvaluateParams {

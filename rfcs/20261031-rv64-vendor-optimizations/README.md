@@ -152,16 +152,29 @@ Enable fixed-VLEN kernels when the execution set has a known, compatible VLEN;
 otherwise select a compatible fallback.
 
 **Specialized execution uses a fixed, homogeneous CPU group.** The application
-or launcher establishes the group before oneDNN capability initialization and
-before creating OpenMP or thread-pool workers. The application must keep every
-worker and later primitive execution within that group. The launcher or
-runtime also performs any platform-specific setup.
+or runtime establishes the group before oneDNN capability initialization.
+Every participating thread, including a caller that executes kernel work, must
+complete any required platform registration and affinity setup before running
+a specialized kernel. Setup failures must prevent execution of that kernel.
+The application must keep every worker and later primitive execution within
+that group.
 A process-wide cpuset restriction is one way to enforce the CPU boundary.
+
+On platforms that require thread registration or core binding, a THREADPOOL
+adapter can perform this setup during worker initialization, then dispatch
+tasks to those workers. This keeps registration, affinity, and task dispatch
+under one lifecycle and lets applications reuse an existing thread pool.
+THREADPOOL is optional; OpenMP or application-managed threads may also be used
+when they provide the same registration and affinity guarantees.
 
 The initial implementation supports one fixed execution group per process.
 The backend records its CPU set and capabilities once and uses them for
 primitive creation, JIT generation, and execution. Keep that set fixed for the
 lifetime of the generated kernels.
+Primitive initialization selects an implementation using this execution
+group's capabilities, data types, and tensor dimensions. The creating thread's
+capabilities alone are insufficient. Cached primitives must retain the same
+execution requirements; an incompatible execution group must not reuse them.
 To use X100 and A100 concurrently in this initial design, applications use
 separate processes, each configured for its core group.
 
@@ -186,8 +199,8 @@ the same target CPUs.
    available. Otherwise use a dedicated probe thread bound to a target CPU
    before its first vector instruction. Check vector availability first and
    create fresh probe threads for other CPUs rather than migrating live vector
-   state across unlike cores. The launcher must already have completed any
-   required core enrollment. Failed probes leave VLEN unknown.
+   state across unlike cores. Each probe thread must complete any required
+   core enrollment before probing. Failed probes leave VLEN unknown.
 5. **Return an immutable detection result.** Include the queried CPU set,
    identifiers, extensions, VLEN information, and the source of the capability
    information. Each explicit query returns a separate object.
@@ -345,6 +358,10 @@ The PR author must provide performance measurements on real hardware. At
 least one set of measurements must use a benchdnn input batch with sufficiently
 broad coverage of the workloads supported by the optimization.
 
+For specialized execution groups, tests must check worker registration and
+affinity, setup-failure handling, and rejection of incompatible primitive
+reuse. These requirements apply to both integration routes.
+
 ### Deprecating and removing vendor ISA support
 
 Consider removing vendor ISA support when few devices use it, a standard ISA
@@ -392,6 +409,7 @@ The first target is matmul on SpacemiT A100 using IME:
    must first expose the required CPU identification. Provide a public QEMU
    build that runs the IME tests.
 3. Update oneDNN's Xbyak_riscv version and add an IME GEMM/BRGEMM kernel with
-   runtime dispatch to A100.
+   runtime dispatch to A100. Provide worker registration and affinity setup,
+   and select kernels using the established A100 execution group's capabilities.
 4. Run correctness tests in QEMU and performance tests on A100, including
    benchdnn batches that cover the supported matmul workloads.

@@ -559,22 +559,23 @@ void jit_rvv_layernorm_data_kernel_t::generate() {
 #undef GET_FUSED_OFF
 #undef GET_DATA_OFF
 
-#define GET_F16_OFF(field) \
+#define GET_XF16_OFF(field) \
     static_cast<int32_t>(offsetof( \
-            jit_rvv_layernorm_f16_fused_kernel_t::call_params_t, field))
+            jit_rvv_layernorm_xf16_fused_kernel_t::call_params_t, field))
 
-jit_rvv_layernorm_f16_fused_kernel_t::jit_rvv_layernorm_f16_fused_kernel_t(
-        bool with_scale, bool with_shift, bool weights_f16,
-        bool use_widening_sum)
-    : jit_generator_t("jit_rvv_layernorm_f16_fused_kernel")
+jit_rvv_layernorm_xf16_fused_kernel_t::jit_rvv_layernorm_xf16_fused_kernel_t(
+        data_type_t data_type, bool with_scale, bool with_shift,
+        bool weights_xf16, bool use_widening_sum)
+    : jit_generator_t("jit_rvv_layernorm_xf16_fused_kernel")
     , with_scale_(with_scale)
     , with_shift_(with_shift)
-    , weights_f16_(weights_f16)
+    , data_type_(data_type)
+    , weights_xf16_(weights_xf16)
     , use_widening_sum_(use_widening_sum) {
-    create_kernel();
+    status_ = create_kernel();
 }
 
-void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
+void jit_rvv_layernorm_xf16_fused_kernel_t::generate() {
     const bool use_widening_sum = use_widening_sum_;
     const Reg reg_param = a0;
     const Reg reg_src = a1;
@@ -608,14 +609,22 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     const VReg v_beta(8); // m8: widened/loaded beta
     const VReg v_bld(4); // m4: beta f16 load temp
 
+    const bool is_bf16 = data_type_ == data_type::bf16;
+    auto widen = [&](const VReg &dst, const VReg &src) {
+        if (is_bf16)
+            vfwcvtbf16_f_f_v(dst, src);
+        else
+            vfwcvt_f_f_v(dst, src);
+    };
+
     fmv_w_x(f_zero, x0);
 
     Label sum_loop, sum_done, var_loop, var_done, skip_mean, skip_var;
     Label out_loop, out_done;
 
     // ---- pass 1: accumulate Sx in f32 ----
-    ld(reg_src, reg_param, GET_F16_OFF(src));
-    ld(reg_t1, reg_param, GET_F16_OFF(len));
+    ld(reg_src, reg_param, GET_XF16_OFF(src));
+    ld(reg_t1, reg_param, GET_XF16_OFF(len));
     vsetvli(reg_tmp, x0, SEW::e32, LMUL::m8, VTA::ta, VMA::ma);
     vmv_v_x(v_sum, x0);
     if (!use_widening_sum) vmv_v_x(v_work, x0);
@@ -636,7 +645,7 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     if (use_widening_sum) {
         vfwadd_wv(v_sum, v_sum, v_ld);
     } else {
-        vfwcvt_f_f_v(v_work, v_ld);
+        widen(v_work, v_ld);
         vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m8, VTA::tu, VMA::ma);
         vfadd_vv(v_sum, v_sum, v_work);
         vmv_v_x(v_work, x0);
@@ -651,18 +660,18 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     vfredosum_vs(v_work, v_work, v_sum);
     vfmv_f_s(f_mean, v_work); // Sx
 
-    ld(reg_len, reg_param, GET_F16_OFF(len));
+    ld(reg_len, reg_param, GET_XF16_OFF(len));
     fcvt_s_l(f_len, reg_len);
     fdiv_s(f_mean, f_mean, f_len); // mean
 
-    ld(reg_ptr, reg_param, GET_F16_OFF(mean));
+    ld(reg_ptr, reg_param, GET_XF16_OFF(mean));
     beqz(reg_ptr, skip_mean);
     fsw(f_mean, reg_ptr, 0);
     L(skip_mean);
 
     // ---- pass 2: accumulate variance as sum((x - mean)^2) ----
-    ld(reg_src, reg_param, GET_F16_OFF(src));
-    ld(reg_t1, reg_param, GET_F16_OFF(len));
+    ld(reg_src, reg_param, GET_XF16_OFF(src));
+    ld(reg_t1, reg_param, GET_XF16_OFF(len));
     vsetvli(reg_tmp, x0, SEW::e32, LMUL::m8, VTA::ta, VMA::ma);
     vmv_v_x(v_sumsq, x0);
     vmv_v_x(v_work, x0);
@@ -674,7 +683,7 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     vle16_v(v_ld, reg_src);
     slli(reg_tmp, reg_vl, 1);
     add(reg_src, reg_src, reg_tmp);
-    vfwcvt_f_f_v(v_work, v_ld); // f16 -> f32
+    widen(v_work, v_ld);
     vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m8, VTA::tu, VMA::ma);
     vfsub_vf(v_work, v_work, f_mean);
     vfmacc_vv(v_sumsq, v_work, v_work);
@@ -687,12 +696,12 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     vfredosum_vs(v_sumsq, v_sumsq, v_sum);
     vfmv_f_s(f_var_sum, v_sumsq);
     fdiv_s(f_var, f_var_sum, f_len);
-    ld(reg_ptr, reg_param, GET_F16_OFF(variance));
+    ld(reg_ptr, reg_param, GET_XF16_OFF(variance));
     beqz(reg_ptr, skip_var);
     fsw(f_var, reg_ptr, 0);
     L(skip_var);
 
-    flw(f_eps, reg_param, GET_F16_OFF(eps));
+    flw(f_eps, reg_param, GET_XF16_OFF(eps));
     fcvt_d_s(d_b, f_var);
     fcvt_d_s(d_eps, f_eps);
     fadd_d(d_b, d_b, d_eps); // var + eps (f64)
@@ -702,12 +711,12 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     fdiv_d(d_b, d_one, d_b); // 1/sqrt
     fcvt_s_d(f_inv, d_b); // inv (f32)
 
-    // ---- pass 3: normalize + affine, write f16 ----
-    ld(reg_src, reg_param, GET_F16_OFF(src));
-    ld(reg_dst, reg_param, GET_F16_OFF(dst));
-    if (with_scale_) ld(reg_scale, reg_param, GET_F16_OFF(scale));
-    if (with_shift_) ld(reg_shift, reg_param, GET_F16_OFF(shift));
-    ld(reg_t1, reg_param, GET_F16_OFF(len));
+    // ---- pass 3: normalize + affine, write xf16 ----
+    ld(reg_src, reg_param, GET_XF16_OFF(src));
+    ld(reg_dst, reg_param, GET_XF16_OFF(dst));
+    if (with_scale_) ld(reg_scale, reg_param, GET_XF16_OFF(scale));
+    if (with_shift_) ld(reg_shift, reg_param, GET_XF16_OFF(shift));
+    ld(reg_t1, reg_param, GET_XF16_OFF(len));
 
     L(out_loop);
     beqz(reg_t1, out_done);
@@ -715,16 +724,16 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     sub(reg_t1, reg_t1, reg_vl);
 
     vle16_v(v_ld, reg_src);
-    vfwcvt_f_f_v(v_work, v_ld); // x -> f32
+    widen(v_work, v_ld);
 
-    if (weights_f16_) {
+    if (weights_xf16_) {
         if (with_scale_) {
             vle16_v(v_gld, reg_scale);
-            vfwcvt_f_f_v(v_gamma, v_gld); // gamma -> f32 (v24 m8)
+            widen(v_gamma, v_gld);
         }
         if (with_shift_) {
             vle16_v(v_bld, reg_shift);
-            vfwcvt_f_f_v(v_beta, v_bld); // beta -> f32 (v8 m8)
+            widen(v_beta, v_bld);
         }
     } else if (with_scale_ || with_shift_) {
         vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m8, VTA::ta, VMA::ma);
@@ -739,14 +748,17 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     if (with_shift_) vfadd_vv(v_work, v_work, v_beta);
 
     vsetvli(reg_tmp, reg_vl, SEW::e16, LMUL::m4, VTA::ta, VMA::ma);
-    vfncvt_f_f_w(v_ld, v_work); // f32 -> f16
+    if (is_bf16)
+        vfncvtbf16_f_f_w(v_ld, v_work);
+    else
+        vfncvt_f_f_w(v_ld, v_work);
     vse16_v(v_ld, reg_dst);
 
     slli(reg_tmp, reg_vl, 1);
     add(reg_src, reg_src, reg_tmp);
     add(reg_dst, reg_dst, reg_tmp);
     if (with_scale_ || with_shift_) {
-        slli(reg_tmp2, reg_vl, weights_f16_ ? 1 : 2);
+        slli(reg_tmp2, reg_vl, weights_xf16_ ? 1 : 2);
         if (with_scale_) add(reg_scale, reg_scale, reg_tmp2);
         if (with_shift_) add(reg_shift, reg_shift, reg_tmp2);
     }
@@ -755,7 +767,7 @@ void jit_rvv_layernorm_f16_fused_kernel_t::generate() {
     ret();
 }
 
-#undef GET_F16_OFF
+#undef GET_XF16_OFF
 
 jit_rvv_layernorm_bwd_kernel_t::jit_rvv_layernorm_bwd_kernel_t(
         bool scale, bool stats, bool weights)

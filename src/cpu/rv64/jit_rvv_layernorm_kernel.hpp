@@ -81,22 +81,24 @@ private:
     const bool with_shift_;
 };
 
-struct jit_rvv_layernorm_f16_fused_kernel_t : public jit_generator_t {
+struct jit_rvv_layernorm_xf16_fused_kernel_t : public jit_generator_t {
     struct call_params_t {
-        const void *src; // f16
-        void *dst; // f16
-        const void *scale; // gamma, f16 or f32 (per weights_f16_)
-        const void *shift; // beta,  f16 or f32 (per weights_f16_)
+        const void *src; // f16 or bf16
+        void *dst; // same data type as src
+        const void *scale; // f32 or the source data type
+        const void *shift; // same data type as scale
         dim_t len;
         float eps;
         float *mean; // f32 out, nullptr to skip
         float *variance; // f32 out, nullptr to skip
     };
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_layernorm_f16_fused_kernel_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_layernorm_xf16_fused_kernel_t)
 
-    jit_rvv_layernorm_f16_fused_kernel_t(bool with_scale, bool with_shift,
-            bool weights_f16, bool use_widening_sum);
+    jit_rvv_layernorm_xf16_fused_kernel_t(data_type_t data_type,
+            bool with_scale, bool with_shift, bool weights_xf16,
+            bool use_widening_sum);
+    status_t status() const { return status_; }
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -108,8 +110,10 @@ protected:
 private:
     const bool with_scale_;
     const bool with_shift_;
-    const bool weights_f16_;
+    const data_type_t data_type_;
+    const bool weights_xf16_;
     const bool use_widening_sum_;
+    status_t status_ = status::runtime_error;
 };
 
 struct jit_rvv_layernorm_bwd_kernel_t : public jit_generator_t {

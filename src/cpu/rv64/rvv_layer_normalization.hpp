@@ -41,8 +41,7 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_lnorm:", isa_, ""),
                 rvv_layer_normalization_fwd_t);
 
-        // f16 runs the Zvfh path (vfwcvt/vfncvt); f32 stays on V. Drives the
-        // verbose impl name (jit_lnorm:rvv vs jit_lnorm:rvv_zvfh).
+        // The source data type selects the vector conversion instructions.
         cpu_isa_t isa_ = v;
 
         status_t init(const engine_t *engine) {
@@ -54,18 +53,16 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
             VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
-            VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, f16),
+            VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, f16, bf16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM((dst_md()->data_type == src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_LNORM(
                     (stat_md()->data_type == f32), VERBOSE_UNSUPPORTED_DT);
 
-            // Set the ISA that drives the impl name (jit_lnorm:rvv vs
-            // jit_lnorm:rvv_zvfh) once the dtype is validated and before any
-            // mayiuse()/has_data_type_support() rejection, so a declined f16 PD
-            // is not mislabeled jit_lnorm:rvv in the dispatch log.
-            isa_ = (src_md()->data_type == f16) ? zvfh : v;
+            isa_ = src_md()->data_type == bf16   ? zvfbfwma
+                    : src_md()->data_type == f16 ? zvfh
+                                                 : v;
 
             if (src_md()->data_type == f16) {
                 VDISPATCH_LNORM(platform::has_data_type_support(f16),
@@ -79,6 +76,17 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
                         "unsupported scale or shift data type");
             } else if (src_md()->data_type == f32) {
                 VDISPATCH_LNORM((check_scale_shift_data_type({f32})),
+                        VERBOSE_UNSUPPORTED_FEATURE,
+                        "unsupported scale or shift data type");
+            } else {
+                VDISPATCH_LNORM(platform::has_data_type_support(bf16),
+                        VERBOSE_UNSUPPORTED_DT);
+                // Avoid the per-row JIT setup cost for very short bf16 axes.
+                VDISPATCH_LNORM(norm_axis() >= 8, VERBOSE_UNSUPPORTED_FEATURE,
+                        "short bf16 normalization axis");
+                VDISPATCH_LNORM(!stats_are_src(), VERBOSE_UNSUPPORTED_FEATURE,
+                        "bf16 does not support global stats");
+                VDISPATCH_LNORM(check_scale_shift_data_type({f32}),
                         VERBOSE_UNSUPPORTED_FEATURE,
                         "unsupported scale or shift data type");
             }
@@ -141,8 +149,9 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
     };
 
     status_t init(engine_t *engine) override {
+        if (xf16_fused_kernel_) CHECK(xf16_fused_kernel_->status());
         if (pd()->reorder_pd_)
-            pd()->reorder_pd_->create_primitive(reorder_, engine);
+            CHECK(pd()->reorder_pd_->create_primitive(reorder_, engine));
         return status::success;
     }
 
@@ -209,7 +218,7 @@ private:
     std::shared_ptr<primitive_t> reorder_;
     std::unique_ptr<jit_rvv_layernorm_fused_kernel_t> fused_kernel_;
     std::unique_ptr<jit_rvv_layernorm_data_kernel_t> data_kernel_;
-    std::unique_ptr<jit_rvv_layernorm_f16_fused_kernel_t> f16_fused_kernel_;
+    const jit_rvv_layernorm_xf16_fused_kernel_t *xf16_fused_kernel_ = nullptr;
 };
 
 struct jit_uni_layer_normalization_bwd_t : public primitive_t {

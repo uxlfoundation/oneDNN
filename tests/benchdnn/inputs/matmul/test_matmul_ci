@@ -10,3 +10,8 @@
 # When a generator support must be expanded, leave a TODO note.
 
 --batch=harness_matmul_decompression_u3
+
+# Zero-size matmul is a no-op: the primitive returns without writing dst, so the
+# reference destination is seeded from the implementation-side buffer and the case
+# checks that nothing was written.
+--reset 8x0:0x8

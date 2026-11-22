@@ -902,7 +902,15 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_DST: {
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
-                if ((sum_idx >= 0) || po.has_inplace_binary()) {
+                // A zero-size matmul is a no-op: neither `ref_matmul` nor the JIT
+                // implementations write `dst` for it, so the implementation-side buffer
+                // keeps whatever the filler put there. The reference destination has to
+                // start from the same values or the two differ by construction and the
+                // case can never pass. Seeding it makes the comparison a real check that
+                // a no-op leaves the destination alone, instead of a guaranteed mismatch.
+                const bool is_zero_size
+                        = prb->m == 0 || prb->n == 0 || prb->k == 0;
+                if ((sum_idx >= 0) || po.has_inplace_binary() || is_zero_size) {
                     SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
                             WARN);
                     // Bitwise mode for sum and in-place binary post-ops

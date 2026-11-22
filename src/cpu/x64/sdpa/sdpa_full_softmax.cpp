@@ -667,9 +667,17 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                         - score_tile_bytes);
         return seq_q > q_block_max && concurrent_kv_bytes > l3_left_bytes;
     };
-    // The schedule's actual score tile is known only after q_block is chosen;
-    // see the second check there.
-    conf.interleave_items = kv_overflows_l3(score_tile_target_bytes);
+    // Estimate L3 occupancy before choosing the schedule and q_block; this
+    // decision affects q_rows_min. The L2-based score-tile target may exceed
+    // the tile for q_block_max rows, so cap the estimate at that size.
+    // For fused schedules, if interleaving is not already enabled, a later
+    // L3 check uses the actual tile size after choosing q_block and
+    // query_heads_per_item. Grouped-head rounding can make that tile larger
+    // than this estimate, enabling interleaving.
+    const double estimated_score_tile_bytes
+            = nstl::min<double>(score_tile_target_bytes,
+                    static_cast<double>(q_block_max) * score_row_bytes);
+    conf.interleave_items = kv_overflows_l3(estimated_score_tile_bytes);
     const bool kv_shared_in_l3
             = 2 * kv_heads_total < conf.nthr || conf.interleave_items;
     const float q_rows_min = (hs_qk + hs_v) / (kv_shared_in_l3 ? 16.f : 8.f);

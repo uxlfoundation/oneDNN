@@ -98,7 +98,8 @@ void log_manager_t::set_log_level(const std::string &vmode_str) const {
     // [trace, debug, info, warn, error, critical, off]
     spdlog::set_level(spdlog::level::off);
 
-    if (vmode_str == "-1" || vmode_str == "all") {
+    if (vmode_str == "-1" || vmode_str == "all"
+            || vmode_str.find("trace") != std::string::npos) {
         spdlog::set_level(spdlog::level::trace);
     } else if (vmode_str.rfind("debuginfo=", 0) == 0) {
         spdlog::set_level(spdlog::level::debug);

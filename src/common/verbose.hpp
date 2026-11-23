@@ -18,6 +18,7 @@
 #ifndef COMMON_VERBOSE_HPP
 #define COMMON_VERBOSE_HPP
 
+#include <atomic>
 #include <cinttypes>
 #include <cstdio>
 #include <mutex>
@@ -185,6 +186,19 @@ static inline int format_type_checker(const char *, ...) {
                 duration); \
     }
 
+// Special syntactic sugar for trace markers.
+// `marker` (start, end) sets the trailing `<marker>_id:<trace_id>` field and
+// `phase` (create, exec) sets both the operation and the gating flag.
+#define VTRACE(marker, apitype, phase, trace_id, info) \
+    do { \
+        if (dnnl::impl::get_verbose(dnnl::impl::verbose_t::phase##_trace)) { \
+            VFORMAT(dnnl::impl::get_msec(), \
+                    dnnl::impl::verbose_t::phase##_trace, apitype, phase, \
+                    VERBOSE_trace, "%s," #marker "_id:%llu", (info), \
+                    static_cast<unsigned long long>(trace_id)); \
+        } \
+    } while (0)
+
 struct verbose_t {
     enum flag_kind : uint32_t {
         // we reserve the 24 lower bits for user info
@@ -199,6 +213,8 @@ struct verbose_t {
         exec_profile = 1 << 7,
         profile_externals = 1 << 8,
         warn = 1 << 9,
+        exec_trace = 1 << 10,
+        create_trace = 1 << 11,
         // the upper 8 bits are reserved for devinfo levels
         debuginfo = 1 << 24,
         //
@@ -210,6 +226,15 @@ struct verbose_t {
 
     static uint32_t make_debuginfo(uint32_t level) { return level << 24; }
     static uint32_t get_debuginfo(uint32_t flag) { return flag >> 24; }
+
+    // Returns a process-wide unique trace ID for traced creation or execution
+    // calls. fetch_add() keeps IDs unique when called concurrently - relaxed
+    // ordering suffices as only uniqueness is required. IDs start at 1, so 0
+    // can be used to denote a disabled trace.
+    static uint64_t next_trace_id() {
+        static std::atomic<uint64_t> trace_id_counter {1};
+        return trace_id_counter.fetch_add(1, std::memory_order_relaxed);
+    }
 };
 
 struct component_t {

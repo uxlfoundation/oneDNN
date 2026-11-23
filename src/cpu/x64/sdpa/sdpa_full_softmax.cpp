@@ -474,6 +474,76 @@ status_t build_mm2_brgemm_desc(brgemm_desc_t &brg, const sdpa_pd_t &pd,
     return finalize_brgemm_desc(brg, conf.mm2_needs_vnni_b);
 }
 
+status_t insert_brgemm_desc(brgemm_containers::brgemm_desc_container_t &descs,
+        brgemm_desc_t &brg, bool needs_vnni, int &idx, size_t &max_wsp) {
+    // AMX ukernels require VNNI-packed B.
+    if (brg.is_tmm && !needs_vnni) return status::unimplemented;
+    if (brg.is_tmm) {
+        // The palette container's insert() cannot distinguish a duplicate
+        // palette from an initialization failure, so validate it here.
+        char palette[AMX_PALETTE_SIZE];
+        CHECK(brgemm_init_tiles(brg, palette));
+    }
+    max_wsp = nstl::max(
+            max_wsp, static_cast<size_t>(brg.get_wsp_buffer_size()));
+    idx = descs.insert(brg);
+    return status::success;
+}
+
+status_t build_brgemm_descs(const sdpa_pd_t &pd,
+        const sdpa_full_softmax_conf_t &conf,
+        sdpa_full_softmax_brgemm_t &brg_conf, size_t &max_wsp) {
+    brg_conf = {};
+    // The descriptor container is shared across pd clones.
+    brg_conf.descs
+            = std::make_shared<brgemm_containers::brgemm_desc_container_t>();
+    auto &descs = *brg_conf.descs;
+
+    const dim_t ms[2] = {conf.m_block, conf.q_tail};
+    const dim_t ns[2] = {conf.mm1_n_block, conf.mm1_n_tail};
+    for (int qi = 0; qi < 2; ++qi) {
+        if (!ms[qi]) continue;
+        for (int ni = 0; ni < 2; ++ni) {
+            if (!ns[ni]) continue;
+            brgemm_desc_t brg;
+            CHECK(build_mm1_brgemm_desc(brg, pd, conf, ms[qi], ns[ni]));
+            CHECK(insert_brgemm_desc(descs, brg, conf.mm1_needs_vnni_b,
+                    brg_conf.mm1[qi][ni], max_wsp));
+        }
+    }
+
+    // Build the configured mm2 variants and, for a tiled reduction, beta-zero
+    // variants for the first K block.
+    const dim_t ks[2] = {conf.mm2_k_block, conf.mm2_k_tail};
+    for (int qi = 0; qi < 2; ++qi) {
+        if (!ms[qi]) continue;
+        for (int ki = 0; ki < 2; ++ki) {
+            if (!ks[ki]) continue;
+            for (int vi = 0; vi < 2; ++vi) {
+                const dim_t width = vi ? conf.v_tail : conf.v_block;
+                if (!width) continue;
+                brgemm_desc_t brg;
+                CHECK(build_mm2_brgemm_desc(
+                        brg, pd, conf, conf.mm2_beta, ms[qi], width, ks[ki]));
+                CHECK(insert_brgemm_desc(descs, brg, conf.mm2_needs_vnni_b,
+                        brg_conf.mm2[qi][ki][vi], max_wsp));
+            }
+        }
+        if (conf.mm2_beta != 0.0f) {
+            for (int vi = 0; vi < 2; ++vi) {
+                const dim_t width = vi ? conf.v_tail : conf.v_block;
+                if (!width) continue;
+                brgemm_desc_t brg;
+                CHECK(build_mm2_brgemm_desc(brg, pd, conf, /*beta=*/0.0f,
+                        ms[qi], width, conf.mm2_k_block));
+                CHECK(insert_brgemm_desc(descs, brg, conf.mm2_needs_vnni_b,
+                        brg_conf.mm2_beta0[qi][vi], max_wsp));
+            }
+        }
+    }
+    return status::success;
+}
+
 status_t is_vnni_b_required(
         data_type_t dt, bool attr_b_is_vnni, bool &needs_vnni_b) {
     brgemm_desc_t brg {};
@@ -1074,89 +1144,8 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
     conf.v_block = need_copy_v ? nstl::min<dim_t>(hs_v, b_panel_n) : hs_v;
     conf.v_tail = hs_v % conf.v_block;
 
-    // Build mm1/mm2 descriptors and size tile-store scratch for the largest
-    // workspace. The descriptor container is shared across pd clones.
-    auto &brg_conf = conf.brgemm;
-    brg_conf = {};
-    brg_conf.descs
-            = std::make_shared<brgemm_containers::brgemm_desc_container_t>();
     size_t max_wsp = 0;
-    auto add_brg_desc
-            = [&](int &idx, brgemm_desc_t &brg, bool needs_vnni) -> status_t {
-        // AMX ukernels require VNNI-packed B.
-        if (brg.is_tmm && !needs_vnni) return status::unimplemented;
-        if (brg.is_tmm) {
-            // The palette container's insert() cannot distinguish a duplicate
-            // palette from an initialization failure, so validate it here.
-            char palette[AMX_PALETTE_SIZE];
-            CHECK(brgemm_init_tiles(brg, palette));
-        }
-        max_wsp = nstl::max(
-                max_wsp, static_cast<size_t>(brg.get_wsp_buffer_size()));
-        idx = brg_conf.descs->insert(brg);
-        return status::success;
-    };
-
-    // One descriptor per block/tail combination: rows split into m_block
-    // (+ q_tail); seq_kv splits into mm1_n_block (+ mm1_n_tail) for mm1 and
-    // independently into mm2_k_block (+ mm2_k_tail) for mm2.
-    const dim_t ms[2] = {conf.m_block, conf.q_tail};
-
-    // mm1 N is one seq_kv column block; its post-op descriptors keep the full
-    // seq_kv width so the folded mask/select is addressed by global column.
-    auto build_mm1_descs = [&]() -> status_t {
-        const dim_t ns[2] = {conf.mm1_n_block, conf.mm1_n_tail};
-        for (int qi = 0; qi < 2; ++qi) {
-            if (!ms[qi]) continue;
-            for (int ni = 0; ni < 2; ++ni) {
-                if (!ns[ni]) continue;
-                brgemm_desc_t brg;
-                CHECK(build_mm1_brgemm_desc(brg, pd, conf, ms[qi], ns[ni]));
-                CHECK(add_brg_desc(
-                        brg_conf.mm1[qi][ni], brg, conf.mm1_needs_vnni_b));
-            }
-        }
-        return status::success;
-    };
-
-    // mm2 K is one seq_kv reduction block; beta accumulates across them. B is
-    // V in place when its columns are contiguous and no VNNI packing is needed;
-    // otherwise it uses the materialized V buffer. The beta = 0 full-K-block
-    // mm2 for the first block (when the reduction is tiled) is built per
-    // q-tile.
-    auto build_mm2_descs = [&]() -> status_t {
-        const dim_t ks[2] = {conf.mm2_k_block, conf.mm2_k_tail};
-        for (int qi = 0; qi < 2; ++qi) {
-            if (!ms[qi]) continue;
-            for (int ki = 0; ki < 2; ++ki) {
-                if (!ks[ki]) continue;
-                for (int vi = 0; vi < 2; ++vi) {
-                    const dim_t width = vi ? conf.v_tail : conf.v_block;
-                    if (!width) continue;
-                    brgemm_desc_t brg;
-                    CHECK(build_mm2_brgemm_desc(
-                            brg, pd, conf, mm2_beta, ms[qi], width, ks[ki]));
-                    CHECK(add_brg_desc(brg_conf.mm2[qi][ki][vi], brg,
-                            conf.mm2_needs_vnni_b));
-                }
-            }
-            if (mm2_beta != 0.0f) {
-                for (int vi = 0; vi < 2; ++vi) {
-                    const dim_t width = vi ? conf.v_tail : conf.v_block;
-                    if (!width) continue;
-                    brgemm_desc_t brg;
-                    CHECK(build_mm2_brgemm_desc(brg, pd, conf, /*beta=*/0.0f,
-                            ms[qi], width, conf.mm2_k_block));
-                    CHECK(add_brg_desc(brg_conf.mm2_beta0[qi][vi], brg,
-                            conf.mm2_needs_vnni_b));
-                }
-            }
-        }
-        return status::success;
-    };
-
-    CHECK(build_mm1_descs());
-    CHECK(build_mm2_descs());
+    CHECK(build_brgemm_descs(pd, conf, conf.brgemm, max_wsp));
 
     // Per-thread scratch, per query head of the work item: one score tile
     // [q_block x seq_kv] and one pv tile [q_block x hs_v], both f32 (BRGEMM

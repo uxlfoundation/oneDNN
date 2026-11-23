@@ -112,7 +112,7 @@ enum class tail_grouping_t { separate, grouped };
 //   var_bs                - the batch size can change on each call, up to
 //                           `max_bs`. The kernel reads `BS`.
 //   load_dim              - N, the columns of C
-//   lda/ldb/ldc           - leading dimensions of A, B, and C, in elements
+//   lda/ldb/ldc/ldd       - leading dimensions of A, B, C, and D, in elements
 //   bd_block              - M rows per block
 //   ld_block              - N elements per vector register or tile
 //   ld_block2             - vector registers or tiles of N per block
@@ -137,7 +137,7 @@ struct loop_conf_t {
     dim_t max_bs = 0;
     bool var_bs = true;
     dim_t load_dim = 0;
-    dim_t lda = 0, ldb = 0, ldc = 0;
+    dim_t lda = 0, ldb = 0, ldc = 0, ldd = 0;
     int bd_block = 0, ld_block = 0, ld_block2 = 0, rd_block = 0;
     dim_t bdb = 0, ldb2 = 0, rdb = 0;
     int bdb_tail = 0, ldb2_tail = 0, ldb_tail = 0, rdb_tail = 0;
@@ -195,7 +195,8 @@ enum class output_stage_t {
 // Output path configuration.
 //
 //   beta            - output scaling: 0 overwrites C, 1 accumulates into C
-//   dt_c            - element data type of C and D in memory
+//   dt_c            - element data type of C in memory
+//   dt_d            - element data type of D in memory
 //   dt_bias         - element data type of the bias
 //   post_ops        - the attribute post-ops, applied through the post-ops
 //                     injector
@@ -208,6 +209,7 @@ enum class output_stage_t {
 struct output_conf_t {
     float beta = 0.0f;
     data_type_t dt_c = data_type::undef;
+    data_type_t dt_d = data_type::undef;
     data_type_t dt_bias = data_type::undef;
     post_ops_t post_ops;
     memory_desc_t dst_md;
@@ -269,7 +271,7 @@ struct conf_t {
         return !store_with_post_ops.stages.empty();
     }
 
-    // Element sizes in bytes of A, B, C, and the bias. The bias size is 0
+    // Element sizes in bytes of A, B, C, D, and the bias. The bias size is 0
     // without a bias.
     int dt_sz_a() const {
         return (int)types::data_type_size(compute_path.dt_a);
@@ -278,6 +280,7 @@ struct conf_t {
         return (int)types::data_type_size(compute_path.dt_b);
     }
     int dt_sz_c() const { return (int)types::data_type_size(output.dt_c); }
+    int dt_sz_d() const { return (int)types::data_type_size(output.dt_d); }
     int dt_sz_bias() const {
         return store_with_post_ops.has_stage(output_stage_t::bias)
                 ? (int)types::data_type_size(output.dt_bias)
@@ -294,7 +297,7 @@ struct conf_t {
     // Distance in bytes a B load prefetches ahead, one K block of B rows.
     dim_t rdb_b_off() const { return dt_sz_b() * loop.rd_block * loop.ldb; }
 
-    // Byte offset of an element of A, B, C, the bias, or a per-N weights
+    // Byte offset of an element of A, B, C, D, the bias, or a per-N weights
     // scale. `bd` is the row, `rd` the K index, and `ld` the N index of the
     // element, counted from where the pointers stand. The immediate of a
     // pointer move comes from the same functions. B keeps `vnni_granularity` K
@@ -315,6 +318,20 @@ struct conf_t {
 
     dim_t c_off(dim_t bd, dim_t ld) const {
         return dt_sz_c() * (bd * loop.ldc + ld);
+    }
+
+    dim_t d_off(dim_t bd, dim_t ld) const {
+        return dt_sz_d() * (bd * loop.ldd + ld);
+    }
+
+    // Byte offset of an element and `mem_dt` of the stores to C or D, whichever
+    // `store_cfg` selects.
+    dim_t store_off(const store_conf_t &store_cfg, dim_t bd, dim_t ld) const {
+        return store_cfg.to_d ? d_off(bd, ld) : c_off(bd, ld);
+    }
+
+    data_type_t store_dt(const store_conf_t &store_cfg) const {
+        return store_cfg.to_d ? output.dt_d : output.dt_c;
     }
 
     // One bias value per output column, so the offset has no row term.

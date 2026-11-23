@@ -19,6 +19,7 @@
 #include "internal/utils.hpp"
 #include "pieces/layout_utils.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <sstream>
 #include <string>
@@ -76,6 +77,16 @@ char downgradeBlock2D(char c)
         case 'v': return 'b';
         case 't': return 's';
         default:  return c;
+    }
+}
+
+AccessType downgradeBlock2D(AccessType type)
+{
+    switch (type) {
+        case AccessType::Block2D:
+        case AccessType::Block2DVNNI:      return AccessType::Block;
+        case AccessType::Block2DTranspose: return AccessType::Scattered;
+        default:                           return type;
     }
 }
 
@@ -148,6 +159,20 @@ CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw)
     }
 }
 
+// Blocking stored for a "b?0" modifier.
+static constexpr int noBlocking = 16777216;
+
+static bool defaultCheckAdd32(HW hw)
+{
+    return !native64Bit(hw) || (hw == HW::XeHPC);
+}
+
+static CacheSettingsLSC defaultCachingW(HW hw)
+{
+    // L1 uncached writes perform better on PVC.
+    return (hw == HW::XeHPC) ? CacheSettingsLSC::L1UC_L3WB : CacheSettingsLSC::L1WB_L3WB;
+}
+
 void getCaching(std::stringstream &s, ProductFamily family, MatrixAddressingStrategy &astrategy, bool leaveDefault = false)
 {
     auto hw = getCore(family);
@@ -156,9 +181,7 @@ void getCaching(std::stringstream &s, ProductFamily family, MatrixAddressingStra
 
     if (!leaveDefault) {
         cachingR = CacheSettingsLSC::L1C_L3C;
-        // L1 uncached writes perform better on PVC.
-        cachingW = (hw == HW::XeHPC) ? CacheSettingsLSC::L1UC_L3WB
-                                     : CacheSettingsLSC::L1WB_L3WB;
+        cachingW = defaultCachingW(hw);
     }
 
     if (s.peek() == '{') {
@@ -320,7 +343,7 @@ void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrat
     strategy.B_prefetch.padded |= isPacked(problem.B.layout);
 
     strategy.unroll[LoopK] = 1;
-    strategy.checkAdd32 = !native64Bit(hw) || (hw == HW::XeHPC);
+    strategy.checkAdd32 = defaultCheckAdd32(hw);
     strategy.altCRemainder |= (strategy.C.accessType == AccessType::Block) || strategy.kParallel;
 
     // These parsers are for basic flags, with no attached parametrization. For parameters with
@@ -567,7 +590,7 @@ void parseStrategy(const std::string &str, const GEMMProblem &problem, GEMMStrat
                         size_t alt;
                         strategy.blocking[loop] = stoi(mod.substr(2), &alt);
                         if (strategy.blocking[loop] == 0)
-                            strategy.blocking[loop] = 16777216;
+                            strategy.blocking[loop] = noBlocking;
                         alt += 3;
                         if (mod.length() > alt)
                             strategy.blockingAlt[loop] = stoi(mod.substr(alt));
@@ -828,40 +851,46 @@ const char *parsePrecisions(const char *s, Type &precision1, Type &precision2)
     return s;
 }
 
-static std::string unparseKParallel(const GEMMStrategy &s)      { return std::string(s.kParallel ? " kb" : "") + (s.kParallelVariable ? " kv" : ""); }
-static std::string unparseFuseBeta(const GEMMStrategy &s)       { return !s.fuseBeta ? "" : s.altFusedBeta ? " afb" : " fb"; }
-static std::string unparseFusePostOps(const GEMMStrategy &s)    { return s.fusePostOps ? " fp" : ""; }
-static std::string unparseKParallelLocal(const GEMMStrategy &s) { return !s.kParallelLocal ? "" : s.shrinkWGK ? " akr" : s.kInterleave ? " ikr" : " kr"; }
-
-std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy &strategy)
+std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     std::stringstream s;
     s.imbue(std::locale::classic());
 
     bool anyOptAlignAB = strategy.optAlignAB || strategy.optAlignAB2D;
+    static const int defaultKPadding = GEMMStrategy().kPadding;
+
+    // Skips the settings the parser applies by default.
+    auto caching = [&](const MatrixAddressingStrategy &astrategy, bool isC = false) {
+        auto defaultW = isC ? defaultCachingW(hw) : CacheSettingsLSC::Default;
+        if (astrategy.cachingR != CacheSettingsLSC::L1C_L3C || astrategy.cachingW != defaultW)
+            unparseCaching(hw, s, astrategy);
+    };
 
     unparseAddressBase(s, strategy.A.base);
     unparseAccessType(s, strategy.A);
-    if (anyOptAlignAB && strategy.unalignedAccA != strategy.A.accessType) {
+    if (anyOptAlignAB && strategy.unalignedAccA != downgradeBlock2D(strategy.A.accessType)) {
         auto unalignedA = strategy.A;
         unalignedA.accessType = strategy.unalignedAccA;
         s << '/';
         unparseAccessType(s, unalignedA);
     }
     s << strategy.ka_load;
-    if (strategy.ka_load_masked != strategy.ka_load)
+    if (strategy.ka_load_masked && strategy.ka_load_masked != strategy.ka_load)
         s << '/' << strategy.ka_load_masked;
     unparseTiling(s, strategy.A);
     if (strategy.A_copies > 1)
         s << 'x' << strategy.A_copies;
-    unparseCaching(hw, s, strategy.A);
+    caching(strategy.A);
     if (strategy.prefetchA) {
         s << '+';
         unparseAccessType(s, strategy.A_prefetch);
-        s << strategy.ka_prefetch << ',' << strategy.ka_pfStride << '@' << strategy.prefetchA;
+        s << strategy.ka_prefetch;
+        if (strategy.ka_pfStride != strategy.ka_prefetch)
+            s << ',' << strategy.ka_pfStride;
+        s << '@' << strategy.prefetchA;
         if (strategy.prefetchAMasked != strategy.prefetchA)
             s << '/' << strategy.prefetchAMasked;
-        unparseCaching(hw, s, strategy.A_prefetch);
+        caching(strategy.A_prefetch);
     }
     if (strategy.l3PrefetchA) {
         if (!strategy.prefetchA) s << '+';
@@ -873,26 +902,29 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     s << ' ';
     unparseAddressBase(s, strategy.B.base);
     unparseAccessType(s, strategy.B);
-    if (anyOptAlignAB && strategy.unalignedAccB != strategy.B.accessType) {
+    if (anyOptAlignAB && strategy.unalignedAccB != downgradeBlock2D(strategy.B.accessType)) {
         auto unalignedB = strategy.B;
         unalignedB.accessType = strategy.unalignedAccB;
         s << '/';
         unparseAccessType(s, unalignedB);
     }
     s << strategy.kb_load;
-    if (strategy.kb_load_masked != strategy.kb_load)
+    if (strategy.kb_load_masked && strategy.kb_load_masked != strategy.kb_load)
         s << '/' << strategy.kb_load_masked;
     unparseTiling(s, strategy.B);
     if (strategy.B_copies > 1)
         s << 'x' << strategy.B_copies;
-    unparseCaching(hw, s, strategy.B);
+    caching(strategy.B);
     if (strategy.prefetchB) {
         s << '+';
         unparseAccessType(s, strategy.B_prefetch);
-        s << strategy.kb_prefetch << ',' << strategy.kb_pfStride << '@' << strategy.prefetchB;
+        s << strategy.kb_prefetch;
+        if (strategy.kb_pfStride != strategy.kb_prefetch)
+            s << ',' << strategy.kb_pfStride;
+        s << '@' << strategy.prefetchB;
         if (strategy.prefetchBMasked != strategy.prefetchB)
             s << '/' << strategy.prefetchBMasked;
-        unparseCaching(hw, s, strategy.B_prefetch);
+        caching(strategy.B_prefetch);
     }
     if (strategy.l3PrefetchB) {
         if (!strategy.prefetchB) s << '+';
@@ -905,12 +937,12 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     unparseAddressBase(s, strategy.C.base);
     unparseAccessType(s, strategy.C);
     unparseTiling(s, strategy.C);
-    unparseCaching(hw, s, strategy.C);
+    caching(strategy.C, true);
     if (strategy.prefetchC) {
         s << '+';
         unparseAccessType(s, strategy.C_prefetch);
         s << '@' << strategy.prefetchC;
-        unparseCaching(hw, s, strategy.C_prefetch);
+        caching(strategy.C_prefetch);
     }
 
     if (strategy.slmA || strategy.slmB) {
@@ -935,13 +967,15 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     }
 
     if (strategy.wgPadFactor > 1)           s << " wx" << strategy.wgPadFactor;
-    if (strategy.forceWGUpdate == WGFixed)  s << " ff";
+    if (strategy.forceWGUpdate == WGFixed && strategy.wgPadFactor <= 1) s << " ff";
     if (strategy.forceFixedWGK)             s << " ffk";
 
 
-    s << unparseKParallelLocal(strategy);
+    if (strategy.kParallelLocal)    s << (strategy.shrinkWGK   ? " akr" :
+                                          strategy.kInterleave ? " ikr" :
+                                                                 " kr");
     if (strategy.fillGoal)          s << " fg " << strategy.fillGoal * (1. / 16);
-    if (strategy.kInterleave)       s << " ki" << strategy.kInterleaveChunk;
+    if (strategy.kInterleaveChunk)  s << " ki" << strategy.kInterleaveChunk;
 
     if (strategy.fixedSystolic)
         s << " fs";
@@ -964,8 +998,10 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     if (strategy.stallAfterLoad)            s << " st";
     if (strategy.fmaBoustrophedon)          s << " fx";
 
-    s << " k" << strategy.unroll[LoopK];
-    if (strategy.unrollK_masked > 0) s << '/' << strategy.unrollK_masked;
+    if (strategy.unroll[LoopK] != 1 || strategy.unrollK_masked > 0) {
+        s << " k" << strategy.unroll[LoopK];
+        if (strategy.unrollK_masked > 0) s << '/' << strategy.unrollK_masked;
+    }
     if (strategy.extraKAlign > 1) s << " ka" << strategy.extraKAlign;
 
     if (strategy.GRFs != 128)
@@ -982,7 +1018,7 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     if (strategy.coopB == CoopSplit::FullK) s << " skb";
 
     switch (strategy.registerScheme) {
-        case GEMMStrategy::CSeparate:       s << " cs";  break;
+        case GEMMStrategy::CSeparate:                    break;
         case GEMMStrategy::ACB:             s << " acb"; break;
         case GEMMStrategy::BCA:             s << " bca"; break;
         case GEMMStrategy::VNC:             s << " vnc"; break;
@@ -993,7 +1029,6 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
 
     if (strategy.cAccumulators)             s << " ac";
     if (strategy.cLoadAhead)                s << " el";
-    if (strategy.delayABInc)                s << " di";
     if (strategy.pfaux)                     s << " pfaux";
     if (strategy.loadBFirst)                s << " ba";
     if (strategy.doubleMasking)             s << " dm";
@@ -1017,8 +1052,7 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     if (strategy.tlbWarmup)                 s << " wt";
     if (strategy.tokenAlloc)                s << " tk";
 
-    if (strategy.checkAdd32 && !strategy.emulate.emulate64) s << " ch";
-    if (!strategy.checkAdd32 && strategy.emulate.emulate64) s << " nch";
+    if (strategy.checkAdd32 != defaultCheckAdd32(hw))       s << (strategy.checkAdd32 ? " ch" : " nch");
     if (strategy.wgInSS)                                    s << " ws";
     if (strategy.C.smode == ScatterSIMD::Wide)              s << " wc";
     if (strategy.forceCopyC)                                s << " cc";
@@ -1027,10 +1061,14 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     if (strategy.mSplitThresh)          s << " ms" << strategy.mSplitThresh;
     if (strategy.nSplitThresh)          s << " ns" << strategy.nSplitThresh;
     if (strategy.cInterleave)           s << " cti";
-    s << unparseKParallel(strategy) << unparseFuseBeta(strategy) << unparseFusePostOps(strategy);
+    if (strategy.kParallel)             s << " kb";
+    if (strategy.kParallelVariable)     s << " kv";
+    if (strategy.fuseBeta)              s << (strategy.altFusedBeta ? " afb" : " fb");
+    if (strategy.fusePostOps)           s << " fp";
     if (strategy.zeroTempC)             s << " zt";
     if (strategy.relaxedAccumulation)   s << " rx";
-    if (strategy.kPadding)              s << " pk" << strategy.kPadding;
+    bool kPad = strategy.kPadding || strategy.kParallel || strategy.kParallelVariable;
+    if (kPad && strategy.kPadding != defaultKPadding) s << " pk" << strategy.kPadding;
 
     if (strategy.C.atomic && !strategy.kParallel && !strategy.kParallelVariable)
         s << " au";
@@ -1043,7 +1081,7 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     switch (strategy.cWalkOrder) {
         case WalkOrder::Hilbertlike:      s << " hi"; break;
         case WalkOrder::Boustrophedon:    s << " bo"; break;
-        case WalkOrder::SimpleLinear:     s << " li"; break;
+        case WalkOrder::SimpleLinear:     if (!strategy.persistentLoop()) s << " li"; break;
         case WalkOrder::NestedLinear:     s << " nl"; break;
         default: break;
     }
@@ -1087,8 +1125,8 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
         s << " ql";
     }
 
-    bool npA = !isPacked(problem.A.layout) && !strategy.A.padded;
-    bool npB = !isPacked(problem.B.layout) && !strategy.B.padded;
+    bool npA = isPacked(problem.A.layout) && !strategy.A.padded;
+    bool npB = isPacked(problem.B.layout) && !strategy.B.padded;
     bool pabA = !isPacked(problem.A.layout) && strategy.A.padded;
     bool pabB = !isPacked(problem.B.layout) && strategy.B.padded;
     bool pc = !isPacked(problem.C.layout) && strategy.C.padded;
@@ -1098,7 +1136,7 @@ std::string unparseStrategy(HW hw,const GEMMProblem &problem, const GEMMStrategy
     if (pc)             s << " pc";
 
     for (auto loop: {LoopM, LoopN, LoopK}) if (strategy.blocking[loop] != 0) {
-        s << " b" << "mnk"[loop] << strategy.blocking[loop];
+        s << " b" << "mnk"[loop] << (strategy.blocking[loop] == noBlocking ? 0 : strategy.blocking[loop]);
         bool checkAlt = (loop == LoopK) ? (hw == HW::XeHP)
                                         : (strategy.cWalkOrder == WalkOrder::Hilbertlike);
         if (checkAlt && (strategy.blockingAlt[loop] != 0))

@@ -77,6 +77,8 @@ struct xe_fwd_t : public primitive_t {
             VDISPATCH_ELTWISE(memory_desc_wrapper(src_md())
                             == memory_desc_wrapper(dst_md()),
                     VERBOSE_INCONSISTENT_MDS, "src", "dst");
+            VDISPATCH_ELTWISE(memory_desc_wrapper(src_md()).is_dense(true),
+                    VERBOSE_UNSUPPORTED_MEM_STRIDE);
             VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::f16,
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
@@ -151,6 +153,8 @@ struct xe_bwd_t : public primitive_t {
             VDISPATCH_ELTWISE(memory_desc_wrapper(diff_dst_md())
                             == memory_desc_wrapper(diff_src_md()),
                     VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
+            VDISPATCH_ELTWISE(memory_desc_wrapper(data_md()).is_dense(true),
+                    VERBOSE_UNSUPPORTED_MEM_STRIDE);
             CHECK(init_conf(engine));
             return status::success;
         }

@@ -74,10 +74,11 @@ struct grouped_ocl_params_t : trivially_serializable_t<grouped_ocl_params_t> {
     bool with_src_scale = false, with_src_zp = false;
     bool with_wei_scale = false, with_wei_zp = false;
     bool wei_zp_common = false, wei_zp_host_scalar = false;
+    // Weights zero-points applied after the scales (static_sbzp).
+    bool wei_zp_after_scale = false;
     bool with_bias = false;
     bool with_post_op = false;
     bool int32_offset = true;
-    uint8_t pad[1] = {};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(grouped_ocl_params_t);
 

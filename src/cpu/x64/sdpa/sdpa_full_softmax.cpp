@@ -65,18 +65,6 @@ inline data_type_t mm_data_type(const sdpa_pd_t &pd) {
     return pd.desc()->qry_md()->data_type;
 }
 
-// Key range [first, second) of split_kv chunk c out of n_chunks. The keys are
-// split evenly and each boundary is rounded down to a multiple of block; the
-// last chunk ends at seq_kv. With n_chunks <= seq_kv / block, the evenly split
-// boundaries are at least block apart, so every chunk starts with a full block.
-std::pair<dim_t, dim_t> split_kv_chunk_keys(
-        dim_t c, dim_t n_chunks, dim_t block, dim_t seq_kv) {
-    auto boundary = [&](dim_t i) {
-        return utils::rnd_dn(i * seq_kv / n_chunks, block);
-    };
-    return {boundary(c), c + 1 == n_chunks ? seq_kv : boundary(c + 1)};
-}
-
 // Return the physical row stride in elements. Add one cache line when the
 // row stride would otherwise alias L1 sets; keep short rows dense.
 dim_t scratch_row_ld(dim_t width, size_t dt_sz, bool allow_padding) {
@@ -766,6 +754,308 @@ kv_blocking_t choose_kv_blocking(const sdpa_desc_t &desc,
     return {mm1_n_block, mm2_k_block, pack_k_for_aliasing, pack_k};
 }
 
+// Split-KV creates parallel tasks along the key axis: mm1 splits the
+// columns of QK^T and mm2 splits the reduction in PV. The scorer and
+// executor share these rules so estimated and executed tasks use the
+// same ranges, with a separate BRGEMM block size for each phase.
+namespace split_kv_partition {
+
+dim_t chunk_count(dim_t requested, dim_t block, dim_t seq_kv) {
+    // Limit the count so every chunk starts with a full BRGEMM block,
+    // except when the entire sequence fits in a single tail.
+    return nstl::max<dim_t>(1, nstl::min(requested, seq_kv / block));
+}
+
+// Start key of chunk c. Align interior boundaries so that only the last
+// chunk can need a BRGEMM tail. Its end (c == n_chunks) includes all keys.
+dim_t boundary(dim_t c, dim_t n_chunks, dim_t block, dim_t seq_kv) {
+    return c == n_chunks ? seq_kv : utils::rnd_dn(c * seq_kv / n_chunks, block);
+}
+
+std::pair<dim_t, dim_t> key_range(
+        dim_t c, dim_t n_chunks, dim_t block, dim_t seq_kv) {
+    return {boundary(c, n_chunks, block, seq_kv),
+            boundary(c + 1, n_chunks, block, seq_kv)};
+}
+
+} // namespace split_kv_partition
+
+struct task_grid_t {
+    dim_t groups;
+    dim_t heads_per_item;
+    dim_t q_block;
+    dim_t key_count;
+    dim_t key_block;
+    dim_t chunks;
+};
+
+struct work_counts_t {
+    double keys = 0;
+    double row_keys = 0;
+    double mac_rows_keys = 0;
+};
+
+// The model uses contiguous balance211 ranges, not the round-robin assignment
+// used by interleaved fused execution. Take each work count's maximum
+// separately; the maxima can come from different threads.
+// TODO: Benchmark whether modeling round-robin work improves schedule
+// selection for interleaved fused execution, especially with query tails.
+work_counts_t estimate_peak_thread_work(const task_grid_t &grid, dim_t seq_q,
+        dim_t mac_row_granule, int max_threads) {
+    work_counts_t peak;
+    const dim_t qb = grid.q_block;
+    const dim_t n_qblk = utils::div_up(seq_q, qb);
+    const dim_t tasks_per_group = n_qblk * grid.chunks;
+    const dim_t work_amount = grid.groups * tasks_per_group;
+    if (work_amount == 0) return peak;
+
+    const int nthr
+            = static_cast<int>(nstl::min<dim_t>(max_threads, work_amount));
+    const dim_t full_qblks = n_qblk - 1;
+    const dim_t tail_rows = seq_q - full_qblks * qb;
+    const dim_t full_rows = grid.heads_per_item * qb;
+    const dim_t tail_work_rows = grid.heads_per_item * tail_rows;
+    const dim_t full_mac_rows = grid.heads_per_item
+            * (mac_row_granule == 1 ? qb : utils::rnd_up(qb, mac_row_granule));
+    const dim_t tail_mac_rows = grid.heads_per_item
+            * (mac_row_granule == 1
+                            ? tail_rows
+                            : utils::rnd_up(tail_rows, mac_row_granule));
+    struct query_row_counts_t {
+        dim_t full, tail, sum;
+    };
+    const query_row_counts_t rows {
+            full_rows, tail_work_rows, full_qblks * full_rows + tail_work_rows};
+    const query_row_counts_t mac_rows {full_mac_rows, tail_mac_rows,
+            full_qblks * full_mac_rows + tail_mac_rows};
+    const auto prefix = [&grid, &rows, &mac_rows, n_qblk, tasks_per_group,
+                                full_qblks](dim_t task) {
+        const dim_t chunks = grid.chunks;
+        const dim_t key_count = grid.key_count;
+        const dim_t complete_groups = task / tasks_per_group;
+        const dim_t remainder = task % tasks_per_group;
+        const dim_t qblk = remainder / chunks;
+        const dim_t chunk = remainder % chunks;
+        const dim_t boundary = chunks == 1
+                ? 0
+                : split_kv_partition::boundary(
+                          chunk, chunks, grid.key_block, key_count);
+        const dim_t full_qblk_count = nstl::min(qblk, full_qblks);
+        work_counts_t work;
+        work.keys = static_cast<double>(complete_groups) * n_qblk * key_count
+                + qblk * key_count + boundary;
+        work.row_keys
+                = static_cast<double>(complete_groups) * key_count * rows.sum
+                + static_cast<double>(key_count) * full_qblk_count * rows.full
+                + static_cast<double>(boundary)
+                        * (qblk == full_qblks ? rows.tail : rows.full);
+        work.mac_rows_keys = static_cast<double>(complete_groups) * key_count
+                        * mac_rows.sum
+                + static_cast<double>(key_count) * full_qblk_count
+                        * mac_rows.full
+                + static_cast<double>(boundary)
+                        * (qblk == full_qblks ? mac_rows.tail : mac_rows.full);
+        return work;
+    };
+
+    for (int tid = 0; tid < nthr; ++tid) {
+        dim_t start = 0, end = 0;
+        balance211(work_amount, nthr, tid, start, end);
+        const auto before = prefix(start);
+        const auto after = prefix(end);
+        peak.keys = nstl::max(peak.keys, after.keys - before.keys);
+        peak.row_keys
+                = nstl::max(peak.row_keys, after.row_keys - before.row_keys);
+        peak.mac_rows_keys = nstl::max(
+                peak.mac_rows_keys, after.mac_rows_keys - before.mac_rows_keys);
+    }
+    return peak;
+}
+
+struct cost_coefs_t {
+    double kv_byte, mac, score, total_kv_byte, merge_elem;
+};
+
+struct schedule_cost_inputs_t {
+    const sdpa_desc_t &desc;
+    dim_t mm1_n_block;
+    dim_t mm2_k_block;
+    data_type_t mm_dt;
+    int nthr;
+    dim_t mac_row_granule;
+    bool heads_may_stack;
+};
+
+double head_call_kv_reads(dim_t heads_per_item, bool heads_may_stack) {
+    // Without stacking, each additional head's K/V read costs half as much
+    // as the first in the model (empirical GNR fit).
+    return heads_may_stack ? 1.0 : 1.0 + 0.5 * (heads_per_item - 1);
+}
+
+// Estimate execution time in ns to rank schedule candidates (lower is better).
+// Weight peak per-thread read and compute work, then add whole-problem K/V
+// traffic and any split-KV merge cost.
+double schedule_cost(const schedule_cost_inputs_t &inputs,
+        const cost_coefs_t &coefs, dim_t heads_per_item, dim_t qb,
+        dim_t chunks) {
+    const auto &desc = inputs.desc;
+    const dim_t seq_q = desc.queries();
+    const dim_t seq_kv = desc.keys();
+    const dim_t hs_qk = desc.head_size();
+    const dim_t hs_v = desc.values();
+    const dim_t hs = hs_qk + hs_v;
+    const dim_t mm_dt_sz
+            = static_cast<dim_t>(types::data_type_size(inputs.mm_dt));
+    const double kv_bytes_per_key = static_cast<double>(hs) * mm_dt_sz;
+    const dim_t groups = desc.batch() * desc.num_q_heads() / heads_per_item;
+    const double item_kv_reads
+            = head_call_kv_reads(heads_per_item, inputs.heads_may_stack);
+    const dim_t mac_row_granule = inputs.mac_row_granule;
+    const int nthr = inputs.nthr;
+    const auto peak_work_for
+            = [seq_q, mac_row_granule, nthr](const task_grid_t &grid) {
+        return estimate_peak_thread_work(grid, seq_q, mac_row_granule, nthr);
+    };
+    double t = 0;
+    if (chunks == 1) {
+        const auto work = peak_work_for(
+                {groups, heads_per_item, qb, seq_kv, seq_kv, 1});
+        t = coefs.kv_byte * work.keys * kv_bytes_per_key * item_kv_reads
+                + coefs.mac * work.mac_rows_keys * hs
+                + coefs.score * 2 * work.row_keys;
+    } else {
+        const dim_t mm1_block = inputs.mm1_n_block;
+        const dim_t mm2_block = inputs.mm2_k_block;
+        const dim_t mm1_chunks
+                = split_kv_partition::chunk_count(chunks, mm1_block, seq_kv);
+        const dim_t mm2_chunks
+                = split_kv_partition::chunk_count(chunks, mm2_block, seq_kv);
+        const auto mm1 = peak_work_for(
+                {groups, heads_per_item, qb, seq_kv, mm1_block, mm1_chunks});
+        const auto mm2 = peak_work_for(
+                {groups, heads_per_item, qb, seq_kv, mm2_block, mm2_chunks});
+        const dim_t query_heads = desc.batch() * desc.num_q_heads();
+        const auto softmax
+                = peak_work_for({query_heads, 1, qb, seq_kv, seq_kv, 1});
+        const auto merge = peak_work_for({query_heads, 1, qb, 1, 1, 1});
+        t = coefs.kv_byte * (mm1.keys * hs_qk + mm2.keys * hs_v) * mm_dt_sz
+                        * item_kv_reads
+                + coefs.mac
+                        * (mm1.mac_rows_keys * hs_qk + mm2.mac_rows_keys * hs_v)
+                + coefs.score * (mm1.row_keys + softmax.row_keys);
+        if (mm2_chunks > 1)
+            t += coefs.merge_elem * merge.row_keys * hs_v * (mm2_chunks - 1);
+    }
+    const dim_t kv_reads = heads_per_item == 1
+            ? desc.num_q_heads() / desc.num_kv_heads()
+            : 1;
+    const dim_t kv_heads_total = desc.batch() * desc.num_kv_heads();
+    t += coefs.total_kv_byte * kv_reads * kv_heads_total * seq_kv
+            * kv_bytes_per_key;
+    return t;
+}
+
+struct schedule_choice_t {
+    sdpa_full_softmax_schedule_t schedule;
+    dim_t heads_per_item;
+    dim_t q_block;
+    dim_t mm1_chunks;
+    dim_t mm2_chunks;
+    bool interleave_items;
+};
+
+schedule_choice_t choose_schedule(const sdpa_desc_t &desc,
+        const blocking_hw_t &hw, data_type_t mm_dt,
+        const query_blocking_t &query_blocking,
+        const kv_blocking_t &kv_blocking, size_t score_row_bytes,
+        const sdpa_full_softmax_knobs_t &knobs) {
+    const dim_t seq_q = desc.queries();
+    const dim_t seq_kv = desc.keys();
+    const dim_t group_head = desc.num_q_heads() / desc.num_kv_heads();
+    const dim_t kv_heads_total = desc.batch() * desc.num_kv_heads();
+    const int nthr = hw.nthr;
+    // Fitted weights for an estimate in ns, not hardware latencies.
+    // Refitting for this phase model did not reliably improve held-out hosts.
+    const cost_coefs_t coefs = hw.is_amx
+            ? cost_coefs_t {0.042, 0.00246, 1.26, 0.00152, 12.7}
+            : cost_coefs_t {0.0263, 0.0308, 0.0, 0.000402, 18.1};
+    // For seq_q == 1 the model assumes stacking when allowed; layout checks
+    // happen later.
+    const schedule_cost_inputs_t cost_inputs {desc, kv_blocking.mm1_n_block,
+            kv_blocking.mm2_k_block, mm_dt, nthr,
+            hw.is_amx ? query_blocking.granule : 1,
+            seq_q == 1 && knobs.allow_stack_heads};
+
+    // Cap automatic chunk candidates by thread count and full mm2 blocks.
+    // mm1 may use fewer chunks if its block is longer than mm2's.
+    const dim_t group_q_block
+            = choose_q_block(desc, query_blocking, nthr, group_head);
+    const dim_t group_items
+            = kv_heads_total * utils::div_up(seq_q, group_q_block);
+    dim_t split_chunks = knobs.split_kv_chunks;
+    if (split_chunks <= 0) {
+        split_chunks = 1;
+        double t_min = schedule_cost(
+                cost_inputs, coefs, group_head, group_q_block, 1);
+        const dim_t max_chunks
+                = nstl::min<dim_t>(nthr, seq_kv / kv_blocking.mm2_k_block);
+        for (dim_t c = 2; c <= max_chunks; ++c) {
+            const double t = schedule_cost(
+                    cost_inputs, coefs, group_head, group_q_block, c);
+            if (t < t_min) {
+                t_min = t;
+                split_chunks = c;
+            }
+        }
+    }
+
+    using schedule_t = sdpa_full_softmax_schedule_t;
+    auto schedule = knobs.schedule;
+    if (schedule == schedule_t::any) {
+        schedule = schedule_t::per_head;
+        double best = schedule_cost(cost_inputs, coefs, 1,
+                choose_q_block(desc, query_blocking, nthr, 1), 1);
+        if (group_head > 1) {
+            const double t = schedule_cost(
+                    cost_inputs, coefs, group_head, group_q_block, 1);
+            if (t < best) {
+                best = t;
+                schedule = schedule_t::kv_head_group;
+            }
+        }
+        // Consider split_kv only when grouped items cannot fill the team.
+        if (group_items < nthr && split_chunks > 1
+                && schedule_cost(cost_inputs, coefs, group_head, group_q_block,
+                           split_chunks)
+                        < best)
+            schedule = schedule_t::split_kv;
+    }
+
+    const dim_t heads_per_item
+            = schedule == schedule_t::per_head ? 1 : group_head;
+    const dim_t q_block
+            = choose_q_block(desc, query_blocking, nthr, heads_per_item);
+    schedule_choice_t choice {schedule, heads_per_item, q_block, 0, 0,
+            query_blocking.interleave_items};
+    if (schedule == schedule_t::split_kv) {
+        choice.mm1_chunks = split_kv_partition::chunk_count(
+                split_chunks, kv_blocking.mm1_n_block, seq_kv);
+        // If the nominal mm2 block exceeds seq_kv, clamping it later still
+        // leaves one chunk.
+        choice.mm2_chunks = split_kv_partition::chunk_count(
+                split_chunks, kv_blocking.mm2_k_block, seq_kv);
+    } else if (!choice.interleave_items) {
+        // The minimum row count or grouped-head rounding can exceed the
+        // preliminary estimate. Only enable interleave; keep q_block.
+        const double chosen_score_tile_bytes = static_cast<double>(
+                heads_per_item * q_block * score_row_bytes);
+        choice.interleave_items = kv_overflows_l3(seq_q,
+                query_blocking.max_block, query_blocking.concurrent_kv_bytes,
+                hw, chosen_score_tile_bytes);
+    }
+    return choice;
+}
+
 bool can_stack_heads(const sdpa_desc_t &desc, bool allow_stack_heads,
         dim_t query_heads_per_item, dim_t ld_scores,
         const std::vector<sdpa_mm1_post_op_t> &post_ops,
@@ -942,15 +1232,8 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
 
     constexpr int ndims = sdpa_pd_t::ndims;
     const sdpa_desc_t &desc = *pd.desc();
-    const dim_t batch = desc.batch();
-    const dim_t num_head_q = desc.num_q_heads();
-    const dim_t num_head_kv = desc.num_kv_heads();
-    // GQA group size (>= 1).
-    const dim_t group_head = num_head_q / num_head_kv;
     const dim_t seq_q = desc.queries();
     const dim_t seq_kv = desc.keys();
-    const dim_t hs_qk = desc.head_size();
-    const dim_t hs_v = desc.values();
     const data_type_t mm_dt = mm_data_type(pd);
     const data_type_t out_dt = pd.dst_md()->data_type;
 
@@ -961,7 +1244,7 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
         return status::unimplemented;
 
     init_mm1_post_ops(pd, conf.mm1_post_ops);
-    const dim_t mm_dt_sz = static_cast<dim_t>(types::data_type_size(mm_dt));
+
     const bool mm1_transpose_k
             = memory_desc_wrapper(desc.key_md()).strides()[ndims - 1] != 1;
     const bool transpose_v
@@ -971,9 +1254,10 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
 
     const bool need_copy_v = conf.mm2_needs_vnni_b || transpose_v;
 
-    const unsigned l2_bytes = platform::get_per_core_cache_size(2);
     bool is_amx = false;
     CHECK(uses_amx_tiles(mm_dt, is_amx));
+
+    const unsigned l2_bytes = platform::get_per_core_cache_size(2);
     conf.nthr = dnnl_get_max_threads();
     const blocking_hw_t hw {
             conf.nthr, l2_bytes, platform::get_per_core_cache_size(3), is_amx};
@@ -983,212 +1267,25 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
             conf.ld_scores, conf.ld_prob);
     const auto query_blocking
             = choose_query_blocking(desc, hw, mm_dt, score_row_bytes);
-    conf.interleave_items = query_blocking.interleave_items;
-
-    // Score split candidates with mm1's panel width and mm2's nominal
-    // reduction depth. Clamp the latter to seq_kv after choosing a schedule.
     const auto kv_blocking
             = choose_kv_blocking(desc, hw, mm_dt, conf.mm1_needs_vnni_b);
-    const dim_t mm1_n_block = kv_blocking.mm1_n_block;
-    const dim_t mm2_k_block = kv_blocking.mm2_k_block;
-    const dim_t q_granule = query_blocking.granule;
-    const dim_t kv_heads_total = batch * num_head_kv;
+    const auto choice = choose_schedule(desc, hw, mm_dt, query_blocking,
+            kv_blocking, score_row_bytes, knobs);
 
-    // Estimate phase work using contiguous balance211 ranges, even when
-    // fused execution interleaves work items. The maximum of each metric can
-    // come from a different thread. Split mm1 and mm2 use their own block
-    // sizes and chunk counts.
-    struct phase_work_t {
-        double keys = 0;
-        double row_keys = 0;
-        double mac_rows_keys = 0;
-    };
-    struct cost_coefs_t {
-        double kv_byte, mac, score, total_kv_byte, merge_elem;
-    };
-    // Fitted weights for an estimate in ns, not hardware latencies.
-    // Refitting for this phase model did not reliably improve held-out hosts.
-    const cost_coefs_t coefs = is_amx
-            ? cost_coefs_t {0.042, 0.00246, 1.26, 0.00152, 12.7}
-            : cost_coefs_t {0.0263, 0.0308, 0.0, 0.000402, 18.1};
-    auto phase_work = [&](dim_t groups, dim_t heads_per_item, dim_t qb,
-                              dim_t chunks, dim_t block, dim_t key_count) {
-        phase_work_t peak;
-        const dim_t n_qblk = utils::div_up(seq_q, qb);
-        const dim_t tasks_per_group = n_qblk * chunks;
-        const dim_t work_amount = groups * tasks_per_group;
-        if (work_amount == 0) return peak;
-
-        const int nthr
-                = static_cast<int>(nstl::min<dim_t>(conf.nthr, work_amount));
-        const dim_t full_qblks = n_qblk - 1;
-        const dim_t tail_rows = seq_q - full_qblks * qb;
-        const dim_t full_rows = heads_per_item * qb;
-        const dim_t tail_work_rows = heads_per_item * tail_rows;
-        const dim_t full_mac_rows
-                = heads_per_item * (is_amx ? utils::rnd_up(qb, q_granule) : qb);
-        const dim_t tail_mac_rows = heads_per_item
-                * (is_amx ? utils::rnd_up(tail_rows, q_granule) : tail_rows);
-        const dim_t sum_rows = full_qblks * full_rows + tail_work_rows;
-        const dim_t sum_mac_rows = full_qblks * full_mac_rows + tail_mac_rows;
-        auto chunk_boundary = [&](dim_t c) {
-            return c == chunks ? key_count
-                               : utils::rnd_dn(c * key_count / chunks, block);
-        };
-        auto prefix_keys = [&](dim_t task) {
-            const dim_t group_tasks = n_qblk * chunks;
-            const dim_t complete_groups = task / group_tasks;
-            const dim_t remainder = task % group_tasks;
-            const dim_t qblk = remainder / chunks;
-            const dim_t chunk = remainder % chunks;
-            return static_cast<double>(complete_groups) * n_qblk * key_count
-                    + qblk * key_count + chunk_boundary(chunk);
-        };
-        auto prefix_rows = [&](dim_t task, bool mac) {
-            const dim_t group_tasks = n_qblk * chunks;
-            const dim_t complete_groups = task / group_tasks;
-            const dim_t remainder = task % group_tasks;
-            const dim_t qblk = remainder / chunks;
-            const dim_t chunk = remainder % chunks;
-            const dim_t full_rows_per_qblk = mac ? full_mac_rows : full_rows;
-            const dim_t tail_rows_per_qblk
-                    = mac ? tail_mac_rows : tail_work_rows;
-            const dim_t sum_rows_per_group = mac ? sum_mac_rows : sum_rows;
-            const dim_t rows_per_qblk = mac ? full_mac_rows : full_rows;
-            const dim_t full_qblk_count = nstl::min(qblk, full_qblks);
-            return static_cast<double>(complete_groups) * key_count
-                    * sum_rows_per_group
-                    + static_cast<double>(key_count) * full_qblk_count
-                    * full_rows_per_qblk
-                    + static_cast<double>(chunk_boundary(chunk))
-                    * (qblk == full_qblks ? tail_rows_per_qblk : rows_per_qblk);
-        };
-
-        for (int tid = 0; tid < nthr; ++tid) {
-            dim_t start = 0, end = 0;
-            balance211(work_amount, nthr, tid, start, end);
-            const double keys = prefix_keys(end) - prefix_keys(start);
-            const double row_keys
-                    = prefix_rows(end, false) - prefix_rows(start, false);
-            const double mac_rows_keys
-                    = prefix_rows(end, true) - prefix_rows(start, true);
-            peak.keys = nstl::max(peak.keys, keys);
-            peak.row_keys = nstl::max(peak.row_keys, row_keys);
-            peak.mac_rows_keys = nstl::max(peak.mac_rows_keys, mac_rows_keys);
-        }
-        return peak;
-    };
-    // The model assumes stacking for single-query work when allowed; the
-    // layout checks happen later. Without stacking, it models each additional
-    // head's K/V read as costing half as much as the first (empirical GNR fit).
-    const bool heads_may_stack = seq_q == 1 && knobs.allow_stack_heads;
-    auto head_call_kv_reads = [&](dim_t heads_per_item) {
-        return heads_may_stack ? 1.0 : 1.0 + 0.5 * (heads_per_item - 1);
-    };
-    auto schedule_cost = [&](dim_t heads_per_item, dim_t qb, dim_t chunks) {
-        const dim_t hs = hs_qk + hs_v;
-        const double kv_bytes_per_key = static_cast<double>(hs) * mm_dt_sz;
-        const dim_t groups = batch * num_head_q / heads_per_item;
-        double t = 0;
-        dim_t mm2_chunks = 1;
-        if (chunks == 1) {
-            const phase_work_t work
-                    = phase_work(groups, heads_per_item, qb, 1, seq_kv, seq_kv);
-            t = coefs.kv_byte * work.keys * kv_bytes_per_key
-                            * head_call_kv_reads(heads_per_item)
-                    + coefs.mac * work.mac_rows_keys * hs
-                    + coefs.score * 2 * work.row_keys;
-        } else {
-            const dim_t mm1_chunks = nstl::max<dim_t>(
-                    1, nstl::min(chunks, seq_kv / mm1_n_block));
-            mm2_chunks = nstl::max<dim_t>(
-                    1, nstl::min(chunks, seq_kv / mm2_k_block));
-            const phase_work_t mm1 = phase_work(groups, heads_per_item, qb,
-                    mm1_chunks, mm1_n_block, seq_kv);
-            const phase_work_t mm2 = phase_work(groups, heads_per_item, qb,
-                    mm2_chunks, mm2_k_block, seq_kv);
-            const phase_work_t softmax
-                    = phase_work(batch * num_head_q, 1, qb, 1, seq_kv, seq_kv);
-            const phase_work_t merge
-                    = phase_work(batch * num_head_q, 1, qb, 1, 1, 1);
-            t = coefs.kv_byte * (mm1.keys * hs_qk + mm2.keys * hs_v) * mm_dt_sz
-                            * head_call_kv_reads(heads_per_item)
-                    + coefs.mac
-                            * (mm1.mac_rows_keys * hs_qk
-                                    + mm2.mac_rows_keys * hs_v)
-                    + coefs.score * (mm1.row_keys + softmax.row_keys);
-            if (mm2_chunks > 1)
-                t += coefs.merge_elem * merge.row_keys * hs_v
-                        * (mm2_chunks - 1);
-        }
-        const dim_t kv_reads = heads_per_item == 1 ? group_head : 1;
-        t += coefs.total_kv_byte * kv_reads * kv_heads_total * seq_kv
-                * kv_bytes_per_key;
-        return t;
-    };
-
-    // Automatic scheduling considers split_kv only when grouped work items
-    // cannot fill the team. The automatic chunk search caps candidates by
-    // thread count and full mm2 blocks. mm1 may still use fewer chunks if
-    // its block is longer than mm2's.
-    using schedule_t = sdpa_full_softmax_schedule_t;
-    const dim_t group_q_block
-            = choose_q_block(desc, query_blocking, conf.nthr, group_head);
-    const dim_t group_items
-            = kv_heads_total * utils::div_up(seq_q, group_q_block);
-    dim_t split_chunks = knobs.split_kv_chunks;
-    if (split_chunks <= 0) {
-        split_chunks = 1;
-        double t_min = schedule_cost(group_head, group_q_block, 1);
-        const dim_t max_chunks
-                = nstl::min<dim_t>(conf.nthr, seq_kv / mm2_k_block);
-        for (dim_t c = 2; c <= max_chunks; ++c) {
-            const double t = schedule_cost(group_head, group_q_block, c);
-            if (t < t_min) {
-                t_min = t;
-                split_chunks = c;
-            }
-        }
-    }
-    conf.schedule = knobs.schedule;
-    if (conf.schedule == schedule_t::any) {
-        conf.schedule = schedule_t::per_head;
-        double best = schedule_cost(
-                1, choose_q_block(desc, query_blocking, conf.nthr, 1), 1);
-        if (group_head > 1) {
-            const double t = schedule_cost(group_head, group_q_block, 1);
-            if (t < best) {
-                best = t;
-                conf.schedule = schedule_t::kv_head_group;
-            }
-        }
-        if (group_items < conf.nthr && split_chunks > 1
-                && schedule_cost(group_head, group_q_block, split_chunks)
-                        < best)
-            conf.schedule = schedule_t::split_kv;
-    }
-    conf.query_heads_per_item
-            = conf.schedule == schedule_t::per_head ? 1 : group_head;
-    const bool split_kv = conf.schedule == schedule_t::split_kv;
-
-    conf.q_block = choose_q_block(
-            desc, query_blocking, conf.nthr, conf.query_heads_per_item);
+    conf.schedule = choice.schedule;
+    conf.query_heads_per_item = choice.heads_per_item;
+    conf.q_block = choice.q_block;
     conf.q_tail = seq_q % conf.q_block;
-
-    // Check the resolved fused tile: the minimum row count or grouped-head
-    // rounding can exceed the preliminary estimate. Only enable interleave;
-    // do not recompute the query block.
-    if (!split_kv && !conf.interleave_items) {
-        const double chosen_score_tile_bytes = static_cast<double>(
-                conf.query_heads_per_item * conf.q_block * score_row_bytes);
-        conf.interleave_items = kv_overflows_l3(seq_q, query_blocking.max_block,
-                query_blocking.concurrent_kv_bytes, hw,
-                chosen_score_tile_bytes);
-    }
+    conf.interleave_items = choice.interleave_items;
+    conf.split_kv.mm1_chunks = choice.mm1_chunks;
+    conf.split_kv.mm2_chunks = choice.mm2_chunks;
 
     conf.pack_k_for_aliasing = kv_blocking.pack_k_for_aliasing;
     conf.pack_k = kv_blocking.pack_k;
     conf.pack_v = need_copy_v;
+
+    const bool split_kv
+            = conf.schedule == sdpa_full_softmax_schedule_t::split_kv;
 
     // Per-tile packing avoids a separate pass but can repack tiles across
     // work items. Prefer it when a work item covers all query rows or uses
@@ -1200,32 +1297,20 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                 ? kv_packing_t::per_tile
                 : kv_packing_t::ahead;
 
-    conf.mm1_n_block = mm1_n_block;
+    conf.mm1_n_block = kv_blocking.mm1_n_block;
     conf.mm1_n_tail = seq_kv % conf.mm1_n_block;
-    conf.mm2_k_block = nstl::min(seq_kv, mm2_k_block);
+    conf.mm2_k_block = nstl::min(seq_kv, kv_blocking.mm2_k_block);
     conf.mm2_k_tail = seq_kv % conf.mm2_k_block;
     // >1 block -> mm2 accumulates across blocks: the first block uses a beta = 0
     // kernel (fresh C) and the rest beta = 1, so no destination pre-zeroing is
     // needed. A single block keeps the original fresh-C (beta = 0) path.
     conf.mm2_beta = conf.mm2_k_block < seq_kv ? 1.0f : 0.0f;
 
-    // split_kv splits each work item's seq_kv range into split_chunks chunks
-    // (chosen above), but into at most as many chunks as full mm1/mm2 blocks,
-    // so every chunk starts with a full block (see split_kv_chunk_keys()): the
-    // block/tail descriptors stay valid, and mm2 starts every chunk with its
-    // beta = 0 kernel.
-    if (split_kv) {
-        auto n_chunks = [&](dim_t block) {
-            return nstl::max<dim_t>(1, nstl::min(split_chunks, seq_kv / block));
-        };
-        auto &sk = conf.split_kv;
-        sk.mm1_chunks = n_chunks(conf.mm1_n_block);
-        sk.mm2_chunks = n_chunks(conf.mm2_k_block);
-    }
-
     resolve_brgemm_layout(pd, knobs.allow_stack_heads, conf);
+
     size_t max_wsp = 0;
     CHECK(build_brgemm_descs(pd, conf, conf.brgemm, max_wsp));
+
     layout_scratch(desc, mm_dt, max_wsp, conf);
 
     if (get_verbose(verbose_t::debuginfo) > 0) {
@@ -1236,10 +1321,11 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                 "mm1_chunks=%lld mm2_chunks=%lld l2_per_core=%u "
                 "l3_per_core=%u interleave=%d\n",
                 static_cast<long long>(seq_q), static_cast<long long>(seq_kv),
-                static_cast<long long>(num_head_q),
-                static_cast<long long>(num_head_kv),
-                static_cast<long long>(hs_qk), static_cast<long long>(hs_v),
-                static_cast<long long>(mm_dt_sz),
+                static_cast<long long>(desc.num_q_heads()),
+                static_cast<long long>(desc.num_kv_heads()),
+                static_cast<long long>(desc.head_size()),
+                static_cast<long long>(desc.values()),
+                static_cast<long long>(types::data_type_size(mm_dt)),
                 static_cast<long long>(conf.q_block),
                 static_cast<long long>(conf.mm1_n_block),
                 static_cast<long long>(conf.mm2_k_block), conf.nthr,
@@ -1901,7 +1987,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                         dim_t c) {
             work_item_t item(
                     st, thread_state, batch_idx, item_head_idx, q_block_idx);
-            const auto kv = split_kv_chunk_keys(
+            const auto kv = split_kv_partition::key_range(
                     c, sk.mm1_chunks, conf.mm1_n_block, desc.keys());
             item.mm1(kv.first, kv.second,
                     item_tiles(sk.scores, score_row_bytes, batch_idx,
@@ -1928,7 +2014,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                         dim_t c) {
             work_item_t item(
                     st, thread_state, batch_idx, item_head_idx, q_block_idx);
-            const auto kv = split_kv_chunk_keys(
+            const auto kv = split_kv_partition::key_range(
                     c, sk.mm2_chunks, conf.mm2_k_block, desc.keys());
             const auto c_tile = conf.mm2_direct
                     ? item.output_tiles()

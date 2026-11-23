@@ -69,9 +69,24 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
                 primitive_desc_iface->impl()->kind(), VERBOSE_create);
     }
 
-    if (get_verbose(verbose_t::create_profile,
-                prim_kind2_comp_kind(primitive_desc_iface->impl()->kind()))) {
+    const auto component
+            = prim_kind2_comp_kind(primitive_desc_iface->impl()->kind());
+    const bool trace_enabled = get_verbose(verbose_t::create_trace, component);
+    const bool profile_enabled
+            = get_verbose(verbose_t::create_profile, component);
+
+    if (trace_enabled || profile_enabled) {
+        const std::string pd_info = primitive_desc_iface->info();
         double start_ms = get_msec();
+        // The trace ID correlates the start and end trace markers of this
+        // creation call.
+        const uint64_t trace_id
+                = trace_enabled ? verbose_t::next_trace_id() : 0;
+        // Printed before creation so that a failure or crash during creation
+        // leaves an unmatched start trace marker identifying the primitive.
+        if (trace_enabled)
+            VTRACE(start, primitive, create, trace_id, pd_info.c_str());
+
         CHECK(primitive_desc_iface->create_primitive_iface(
                 p_iface, cache_blob));
         double duration_ms = get_msec() - start_ms;
@@ -82,8 +97,11 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
             p_iface.second = cache_state_t::persistent_hit;
         const char *str = cache_state2str(p_iface.second);
 
-        VPROF(start_ms, primitive, create, str, p_iface.first->pd()->info(),
-                duration_ms);
+        if (profile_enabled)
+            VPROF(start_ms, primitive, create, str, p_iface.first->pd()->info(),
+                    duration_ms);
+        if (trace_enabled)
+            VTRACE(end, primitive, create, trace_id, pd_info.c_str());
     } else {
         CHECK(primitive_desc_iface->create_primitive_iface(
                 p_iface, cache_blob));
@@ -141,10 +159,16 @@ status_t primitive_execute(
         }
     }
 
-    if (get_verbose(verbose_t::exec_profile,
-                prim_kind2_comp_kind(pd->impl()->kind()))) {
-        std::string pd_info;
+    const auto component = prim_kind2_comp_kind(pd->impl()->kind());
+    // With the async verbose profiler, trace records are printed by the
+    // profiler once the device events complete, not here.
+    const bool trace_enabled = get_verbose(verbose_t::exec_trace, component)
+            && !stream->is_verbose_profiler_enabled();
+    const bool profile_enabled
+            = get_verbose(verbose_t::exec_profile, component);
 
+    if (trace_enabled || profile_enabled) {
+        std::string pd_info;
         if (pd->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency
             // on `exec_ctx_t` type.
@@ -163,23 +187,37 @@ status_t primitive_execute(
             pd_info = pd->info();
         }
 
-        // Block around execution to measure host-side timing, unless the runtime
-        // supports non-blocking device-measured profiling (GPU runtimes and
-        // async threadpool CPU).
+        // Block around execution to measure host-side timing and to print the
+        // end trace marker after completion, unless the runtime supports
+        // non-blocking device-measured profiling (GPU runtimes and async
+        // threadpool CPU).
         const bool block_on_wait = !stream->is_verbose_profiler_enabled()
                 && stream->is_syncable();
 
         if (block_on_wait) stream->wait();
         double start_ms = get_msec();
+        // The trace ID correlates the start and end trace markers of this
+        // execution call.
+        const uint64_t trace_id
+                = trace_enabled ? verbose_t::next_trace_id() : 0;
+        // Printed before enqueue so that a crash during execution leaves an
+        // unmatched start trace marker identifying the primitive.
+        if (trace_enabled)
+            VTRACE(start, primitive, exec, trace_id, pd_info.c_str());
+
         status = stream->enqueue_primitive(primitive_iface, ctx);
         if (block_on_wait) stream->wait();
 
         if (stream->is_verbose_profiler_enabled()) {
             CHECK(stream->run_verbose_profiler(pd_info, start_ms, 0));
         } else {
-            double duration_ms = get_msec() - start_ms;
-            VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(),
-                    duration_ms);
+            if (profile_enabled) {
+                const double duration_ms = get_msec() - start_ms;
+                VPROF(start_ms, primitive, exec, VERBOSE_profile,
+                        pd_info.c_str(), duration_ms);
+            }
+            if (trace_enabled)
+                VTRACE(end, primitive, exec, trace_id, pd_info.c_str());
         }
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);

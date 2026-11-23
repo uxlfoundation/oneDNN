@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
-* Copyright 2021 Arm Ltd. and affiliates
+* Copyright 2021, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -507,6 +507,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
     // Move cfg out of filling since its creation is not free.
     cfg_t cfg(prb, {SRC, WEI, BIA, DST});
+    // Only f32 uses the Winograd reference. The direct reference used for f16
+    // expects channels-last source and weights, even for a Winograd problem.
+    const bool use_wino_ref = prb->alg == WINO && prb->get_dt(SRC) == dnnl_f32;
 
     for (auto &entry : mem_map) {
         const int exec_arg = entry.first;
@@ -518,14 +521,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
 
         if (exec_arg == DNNL_ARG_SRC && (prb->dir & FLAG_FWD)
-                && prb->alg != WINO) {
+                && !use_wino_ref) {
             // Switch the format tag from "abx" to "axb" for forward problems.
             // Winograd is dead for optimizations.
             ref_mem_map.emplace(exec_arg,
                     dnn_mem_t(mem.md_, dnnl_f32, tag::axb, ref_engine,
                             /* prefill = */ false));
         } else if (exec_arg == DNNL_ARG_WEIGHTS && (prb->dir & FLAG_FWD)
-                && prb->alg != WINO) {
+                && !use_wino_ref) {
             // Switch the format tag from "abx" to "axb" for forward problems.
             // Handle groups with "abxc" meta-tag.
             // Winograd is dead for optimizations.

@@ -227,6 +227,17 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
             SAFE_V(FAIL);
         }
 
+        auto check_unexpected_inputs = [](const std::string &s, size_t pos) {
+            if (pos != std::string::npos) {
+                const auto leftover = s.substr(pos);
+                BENCHDNN_PRINT(0,
+                        "Error: no more inputs are expected. Provided: "
+                        "\'%s\'.\n",
+                        leftover.c_str());
+                SAFE_V(FAIL);
+            }
+        };
+
         auto &e = v.entry.back();
         if (e.is_sum_kind()) {
             e.sum.scale = utils::stof_safe(get_substr(subs, subs_pos, ':'));
@@ -300,14 +311,7 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                         "is not recognized.");
                 SAFE_V(FAIL);
             }
-            if (subs_pos < std::string::npos) {
-                const auto leftover = get_substr(subs, subs_pos, '\0');
-                BENCHDNN_PRINT(0,
-                        "Error: no more inputs are expected. Provided: "
-                        "\'%s\'.\n",
-                        leftover.c_str());
-                SAFE_V(FAIL);
-            }
+            check_unexpected_inputs(subs, subs_pos);
         } else if (e.is_eltwise_kind()) {
             e.eltwise.alpha = utils::stof_safe(get_substr(subs, subs_pos, ':'));
             if (subs_pos == std::string::npos) continue;
@@ -326,7 +330,8 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
             // For binary algorithms with ternary inputs, specifications can
             // be provided for both binary (src1) and ternary (src2) tensors in
             // the form:
-            // --attr-post-ops=BINARY:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]].
+            // --attr-post-ops=BINARY:DT[.S1_MASK_INPUT[.S1_TAG[.S1_STRIDES]]]
+            //                          [:S2_MASK_INPUT[.S2_TAG[.S2_STRIDES]]].
             // In that case, we check for the ':' delimiter that separates src1
             // and src2 args, split the string for the two tensors and parse
             // them individually.
@@ -429,7 +434,14 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                 // in this case tag is left as default (any)
                 const auto tag_str = get_substr(s, src_subpos, delim);
                 if (tag_str == "grouped") {
-                    e.binary.grouped = true;
+                    if (!is_ternary) {
+                        e.binary.grouped = true;
+                    } else {
+                        BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                                "Error:", tag_str.c_str(),
+                                "is only supported on src1.");
+                        SAFE_V(FAIL);
+                    }
                 } else {
                     if (check_tag(tag_str) != OK) {
                         BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
@@ -437,32 +449,28 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                                 "is not recognized.");
                         SAFE_V(FAIL);
                     }
-                    e.binary.tag = tag_str;
+                    if (!is_ternary)
+                        e.binary.tag = tag_str;
+                    else
+                        e.binary.src2_tag = tag_str;
+
+                    if (src_subpos == std::string::npos) return;
+
+                    const auto strides_str = get_substr(s, src_subpos, delim);
+                    if (!strides_str.empty()) {
+                        parse_vector_str(!is_ternary ? e.binary.strides
+                                                     : e.binary.strides2,
+                                dims_t(), utils::stoll_safe, strides_str, 'x');
+                    }
                 }
 
-                if (src_subpos == std::string::npos) return;
-
-                const auto strides_str = get_substr(s, src_subpos, delim);
-                if (!strides_str.empty()) {
-                    parse_vector_str(e.binary.strides, dims_t(),
-                            utils::stoll_safe, strides_str, 'x');
-                }
-
-                if (src_subpos != std::string::npos) {
-                    const auto unknown_str = get_substr(s, src_subpos, delim);
-                    BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
-                            "Warning: Additional unrecognized arguments",
-                            unknown_str.c_str(), "are specified.");
-                }
+                check_unexpected_inputs(s, src_subpos);
             };
 
-            bool is_ternary_input = false;
-            for (const auto &s : {src1_subs, src2_subs}) {
-                parse_src_input_specs(s, src_delim, is_ternary_input);
-                if (!has_src2_specs)
-                    break;
-                else
-                    is_ternary_input = true;
+            parse_src_input_specs(src1_subs, src_delim, false);
+            if (has_src2_specs) {
+                parse_src_input_specs(src2_subs, src_delim, true);
+                check_unexpected_inputs(subs, subs_pos);
             }
 
         } else if (e.is_prelu_kind()) {
@@ -1145,8 +1153,10 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
             = "POST-OPS\n    Specifies post-ops attribute. `POST-OPS` syntax "
               "is one of those:\n    * SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]\n  "
               "  * ELTWISE[:ALPHA[:BETA[:SCALE]]]\n    * DW:KkSsPp[:DST_DT]\n  "
-              "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    * PRELU[:MASK_INPUT]\n    "
-              "More details at "
+              "  * BINARY:DT[:MASK_INPUT[:TAG[:STRIDES]]]\n    * "
+              "select:DT[.S1_MASK_INPUT[.S1_TAG[.S1_STRIDES]]][:S2_MASK_INPUT[."
+              "S2_TAG[.S2_STRIDES]]]\n    * PRELU[:MASK_INPUT]\n    More "
+              "details at "
             + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
     return parse_vector_option(

@@ -490,7 +490,7 @@ static int check_attr() {
     return OK;
 }
 
-void append_sum(attr_t::post_ops_t &po, float ascale = 1.f,
+static void append_sum(attr_t::post_ops_t &po, float ascale = 1.f,
         int32_t zero_point = 0, dnnl_data_type_t adt = dnnl_data_type_undef) {
     po.entry.emplace_back(pk_t::SUM);
     auto &e = po.entry.back();
@@ -500,7 +500,7 @@ void append_sum(attr_t::post_ops_t &po, float ascale = 1.f,
     e.sum.dt = adt;
 }
 
-void append_convolution(attr_t::post_ops_t &po, pk_t akind, int kernel,
+static void append_convolution(attr_t::post_ops_t &po, pk_t akind, int kernel,
         int stride, int padding, dnnl_data_type_t adst_dt = dnnl_f32) {
     po.entry.emplace_back(akind);
     auto &e = po.entry.back();
@@ -511,8 +511,8 @@ void append_convolution(attr_t::post_ops_t &po, pk_t akind, int kernel,
     e.convolution.dst_dt = adst_dt;
 }
 
-void append_eltwise(attr_t::post_ops_t &po, pk_t akind, float aalpha = 0.f,
-        float abeta = 0.f) {
+static void append_eltwise(attr_t::post_ops_t &po, pk_t akind,
+        float aalpha = 0.f, float abeta = 0.f) {
     po.entry.emplace_back(akind);
     auto &e = po.entry.back();
 
@@ -521,64 +521,99 @@ void append_eltwise(attr_t::post_ops_t &po, pk_t akind, float aalpha = 0.f,
     e.eltwise.beta = abeta;
 }
 
-void append_binary(attr_t::post_ops_t &po, pk_t akind, dnnl_data_type_t src_dt1,
-        attr_t::mask_input_t mask_input, int64_t mask, attr_t::policy_t policy,
-        const std::string &tag) {
+static void append_binary(attr_t::post_ops_t &po, pk_t akind,
+        dnnl_data_type_t src1_dt, attr_t::mask_input_t mask_input, int64_t mask,
+        attr_t::policy_t policy, const std::string &tag,
+        const dims_t &strides) {
     po.entry.emplace_back(akind);
     auto &e = po.entry.back();
 
     e.binary.alg = attr_t::post_ops_t::kind2dnnl_kind(akind);
-    e.binary.src1_dt = src_dt1;
+    e.binary.src1_dt = src1_dt;
     e.binary.mask_input = mask_input;
     e.binary.mask = mask;
     e.binary.policy = policy;
     e.binary.tag = tag;
+    e.binary.strides = strides;
+}
+
+static void append_binary(attr_t::post_ops_t &po, pk_t akind,
+        dnnl_data_type_t src1_dt, attr_t::mask_input_t mask_input, int64_t mask,
+        attr_t::policy_t policy, const std::string &tag, const dims_t &strides,
+        attr_t::mask_input_t src2_mask_input, int64_t src2_mask,
+        attr_t::policy_t src2_policy, const std::string &src2_tag,
+        const dims_t &strides2) {
+    append_binary(po, akind, src1_dt, mask_input, mask, policy, tag, strides);
+    auto &e = po.entry.back();
+
+    e.binary.src2_mask_input = src2_mask_input;
+    e.binary.src2_mask = src2_mask;
+    e.binary.src2_policy = src2_policy;
+    e.binary.src2_tag = src2_tag;
+    e.binary.strides2 = strides2;
 }
 
 static int check_post_ops2str() {
-    attr_t::post_ops_t po;
-    SELF_CHECK_EQ(po.is_def(), true);
-    SELF_CHECK_PRINT_EQ(po, "");
-
-    append_sum(po);
-    SELF_CHECK_EQ(po.len(), 1);
-    SELF_CHECK_PRINT_EQ(po, "sum");
-
-    append_eltwise(po, pk_t::RELU);
-    SELF_CHECK_EQ(po.len(), 2);
-    SELF_CHECK_PRINT_EQ(po, "sum+relu");
-
-    append_sum(po, 2.f, 1, dnnl_s8);
-    SELF_CHECK_EQ(po.len(), 3);
-    SELF_CHECK_PRINT_EQ(po, "sum+relu+sum:2:1:s8");
-
-    append_eltwise(po, pk_t::LINEAR, 5.f, 10.f);
-    SELF_CHECK_EQ(po.len(), 4);
-    SELF_CHECK_PRINT_EQ(po, "sum+relu+sum:2:1:s8+linear:5:10");
-
-    append_convolution(po, pk_t::DW, 3, 1, 1);
-    SELF_CHECK_EQ(po.len(), 5);
-    SELF_CHECK_PRINT_EQ(po, "sum+relu+sum:2:1:s8+linear:5:10+dw:k3s1p1");
-
-    append_convolution(po, pk_t::DW, 3, 2, 1, dnnl_s32);
-    SELF_CHECK_EQ(po.len(), 6);
-    SELF_CHECK_PRINT_EQ(
-            po, "sum+relu+sum:2:1:s8+linear:5:10+dw:k3s1p1+dw:k3s2p1:s32");
+    using mi_t = attr_t::mask_input_t;
 
     {
-        using mi_t = attr_t::mask_input_t;
-        attr_t::post_ops_t bin_po_int_mask;
-        append_binary(bin_po_int_mask, pk_t::ADD, dnnl_f32, mi_t::mask, 13,
-                policy_t::COMMON, tag::abx);
-        SELF_CHECK_PRINT_EQ(bin_po_int_mask, "add:f32:13:abx");
+        attr_t::post_ops_t po;
+        SELF_CHECK_EQ(po.is_def(), true);
+        SELF_CHECK_PRINT_EQ(po, "");
+
+        append_sum(po);
+        SELF_CHECK_EQ(po.len(), 1);
+        SELF_CHECK_PRINT_EQ(po, "sum");
+
+        append_eltwise(po, pk_t::RELU);
+        SELF_CHECK_EQ(po.len(), 2);
+        SELF_CHECK_PRINT_EQ(po, "sum+relu");
+
+        append_sum(po, 2.f, 1, dnnl_s8);
+        SELF_CHECK_EQ(po.len(), 3);
+        SELF_CHECK_PRINT_EQ(po, "sum+relu+sum:2:1:s8");
+
+        append_eltwise(po, pk_t::LINEAR, 5.f, 10.f);
+        SELF_CHECK_EQ(po.len(), 4);
+        SELF_CHECK_PRINT_EQ(po, "sum+relu+sum:2:1:s8+linear:5:10");
+
+        append_convolution(po, pk_t::DW, 3, 1, 1);
+        SELF_CHECK_EQ(po.len(), 5);
+        SELF_CHECK_PRINT_EQ(po, "sum+relu+sum:2:1:s8+linear:5:10+dw:k3s1p1");
+
+        append_convolution(po, pk_t::DW, 3, 2, 1, dnnl_s32);
+        SELF_CHECK_EQ(po.len(), 6);
+        SELF_CHECK_PRINT_EQ(
+                po, "sum+relu+sum:2:1:s8+linear:5:10+dw:k3s1p1+dw:k3s2p1:s32");
     }
 
     {
-        using mi_t = attr_t::mask_input_t;
-        attr_t::post_ops_t bin_po_policy;
-        append_binary(bin_po_policy, pk_t::ADD, dnnl_f32, mi_t::policy, 13,
-                policy_t::COMMON, tag::any);
-        SELF_CHECK_PRINT_EQ(bin_po_policy, "add:f32:common");
+        attr_t::post_ops_t po;
+        append_binary(po, pk_t::ADD, dnnl_f32, mi_t::mask, 13,
+                policy_t::POLICY_TOTAL, tag::abx, {});
+        SELF_CHECK_PRINT_EQ(po, "add:f32:13:abx");
+    }
+
+    {
+        attr_t::post_ops_t po;
+        append_binary(po, pk_t::ADD, dnnl_f32, mi_t::policy, INT_MIN,
+                policy_t::COMMON, tag::any, {});
+        SELF_CHECK_PRINT_EQ(po, "add:f32:common");
+    }
+
+    {
+        attr_t::post_ops_t po;
+        append_binary(po, pk_t::ADD, dnnl_f32, mi_t::policy, INT_MIN,
+                policy_t::PER_TENSOR, tag::any, {4, 1});
+        SELF_CHECK_PRINT_EQ(po, "add:f32:per_tensor:any:4x1");
+    }
+
+    {
+        attr_t::post_ops_t po;
+        append_binary(po, pk_t::SELECT, dnnl_f32, mi_t::policy, INT_MIN,
+                policy_t::PER_TENSOR, tag::axb, {}, mi_t::policy, INT_MIN,
+                policy_t::PER_OC, tag::abx, {1, 2});
+        SELF_CHECK_PRINT_EQ(po, "select:f32.per_tensor.axb:per_oc.abx.1x2");
     }
 
     return OK;
@@ -618,6 +653,38 @@ static int check_str2post_ops() {
 
     ops = str2attr_post_ops("sum:2+relu+sum:3+relu");
     SELF_CHECK_EQ(quick(4), OK);
+
+    {
+        ops = str2attr_post_ops("add:f32:per_tensor:any:4x1");
+
+        const auto &e = ops.entry[0];
+        SELF_CHECK_EQ(e.kind, attr_t::post_ops_t::ADD);
+
+        const auto &be = e.binary;
+        SELF_CHECK_EQ(be.src1_dt, dnnl_f32);
+        SELF_CHECK_EQ(be.mask_input, attr_t::mask_input_t::policy);
+        SELF_CHECK_EQ(be.policy, policy_t::PER_TENSOR);
+        SELF_CHECK_CASE_CPP_STR_EQ(be.tag, tag::any);
+        SELF_CHECK((be.strides == dims_t {4, 1}));
+    }
+
+    {
+        ops = str2attr_post_ops("select:f32.per_tensor.axb:per_oc.abx.1x2");
+
+        const auto &e = ops.entry[0];
+        SELF_CHECK_EQ(e.kind, attr_t::post_ops_t::SELECT);
+
+        const auto &be = e.binary;
+        SELF_CHECK_EQ(be.src1_dt, dnnl_f32);
+        SELF_CHECK_EQ(be.mask_input, attr_t::mask_input_t::policy);
+        SELF_CHECK_EQ(be.policy, policy_t::PER_TENSOR);
+        SELF_CHECK_CASE_CPP_STR_EQ(be.tag, tag::axb);
+
+        SELF_CHECK_EQ(be.src2_mask_input, attr_t::mask_input_t::policy);
+        SELF_CHECK_EQ(be.src2_policy, policy_t::PER_OC);
+        SELF_CHECK_CASE_CPP_STR_EQ(be.src2_tag, tag::abx);
+        SELF_CHECK((be.strides2 == dims_t {1, 2}));
+    }
 
     return OK;
 }

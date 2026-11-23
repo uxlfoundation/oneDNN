@@ -571,6 +571,95 @@ status_t uses_amx_tiles(data_type_t dt, bool &is_amx) {
     return status::success;
 }
 
+tensor_copy_desc_t make_b_copy_desc(size_t scratch_offset, dim_t rows,
+        dim_t cols, data_type_t mm_dt, dim_t num_head_kv, bool needs_vnni) {
+    using b_packer_t = sdpa_brgemm_copy::b_packer_t;
+    tensor_copy_desc_t copy_desc;
+    copy_desc.scratch_offset = scratch_offset;
+    copy_desc.padded_k = b_packer_t::packed_k(rows, mm_dt);
+    copy_desc.vnni_factor = needs_vnni ? data_type_vnni_granularity(mm_dt) : 1;
+    copy_desc.head_stride = static_cast<size_t>(copy_desc.padded_k)
+            * b_packer_t::packed_ld(cols) * types::data_type_size(mm_dt);
+    copy_desc.batch_stride
+            = static_cast<size_t>(num_head_kv) * copy_desc.head_stride;
+    return copy_desc;
+}
+
+size_t add_shared_buffer(size_t bytes, size_t &shared_offset) {
+    const size_t offset = align64(shared_offset);
+    shared_offset = offset + bytes;
+    return offset;
+}
+
+void layout_scratch(const sdpa_desc_t &desc, data_type_t mm_dt, size_t max_wsp,
+        sdpa_full_softmax_conf_t &conf) {
+    const bool split_kv
+            = conf.schedule == sdpa_full_softmax_schedule_t::split_kv;
+    auto &ts = conf.thread_scratch;
+    // Fused schedules keep score, P and pv tiles for each head of the work
+    // item in its thread's scratch. split_kv keeps these tiles in shared
+    // buffers instead.
+    const size_t item_q_rows = split_kv
+            ? 0
+            : static_cast<size_t>(conf.query_heads_per_item) * conf.q_block;
+    conf.amx_wsp_bytes = align64(max_wsp);
+    ts.set_tile_buffers(item_q_rows, conf.ld_scores, conf.ld_prob, conf.ld_pv,
+            conf.mm2_direct, conf.amx_wsp_bytes);
+
+    const dim_t batch = desc.batch();
+    const dim_t num_head_kv = desc.num_kv_heads();
+    const dim_t seq_kv = desc.keys();
+    const dim_t hs_qk = desc.head_size();
+    const dim_t hs_v = desc.values();
+    size_t shared_offset = 0;
+    if (conf.kv_packing == sdpa_full_softmax_kv_packing_t::per_tile) {
+        // A K tile is one mm1 N block (at most one panel); a V tile is one mm2
+        // K block across all of hs_v.
+        if (conf.pack_k) {
+            conf.k_tile_desc
+                    = make_b_copy_desc(ts.size, hs_qk, conf.mm1_n_block, mm_dt,
+                            num_head_kv, conf.mm1_needs_vnni_b);
+            ts.size += align64(conf.k_tile_desc->head_stride);
+        }
+        if (conf.pack_v) {
+            conf.v_tile_desc = make_b_copy_desc(ts.size, conf.mm2_k_block, hs_v,
+                    mm_dt, num_head_kv, conf.mm2_needs_vnni_b);
+            ts.size += align64(conf.v_tile_desc->head_stride);
+        }
+    } else {
+        // Whole packed tensors are placed consecutively in shared scratch.
+        if (conf.pack_k) {
+            conf.k_copy_desc = make_b_copy_desc(shared_offset, hs_qk, seq_kv,
+                    mm_dt, num_head_kv, conf.mm1_needs_vnni_b);
+            shared_offset += static_cast<size_t>(batch)
+                    * conf.k_copy_desc->batch_stride;
+        }
+        if (conf.pack_v) {
+            conf.v_copy_desc = make_b_copy_desc(shared_offset, seq_kv, hs_v,
+                    mm_dt, num_head_kv, conf.mm2_needs_vnni_b);
+            shared_offset += static_cast<size_t>(batch)
+                    * conf.v_copy_desc->batch_stride;
+        }
+    }
+    if (split_kv) {
+        auto &sk = conf.split_kv;
+        const size_t rows = static_cast<size_t>(batch) * desc.num_q_heads()
+                * desc.queries();
+        sk.scores = add_shared_buffer(
+                rows * conf.ld_scores * sizeof(float), shared_offset);
+        sk.prob = ts.has_prob ? add_shared_buffer(rows * conf.ld_prob
+                                                * types::data_type_size(mm_dt),
+                                        shared_offset)
+                              : sk.scores;
+        if (!conf.mm2_direct)
+            sk.partials = add_shared_buffer(
+                    sk.mm2_chunks * rows * conf.ld_pv * sizeof(float),
+                    shared_offset);
+    }
+    conf.scratch_per_thread = ts.size;
+    conf.shared_scratch_bytes = shared_offset;
+}
+
 } // namespace
 
 sdpa_full_softmax_kernels_t::sdpa_full_softmax_kernels_t() = default;
@@ -1025,7 +1114,6 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
         conf.kv_packing = split_kv || conf.q_block == seq_q
                 ? kv_packing_t::per_tile
                 : kv_packing_t::ahead;
-    const bool pack_per_tile = conf.kv_packing == kv_packing_t::per_tile;
 
     // Packed K is laid out in independent b_panel_n-column panels, which limits
     // mm1's N block to one panel. mm2 only reduces over seq_kv after the
@@ -1146,86 +1234,7 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
 
     size_t max_wsp = 0;
     CHECK(build_brgemm_descs(pd, conf, conf.brgemm, max_wsp));
-
-    // Per-thread scratch, per query head of the work item: one score tile
-    // [q_block x seq_kv] and one pv tile [q_block x hs_v], both f32 (BRGEMM
-    // accumulates in f32). For a non-f32 compute type, a third
-    // [q_block x seq_kv] tile holds P (mm2's A operand) down-converted from the
-    // f32 softmax output; f32 reuses the scores tile directly. The pv tile
-    // holds partial sums until the final K block converts/stores the result,
-    // or until store() copies it to the (possibly strided) user output. The
-    // tiles of the work item's heads are consecutive. split_kv keeps these
-    // tiles in shared buffers instead.
-    const size_t item_q_rows = split_kv
-            ? 0
-            : static_cast<size_t>(conf.query_heads_per_item) * q_block;
-    conf.amx_wsp_bytes = align64(max_wsp);
-    thread_scratch.set_tile_buffers(item_q_rows, conf.ld_scores, conf.ld_prob,
-            conf.ld_pv, mm2_direct, conf.amx_wsp_bytes);
-    auto &ts = thread_scratch;
-
-    // Packed K and V buffers: per thread for one tile each when packing per
-    // tile, else whole tensors placed consecutively in the shared area.
-    using b_packer_t = sdpa_brgemm_copy::b_packer_t;
-    auto make_b_copy_desc = [&](size_t scratch_offset, dim_t rows, dim_t cols,
-                                    bool needs_vnni) {
-        tensor_copy_desc_t copy_desc;
-        copy_desc.scratch_offset = scratch_offset;
-        copy_desc.padded_k = b_packer_t::packed_k(rows, mm_dt);
-        copy_desc.vnni_factor
-                = needs_vnni ? data_type_vnni_granularity(mm_dt) : 1;
-        copy_desc.head_stride = static_cast<size_t>(copy_desc.padded_k)
-                * b_packer_t::packed_ld(cols) * mm_dt_sz;
-        copy_desc.batch_stride
-                = static_cast<size_t>(num_head_kv) * copy_desc.head_stride;
-        return copy_desc;
-    };
-    size_t shared_offset = 0;
-    if (pack_per_tile) {
-        // A K tile is one mm1 N block (at most one panel); a V tile is one mm2
-        // K block across all of hs_v.
-        if (need_copy_k) {
-            conf.k_tile_desc = make_b_copy_desc(
-                    ts.size, hs_qk, conf.mm1_n_block, conf.mm1_needs_vnni_b);
-            ts.size += align64(conf.k_tile_desc->head_stride);
-        }
-        if (need_copy_v) {
-            conf.v_tile_desc = make_b_copy_desc(
-                    ts.size, conf.mm2_k_block, hs_v, conf.mm2_needs_vnni_b);
-            ts.size += align64(conf.v_tile_desc->head_stride);
-        }
-    } else {
-        if (need_copy_k) {
-            conf.k_copy_desc = make_b_copy_desc(
-                    shared_offset, hs_qk, seq_kv, conf.mm1_needs_vnni_b);
-            shared_offset += static_cast<size_t>(batch)
-                    * conf.k_copy_desc->batch_stride;
-        }
-        if (need_copy_v) {
-            conf.v_copy_desc = make_b_copy_desc(
-                    shared_offset, seq_kv, hs_v, conf.mm2_needs_vnni_b);
-            shared_offset += static_cast<size_t>(batch)
-                    * conf.v_copy_desc->batch_stride;
-        }
-    }
-    if (split_kv) {
-        auto &sk = conf.split_kv;
-        const size_t rows = static_cast<size_t>(batch) * num_head_q * seq_q;
-        auto add_shared_buffer = [&](size_t bytes) {
-            const size_t offset = align64(shared_offset);
-            shared_offset = offset + bytes;
-            return offset;
-        };
-        sk.scores = add_shared_buffer(rows * conf.ld_scores * sizeof(float));
-        sk.prob = ts.has_prob
-                ? add_shared_buffer(rows * conf.ld_prob * mm_dt_sz)
-                : sk.scores;
-        if (!conf.mm2_direct)
-            sk.partials = add_shared_buffer(
-                    sk.mm2_chunks * rows * conf.ld_pv * sizeof(float));
-    }
-    conf.scratch_per_thread = ts.size;
-    conf.shared_scratch_bytes = shared_offset;
+    layout_scratch(desc, mm_dt, max_wsp, conf);
 
     if (get_verbose(verbose_t::debuginfo) > 0) {
         verbose_printf(verbose_t::debuginfo,

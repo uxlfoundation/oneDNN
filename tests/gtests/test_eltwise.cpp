@@ -14,6 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cmath>
+#include <limits>
+
 #include "dnnl_test_common.hpp"
 #include "gtest/gtest.h"
 
@@ -459,4 +462,89 @@ INST_TEST_CASE(EltwiseSimpleF32, all_cases, EXPAND_DTS(f32, f32, f32));
 INST_TEST_CASE(EltwiseSimpleBF16, all_cases, EXPAND_DTS(bf16, bf16, bf16));
 INST_TEST_CASE(EltwiseSimpleF16, all_cases, EXPAND_DTS(f16, f16, undef));
 INST_TEST_CASE(EltwiseSimpleU8, all_cases, EXPAND_DTS(u8, u8, undef));
+
+TEST(eltwise_special_values_test_t, ExpInfNaN) {
+    SKIP_IF_CUDA(true, "Unsupported eltwise_exp algorithm for CUDA");
+    SKIP_IF_HIP(true, "Unsupported eltwise_exp algorithm for HIP");
+
+    auto eng = get_test_engine();
+    auto strm = make_stream(eng);
+
+    const float qnan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+
+    // Test both tail-only (5) and vectorized + tail (35) lengths.
+    for (memory::dim n : {memory::dim(5), memory::dim(35)}) {
+        std::vector<float> src_vals(n, 0.f);
+        src_vals[0] = qnan;
+        src_vals[1] = -inf;
+        src_vals[2] = 0.f;
+        src_vals[3] = 2.5f;
+        src_vals[4] = inf;
+        if (n > 16) {
+            src_vals[16] = -qnan;
+            src_vals[17] = -inf;
+            src_vals[18] = inf;
+            src_vals[34] = qnan;
+        }
+
+        memory::desc md({1, n}, dt::f32, tag::ab);
+        auto src_mem = test::make_memory(md, eng);
+        auto dst_mem = test::make_memory(md, eng);
+        {
+            auto src_ptr = map_memory<float>(src_mem);
+            for (memory::dim i = 0; i < n; ++i)
+                src_ptr[i] = src_vals[i];
+        }
+
+        auto pd = eltwise_forward::primitive_desc(eng,
+                prop_kind::forward_training, algorithm::eltwise_exp, md, md,
+                0.f, 0.f);
+        eltwise_forward(pd).execute(
+                strm, {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DST, dst_mem}});
+        strm.wait();
+
+        {
+            auto dst_ptr = map_memory<float>(dst_mem);
+            for (memory::dim i = 0; i < n; ++i) {
+                const float x = src_vals[i];
+                const float y = dst_ptr[i];
+                if (std::isnan(x)) {
+                    EXPECT_TRUE(std::isnan(y)) << "idx=" << i << " n=" << n;
+                } else if (x == -inf) {
+                    EXPECT_EQ(y, 0.f) << "idx=" << i << " n=" << n;
+                } else if (x == inf) {
+                    EXPECT_TRUE(std::isinf(y) && !std::signbit(y))
+                            << "idx=" << i << " n=" << n;
+                } else {
+                    EXPECT_NEAR(y, std::exp(x), 1e-5f * std::exp(x))
+                            << "idx=" << i << " n=" << n;
+                }
+            }
+        }
+
+        auto diff_md = md;
+        auto diff_dst_mem = test::make_memory(diff_md, eng);
+        auto diff_src_mem = test::make_memory(diff_md, eng);
+        {
+            auto dd_ptr = map_memory<float>(diff_dst_mem);
+            for (memory::dim i = 0; i < n; ++i)
+                dd_ptr[i] = 1.f;
+        }
+        auto bwd_pd = eltwise_backward::primitive_desc(eng,
+                algorithm::eltwise_exp, diff_md, diff_md, md, 0.f, 0.f, pd);
+        eltwise_backward(bwd_pd).execute(strm,
+                {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DIFF_DST, diff_dst_mem},
+                        {DNNL_ARG_DIFF_SRC, diff_src_mem}});
+        strm.wait();
+        {
+            auto ds_ptr = map_memory<float>(diff_src_mem);
+            EXPECT_TRUE(std::isnan(ds_ptr[0])) << "bwd n=" << n;
+            if (n > 16) {
+                EXPECT_TRUE(std::isnan(ds_ptr[16])) << "bwd n=" << n;
+                EXPECT_TRUE(std::isnan(ds_ptr[34])) << "bwd n=" << n;
+            }
+        }
+    }
+}
 } // namespace dnnl

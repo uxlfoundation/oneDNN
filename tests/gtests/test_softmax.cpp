@@ -14,6 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cmath>
+#include <limits>
+
 #include "dnnl_test_common.hpp"
 #include "gtest/gtest.h"
 
@@ -575,5 +578,87 @@ INSTANTIATE_TEST_SUITE_P(Test_Softmax_Forward_S8, softmax_test_t,
                 tp {inference, alg_logsoftmax, dt::f32, dt::s8, dt::undef,
                         tag::nhwc, tag::nhwc, tag::undef, {2, 1011, 32, 1},
                         2}));
+
+TEST(softmax_special_values_test_t, InfAndNaNPropagation) {
+    auto eng = get_test_engine();
+    auto strm = make_stream(eng);
+
+    const float qnan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+
+    auto check_all_nan_dense = [&](const std::vector<float> &input) {
+        const auto n = static_cast<memory::dim>(input.size());
+        memory::desc md({1, n}, dt::f32, tag::ab);
+        auto src_mem = test::make_memory(md, eng);
+        auto dst_mem = test::make_memory(md, eng);
+        {
+            auto src_ptr = map_memory<float>(src_mem);
+            for (memory::dim i = 0; i < n; ++i)
+                src_ptr[i] = input[static_cast<size_t>(i)];
+        }
+        auto pd = softmax_forward::primitive_desc(eng,
+                prop_kind::forward_inference, algorithm::softmax_accurate, md,
+                md, 1);
+        softmax_forward(pd).execute(
+                strm, {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DST, dst_mem}});
+        strm.wait();
+
+        auto dst_ptr = map_memory<float>(dst_mem);
+        for (memory::dim i = 0; i < n; ++i) {
+            EXPECT_TRUE(std::isnan(dst_ptr[i]))
+                    << "dense idx=" << i << " n=" << n;
+        }
+    };
+
+    // +inf in input produces (+inf) - (+inf) = NaN, which must propagate to all
+    // elements along the softmax axis.
+    check_all_nan_dense({2.5f, 7.f, inf, -1.f, 0.5f});
+    check_all_nan_dense({2.5f, 7.f, qnan, -1.f, 0.5f});
+
+    std::vector<float> large_inf(35, 1.f);
+    large_inf[19] = inf;
+    check_all_nan_dense(large_inf);
+
+    std::vector<float> large_nan(35, 1.f);
+    large_nan[0] = qnan;
+    check_all_nan_dense(large_nan);
+
+    // Also test strided axis (axis 0 on a 2D ab tensor).
+    if (!is_amd_gpu(eng)) {
+        memory::desc md({5, 3}, dt::f32, tag::ab);
+        auto src_mem = test::make_memory(md, eng);
+        auto dst_mem = test::make_memory(md, eng);
+        // Col 0: has +inf -> all NaN
+        // Col 1: has NaN  -> all NaN
+        // Col 2: has -inf -> 0 at -inf, finite elsewhere
+        const float col0[5] = {2.5f, 7.f, inf, -1.f, 0.5f};
+        const float col1[5] = {2.5f, qnan, 7.f, -1.f, 0.5f};
+        const float col2[5] = {2.5f, 7.f, -inf, -1.f, 0.5f};
+        {
+            auto src_ptr = map_memory<float>(src_mem);
+            for (int r = 0; r < 5; ++r) {
+                src_ptr[r * 3 + 0] = col0[r];
+                src_ptr[r * 3 + 1] = col1[r];
+                src_ptr[r * 3 + 2] = col2[r];
+            }
+        }
+        auto pd = softmax_forward::primitive_desc(eng,
+                prop_kind::forward_inference, algorithm::softmax_accurate, md,
+                md, 0);
+        softmax_forward(pd).execute(
+                strm, {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_DST, dst_mem}});
+        strm.wait();
+
+        auto dst_ptr = map_memory<float>(dst_mem);
+        for (int r = 0; r < 5; ++r) {
+            EXPECT_TRUE(std::isnan(dst_ptr[r * 3 + 0]))
+                    << "strided col0 r=" << r;
+            EXPECT_TRUE(std::isnan(dst_ptr[r * 3 + 1]))
+                    << "strided col1 r=" << r;
+        }
+        EXPECT_EQ(dst_ptr[2 * 3 + 2], 0.f);
+        EXPECT_TRUE(std::isfinite(dst_ptr[1 * 3 + 2]));
+    }
+}
 
 } // namespace dnnl

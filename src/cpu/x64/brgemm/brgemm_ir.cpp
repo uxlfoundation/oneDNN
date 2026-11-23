@@ -93,9 +93,8 @@ struct advancing_regs_t {
     ir::vreg_t c_ptr = ir::vreg_t::none;
     // Pointer the finished block is stored through. It is `c_ptr` when the
     // blocks are stored to C. When they are stored to D, it is a register of
-    // its own that holds the `ptr_D` kernel argument. C and D have the same
-    // data type and leading dimension (`init_output_conf()`,
-    // `init_store_confs()`), so it advances like `c_ptr`.
+    // its own that holds the `ptr_D` kernel argument and advances like `c_ptr`
+    // by `d_off()`.
     ir::vreg_t store_ptr = ir::vreg_t::none;
     // Byte offset into A of the current M block. Starts at 0 and moves like
     // `c_ptr`, but only along M. `none` when the M level is unrolled.
@@ -660,14 +659,15 @@ void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
             if (blk.bd_start != 0 || blk.ld_start != 0) {
                 blk_ptr = ir.new_gpr();
                 ir.mov_reg(blk_ptr, regs.advancing.store_ptr);
-                ir.add_imm(blk_ptr, cfg.c_off(blk.bd_start, blk.ld_start));
+                ir.add_imm(blk_ptr,
+                        cfg.store_off(store_cfg, blk.bd_start, blk.ld_start));
             }
 
             std::vector<dim_t> out_byte_off(acc.size());
             for (int bd = 0; bd < blk.bd_block; bd++)
                 for (int ld = 0; ld < blk.ld_block2; ld++)
-                    out_byte_off[bd * blk.ld_block2 + ld]
-                            = cfg.c_off(bd, (dim_t)ld * cfg.loop.ld_block);
+                    out_byte_off[bd * blk.ld_block2 + ld] = cfg.store_off(
+                            store_cfg, bd, (dim_t)ld * cfg.loop.ld_block);
 
             // A block is either all full registers or the one masked
             // register of the N tail, which holds `ldb_tail` elements.
@@ -721,20 +721,18 @@ void emit_output_path(ir::ir_t &ir, const conf_t &cfg,
     for (const output_stage_t stage : store_cfg.stages)
         emit_post_ops_stage(ir, cfg, store_cfg, regs, blk, acc, stage);
 
-    // The stores to D use the displacements and data type of C, so C and D
-    // must share both.
     for (int bd = 0; bd < blk.bd_block; bd++) {
         for (int ld = 0; ld < blk.ld_block2; ld++) {
             const ir::vreg_t src = acc[bd * blk.ld_block2 + ld];
+            const dim_t off = cfg.store_off(
+                    store_cfg, blk.bd_start + bd, cfg.ld_pos(blk, ld));
 
             if (blk.ld_tail_mask == ir::vreg_t::none) {
-                ir.vstore(regs.advancing.store_ptr,
-                        cfg.c_off(blk.bd_start + bd, cfg.ld_pos(blk, ld)), src,
-                        cfg.output.dt_c);
+                ir.vstore(regs.advancing.store_ptr, off, src,
+                        cfg.store_dt(store_cfg));
             } else {
-                ir.vstore_masked(regs.advancing.store_ptr,
-                        cfg.c_off(blk.bd_start + bd, cfg.ld_pos(blk, ld)), src,
-                        blk.ld_tail_mask, cfg.output.dt_c);
+                ir.vstore_masked(regs.advancing.store_ptr, off, src,
+                        blk.ld_tail_mask, cfg.store_dt(store_cfg));
             }
         }
     }
@@ -828,7 +826,7 @@ void emit_mn_step(ir::ir_t &ir, const conf_t &cfg,
 
     if (regs.c_ptr != ir::vreg_t::none)
         ir.add_imm(regs.c_ptr, cfg.c_off(bd, ld));
-    if (store_cfg.to_d) ir.add_imm(regs.store_ptr, cfg.c_off(bd, ld));
+    if (store_cfg.to_d) ir.add_imm(regs.store_ptr, cfg.d_off(bd, ld));
 
     if (ld != 0) {
         if (store_cfg.has_stage(output_stage_t::bias))
@@ -1161,6 +1159,7 @@ status_t init_loop_conf(
     loop.lda = brg.LDA;
     loop.ldb = brg.LDB;
     loop.ldc = brg.LDC;
+    loop.ldd = brg.LDD;
     loop.ld_block = brg.ld_block;
     loop.ld_block2 = brg.ld_block2;
     loop.rd_block = brg.rd_block;
@@ -1357,6 +1356,7 @@ status_t init_output_conf(output_conf_t &output, const brgemm_desc_t &brg) {
 
     output.beta = brg.beta;
     output.dt_c = brg.dt_c;
+    output.dt_d = brg.dt_d;
     output.dt_bias = brg.dt_bias;
     output.dt_src_scales = brg.dt_src_scales;
     output.dt_wei_scales = brg.dt_wei_scales;
@@ -1404,7 +1404,8 @@ status_t init_store_confs(
         stages.push_back(output_stage_t::injector_postops);
     if (brg.with_dst_scales) stages.push_back(output_stage_t::dst_scale);
 
-    // A post-ops call stores to D through the C displacements.
+    // TODO: accept `LDC != LDD` after testing it. The stores to D already use
+    // `d_off()`.
     VCONDCHECK_BRGEMM_IR(
             IMPLICATION(conf.are_post_ops_applicable(), brg.LDC == brg.LDD),
             VERBOSE_UNSUPPORTED_FEATURE, "LDC != LDD");
@@ -1442,6 +1443,9 @@ status_t check_displacements(const conf_t &conf) {
             "B displacement overflows int32");
     VCONDCHECK_BRGEMM_IR(fits(conf.c_off(m, n)), VERBOSE_UNSUPPORTED_FEATURE,
             "C displacement overflows int32");
+    VCONDCHECK_BRGEMM_IR(
+            IMPLICATION(conf.are_post_ops_applicable(), fits(conf.d_off(m, n))),
+            VERBOSE_UNSUPPORTED_FEATURE, "D displacement overflows int32");
     VCONDCHECK_BRGEMM_IR(fits(conf.bias_off(n)), VERBOSE_UNSUPPORTED_FEATURE,
             "bias displacement overflows int32");
     VCONDCHECK_BRGEMM_IR(fits(conf.wei_scale_off(n)),

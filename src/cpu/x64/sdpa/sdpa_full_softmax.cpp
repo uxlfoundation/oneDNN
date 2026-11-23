@@ -709,7 +709,8 @@ struct kv_blocking_t {
 };
 
 kv_blocking_t choose_kv_blocking(const sdpa_desc_t &desc,
-        const blocking_hw_t &hw, data_type_t mm_dt, bool k_needs_vnni) {
+        const blocking_hw_t &hw, data_type_t mm_dt, bool transpose_k,
+        bool k_needs_vnni) {
     constexpr dim_t b_panel_n = sdpa_brgemm_copy::b_packer_t::panel_n;
     constexpr dim_t kv_granule_medium = 32;
     constexpr dim_t kv_granule_min = 16;
@@ -733,7 +734,6 @@ kv_blocking_t choose_kv_blocking(const sdpa_desc_t &desc,
     // above half but below full. These thresholds estimate when fewer panel
     // re-reads outweigh the copy cost.
     const auto &k_strides = memory_desc_wrapper(desc.key_md()).strides();
-    const bool transpose_k = k_strides[sdpa_pd_t::ndims - 1] != 1;
     const dim_t k_reuse_rows
             = desc.queries() * (desc.num_q_heads() / desc.num_kv_heads());
     const float k_l2_set_load = f32_tile_l2_set_load(
@@ -1267,8 +1267,8 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
             conf.ld_scores, conf.ld_prob);
     const auto query_blocking
             = choose_query_blocking(desc, hw, mm_dt, score_row_bytes);
-    const auto kv_blocking
-            = choose_kv_blocking(desc, hw, mm_dt, conf.mm1_needs_vnni_b);
+    const auto kv_blocking = choose_kv_blocking(
+            desc, hw, mm_dt, mm1_transpose_k, conf.mm1_needs_vnni_b);
     const auto choice = choose_schedule(desc, hw, mm_dt, query_blocking,
             kv_blocking, score_row_bytes, knobs);
 

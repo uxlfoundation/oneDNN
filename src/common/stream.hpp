@@ -79,8 +79,11 @@ struct dnnl_stream {
 
     bool is_syncable() const { return impl_->is_syncable(); }
 
+    // `trace_id` is the ID printed in the start trace marker of the call, or 0
+    // if tracing is disabled.
     virtual dnnl::impl::status_t run_verbose_profiler(
-            const std::string &pd_info, double start_ms, uint64_t component) {
+            const std::string &pd_info, double start_ms, uint64_t component,
+            uint64_t trace_id) {
         return dnnl::impl::status::unimplemented;
     }
 

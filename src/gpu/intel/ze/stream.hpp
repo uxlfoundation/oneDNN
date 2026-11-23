@@ -56,7 +56,7 @@ public:
             int *num_entries, uint64_t *data) const override;
 
     status_t run_verbose_profiler(const std::string &pd_info, double start_ms,
-            uint64_t component) override;
+            uint64_t component, uint64_t trace_id) override;
 
     status_t copy(const impl::memory_storage_t &src,
             const impl::memory_storage_t &dst, size_t size,

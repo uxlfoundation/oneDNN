@@ -73,9 +73,10 @@ struct verbose_profiler_t {
     // primitives without blocking execution.
     virtual void update_event_list() = 0;
 
-    // populates profiling metadata for the last primitive entry
-    virtual void add_to_pending_primitive_list(
-            double start_ms, const std::string &pd_info, uint64_t component)
+    // populates profiling metadata for the last primitive entry; a non-zero
+    // `trace_id` makes the profiler print the matching end trace marker
+    virtual void add_to_pending_primitive_list(double start_ms,
+            const std::string &pd_info, uint64_t component, uint64_t trace_id)
             = 0;
 
     // Completed primitive executions are periodically checked and logged

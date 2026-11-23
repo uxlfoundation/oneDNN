@@ -116,7 +116,8 @@ std::optional<::sycl::event> host_scalar_executable_t::execute_sycl_impl(
                 std::vector<::sycl::event> {event});
         gpu_strm->verbose_profiler()->register_event(verbose_event);
         strm->run_verbose_profiler(info_, start_ms,
-                static_cast<uint64_t>(dnnl::impl::component_t::graph));
+                static_cast<uint64_t>(dnnl::impl::component_t::graph),
+                /*trace_id=*/0);
     }
     strm->after_exec_hook();
     return event;
@@ -186,7 +187,8 @@ ocl_event_t host_scalar_executable_t::execute_ocl_impl(const stream &stream,
                 xpu::ocl::wrapper_t<cl_event>(e, true));
         gpu_strm->verbose_profiler()->register_event(verbose_event);
         strm->run_verbose_profiler(info_, start_ms,
-                static_cast<uint64_t>(dnnl::impl::component_t::graph));
+                static_cast<uint64_t>(dnnl::impl::component_t::graph),
+                /*trace_id=*/0);
     }
     strm->after_exec_hook();
     return ocl_event_t(e);

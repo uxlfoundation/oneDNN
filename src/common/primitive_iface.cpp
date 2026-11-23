@@ -160,10 +160,7 @@ status_t primitive_execute(
     }
 
     const auto component = prim_kind2_comp_kind(pd->impl()->kind());
-    // With the async verbose profiler, trace records are printed by the
-    // profiler once the device events complete, not here.
-    const bool trace_enabled = get_verbose(verbose_t::exec_trace, component)
-            && !stream->is_verbose_profiler_enabled();
+    const bool trace_enabled = get_verbose(verbose_t::exec_trace, component);
     const bool profile_enabled
             = get_verbose(verbose_t::exec_profile, component);
 
@@ -209,7 +206,7 @@ status_t primitive_execute(
         if (block_on_wait) stream->wait();
 
         if (stream->is_verbose_profiler_enabled()) {
-            CHECK(stream->run_verbose_profiler(pd_info, start_ms, 0));
+            CHECK(stream->run_verbose_profiler(pd_info, start_ms, 0, trace_id));
         } else {
             if (profile_enabled) {
                 const double duration_ms = get_msec() - start_ms;

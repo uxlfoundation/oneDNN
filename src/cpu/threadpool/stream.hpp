@@ -48,7 +48,7 @@ struct stream_t : public cpu::cpu_stream_t {
     void after_exec_hook() override;
 
     status_t run_verbose_profiler(const std::string &pd_info, double start_ms,
-            uint64_t component) override;
+            uint64_t component, uint64_t trace_id) override;
 
     // Returns the active per-thread verbose profiler, or nullptr if the
     // profiler has not been initialized for this thread.

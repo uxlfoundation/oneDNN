@@ -34,6 +34,7 @@ struct conf_t {
     int ndims;
     int vector_size;
     bool with_zero_padding;
+    bool is_dense;
     data_type_t data_type;
     alg_kind_t alg;
     bool is_forward;

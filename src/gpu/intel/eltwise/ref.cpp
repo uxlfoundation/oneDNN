@@ -51,6 +51,7 @@ static status_t init_conf_common(
     const auto &dims = src_d.padded_dims();
 
     conf.with_zero_padding = src_d.nelems(false) != src_d.nelems(true);
+    conf.is_dense = src_d.is_dense(true);
 
     int max_ndims = 6;
     const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
@@ -86,8 +87,8 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
 
     bool with_binary_post_ops
             = post_ops.find(primitive_kind_t::dnnl_binary) != -1;
-    kernel_ctx.define_int(
-            "USE_GWS_GET", conf.with_zero_padding || with_binary_post_ops);
+    kernel_ctx.define_int("USE_GWS_GET",
+            conf.with_zero_padding || !conf.is_dense || with_binary_post_ops);
 
     def_data_type(kernel_ctx, conf.data_md_info.data_type, "SRC");
     def_memory_desc_info(kernel_ctx, conf.data_md_info, "DST");

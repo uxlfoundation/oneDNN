@@ -184,7 +184,10 @@ int fill_zero_points(const attr_t &attr, int arg, dnn_mem_t &mem_dt,
         if (mem_dt) SAFE(mem_dt.reorder(mem_fp, res), WARN);
     } else {
         // Negative values are valid only for signed data types.
-        const int min_val = MAX2(-2, static_cast<int>(lowest_dt(mem_dt.dt())));
+        // Clamp before casting as the lowest value of floating-point data
+        // types doesn't fit into `int`.
+        const int min_val
+                = static_cast<int>(MAX2(-2.f, lowest_dt(mem_dt.dt())));
         std::vector<float> zero_points_set {0, 1, 2};
         if (min_val < 0) {
             zero_points_set.insert(zero_points_set.end(), {-2.f, -1.f});

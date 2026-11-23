@@ -240,14 +240,15 @@ void Generator<hw>::accumulateSum(bool column,
                         dp4a(ne, dst, dst, srcDP4A, state.all1s);
                     else if (yinc == 1)
                         add(ne, dst, srcBase(4), dst);
-                    else if (hw == HW::XeHPC) {
-                        // Workaround, some issue with dp4a with immediates
+                    else {
+                        // Workaround: dp4a with a partial-byte immediate mask
+                        // does not reliably ignore the unused bytes (seen on
+                        // XeHPC and Xe3).
                         // TODO: hoist immediate out of inner-loop
                         if (imm.isInvalid()) imm = state.ra.alloc_sub(Tdst.ngen());
                         mov(1, imm, 0x01010101 & ((1 << (yinc * 8)) - 1));
                         dp4a(ne, dst, dst, srcDP4A, imm);
-                    } else
-                        dp4a(ne, dst, dst, srcDP4A, 0x01010101 & ((1 << (yinc * 8)) - 1));
+                    }
                 } else if (hReduce && blockSrc->crosspack == 1) {
                     if (Tsrc.isSigned())
                         dp4a(ne, dst, dst, srcDP4A, state.all1s);

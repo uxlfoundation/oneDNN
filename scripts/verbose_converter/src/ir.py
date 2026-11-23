@@ -106,14 +106,6 @@ class MemoryDescriptor(Mapping):
                 my_str += f":sa{self.scale_adjust}"
             return my_str
 
-    @dataclass
-    class GroupedDesc:
-        variable_dim_idx: int
-        group_count: int
-
-        def __str__(self):
-            return f"grouped:{self.variable_dim_idx}:{self.group_count}"
-
     arg: str
     data_type: str
     properties: str
@@ -121,7 +113,6 @@ class MemoryDescriptor(Mapping):
     tag: str
     flags: Flags
     strides: str = ""  # Pre-v3.1 does not have strides
-    grouped: Optional[GroupedDesc] = None
 
     padding = alias("properties")
 
@@ -136,8 +127,6 @@ class MemoryDescriptor(Mapping):
         arg_dt = f"{self.arg}:{self.data_type}"
         layout = f"{self.properties}:{self.format_kind}"
         body = f"{tag}:{self.strides}"
-        if self.grouped is not None:
-            body = f"{convert(self.grouped)}:"
         return f"{arg_dt}:{layout}:{body}:{convert(self.flags)}"
 
     def __str__(self):

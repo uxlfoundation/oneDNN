@@ -3145,18 +3145,6 @@ inline bool legalPackedBF(HW hw, const CopyOperand &op)
     return (op.stride == 1 && (op.offset & (align - 1)) == 0);
 }
 
-inline bool isCommutative(Opcode op) {
-    switch (op) {
-        case Opcode::add:
-        case Opcode::mul:
-        case Opcode::and_:
-        case Opcode::or_:
-        case Opcode::xor_:
-             return true;
-        default: return false;
-    }
-}
-
 void CopyPlan::planEmulatedSIMD1(CopyInstruction &i)
 {
     // Convert SIMD1 instruction to SIMD2.
@@ -3326,14 +3314,9 @@ void CopyPlan::legalizeRegions()
                 return (bo == dstBO) && (bs == dstBS);
             };
 
-            if (!isFlat(i.src1)) {
-                if (isCommutative(i.op) && i.src0.kind == CopyOperand::GRF && isFlat(i.src0)) {
-                    std::swap(i.src0, i.src1);
-                    std::swap(src0BO, src1BO);
-                    std::swap(src0BS, src1BS);
-                } else
-                    canSwizzle = false;
-            }
+            /* For SIMD > 1, src1 region must match dst. */
+            if (i.simd > 1 && i.op != Opcode::mov && !isFlat(i.src1))
+                canSwizzle = false;
 
             if (hfIntConvert)
                 canSwizzle = false;

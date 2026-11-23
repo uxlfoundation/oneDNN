@@ -475,7 +475,6 @@ static Package generatePackage(const GEMMOptions &options, HostPayload host, HWI
 {
     auto product = npack::decodeHWIPVersion(hwInfo.gmdid);
     auto hw = getCore(product.family);
-    auto stepping = hwInfo.gmdid & 0xFF;
 
     /* Generate interface */
     GEMMOptions effOptions = transC ? options.transpose() : options;
@@ -485,7 +484,7 @@ static Package generatePackage(const GEMMOptions &options, HostPayload host, HWI
     #define ARCH_DISPATCH(arch)                                                                         \
         case HW::arch: {                                                                                \
             Generator<HW::arch> generator(product);                                                     \
-            generator.setStepping(stepping);                                                            \
+            generator.setStepping(hwInfo.gmdid & 0xFF);                                                 \
             return generator.gemmMicrokernelPackage(candidate.problem, candidate.strategy, interface,   \
                                                     makeProtocol(options), hwInfo.gmdid, transC);       \
         }

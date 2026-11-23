@@ -571,6 +571,275 @@ status_t uses_amx_tiles(data_type_t dt, bool &is_amx) {
     return status::success;
 }
 
+void init_mm1_post_ops(
+        const sdpa_pd_t &pd, std::vector<sdpa_mm1_post_op_t> &post_ops) {
+    // Chain order: the f32 scale, then the additive mask. Select is separate.
+    if (pd.with_attn_scale()) {
+        sdpa_mm1_post_op_t sc;
+        sc.alg = alg_kind::binary_mul;
+        sc.is_binary = true;
+        sc.rhs_is_scalar = true;
+        sc.rhs_dt = data_type::f32;
+        post_ops.push_back(sc);
+    }
+    if (pd.with_buffer_mask()) {
+        constexpr int ndims = sdpa_pd_t::ndims;
+        const memory_desc_wrapper mask_mdw(pd.desc()->attn_mask_md());
+        sdpa_mm1_post_op_t mk;
+        mk.alg = alg_kind::binary_add;
+        mk.is_binary = true;
+        mk.rhs_is_scalar = false;
+        mk.rhs_dt = mask_mdw.data_type();
+        mk.rhs_dims.assign(mask_mdw.dims(), mask_mdw.dims() + ndims);
+        mk.rhs_strides.assign(mask_mdw.strides(), mask_mdw.strides() + ndims);
+        post_ops.push_back(mk);
+    }
+}
+
+bool can_fold_select(const sdpa_pd_t &pd) {
+    if (!pd.with_select_mask()) return false;
+    const auto &desc = *pd.desc();
+    const memory_desc_wrapper cond(desc.attn_mask_md());
+    // The PD guarantees a contiguous key axis. For multiple query rows,
+    // folding requires one dense condition row per query (no broadcast).
+    const bool dense_query_axis = desc.queries() == 1
+            || (cond.dims()[sdpa_pd_t::mask_q_index] != 1
+                    && cond.strides()[sdpa_pd_t::mask_q_index] == desc.keys());
+    return !desc.invert_select && dense_query_axis;
+}
+
+void init_score_and_prob_layout(
+        const sdpa_pd_t &pd, sdpa_full_softmax_conf_t &conf) {
+    conf.mm1_select_postop = can_fold_select(pd);
+    // Keep score rows dense for tensor RHS and folded select: the injector
+    // uses score-tile offsets to address these operands.
+    bool dense_scores_required = conf.mm1_select_postop;
+    for (const auto &pop : conf.mm1_post_ops)
+        if (pop.is_binary && !pop.rhs_is_scalar) dense_scores_required = true;
+    const dim_t seq_kv = pd.desc()->keys();
+    conf.ld_scores
+            = scratch_row_ld(seq_kv, sizeof(float), !dense_scores_required);
+    const data_type_t mm_dt = mm_data_type(pd);
+    const size_t mm_dt_size = types::data_type_size(mm_dt);
+    conf.thread_scratch.set_compute_type(mm_dt, mm_dt_size);
+    conf.ld_prob = conf.thread_scratch.has_prob
+            ? scratch_row_ld(seq_kv, mm_dt_size, /*allow_padding=*/true)
+            : conf.ld_scores;
+}
+
+struct blocking_hw_t {
+    int nthr;
+    unsigned l2_bytes;
+    unsigned l3_bytes;
+    bool is_amx;
+};
+
+struct query_blocking_t {
+    dim_t granule;
+    dim_t max_block;
+    dim_t item_rows;
+    double concurrent_kv_bytes;
+    bool interleave_items;
+};
+
+bool kv_overflows_l3(dim_t seq_q, dim_t q_block_max, double concurrent_kv_bytes,
+        const blocking_hw_t &hw, double score_tile_bytes) {
+    const double l3_left_bytes = static_cast<double>(hw.nthr)
+            * (static_cast<double>(hw.l3_bytes) - score_tile_bytes);
+    return seq_q > q_block_max && concurrent_kv_bytes > l3_left_bytes;
+}
+
+query_blocking_t choose_query_blocking(const sdpa_desc_t &desc,
+        const blocking_hw_t &hw, data_type_t mm_dt, size_t score_row_bytes) {
+    // Larger query tiles amortize K/V reads but increase the live score/P
+    // footprint. The L2 ratios were tuned on GNR, and the row caps are
+    // heuristics, not hardware limits. The target can exceed L2 and does
+    // not guarantee cache residency.
+    const dim_t q_granule = hw.is_amx ? 16 : 8; // AMX computes 16-row tiles
+    const dim_t q_block_max = hw.is_amx ? 96 : 192;
+    const float score_tile_l2_ratio = hw.is_amx ? 0.75f : 1.5f;
+    const dim_t head_sizes = desc.head_size() + desc.values();
+    // Empirical scaling, normalized to 1 for QK and V widths of 64 each.
+    const float head_scale = std::sqrt(head_sizes / 128.f);
+    const float score_tile_target_bytes
+            = score_tile_l2_ratio * head_scale * hw.l2_bytes;
+    const float q_rows
+            = score_tile_target_bytes / static_cast<float>(score_row_bytes);
+    const dim_t kv_heads_total = desc.batch() * desc.num_kv_heads();
+    const double concurrent_kv_bytes
+            = static_cast<double>(nstl::min<dim_t>(hw.nthr, kv_heads_total))
+            * desc.keys() * head_sizes * types::data_type_size(mm_dt);
+    // Estimate at most one distinct KV head per thread. For this preliminary
+    // L3 check, account for a per-thread score/P tile capped at q_block_max
+    // rows. If the concurrent K/V estimate exceeds the remaining budget,
+    // interleaving lets fused schedules assign neighboring query blocks to
+    // threads for K/V reuse. Require seq_q > q_block_max so each head has
+    // multiple blocks. Cache occupancy and sharing are estimates.
+    const double estimated_score_tile_bytes
+            = nstl::min<double>(score_tile_target_bytes,
+                    static_cast<double>(q_block_max) * score_row_bytes);
+    const bool interleave_items = kv_overflows_l3(desc.queries(), q_block_max,
+            concurrent_kv_bytes, hw, estimated_score_tile_bytes);
+    // For one K/V traversal and R query rows, ideal K/V traffic per score is
+    // head_sizes * element_size / R bytes. At the unshared minimum-row target
+    // (R = head_sizes / 8), this is 16 bytes per score for bf16/f16, close to
+    // the estimated 16-24 bytes of score/P traffic per score. The same rule
+    // gives 32 bytes of K/V traffic per score for f32.
+    // Predict sharing if there are more than two configured threads per KV
+    // head, or if the first L3 check requests interleaving. With sharing,
+    // use /16 to halve the minimum-row target, assuming lower effective K/V
+    // cost. These are heuristics; rounding and caps can lower final item_rows.
+    const bool kv_shared_in_l3
+            = 2 * kv_heads_total < hw.nthr || interleave_items;
+    const float q_rows_min = head_sizes / (kv_shared_in_l3 ? 16.f : 8.f);
+    dim_t item_rows = q_granule
+            * std::lround(nstl::max(q_rows, q_rows_min) / q_granule);
+    item_rows = utils::saturate(q_granule, q_block_max, item_rows);
+    return {q_granule, q_block_max, item_rows, concurrent_kv_bytes,
+            interleave_items};
+}
+
+dim_t choose_q_block(const sdpa_desc_t &desc, const query_blocking_t &blocking,
+        int nthr, dim_t heads_per_item) {
+    const dim_t seq_q = desc.queries();
+    const dim_t granule = blocking.granule;
+    dim_t qb = blocking.item_rows / heads_per_item;
+    if (qb < seq_q) qb = nstl::max(granule, utils::rnd_dn(qb, granule));
+    qb = nstl::min(qb, seq_q);
+    const dim_t head_items = desc.batch() * desc.num_q_heads() / heads_per_item;
+    // Shrink the block if there are too few work items to occupy the threads.
+    while (qb > granule && head_items * utils::div_up(seq_q, qb) < nthr)
+        qb = utils::rnd_dn(qb - 1, granule);
+    return utils::saturate((dim_t)1, seq_q, qb);
+}
+
+struct kv_blocking_t {
+    dim_t mm1_n_block;
+    dim_t mm2_k_block;
+    bool pack_k_for_aliasing;
+    bool pack_k;
+};
+
+kv_blocking_t choose_kv_blocking(const sdpa_desc_t &desc,
+        const blocking_hw_t &hw, data_type_t mm_dt, bool k_needs_vnni) {
+    constexpr dim_t b_panel_n = sdpa_brgemm_copy::b_packer_t::panel_n;
+    constexpr dim_t kv_granule_medium = 32;
+    constexpr dim_t kv_granule_min = 16;
+    const dim_t hs_qk = desc.head_size();
+    const dim_t mm_dt_sz = static_cast<dim_t>(types::data_type_size(mm_dt));
+    const dim_t l2_budget_bytes = static_cast<dim_t>(3 * hw.l2_bytes / 4);
+    const dim_t b_panel_budget_bytes = l2_budget_bytes / 8;
+    dim_t kv_block = b_panel_budget_bytes / (hs_qk * mm_dt_sz);
+    const dim_t granule = kv_block >= b_panel_n
+            ? b_panel_n
+            : (kv_block >= kv_granule_medium ? kv_granule_medium
+                                             : kv_granule_min);
+    kv_block = nstl::max<dim_t>(
+            utils::rnd_dn(kv_block, granule), kv_granule_min);
+    kv_block = nstl::min<dim_t>(kv_block, desc.keys());
+
+    // A directly usable f32 K panel may still suffer L2 set conflicts.
+    // Estimate the fullest set's occupancy as a fraction of its ways and
+    // query-row reuse as seq_q * (query heads per KV head). Require at least
+    // 128 reuse rows at or above full occupancy, or 256 when occupancy is
+    // above half but below full. These thresholds estimate when fewer panel
+    // re-reads outweigh the copy cost.
+    const auto &k_strides = memory_desc_wrapper(desc.key_md()).strides();
+    const bool transpose_k = k_strides[sdpa_pd_t::ndims - 1] != 1;
+    const dim_t k_reuse_rows
+            = desc.queries() * (desc.num_q_heads() / desc.num_kv_heads());
+    const float k_l2_set_load = f32_tile_l2_set_load(
+            hs_qk, kv_block, k_strides[sdpa_pd_t::ndims - 2]);
+    const bool pack_k_for_aliasing = mm_dt == data_type::f32 && !transpose_k
+            && ((k_reuse_rows >= 256 && k_l2_set_load > 0.5f)
+                    || (k_reuse_rows >= 128 && k_l2_set_load >= 1.0f));
+    const bool pack_k = transpose_k || k_needs_vnni || pack_k_for_aliasing;
+    const dim_t mm1_n_block
+            = pack_k ? nstl::min<dim_t>(kv_block, b_panel_n) : kv_block;
+    // A deeper reduction block reduces partial-output traffic. GNR sweeps
+    // favored 256 keys for AMX and 512-1024 for f32. Use 512 as the common
+    // non-AMX default; this is not a separately established optimum for every
+    // non-AMX data type. Keep the nominal depth unclamped for schedule scoring;
+    // the execution block is capped at seq_kv later.
+    constexpr dim_t amx_mm2_k_block = 256;
+    const dim_t mm2_k_block = hw.is_amx ? amx_mm2_k_block : 512;
+    return {mm1_n_block, mm2_k_block, pack_k_for_aliasing, pack_k};
+}
+
+bool can_stack_heads(const sdpa_desc_t &desc, bool allow_stack_heads,
+        dim_t query_heads_per_item, dim_t ld_scores,
+        const std::vector<sdpa_mm1_post_op_t> &post_ops,
+        const memory_desc_t *folded_select) {
+    if (!allow_stack_heads || desc.queries() != 1 || query_heads_per_item == 1)
+        return false;
+    constexpr int head_dim = sdpa_pd_t::mask_h_index;
+    const memory_desc_wrapper q_mdw(desc.qry_md());
+    // Stacked Q rows are consecutive heads and must not overlap.
+    if (q_mdw.strides()[head_dim] < desc.head_size()) return false;
+    // A tensor RHS can broadcast over heads or match the score row stride.
+    // Folded select requires one condition row per stacked head.
+    for (const auto &pop : post_ops) {
+        if (!pop.is_binary || pop.rhs_is_scalar) continue;
+        if (pop.rhs_dims[head_dim] != 1
+                && pop.rhs_strides[head_dim] != ld_scores)
+            return false;
+    }
+    if (folded_select) {
+        const memory_desc_wrapper cond(folded_select);
+        if (cond.dims()[head_dim] == 1 || cond.strides()[head_dim] != ld_scores)
+            return false;
+    }
+    return true;
+}
+
+void resolve_brgemm_layout(const sdpa_pd_t &pd, bool allow_stack_heads,
+        sdpa_full_softmax_conf_t &conf) {
+    constexpr int ndims = sdpa_pd_t::ndims;
+    constexpr int row_dim = ndims - 2;
+    constexpr int head_dim = sdpa_pd_t::mask_h_index;
+    constexpr dim_t b_panel_n = sdpa_brgemm_copy::b_packer_t::panel_n;
+    const auto &desc = *pd.desc();
+    const memory_desc_wrapper out_mdw(pd.dst_md());
+    const auto &out_strides = out_mdw.strides();
+    const bool mm2_has_single_chunk
+            = conf.schedule != sdpa_full_softmax_schedule_t::split_kv
+            || conf.split_kv.mm2_chunks == 1;
+    // Direct f32 stores and final-block conversion require unit stride along
+    // the value axis and no partial-result merge.
+    const bool mm2_can_store
+            = mm2_has_single_chunk && out_strides[ndims - 1] == 1;
+    conf.mm2_direct = mm2_can_store && out_mdw.data_type() == data_type::f32;
+    conf.mm2_postops = mm2_can_store
+            && utils::one_of(
+                    out_mdw.data_type(), data_type::bf16, data_type::f16);
+    const dim_t hs_v = desc.values();
+    conf.ld_pv = scratch_row_ld(hs_v, sizeof(float), /*allow_padding=*/true);
+
+    const auto *folded_select
+            = conf.mm1_select_postop ? desc.attn_mask_md() : nullptr;
+    conf.stack_heads = can_stack_heads(desc, allow_stack_heads,
+            conf.query_heads_per_item, conf.ld_scores, conf.mm1_post_ops,
+            folded_select);
+    const int m_axis = conf.stack_heads ? head_dim : row_dim;
+    conf.m_block = conf.stack_heads ? conf.query_heads_per_item : conf.q_block;
+    conf.mm1_lda = memory_desc_wrapper(desc.qry_md()).strides()[m_axis];
+    conf.out_ld = out_strides[m_axis];
+    conf.mm2_ldc = conf.mm2_direct ? conf.out_ld : conf.ld_pv;
+
+    // Packed B operands use a panel's leading dimension. In-place operands
+    // use the physical row stride from the tensor descriptor.
+    conf.ldk = conf.pack_k
+            ? b_panel_n
+            : memory_desc_wrapper(desc.key_md()).strides()[row_dim];
+    conf.ldv = conf.pack_v
+            ? b_panel_n
+            : memory_desc_wrapper(desc.val_md()).strides()[row_dim];
+    // BRGEMM requires ldb >= hs_v. With one key, V's row stride is unused.
+    if (!conf.pack_v && desc.keys() == 1) conf.ldv = nstl::max(conf.ldv, hs_v);
+    conf.v_block = conf.pack_v ? nstl::min<dim_t>(hs_v, b_panel_n) : hs_v;
+    conf.v_tail = hs_v % conf.v_block;
+}
+
 tensor_copy_desc_t make_b_copy_desc(size_t scratch_offset, dim_t rows,
         dim_t cols, data_type_t mm_dt, dim_t num_head_kv, bool needs_vnni) {
     using b_packer_t = sdpa_brgemm_copy::b_packer_t;
@@ -672,12 +941,7 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
     conf = sdpa_full_softmax_conf_t();
 
     constexpr int ndims = sdpa_pd_t::ndims;
-    constexpr int row_dim = ndims - 2;
-
     const sdpa_desc_t &desc = *pd.desc();
-    const memory_desc_wrapper q_mdw(desc.qry_md()), k_mdw(desc.key_md()),
-            v_mdw(desc.val_md()), out_mdw(pd.dst_md()),
-            cond_mdw(desc.attn_mask_md());
     const dim_t batch = desc.batch();
     const dim_t num_head_q = desc.num_q_heads();
     const dim_t num_head_kv = desc.num_kv_heads();
@@ -688,18 +952,7 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
     const dim_t hs_qk = desc.head_size();
     const dim_t hs_v = desc.values();
     const data_type_t mm_dt = mm_data_type(pd);
-    // SDPA output data type; f32 accumulators are converted to it.
-    const data_type_t out_dt = out_mdw.data_type();
-    const dims_t &q_strides = q_mdw.strides();
-    const dims_t &k_strides = k_mdw.strides();
-    const dims_t &v_strides = v_mdw.strides();
-    const dims_t &out_strides = out_mdw.strides();
-    const bool has_select = pd.with_select_mask();
-    // When true, keep scores where cond == 0; otherwise keep where cond != 0.
-    const bool invert_select = desc.invert_select;
-    // Null without a select mask.
-    const dim_t *cond_dims = has_select ? cond_mdw.dims() : nullptr;
-    const dim_t *cond_strides = has_select ? cond_mdw.strides() : nullptr;
+    const data_type_t out_dt = pd.dst_md()->data_type;
 
     if (!utils::one_of(mm_dt, data_type::f32, data_type::f16, data_type::bf16))
         return status::unimplemented;
@@ -707,195 +960,44 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
     if (!utils::one_of(out_dt, data_type::f32, data_type::f16, data_type::bf16))
         return status::unimplemented;
 
-    // mm1 post-ops in chain order: the scale (a scalar, read as f32 at
-    // execution) and then the additive attention mask. Select is handled
-    // separately.
-    if (pd.with_attn_scale()) {
-        sdpa_mm1_post_op_t sc;
-        sc.alg = alg_kind::binary_mul;
-        sc.is_binary = true;
-        sc.rhs_is_scalar = true;
-        sc.rhs_dt = data_type::f32;
-        conf.mm1_post_ops.push_back(sc);
-    }
-    if (pd.with_buffer_mask()) {
-        const memory_desc_wrapper mask_mdw(desc.attn_mask_md());
-        sdpa_mm1_post_op_t mk;
-        mk.alg = alg_kind::binary_add;
-        mk.is_binary = true;
-        mk.rhs_is_scalar = false;
-        mk.rhs_dt = mask_mdw.data_type();
-        mk.rhs_dims.assign(mask_mdw.dims(), mask_mdw.dims() + ndims);
-        mk.rhs_strides.assign(mask_mdw.strides(), mask_mdw.strides() + ndims);
-        conf.mm1_post_ops.push_back(mk);
-    }
-
+    init_mm1_post_ops(pd, conf.mm1_post_ops);
     const dim_t mm_dt_sz = static_cast<dim_t>(types::data_type_size(mm_dt));
-
-    const dim_t k_seq_stride = k_strides[ndims - 1];
-    const dim_t k_hs_stride = k_strides[row_dim];
-
-    const bool mm1_transpose_k = k_seq_stride != 1;
-    const bool transpose_v = v_strides[ndims - 1] != 1;
-
+    const bool mm1_transpose_k
+            = memory_desc_wrapper(desc.key_md()).strides()[ndims - 1] != 1;
+    const bool transpose_v
+            = memory_desc_wrapper(desc.val_md()).strides()[ndims - 1] != 1;
     CHECK(is_vnni_b_required(mm_dt, mm1_transpose_k, conf.mm1_needs_vnni_b));
     CHECK(is_vnni_b_required(mm_dt, transpose_v, conf.mm2_needs_vnni_b));
 
     const bool need_copy_v = conf.mm2_needs_vnni_b || transpose_v;
 
-    // Width of one packed K/V panel. A packed B operand is read by BRGEMM with
-    // ldb = b_panel_n and an N block of at most b_panel_n (see b_packer_t).
-    constexpr dim_t b_panel_n = sdpa_brgemm_copy::b_packer_t::panel_n;
-
-    const dim_t l2_budget_bytes
-            = static_cast<dim_t>(3 * platform::get_per_core_cache_size(2) / 4);
-
+    const unsigned l2_bytes = platform::get_per_core_cache_size(2);
     bool is_amx = false;
     CHECK(uses_amx_tiles(mm_dt, is_amx));
     conf.nthr = dnnl_get_max_threads();
+    const blocking_hw_t hw {
+            conf.nthr, l2_bytes, platform::get_per_core_cache_size(3), is_amx};
 
-    // Fold non-inverted select into mm1 when condition rows match dense score
-    // rows. The pd guarantees a full, contiguous key axis. A single query row
-    // does not use its row stride; otherwise require non-broadcast query rows
-    // with stride seq_kv.
-    conf.mm1_select_postop = false;
-    if (has_select) {
-        const bool dense_query_axis = seq_q == 1
-                || (cond_dims[sdpa_pd_t::mask_q_index] != 1
-                        && cond_strides[sdpa_pd_t::mask_q_index] == seq_kv);
-        conf.mm1_select_postop = !invert_select && dense_query_axis;
-    }
+    init_score_and_prob_layout(pd, conf);
+    const size_t score_row_bytes = conf.thread_scratch.score_tile_row_bytes(
+            conf.ld_scores, conf.ld_prob);
+    const auto query_blocking
+            = choose_query_blocking(desc, hw, mm_dt, score_row_bytes);
+    conf.interleave_items = query_blocking.interleave_items;
 
-    // The binary injector requires tensor rhs data to share the score tile's
-    // layout. Keep score rows dense when a tensor rhs is used; scalar rhs and
-    // eltwise post-ops are layout-independent.
-    bool dense_scores_required = conf.mm1_select_postop;
-    for (const auto &pop : conf.mm1_post_ops)
-        if (pop.is_binary && !pop.rhs_is_scalar) dense_scores_required = true;
-    conf.ld_scores
-            = scratch_row_ld(seq_kv, sizeof(float), !dense_scores_required);
-    auto &thread_scratch = conf.thread_scratch;
-    thread_scratch.set_compute_type(mm_dt, mm_dt_sz);
-    conf.ld_prob = thread_scratch.has_prob
-            ? scratch_row_ld(seq_kv, mm_dt_sz, /*allow_padding=*/true)
-            : conf.ld_scores;
-
-    // Choose the query block by trading K/V streaming against score-tile
-    // traffic. Each work item streams all of K and V once, so their traffic per
-    // score element falls as 1/q_block, while the live [q_block x seq_kv] score
-    // tile (f32 scores plus the bf16/f16 P tile) grows with q_block and moves
-    // from L2 to L3/memory. Larger heads amortize more K/V bytes per score, so
-    // the score-tile target grows with the head size. A q_block x seq_kv x
-    // head-size sweep on GNR (2 MiB L2) favored smaller score tiles for
-    // bf16/AMX than for f32.
-    const dim_t q_granule = is_amx ? 16 : 8; // AMX computes 16-row tiles
-    const dim_t q_block_max = is_amx ? 96 : 192;
-    const float score_tile_l2_ratio = is_amx ? 0.75f : 1.5f;
-    const size_t score_row_bytes
-            = thread_scratch.score_tile_row_bytes(conf.ld_scores, conf.ld_prob);
-    // Empirical head-size scaling, normalized to 1 when both head sizes are 64.
-    const float head_scale = std::sqrt((hs_qk + hs_v) / 128.f);
-    const float score_tile_target_bytes = score_tile_l2_ratio * head_scale
-            * platform::get_per_core_cache_size(2);
-    const float q_rows
-            = score_tile_target_bytes / static_cast<float>(score_row_bytes);
-    // A long seq_kv shrinks the tile-based q_block until K/V streaming
-    // dominates. Bound it so the K/V bytes per score element,
-    // (hs_qk + hs_v) * mm_dt_sz / q_block, stay below the ~16..24 bytes of
-    // score-tile traffic per element. Threads working on the same KV head at
-    // the same time share its K/V through L3, which halves the bound once more
-    // than two threads do. That is the case when there are more threads than
-    // twice the KV heads, or with interleave_items: per_head and
-    // kv_head_group then deal work items to threads round-robin, so
-    // concurrent threads work on neighboring query blocks of one KV head.
-    // With a contiguous range of work items per thread, each thread instead
-    // works on its own KV head and reuses its K/V from L2 across its query
-    // blocks. That is faster while the K/V of all concurrently processed KV
-    // heads stay in L3 next to the threads' score tiles, but once they
-    // overflow, every query block reads K/V from memory again (GNR, bf16,
-    // 8x8x16385x256 GQA: 3.2 s contiguous vs 1.9 s interleaved; 4x32x1024x128,
-    // which fits: 4.3 ms vs 5.4 ms). Interleaving needs several query blocks
-    // per head; q_block never exceeds q_block_max.
+    // Score split candidates with mm1's panel width and mm2's nominal
+    // reduction depth. Clamp the latter to seq_kv after choosing a schedule.
+    const auto kv_blocking
+            = choose_kv_blocking(desc, hw, mm_dt, conf.mm1_needs_vnni_b);
+    const dim_t mm1_n_block = kv_blocking.mm1_n_block;
+    const dim_t mm2_k_block = kv_blocking.mm2_k_block;
+    const dim_t q_granule = query_blocking.granule;
     const dim_t kv_heads_total = batch * num_head_kv;
-    const double concurrent_kv_bytes
-            = static_cast<double>(nstl::min<dim_t>(conf.nthr, kv_heads_total))
-            * seq_kv * (hs_qk + hs_v) * mm_dt_sz;
-    auto kv_overflows_l3 = [&](double score_tile_bytes) {
-        const double l3_left_bytes = static_cast<double>(conf.nthr)
-                * (static_cast<double>(platform::get_per_core_cache_size(3))
-                        - score_tile_bytes);
-        return seq_q > q_block_max && concurrent_kv_bytes > l3_left_bytes;
-    };
-    // Estimate L3 occupancy before choosing the schedule and q_block; this
-    // decision affects q_rows_min. The L2-based score-tile target may exceed
-    // the tile for q_block_max rows, so cap the estimate at that size.
-    // For fused schedules, if interleaving is not already enabled, a later
-    // L3 check uses the actual tile size after choosing q_block and
-    // query_heads_per_item. Grouped-head rounding can make that tile larger
-    // than this estimate, enabling interleaving.
-    const double estimated_score_tile_bytes
-            = nstl::min<double>(score_tile_target_bytes,
-                    static_cast<double>(q_block_max) * score_row_bytes);
-    conf.interleave_items = kv_overflows_l3(estimated_score_tile_bytes);
-    const bool kv_shared_in_l3
-            = 2 * kv_heads_total < conf.nthr || conf.interleave_items;
-    const float q_rows_min = (hs_qk + hs_v) / (kv_shared_in_l3 ? 16.f : 8.f);
-    // Query rows of one work item: per-head q_block, or the rows of all heads
-    // in a KV-head group.
-    dim_t item_rows = q_granule
-            * std::lround(nstl::max(q_rows, q_rows_min) / q_granule);
-    item_rows = utils::saturate(q_granule, q_block_max, item_rows);
 
-    // Query block of a work item with heads_per_item query heads: its share of
-    // item_rows, rounded down to q_granule, then shrunk while that leaves
-    // fewer work items than threads.
-    auto choose_q_block = [&](dim_t heads_per_item) {
-        dim_t qb = item_rows / heads_per_item;
-        if (qb < seq_q) qb = nstl::max(q_granule, utils::rnd_dn(qb, q_granule));
-        qb = nstl::min(qb, seq_q);
-        const dim_t head_items = batch * num_head_q / heads_per_item;
-        while (qb > q_granule
-                && head_items * utils::div_up(seq_q, qb) < conf.nthr)
-            qb = utils::rnd_dn(qb - 1, q_granule);
-        return utils::saturate((dim_t)1, seq_q, qb);
-    };
-
-    // Choose mm1's N block before estimating schedules so the split estimate
-    // uses the same block-aligned chunk boundaries as execution.
-    constexpr dim_t kv_granule_large = b_panel_n;
-    constexpr dim_t kv_granule_medium = 32;
-    constexpr dim_t kv_granule_min = 16;
-    const dim_t b_panel_budget_bytes = l2_budget_bytes / 8;
-    dim_t kv_block = b_panel_budget_bytes / (hs_qk * mm_dt_sz);
-    const dim_t granule = kv_block >= kv_granule_large
-            ? kv_granule_large
-            : (kv_block >= kv_granule_medium ? kv_granule_medium
-                                             : kv_granule_min);
-    kv_block = nstl::max<dim_t>(
-            utils::rnd_dn(kv_block, granule), kv_granule_min);
-    kv_block = nstl::min<dim_t>(kv_block, seq_kv);
-
-    const dim_t k_reuse_rows = seq_q * group_head;
-    const float k_l2_set_load
-            = f32_tile_l2_set_load(hs_qk, kv_block, k_hs_stride);
-    const bool pack_k_for_aliasing = mm_dt == data_type::f32 && !mm1_transpose_k
-            && ((k_reuse_rows >= 256 && k_l2_set_load > 0.5f)
-                    || (k_reuse_rows >= 128 && k_l2_set_load >= 1.0f));
-    const bool need_copy_k
-            = mm1_transpose_k || conf.mm1_needs_vnni_b || pack_k_for_aliasing;
-    const dim_t mm1_n_block
-            = need_copy_k ? nstl::min<dim_t>(kv_block, b_panel_n) : kv_block;
-    constexpr dim_t amx_mm2_k_block = 256;
-    const dim_t mm2_k_block = is_amx ? amx_mm2_k_block : 512;
-
-    // Estimated time in ns of a schedule with heads_per_item query heads per
-    // work item and query block. Each phase uses the same contiguous
-    // balance211 task ranges as parallel_nd_ext; split mm1 and mm2 are modeled
-    // separately because each has its own block size and actual chunk count.
-    // Chunk lengths use the same rounded-down boundaries as execution.
-    // Forced-count leave-one-host-out validation found no reliable benefit
-    // from refitting these coefficients, so keep them until a better model is
-    // validated on additional hosts.
+    // Estimate phase work using contiguous balance211 ranges, even when
+    // fused execution interleaves work items. The maximum of each metric can
+    // come from a different thread. Split mm1 and mm2 use their own block
+    // sizes and chunk counts.
     struct phase_work_t {
         double keys = 0;
         double row_keys = 0;
@@ -904,6 +1006,8 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
     struct cost_coefs_t {
         double kv_byte, mac, score, total_kv_byte, merge_elem;
     };
+    // Fitted weights for an estimate in ns, not hardware latencies.
+    // Refitting for this phase model did not reliably improve held-out hosts.
     const cost_coefs_t coefs = is_amx
             ? cost_coefs_t {0.042, 0.00246, 1.26, 0.00152, 12.7}
             : cost_coefs_t {0.0263, 0.0308, 0.0, 0.000402, 18.1};
@@ -974,11 +1078,9 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
         }
         return peak;
     };
-    // Without stacked heads, a work item runs one BRGEMM call per query head
-    // and each call reads the item's K/V block again, mostly from L1/L2 (GNR,
-    // 37 bf16/f32 prefill GQA shapes: half the cost of the first read fits
-    // best). Across GNR, SPR and ICX, group was slower than per_head for
-    // nearly all seq_q = 2..16 GQA cases, where these calls have 2..16 rows.
+    // The model assumes stacking for single-query work when allowed; the
+    // layout checks happen later. Without stacking, it models each additional
+    // head's K/V read as costing half as much as the first (empirical GNR fit).
     const bool heads_may_stack = seq_q == 1 && knobs.allow_stack_heads;
     auto head_call_kv_reads = [&](dim_t heads_per_item) {
         return heads_may_stack ? 1.0 : 1.0 + 0.5 * (heads_per_item - 1);
@@ -1025,16 +1127,13 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
         return t;
     };
 
-    // Choose the schedule (if `any`) and the split_kv chunk count by the
-    // smallest estimated time. split_kv is a candidate only when the
-    // KV-head-group work items alone are fewer than threads: its shared
-    // score/P buffers hold all batch x query head x seq_q rows, which stays
-    // small in that case. More chunks per item than threads never help, and
-    // every chunk must hold at least one full mm2 block (see below). mm1 can
-    // still run fewer chunks if its block is longer than mm2's (unpacked f32
-    // K with a small head).
+    // Automatic scheduling considers split_kv only when grouped work items
+    // cannot fill the team. The automatic chunk search caps candidates by
+    // thread count and full mm2 blocks. mm1 may still use fewer chunks if
+    // its block is longer than mm2's.
     using schedule_t = sdpa_full_softmax_schedule_t;
-    const dim_t group_q_block = choose_q_block(group_head);
+    const dim_t group_q_block
+            = choose_q_block(desc, query_blocking, conf.nthr, group_head);
     const dim_t group_items
             = kv_heads_total * utils::div_up(seq_q, group_q_block);
     dim_t split_chunks = knobs.split_kv_chunks;
@@ -1054,7 +1153,8 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
     conf.schedule = knobs.schedule;
     if (conf.schedule == schedule_t::any) {
         conf.schedule = schedule_t::per_head;
-        double best = schedule_cost(1, choose_q_block(1), 1);
+        double best = schedule_cost(
+                1, choose_q_block(desc, query_blocking, conf.nthr, 1), 1);
         if (group_head > 1) {
             const double t = schedule_cost(group_head, group_q_block, 1);
             if (t < best) {
@@ -1071,43 +1171,28 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
             = conf.schedule == schedule_t::per_head ? 1 : group_head;
     const bool split_kv = conf.schedule == schedule_t::split_kv;
 
-    const dim_t q_block = choose_q_block(conf.query_heads_per_item);
-    conf.q_block = q_block;
-    const dim_t q_tail = seq_q % q_block;
-    conf.q_tail = q_tail;
+    conf.q_block = choose_q_block(
+            desc, query_blocking, conf.nthr, conf.query_heads_per_item);
+    conf.q_tail = seq_q % conf.q_block;
 
-    // Repeat the L3 check with the chosen schedule's score tile. It exceeds
-    // the target when q_rows_min raises q_block or when kv_head_group rounds
-    // each head's q_block up to q_granule (GNR, bf16 1x32x16384x128 GQA:
-    // 4 heads x 16 rows x 16384 keys x 6 B = 6.3 MB per thread versus a
-    // 2.1 MB target; interleaving made it 25..31% faster). This check only
-    // turns interleaving on and keeps q_block: interleaving with the larger
-    // unshared q_rows_min was still 8% faster than the contiguous order
-    // (bf16 8x8x16385x256).
-    if (!split_kv && !conf.interleave_items)
-        conf.interleave_items = kv_overflows_l3(static_cast<double>(
-                conf.query_heads_per_item * q_block * score_row_bytes));
+    // Check the resolved fused tile: the minimum row count or grouped-head
+    // rounding can exceed the preliminary estimate. Only enable interleave;
+    // do not recompute the query block.
+    if (!split_kv && !conf.interleave_items) {
+        const double chosen_score_tile_bytes = static_cast<double>(
+                conf.query_heads_per_item * conf.q_block * score_row_bytes);
+        conf.interleave_items = kv_overflows_l3(seq_q, query_blocking.max_block,
+                query_blocking.concurrent_kv_bytes, hw,
+                chosen_score_tile_bytes);
+    }
 
-    // An f32 K already laid out as [hs_qk, seq_kv] is read in place by mm1 as
-    // [hs_qk x kv_block] B panels. If the K row stride maps many panel rows to
-    // the same L2 sets, the panel is evicted between re-reads, so it is packed
-    // into dense b_panel_n-wide panels instead. The panel shares L2 with the
-    // score tile, Q, the V panel and prefetched lines, so it starts thrashing well
-    // before it alone fills a set. Packing costs one extra pass over K per KV
-    // head and only pays off when the panel is re-read by enough query rows
-    // (seq_q * group_head): moderate aliasing needs more reuse to amortize it
-    // than a panel that alone overflows a set.
-    conf.pack_k_for_aliasing = pack_k_for_aliasing;
-    conf.pack_k = need_copy_k;
+    conf.pack_k_for_aliasing = kv_blocking.pack_k_for_aliasing;
+    conf.pack_k = kv_blocking.pack_k;
     conf.pack_v = need_copy_v;
 
-    // Packing per tile removes the separate packing pass (a round trip of the
-    // packed K/V through memory, parallel over batch x KV heads only), but
-    // repeats the packing in every work item that reads the tile. By default,
-    // pack per tile when a work item covers all query rows of its heads: then
-    // only the heads of one KV-head group re-pack a tile, and they run at the
-    // same time, so the re-reads hit the shared cache. With split_kv, every
-    // K/V tile is read by exactly one task, so packing per tile never repeats.
+    // Per-tile packing avoids a separate pass but can repack tiles across
+    // work items. Prefer it when a work item covers all query rows or uses
+    // split_kv; chunks of a given query block pack disjoint key ranges.
     using kv_packing_t = sdpa_full_softmax_kv_packing_t;
     conf.kv_packing = knobs.kv_packing;
     if (conf.kv_packing == kv_packing_t::any)
@@ -1115,18 +1200,6 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                 ? kv_packing_t::per_tile
                 : kv_packing_t::ahead;
 
-    // Packed K is laid out in independent b_panel_n-column panels, which limits
-    // mm1's N block to one panel. mm2 only reduces over seq_kv after the
-    // softmax is complete, so its K block is chosen independently and kept
-    // deep: a reduction as shallow as mm1's N block would split it into many
-    // short calls, each re-reading and re-writing the f32 [m x hs_v] partial
-    // output. Packed V limits each call's B panel to [mm2_k_block x v_block]
-    // with v_block <= b_panel_n, so hs_v does not bound the block depth. On
-    // GNR, a 256-deep AMX block was best or close for head sizes 64..256, and
-    // on GNR, SPR and DMR it matched or beat the old head-size-bounded block
-    // (64..192 deep) for head sizes up to 1024, including asymmetric ones;
-    // for f32, 512..1024-deep blocks performed best for head sizes 64..256
-    // (GNR). The block depth is set before the schedule choice (mm2_k_block).
     conf.mm1_n_block = mm1_n_block;
     conf.mm1_n_tail = seq_kv % conf.mm1_n_block;
     conf.mm2_k_block = nstl::min(seq_kv, mm2_k_block);
@@ -1134,8 +1207,7 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
     // >1 block -> mm2 accumulates across blocks: the first block uses a beta = 0
     // kernel (fresh C) and the rest beta = 1, so no destination pre-zeroing is
     // needed. A single block keeps the original fresh-C (beta = 0) path.
-    const float mm2_beta = conf.mm2_k_block < seq_kv ? 1.0f : 0.0f;
-    conf.mm2_beta = mm2_beta;
+    conf.mm2_beta = conf.mm2_k_block < seq_kv ? 1.0f : 0.0f;
 
     // split_kv splits each work item's seq_kv range into split_chunks chunks
     // (chosen above), but into at most as many chunks as full mm1/mm2 blocks,
@@ -1151,87 +1223,7 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
         sk.mm2_chunks = n_chunks(conf.mm2_k_block);
     }
 
-    // mm2 can write the final result directly to the output when it has only
-    // one chunk, skipping the pv scratch tile and the down-convert/scatter
-    // for f32 or converting in the final K block's epilogue for bf16/f16.
-    // Multiple mm2 chunks must be summed before writing the output, and a
-    // strided output column keeps pv+scatter.
-    const dim_t out_col_stride = out_strides[ndims - 1];
-    const bool mm2_has_single_chunk
-            = !split_kv || conf.split_kv.mm2_chunks == 1;
-    const bool mm2_direct = mm2_has_single_chunk && out_col_stride == 1
-            && out_dt == data_type::f32;
-    conf.mm2_direct = mm2_direct;
-    conf.mm2_postops = mm2_has_single_chunk && out_col_stride == 1
-            && utils::one_of(out_dt, data_type::bf16, data_type::f16);
-    conf.ld_pv = scratch_row_ld(hs_v, sizeof(float), /*allow_padding=*/true);
-
-    // With seq_q == 1, the queries in a kv_head_group work item come from
-    // different heads and can be processed together as BRGEMM rows.
-    // The per-head score/P/pv tiles of a work item are already consecutive
-    // [1 x ld] rows. Every row-addressed operand must then use its head stride
-    // as the row stride:
-    //  - Q: head rows must not overlap (a broadcast Q has head stride 0);
-    //  - a tensor mm1 RHS (mask) and a folded select condition: the binary
-    //    injector addresses them with score-tile offsets, so they must either
-    //    broadcast over heads or have a head stride equal to ld_scores.
-    // Output head rows never overlap: the memory descriptor checks non-zero
-    // strides, and the pd rejects zero dst strides on non-unit dimensions.
-    constexpr int head_dim = 1;
-    auto can_stack_heads = [&]() {
-        if (!knobs.allow_stack_heads || seq_q != 1
-                || conf.query_heads_per_item == 1)
-            return false;
-        if (q_strides[head_dim] < hs_qk) return false;
-        for (const auto &pop : conf.mm1_post_ops) {
-            if (!pop.is_binary || pop.rhs_is_scalar) continue;
-            if (pop.rhs_dims[head_dim] != 1
-                    && pop.rhs_strides[head_dim] != conf.ld_scores)
-                return false;
-        }
-        if (conf.mm1_select_postop
-                && (cond_dims[head_dim] == 1
-                        || cond_strides[head_dim] != conf.ld_scores))
-            return false;
-        return true;
-    };
-
-    // Resolve the BRGEMM row layout once; descriptors and post-ops below
-    // are built from it.
-    conf.stack_heads = can_stack_heads();
-    const int m_axis = conf.stack_heads ? head_dim : row_dim;
-    conf.m_block = conf.stack_heads ? conf.query_heads_per_item : q_block;
-    conf.mm1_lda = q_strides[m_axis];
-    conf.out_ld = out_strides[m_axis];
-    conf.mm2_ldc = mm2_direct ? conf.out_ld : conf.ld_pv;
-
-    // A/B leading dims come from the user strides; scores/pv are dense.
-    //   mm1: scores[m, seq_kv] = Q[m, hs_qk] * K[hs_qk, seq_kv]
-    //   mm2: pv[m, hs_v]       = P[m, seq_kv] * V[seq_kv, hs_v]
-    // The brgemm ukernel does not support a transposed B operand and needs mm1
-    // B row-major as [hs_qk, seq_kv] (seq_kv unit-stride). Decide the transpose
-    // from the K tensor's PHYSICAL strides, not the graph transpose_b attr:
-    //   * transpose_b == true  : K is [.., seq_kv, hs_qk] -> seq_kv axis is
-    //                            row_dim, hs_qk axis is the last dim.
-    //   * transpose_b == false : K is [.., hs_qk, seq_kv] -> hs_qk axis is
-    //                            row_dim, seq_kv axis is the last dim.
-    // In either orientation, if the seq_kv axis is not unit-stride a dense
-    // [hs_qk, seq_kv] transpose is materialised once (see execute); a K that is
-    // logically pre-transposed but physically stored with hs_qk contiguous
-    // therefore still gets transposed here.
-    // mm1 materialises a dense (and, for bf16/f16, VNNI-packed) [hs_qk, seq_kv]
-    // B operand whenever it must transpose K or pack it, laid out in
-    // b_panel_n-wide panels: ldb is then b_panel_n and one call covers at most
-    // one panel. Only the plain-f32, already-[hs_qk, seq_kv] case reads K in
-    // place. V is handled the same way, so v_block is one panel when packed.
-    conf.ldk = need_copy_k ? b_panel_n : k_strides[row_dim];
-    conf.ldv = need_copy_v ? b_panel_n : v_strides[row_dim];
-    // BRGEMM requires ldb >= hs_v for unpacked V. When seq_kv == 1, V's row
-    // stride is unused, so a smaller stride can be raised to hs_v.
-    if (!need_copy_v && seq_kv == 1) conf.ldv = nstl::max(conf.ldv, hs_v);
-    conf.v_block = need_copy_v ? nstl::min<dim_t>(hs_v, b_panel_n) : hs_v;
-    conf.v_tail = hs_v % conf.v_block;
-
+    resolve_brgemm_layout(pd, knobs.allow_stack_heads, conf);
     size_t max_wsp = 0;
     CHECK(build_brgemm_descs(pd, conf, conf.brgemm, max_wsp));
     layout_scratch(desc, mm_dt, max_wsp, conf);
@@ -1253,10 +1245,8 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                 static_cast<long long>(conf.mm2_k_block), conf.nthr,
                 static_cast<int>(conf.schedule),
                 static_cast<long long>(conf.split_kv.mm1_chunks),
-                static_cast<long long>(conf.split_kv.mm2_chunks),
-                platform::get_per_core_cache_size(2),
-                platform::get_per_core_cache_size(3),
-                static_cast<int>(conf.interleave_items));
+                static_cast<long long>(conf.split_kv.mm2_chunks), hw.l2_bytes,
+                hw.l3_bytes, static_cast<int>(conf.interleave_items));
     }
 
     return status::success;

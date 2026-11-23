@@ -330,9 +330,11 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         kChain = 1;
     // Late 2D scales are only read once per C repack, which occurs every
     // gcd(aqGroupK, bqGroupK) k-elements. A k-chain spanning more than that would
-    // skip scale groups, so trim it to fit.
+    // skip scale groups, so trim it to fit. C is repacked when late quantization
+    // is forced or when the multiply result type differs from C (e.g. s32 for f32 C).
     int minOPC = minOuterProductCount(problem, *this);
-    if (kChain > 1 && problem.forceLateQuant(minOPC)) {
+    if (kChain > 1 && (problem.aScale2D() || problem.bScale2D())
+            && (problem.Tc != problem.Tc_compute() || problem.forceLateQuant(minOPC))) {
         int period = problem.aScale2D() ? problem.aqGroupK : 0;
         if (problem.bScale2D())
             period = period ? gcd(period, problem.bqGroupK) : problem.bqGroupK;

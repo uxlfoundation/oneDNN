@@ -36,8 +36,8 @@ namespace x64 {
 namespace brgemm_ir {
 
 // What the last K step of a block stores, with
-// `loop_conf_t::interleave_acc_stores`. The other K steps get `none`. A K step
-// is one call of `emit_microkernel()`.
+// `store_conf_t::interleave_acc_stores`. The other K steps get `none`. A K
+// step is one call of `emit_microkernel()`.
 //
 //   none       - nothing
 //   block      - every accumulator of the block
@@ -60,8 +60,8 @@ struct prefetch_t {
 };
 
 // What a K step emits between the operations of its microkernel: the stores,
-// loads, and zeroes of accumulators with `loop_conf_t::interleave_acc_stores`,
-// and the prefetches with `loop_conf_t::prefetch_c`.
+// loads, and zeroes of accumulators with `store_conf_t::interleave_acc_stores`,
+// and the prefetches with `store_conf_t::prefetch`.
 //
 //   prev       - the previous block, for the first K step of a block only.
 //                That K step stores the rest of the accumulators of `prev`,
@@ -85,11 +85,12 @@ struct k_step_interleave_t {
 // For each output block the builder calls `init_accumulators()` before the
 // batch loop, then `emit_microkernel()` for each K block of each batch element.
 // It calls `load_accumulators()` instead of `init_accumulators()` when beta is
-// 1 and `loads_accumulators()` is true. When `stores_accumulators()` is true,
-// it calls `store_accumulators()` at the end of the block, unless the
-// accumulators are stored in the K steps (`k_step_interleave_t`). With
-// `loop_conf_t::prefetch_c`, it gets the prefetches of the block from
-// `c_prefetches()`. The compute path chooses the layout of the accumulators.
+// 1 and `loads_accumulators()` is true. When `stores_accumulators()` is true
+// and the store configuration has no output stages, it calls
+// `store_accumulators()` at the end of the block, unless the accumulators are
+// stored in the K steps (`k_step_interleave_t`). With `store_conf_t::prefetch`,
+// it gets the prefetches of the block from `c_prefetches()`. The compute path
+// chooses the layout of the accumulators.
 struct compute_path_t {
     virtual ~compute_path_t() = default;
 
@@ -97,8 +98,9 @@ struct compute_path_t {
     // start at zero and the output path adds C.
     virtual bool loads_accumulators() const { return false; }
 
-    // True if `store_accumulators()` ends the block. Otherwise the output path
-    // applies the output stages to the accumulators and stores them.
+    // True if `store_accumulators()` ends the block when the store
+    // configuration has no output stages. Otherwise the output path applies
+    // the output stages to the accumulators and stores them.
     virtual bool stores_accumulators() const { return false; }
 
     // Average size in bytes of the code of one IR operation of a kernel on
@@ -133,8 +135,8 @@ struct compute_path_t {
         assert(!"store_accumulators: not supported by the compute path");
     }
 
-    // Returns the write prefetches of the C or D lines at `store_ptr` that
-    // the accumulators of `blk` are stored to, one list per accumulator.
+    // Returns the write prefetches of the C lines at `store_ptr` that the
+    // accumulators of `blk` are stored to, one list per accumulator.
     virtual std::vector<std::vector<prefetch_t>> c_prefetches(const conf_t &cfg,
             const out_block_t &blk, ir::vreg_t store_ptr) const {
         assert(!"c_prefetches: not supported by the compute path");

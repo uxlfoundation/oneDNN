@@ -70,6 +70,8 @@ struct out_block_t {
 //   output       - the output path: beta, the bias, the scales, and the
 //                  attribute post-ops
 //
+// It also holds one store configuration per value of `do_post_ops`.
+//
 // Every field is a build-time constant.
 
 // How the product is computed. The caller chooses it when it creates the
@@ -104,11 +106,6 @@ enum class tail_grouping_t { separate, grouped };
 //   innermost_loop        - which of the M and N levels is inside the other
 //   n_tail_grouping       - which N block holds the partial vector register
 //                           or tile
-//   interleave_acc_stores - the accumulators are stored in the K steps when
-//                           the batch and K levels are unrolled, see
-//                           `block_acc_stores()`
-//   prefetch_c            - each block prefetches for write the C or D lines
-//                           it stores
 //   batch_kind            - how a batch element gives the address of its A
 //                           and B
 //   max_bs                - maximum batch size known at IR generation time
@@ -136,8 +133,6 @@ struct loop_conf_t {
     level_form_t k_form = level_form_t::looped;
     brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
     tail_grouping_t n_tail_grouping = tail_grouping_t::separate;
-    bool interleave_acc_stores = false;
-    bool prefetch_c = false;
     brgemm_batch_kind_t batch_kind = brgemm_addr;
     dim_t max_bs = 0;
     bool var_bs = true;
@@ -207,7 +202,6 @@ enum class output_stage_t {
 //   dst_md          - the destination memory descriptor, which a binary
 //                     post-op needs to locate its right-hand-side argument
 //   dt_src_scales / dt_wei_scales - element data type of each scale
-//   post_ops_stages - the stages of a post-ops call, in the order they run
 //
 // Adding C and the store are not stages. The builder emits them on every
 // call: adding C before the stages when `beta` is 1, and the store after them.
@@ -219,22 +213,45 @@ struct output_conf_t {
     memory_desc_t dst_md;
     data_type_t dt_src_scales = data_type::undef;
     data_type_t dt_wei_scales = data_type::undef;
-    std::vector<output_stage_t> post_ops_stages;
+};
+
+// Store configuration of one kind of call.
+//
+//   to_d                  - the blocks are stored to D through `ptr_D`, to C
+//                           otherwise
+//   stages                - the output stages, in the order they run before
+//                           the store
+//   interleave_acc_stores - the accumulators are stored in the K steps when
+//                           the batch and K levels are unrolled, see
+//                           `block_acc_stores()`
+//   prefetch              - each block prefetches for write the lines it
+//                           stores
+struct store_conf_t {
+    bool to_d = false;
+    std::vector<output_stage_t> stages;
+    bool interleave_acc_stores = false;
+    bool prefetch = false;
 
     bool has_stage(output_stage_t stage) const {
-        return std::find(post_ops_stages.begin(), post_ops_stages.end(), stage)
-                != post_ops_stages.end();
+        return std::find(stages.begin(), stages.end(), stage) != stages.end();
     }
-
-    // True if the kernel has anything to apply on a post-ops call.
-    bool has_post_ops() const { return !post_ops_stages.empty(); }
 };
 
 // Builder configuration.
 //
-//   loop         - loop nest configuration
-//   compute_path - compute path configuration
-//   output       - output path configuration
+//   loop                   - loop nest configuration
+//   compute_path           - compute path configuration
+//   output                 - output path configuration
+//   store_without_post_ops - store configuration of the calls with
+//                            `do_post_ops == 0`, and of every call when
+//                            post-ops are not applicable
+//   store_with_post_ops    - store configuration of the calls with
+//                            `do_post_ops != 0` when post-ops are applicable
+//
+// A call without post-ops applies no output stage, so only
+// `store_with_post_ops` has output stages. Code that emits a loop nest reads
+// the store configuration of that nest. Code that needs to know whether the
+// kernel has an output stage, such as the bias, reads `store_with_post_ops`.
 //
 // The member functions derive the addressing of the builder from the module
 // configurations.
@@ -242,6 +259,15 @@ struct conf_t {
     loop_conf_t loop;
     compute_path_conf_t compute_path;
     output_conf_t output;
+    store_conf_t store_without_post_ops;
+    store_conf_t store_with_post_ops;
+
+    // True if a post-ops call has anything to apply, that is if
+    // `store_with_post_ops` has output stages. Otherwise the kernel ignores
+    // `do_post_ops` and stores every call as `store_without_post_ops` says.
+    bool are_post_ops_applicable() const {
+        return !store_with_post_ops.stages.empty();
+    }
 
     // Element sizes in bytes of A, B, C, and the bias. The bias size is 0
     // without a bias.
@@ -253,14 +279,14 @@ struct conf_t {
     }
     int dt_sz_c() const { return (int)types::data_type_size(output.dt_c); }
     int dt_sz_bias() const {
-        return output.has_stage(output_stage_t::bias)
+        return store_with_post_ops.has_stage(output_stage_t::bias)
                 ? (int)types::data_type_size(output.dt_bias)
                 : 0;
     }
     // Element size in bytes of a per-N weights scale, 0 for a common one,
     // which is never indexed.
     int dt_sz_wei_scales() const {
-        return output.has_stage(output_stage_t::wei_scale_per_n)
+        return store_with_post_ops.has_stage(output_stage_t::wei_scale_per_n)
                 ? (int)types::data_type_size(output.dt_wei_scales)
                 : 0;
     }

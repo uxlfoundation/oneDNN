@@ -88,13 +88,14 @@ struct advancing_regs_t {
     // one block per iteration, then the outer one rewinds it and steps to its
     // next block with one constant. The classic kernel keeps a second base
     // pointer for this instead. One running pointer saves the general-purpose
-    // register.
+    // register. `none` when the blocks are stored to D and beta is 0, since C
+    // is never read then.
     ir::vreg_t c_ptr = ir::vreg_t::none;
-    // Pointer the finished block is stored through. It holds the `ptr_D`
-    // kernel argument on a post-ops call and `ptr_C` otherwise, and can be the
-    // same register as `c_ptr` (see `init_m_loop_input_regs()`). C and D have
-    // the same data type and leading dimension (`init_output_conf()`), so it
-    // advances like `c_ptr`.
+    // Pointer the finished block is stored through. It is `c_ptr` when the
+    // blocks are stored to C. When they are stored to D, it is a register of
+    // its own that holds the `ptr_D` kernel argument. C and D have the same
+    // data type and leading dimension (`init_output_conf()`,
+    // `init_store_confs()`), so it advances like `c_ptr`.
     ir::vreg_t store_ptr = ir::vreg_t::none;
     // Byte offset into A of the current M block. Starts at 0 and moves like
     // `c_ptr`, but only along M. `none` when the M level is unrolled.
@@ -128,9 +129,6 @@ struct invariant_regs_t {
     // and `emit_batch_level()` creates them for each batch element.
     ir::vreg_t a_ptr = ir::vreg_t::none;
     ir::vreg_t b_ptr = ir::vreg_t::none;
-    // The `do_post_ops` kernel argument. Non-zero applies the post-ops and
-    // stores to D, zero stores to C. `none` when the kernel has no post-op.
-    ir::vreg_t do_post_ops = ir::vreg_t::none;
     // Common source and destination scale pointers.
     // `none` without the `src_scale` and `dst_scale` stages respectively.
     ir::vreg_t src_scale_ptr = ir::vreg_t::none;
@@ -172,16 +170,21 @@ void emit_batch_element_ptrs(ir::ir_t &ir, const conf_t &cfg,
         ir.add_reg(b_ptr, regs.advancing.b_off);
 }
 
-// Sets up the M-loop input registers.
+// Sets up the M-loop input registers of a loop nest that stores the blocks as
+// `store_cfg` says.
 //
 // Loads the kernel argument pointers and the batch count, zeroes the running A
 // and B offsets, and sets the A and B pointers when no level moves them.
-m_loop_input_regs_t init_m_loop_input_regs(ir::ir_t &ir, const conf_t &cfg) {
+m_loop_input_regs_t init_m_loop_input_regs(
+        ir::ir_t &ir, const conf_t &cfg, const store_conf_t &store_cfg) {
+
     m_loop_input_regs_t regs;
     const loop_conf_t &loop = cfg.loop;
 
-    regs.advancing.c_ptr = ir.new_gpr();
-    ir.load_param(regs.advancing.c_ptr, GET_OFF(ptr_C));
+    if (!store_cfg.to_d || cfg.output.beta != 0.0f) {
+        regs.advancing.c_ptr = ir.new_gpr();
+        ir.load_param(regs.advancing.c_ptr, GET_OFF(ptr_C));
+    }
 
     regs.invariant.batch = ir.new_gpr();
     ir.load_param(regs.invariant.batch, GET_OFF(batch));
@@ -221,49 +224,32 @@ m_loop_input_regs_t init_m_loop_input_regs(ir::ir_t &ir, const conf_t &cfg) {
                 regs.invariant.a_ptr, regs.invariant.b_ptr);
     }
 
-    if (cfg.output.has_stage(output_stage_t::bias)) {
+    if (store_cfg.has_stage(output_stage_t::bias)) {
         regs.advancing.bias_ptr = ir.new_gpr();
         ir.load_param(regs.advancing.bias_ptr, GET_OFF(ptr_bias));
     }
 
-    if (cfg.output.has_stage(output_stage_t::src_scale)) {
+    if (store_cfg.has_stage(output_stage_t::src_scale)) {
         regs.invariant.src_scale_ptr = ir.new_gpr();
         ir.load_param(regs.invariant.src_scale_ptr, GET_OFF(ptr_src_scales));
     }
 
-    if (cfg.output.has_stage(output_stage_t::wei_scale)
-            || cfg.output.has_stage(output_stage_t::wei_scale_per_n)) {
+    if (store_cfg.has_stage(output_stage_t::wei_scale)
+            || store_cfg.has_stage(output_stage_t::wei_scale_per_n)) {
         regs.advancing.wei_scale_ptr = ir.new_gpr();
         ir.load_param(regs.advancing.wei_scale_ptr, GET_OFF(ptr_wei_scales));
     }
 
-    if (cfg.output.has_stage(output_stage_t::dst_scale)) {
+    if (store_cfg.has_stage(output_stage_t::dst_scale)) {
         regs.invariant.dst_scale_ptr = ir.new_gpr();
         ir.load_param(regs.invariant.dst_scale_ptr, GET_OFF(ptr_dst_scales));
     }
 
-    // The block goes to `ptr_D` when `do_post_ops` is set, and to `ptr_C`
-    // otherwise. Resolve that once here so that the stores do not branch.
-    //
-    // A post-ops call with `beta == 1` reads C for the accumulators and writes
-    // D, so the two pointers need separate registers. C is never read when
-    // `beta == 0`, so one register is enough and it holds `ptr_D` on a post-ops
-    // call.
-    if (cfg.output.has_post_ops()) {
-        regs.invariant.do_post_ops = ir.new_gpr();
-        ir.load_param(regs.invariant.do_post_ops, GET_OFF(do_post_ops));
-
-        if (cfg.output.beta == 0.0f) {
-            regs.advancing.store_ptr = regs.advancing.c_ptr;
-        } else {
-            regs.advancing.store_ptr = ir.new_gpr();
-            ir.mov_reg(regs.advancing.store_ptr, regs.advancing.c_ptr);
-        }
-
-        const int if_post_ops
-                = ir.if_begin(regs.invariant.do_post_ops, ir::cmp_t::ne, 0);
+    // With `beta == 1`, the blocks read C for the accumulators, so D needs a
+    // register of its own.
+    if (store_cfg.to_d) {
+        regs.advancing.store_ptr = ir.new_gpr();
         ir.load_param(regs.advancing.store_ptr, GET_OFF(ptr_D));
-        ir.if_end(if_post_ops);
     } else {
         regs.advancing.store_ptr = regs.advancing.c_ptr;
     }
@@ -602,8 +588,9 @@ void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 
 // One stage of a post-ops call, applied to the accumulators of the block.
 void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
-        const m_loop_input_regs_t &regs, const out_block_t &blk,
-        const std::vector<ir::vreg_t> &acc, output_stage_t stage) {
+        const store_conf_t &store_cfg, const m_loop_input_regs_t &regs,
+        const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
+        output_stage_t stage) {
 
     switch (stage) {
         case output_stage_t::src_scale: {
@@ -702,13 +689,13 @@ void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
     }
 }
 
-// The output path of one block. Adds C when beta is 1, applies the post-ops
-// stages on a post-ops call, and stores the block to C, or to D on a post-ops
-// call.
+// The output path of one block. Adds C when beta is 1, applies the output
+// stages of `store_cfg`, and stores the block to C or D as `store_cfg` says.
 //
 // It works on the accumulators as the rows of the output, one register per
 // (M row, N register).
-void emit_output_path(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
+void emit_output_path(ir::ir_t &ir, const conf_t &cfg,
+        const store_conf_t &store_cfg, const compute_path_t &cp,
         const m_loop_input_regs_t &regs, const out_block_t &blk,
         const std::vector<ir::vreg_t> &acc) {
 
@@ -731,17 +718,11 @@ void emit_output_path(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
         }
     }
 
-    if (cfg.output.has_post_ops()) {
-        const int if_post_ops
-                = ir.if_begin(regs.invariant.do_post_ops, ir::cmp_t::ne, 0);
-        for (const output_stage_t stage : cfg.output.post_ops_stages)
-            emit_post_ops_stage(ir, cfg, regs, blk, acc, stage);
-        ir.if_end(if_post_ops);
-    }
+    for (const output_stage_t stage : store_cfg.stages)
+        emit_post_ops_stage(ir, cfg, store_cfg, regs, blk, acc, stage);
 
-    // `store_ptr` already points at C or D, so the stores do not branch. Their
-    // memory data type is fixed when the IR is built, which is why C and D must
-    // share one.
+    // The stores to D use the displacements and data type of C, so C and D
+    // must share both.
     for (int bd = 0; bd < blk.bd_block; bd++) {
         for (int ld = 0; ld < blk.ld_block2; ld++) {
             const ir::vreg_t src = acc[bd * blk.ld_block2 + ld];
@@ -759,24 +740,31 @@ void emit_output_path(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
     }
 }
 
+// True if `emit_output_path()` stores the blocks instead of
+// `store_accumulators()`. Only the output path applies output stages.
+bool uses_output_path(const compute_path_t &cp, const store_conf_t &store_cfg) {
+    return !cp.stores_accumulators() || !store_cfg.stages.empty();
+}
+
 // One output block.
 //
 // Creates the accumulators of the block with the compute path and reduces them
-// over the batch. Then they are stored. When `stores_accumulators()` is false,
-// the output path stores them to C, or to D on a post-ops call. Otherwise the
+// over the batch. Then they are stored as `store_cfg` says. When
+// `uses_output_path()` is true, the output path stores them. Otherwise the
 // compute path stores them to C, in the K steps when `acc_stores` is not
 // `none` and after them when it is.
 //
-// With `prefetch_c`, the block prefetches the lines it stores, in its K steps
-// when `has_unrolled_k_steps()` is true and before the batch level otherwise.
+// With `store_cfg.prefetch`, the block prefetches the lines it stores, in its K
+// steps when `has_unrolled_k_steps()` is true and before the batch level
+// otherwise.
 //
 // `prev` is the previous block. The first K step of this block stores the rest
 // of the accumulators of `prev`. Returns this block when `acc_stores` is
 // `next_block`, and an empty `prev_block_t` otherwise.
 prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
-        const compute_path_t &cp, const m_loop_input_regs_t &regs,
-        const out_block_t &blk, acc_stores_t acc_stores,
-        const prev_block_t &prev) {
+        const store_conf_t &store_cfg, const compute_path_t &cp,
+        const m_loop_input_regs_t &regs, const out_block_t &blk,
+        acc_stores_t acc_stores, const prev_block_t &prev) {
 
     const bool acc_from_c = cfg.output.beta != 0.0f && cp.loads_accumulators();
     const std::vector<ir::vreg_t> acc = acc_from_c
@@ -784,7 +772,7 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
             : cp.init_accumulators(ir, cfg, blk, prev);
 
     std::vector<std::vector<prefetch_t>> prefetches;
-    if (cfg.loop.prefetch_c)
+    if (store_cfg.prefetch)
         prefetches = cp.c_prefetches(cfg, blk, regs.advancing.store_ptr);
 
     k_step_interleave_t interleave;
@@ -807,8 +795,8 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
 
     emit_batch_level(ir, cfg, cp, regs, blk, acc, interleave);
 
-    if (!cp.stores_accumulators()) {
-        emit_output_path(ir, cfg, cp, regs, blk, acc);
+    if (uses_output_path(cp, store_cfg)) {
+        emit_output_path(ir, cfg, store_cfg, cp, regs, blk, acc);
     } else if (acc_stores == acc_stores_t::none) {
         cp.store_accumulators(ir, cfg, blk, acc, regs.advancing.store_ptr);
     }
@@ -829,24 +817,23 @@ out_block_t make_out_block(const conf_t &cfg, dim_t bd_block, dim_t bd_start,
 }
 
 // Moves the pointers of the M and N levels by `bd` rows and `ld` elements of
-// N. C moves along M and N with one `add`. The A offset depends only on M, and
-// the B offset, the bias, and a per-N weights scale only on N.
-void emit_mn_step(ir::ir_t &ir, const conf_t &cfg, const advancing_regs_t &regs,
-        dim_t bd, dim_t ld) {
+// N. C and D move along M and N with one `add` each. The A offset depends only
+// on M, and the B offset, the bias, and a per-N weights scale only on N.
+void emit_mn_step(ir::ir_t &ir, const conf_t &cfg,
+        const store_conf_t &store_cfg, const advancing_regs_t &regs, dim_t bd,
+        dim_t ld) {
 
     if (bd != 0) ir.add_imm(regs.a_off, cfg.a_off(bd, 0));
     if (ld != 0) ir.add_imm(regs.b_off, cfg.b_off(0, ld));
 
-    // `store_ptr` is a separate register only when `beta == 1` and the kernel
-    // has a post-op, so it needs its own move only then.
-    ir.add_imm(regs.c_ptr, cfg.c_off(bd, ld));
-    if (regs.store_ptr != regs.c_ptr)
-        ir.add_imm(regs.store_ptr, cfg.c_off(bd, ld));
+    if (regs.c_ptr != ir::vreg_t::none)
+        ir.add_imm(regs.c_ptr, cfg.c_off(bd, ld));
+    if (store_cfg.to_d) ir.add_imm(regs.store_ptr, cfg.c_off(bd, ld));
 
     if (ld != 0) {
-        if (cfg.output.has_stage(output_stage_t::bias))
+        if (store_cfg.has_stage(output_stage_t::bias))
             ir.add_imm(regs.bias_ptr, cfg.bias_off(ld));
-        if (cfg.output.has_stage(output_stage_t::wei_scale_per_n))
+        if (store_cfg.has_stage(output_stage_t::wei_scale_per_n))
             ir.add_imm(regs.wei_scale_ptr, cfg.wei_scale_off(ld));
     }
 }
@@ -854,17 +841,17 @@ void emit_mn_step(ir::ir_t &ir, const conf_t &cfg, const advancing_regs_t &regs,
 // Returns what the last K step of the block that ends at row `bd_end` and N
 // element `ld_end` stores, see `acc_stores_t`.
 //
-// It is `none` without `interleave_acc_stores` or when
+// It is `none` without `store_cfg.interleave_acc_stores` or when
 // `has_unrolled_k_steps()` is false. Otherwise it is `next_block` when the
 // next block follows with no loop between them, and `block` otherwise. With N
 // inside M, the next block is the next N block of an unrolled N level, or the
 // first N block of the next M block when both levels are unrolled. The same
 // holds with M inside N. Positions are compared only for unrolled levels,
 // which count them from their first block.
-acc_stores_t block_acc_stores(
-        const loop_conf_t &loop, dim_t bd_end, dim_t ld_end) {
+acc_stores_t block_acc_stores(const loop_conf_t &loop,
+        const store_conf_t &store_cfg, dim_t bd_end, dim_t ld_end) {
 
-    if (!loop.interleave_acc_stores || !has_unrolled_k_steps(loop))
+    if (!store_cfg.interleave_acc_stores || !has_unrolled_k_steps(loop))
         return acc_stores_t::none;
 
     const bool is_m_unrolled = loop.m_form == level_form_t::unrolled;
@@ -878,13 +865,15 @@ acc_stores_t block_acc_stores(
     return has_next_block ? acc_stores_t::next_block : acc_stores_t::block;
 }
 
-// Emits the loop nest over the output blocks.
+// Emits the loop nest over the output blocks, which stores them as `store_cfg`
+// says.
 //
 // `innermost_loop` decides which of the M and N levels is inside the other, as
 // in `top_loop()` of the uker.
-void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
-        const m_loop_input_regs_t &regs) {
+void emit_nest(ir::ir_t &ir, const conf_t &cfg, const store_conf_t &store_cfg,
+        const compute_path_t &cp) {
 
+    const m_loop_input_regs_t regs = init_m_loop_input_regs(ir, cfg, store_cfg);
     const loop_conf_t &loop = cfg.loop;
 
     // The partial vector register or tile of every block has `ldb_tail`
@@ -913,12 +902,15 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
                     [&](dim_t ld_elems, dim_t ld_start) {
                 const out_block_t blk = make_out_block(cfg, bd_block, bd_start,
                         ld_elems, ld_start, ld_tail_mask);
-                const acc_stores_t acc_stores = block_acc_stores(
-                        loop, bd_start + bd_block, ld_start + ld_elems);
-                prev = emit_block(ir, cfg, cp, regs, blk, acc_stores, prev);
-            }, [&](dim_t ld) { emit_mn_step(ir, cfg, regs.advancing, 0, ld); });
+                const acc_stores_t acc_stores = block_acc_stores(loop,
+                        store_cfg, bd_start + bd_block, ld_start + ld_elems);
+                prev = emit_block(
+                        ir, cfg, store_cfg, cp, regs, blk, acc_stores, prev);
+            }, [&](dim_t ld) {
+                emit_mn_step(ir, cfg, store_cfg, regs.advancing, 0, ld);
+            });
         }, [&](dim_t bd, dim_t ld) {
-            emit_mn_step(ir, cfg, regs.advancing, bd, ld);
+            emit_mn_step(ir, cfg, store_cfg, regs.advancing, bd, ld);
         });
     } else {
         emit_level(ir, n, loop.n_form, n_pos, m_pos,
@@ -927,12 +919,15 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
                     [&](dim_t bd_block, dim_t bd_start) {
                 const out_block_t blk = make_out_block(cfg, bd_block, bd_start,
                         ld_elems, ld_start, ld_tail_mask);
-                const acc_stores_t acc_stores = block_acc_stores(
-                        loop, bd_start + bd_block, ld_start + ld_elems);
-                prev = emit_block(ir, cfg, cp, regs, blk, acc_stores, prev);
-            }, [&](dim_t bd) { emit_mn_step(ir, cfg, regs.advancing, bd, 0); });
+                const acc_stores_t acc_stores = block_acc_stores(loop,
+                        store_cfg, bd_start + bd_block, ld_start + ld_elems);
+                prev = emit_block(
+                        ir, cfg, store_cfg, cp, regs, blk, acc_stores, prev);
+            }, [&](dim_t bd) {
+                emit_mn_step(ir, cfg, store_cfg, regs.advancing, bd, 0);
+            });
         }, [&](dim_t ld, dim_t bd) {
-            emit_mn_step(ir, cfg, regs.advancing, bd, ld);
+            emit_mn_step(ir, cfg, store_cfg, regs.advancing, bd, ld);
         });
     }
 
@@ -955,9 +950,24 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 // N blocks of `ld_block2 * ld_block` columns. Each block keeps its result in
 // registers across the whole batch and K reduction, then stores it once. The
 // `level_form_t` of each level decides how the loop nest walks the blocks.
+//
+// When post-ops are applicable, the kernel has one loop nest per value of
+// `do_post_ops` and picks one on entry. Each nest stores the blocks as its
+// store configuration says, so no code in it depends on the kind of call.
 void build_brgemm(const conf_t &cfg, const compute_path_t &cp, ir::ir_t &ir) {
-    const m_loop_input_regs_t regs = init_m_loop_input_regs(ir, cfg);
-    emit_nest(ir, cfg, cp, regs);
+    if (!cfg.are_post_ops_applicable()) {
+        emit_nest(ir, cfg, cfg.store_without_post_ops, cp);
+        return;
+    }
+
+    const ir::vreg_t do_post_ops = ir.new_gpr();
+    ir.load_param(do_post_ops, GET_OFF(do_post_ops));
+
+    const int if_post_ops = ir.if_begin(do_post_ops, ir::cmp_t::ne, 0);
+    emit_nest(ir, cfg, cfg.store_with_post_ops, cp);
+    ir._else(if_post_ops);
+    emit_nest(ir, cfg, cfg.store_without_post_ops, cp);
+    ir.if_end(if_post_ops);
 }
 
 // Creates the compute path of `cfg` for building `ir`.
@@ -1145,9 +1155,6 @@ status_t init_loop_conf(
     // Without the uker, N is inside M, as in `jit_brgemm_kernel_t`.
     loop.innermost_loop
             = can_dispatch_uker ? brg.innermost_loop : brgemm_ld_loop_innermost;
-    // `jit_brgemm_kernel_t` ignores `prfC`, and the uker emits nothing for its
-    // distances other than `dist0`.
-    loop.prefetch_c = can_dispatch_uker && brg.prfC.dist0 == 0;
     loop.batch_kind = brg.type;
     loop.max_bs = brgattr.max_bs;
     loop.load_dim = brg.load_dim;
@@ -1191,12 +1198,6 @@ status_t init_loop_conf(
             // A separate block for the partial tile would load the A tiles of
             // the M block again at every K step.
             loop.n_tail_grouping = tail_grouping_t::grouped;
-            // `use_interleave_stores` allows the accumulators of a block to be
-            // stored in its K steps and in the first K step of the next block.
-            // TODO: interleave blockings other than 4 C tiles once they are
-            // measured.
-            loop.interleave_acc_stores = brgattr.use_interleave_stores
-                    && brg.bd_block2 * brg.ld_block2 == 4;
             break;
         }
     }
@@ -1283,8 +1284,7 @@ status_t init_tmul_conf(compute_path_conf_t &compute_path,
 }
 
 // Fills the output path configuration.
-status_t init_output_conf(output_conf_t &output, compute_path_kind_t kind,
-        const brgemm_desc_t &brg) {
+status_t init_output_conf(output_conf_t &output, const brgemm_desc_t &brg) {
     using namespace data_type;
     using namespace utils;
     const brgemm_attr_t &brgattr = brg.brgattr;
@@ -1361,32 +1361,57 @@ status_t init_output_conf(output_conf_t &output, compute_path_kind_t kind,
     output.dt_src_scales = brg.dt_src_scales;
     output.dt_wei_scales = brg.dt_wei_scales;
 
+    if (brg.with_eltwise || brg.with_binary || brg.with_sum) {
+        output.post_ops = brg.attr()->post_ops_;
+        output.dst_md = *brg.dst_md();
+    }
+    return status::success;
+}
+
+// Fills the store configurations, one per value of `do_post_ops`. A call with
+// post-ops applies the output stages and stores to D. A call without them
+// stores to C.
+status_t init_store_confs(
+        conf_t &conf, compute_path_kind_t kind, const brgemm_desc_t &brg) {
+    const brgemm_attr_t &brgattr = brg.brgattr;
+    const bool is_tmul = kind == compute_path_kind_t::tmul;
+
+    // `jit_brgemm_kernel_t` ignores `prfC`, and the uker emits nothing for its
+    // distances other than `dist0`.
+    conf.store_without_post_ops.prefetch
+            = brg.can_dispatch_uker() && brg.prfC.dist0 == 0;
+    // `use_interleave_stores` allows the accumulators of a block to be stored
+    // in its K steps and in the first K step of the next block.
+    // TODO: interleave blockings other than 4 C tiles once they are measured.
+    conf.store_without_post_ops.interleave_acc_stores = is_tmul
+            && brgattr.use_interleave_stores
+            && brg.bd_block2 * brg.ld_block2 == 4;
+
+    conf.store_with_post_ops.to_d = true;
+
     // The order is the one oneDNN defines and the classic kernel follows:
     //   src scale -> weights scale -> bias -> post-ops -> dst scale.
     // The scales are applied one at a time, as in the classic kernel, so the
     // result rounds the same way.
-    std::vector<output_stage_t> &stages = output.post_ops_stages;
+    std::vector<output_stage_t> &stages = conf.store_with_post_ops.stages;
     if (brg.with_src_scales) stages.push_back(output_stage_t::src_scale);
     if (brg.with_wei_scales)
         stages.push_back(brg.is_single_wei_scale
                         ? output_stage_t::wei_scale
                         : output_stage_t::wei_scale_per_n);
     if (brg.with_bias) stages.push_back(output_stage_t::bias);
-    if (brg.with_eltwise || brg.with_binary || brg.with_sum) {
+    if (brg.with_eltwise || brg.with_binary || brg.with_sum)
         stages.push_back(output_stage_t::injector_postops);
-        output.post_ops = brg.attr()->post_ops_;
-        output.dst_md = *brg.dst_md();
-    }
     if (brg.with_dst_scales) stages.push_back(output_stage_t::dst_scale);
 
     // A post-ops call stores to D through the C displacements.
-    VCONDCHECK_BRGEMM_IR(IMPLICATION(output.has_post_ops(), brg.LDC == brg.LDD),
+    VCONDCHECK_BRGEMM_IR(
+            IMPLICATION(conf.are_post_ops_applicable(), brg.LDC == brg.LDD),
             VERBOSE_UNSUPPORTED_FEATURE, "LDC != LDD");
 
     // The TMUL compute path stores its accumulators only with tile stores so
     // far, so no output stage can act on them.
-    const bool is_tmul = kind == compute_path_kind_t::tmul;
-    VCONDCHECK_BRGEMM_IR(IMPLICATION(is_tmul, !output.has_post_ops()),
+    VCONDCHECK_BRGEMM_IR(IMPLICATION(is_tmul, !conf.are_post_ops_applicable()),
             VERBOSE_UNSUPPORTED_FEATURE, "output stages on tiles");
     return status::success;
 }
@@ -1461,7 +1486,8 @@ status_t init_conf(
             CHECK(init_tmul_conf(conf.compute_path, tiles, brg));
             break;
     }
-    CHECK(init_output_conf(conf.output, kind, brg));
+    CHECK(init_output_conf(conf.output, brg));
+    CHECK(init_store_confs(conf, kind, brg));
     return check_displacements(conf);
 }
 
@@ -1489,7 +1515,8 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
         }
 
         ir::codegen_config_t codegen_cfg;
-        if (conf_.output.has_stage(output_stage_t::injector_postops)) {
+        if (conf_.store_with_post_ops.has_stage(
+                    output_stage_t::injector_postops)) {
             ir::postops_config_t &postops = codegen_cfg.postops;
             postops.post_ops = &conf_.output.post_ops;
             postops.dst_md = &conf_.output.dst_md;

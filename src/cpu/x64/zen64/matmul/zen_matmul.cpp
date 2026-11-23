@@ -180,6 +180,26 @@ bool zen_fuses_post_op(
 #endif
 
 status_t zen_matmul_t::pd_t::init(const engine_t *engine) {
+    if (!zen::is_zen_packed(*weights_md(0))) return init_zen(engine);
+
+    // Integer zen_packed weights belong to zen_lowp_matmul_t.
+    VDISPATCH_MATMUL(utils::one_of(weights_md(0)->data_type, f32, bf16, f16),
+            VERBOSE_UNSUPPORTED_DT_CFG);
+
+    // No other implementation reads zen_packed weights. If this one cannot
+    // execute the problem with them, accept the descriptor anyway: execute()
+    // unpacks the weights and runs the matmul through the next implementation.
+    // The check runs on a copy, as a failed check caches the verbose info of
+    // its pd.
+    if (pd_t(*this).init_zen(engine) == status::success)
+        return init_zen(engine);
+    VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_MATMUL(attr_.set_default_formats(dst_md(0)) == status::success,
+            VERBOSE_UNSUPPORTED_POSTOP);
+    return init_unpack_fallback(engine);
+}
+
+status_t zen_matmul_t::pd_t::init_zen(const engine_t *engine) {
     using smask_t = primitive_attr_t::skip_mask_t;
 
 #if !DNNL_X64_USE_ZEN
@@ -534,6 +554,14 @@ status_t zen_matmul_t::pd_t::init_post_ops(
 #endif // DNNL_X64_USE_ZEN
 }
 
+status_t zen_matmul_t::pd_t::init_unpack_fallback(const engine_t *engine) {
+    VDISPATCH_MATMUL_SC(unpack_fallback_.init(engine, *this),
+            VERBOSE_PRIMITIVE_CREATION_FAIL, "unpack fallback");
+    auto scratchpad = scratchpad_registry().registrar();
+    unpack_fallback_.init_scratchpad(scratchpad);
+    return status::success;
+}
+
 // Whether inner_product_utils::pp_kernel_t can apply `post_ops` in one pass
 // over the kernel output. Its JIT code has no f16 load/store, is not used for
 // ternary or in-place binary (as in the gemm-based matmuls), takes a sum only
@@ -580,6 +608,11 @@ bool zen_matmul_t::pd_t::pp_kernel_ok(const post_ops_t &post_ops) const {
 status_t zen_matmul_t::init(engine_t *engine) {
     MAYBE_UNUSED(engine);
 #if DNNL_X64_USE_ZEN
+    if (pd()->unpack_fallback().enabled()) {
+        unpack_fallback_ = pd()->unpack_fallback();
+        return unpack_fallback_.init_primitives(engine);
+    }
+
     // Build Zen matmul_post_op chain from the fused prefix of the oneDNN
     // post-ops. Static parts (type, alpha, beta, dtype, dims) are set here;
     // only binary buffer pointers are patched at execute() time.
@@ -747,6 +780,8 @@ status_t zen_matmul_t::execute_body(const exec_ctx_t &ctx) const {
 #if !DNNL_X64_USE_ZEN
     return status::unimplemented;
 #else
+    if (unpack_fallback_.enabled()) return unpack_fallback_.execute(ctx);
+
     // Build memory_desc_wrappers (needed by matmul_helper_t).
     const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());

@@ -95,6 +95,31 @@ inline zen_lowp_bmm_params_t compute_zen_lowp_bmm_params(
 #endif
 
 status_t zen_lowp_matmul_t::pd_t::init(const engine_t *engine) {
+    if (!zen::is_zen_packed(*weights_md(0))) return init_lowp(engine);
+
+    // Floating-point zen_packed weights belong to zen_matmul_t.
+    VDISPATCH_MATMUL(weights_md(0)->data_type == data_type::s8,
+            VERBOSE_UNSUPPORTED_DT_CFG);
+
+    // No other implementation reads zen_packed weights. If this one cannot
+    // execute the problem with them (attributes, a floating-point source, or
+    // weights packed for another source data type), accept the descriptor
+    // anyway: execute() unpacks the weights and runs the matmul through the
+    // next implementation. The check runs on a copy, as a failed check caches
+    // the verbose info of its pd.
+    if (pd_t(*this).init_lowp(engine) == status::success)
+        return init_lowp(engine);
+    VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_MATMUL(attr_.set_default_formats(dst_md(0)) == status::success,
+            VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_MATMUL_SC(unpack_fallback_.init(engine, *this),
+            VERBOSE_PRIMITIVE_CREATION_FAIL, "unpack fallback");
+    auto scratchpad = scratchpad_registry().registrar();
+    unpack_fallback_.init_scratchpad(scratchpad);
+    return status::success;
+}
+
+status_t zen_lowp_matmul_t::pd_t::init_lowp(const engine_t *engine) {
     using smask_t = primitive_attr_t::skip_mask_t;
 
 #if !DNNL_X64_USE_ZEN
@@ -341,22 +366,34 @@ status_t zen_lowp_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(
             !has_runtime_dims_or_strides(), VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-    // Quantized weights must be passed in a plain ab/ba layout (abc/acb with a
-    // batch). Prepacked (zen_packed) weights are disabled: when this
-    // implementation declines, the next one cannot read the opaque layout.
-    // format_any is declined as well, so the implementation that runs picks
-    // the weights layout. WOQ consumes only prepacked s4/u4 weights, so it
-    // declines.
-    VDISPATCH_MATMUL(!zen::is_zen_packed(*weights_md(0)),
-            VERBOSE_UNSUPPORTED_FORMAT_KIND);
-    VDISPATCH_MATMUL(!memory_desc_wrapper(weights_md(0)).format_any(),
-            VERBOSE_UNSUPPORTED_TAG_S, "weights");
+    // WOQ consumes only prepacked s4/u4 weights, which cannot be unpacked for
+    // the fallback in init(), so it declines.
     VDISPATCH_MATMUL(!is_woq, VERBOSE_UNSUPPORTED_FEATURE,
             "weight-only quantization requires prepacked weights");
 
+    // Prepack path: when the framework leaves the weights layout open
+    // (format_any), advertise the opaque zen_packed format, produced by
+    // zen_reorder_t and consumed with mem_format_b='r'. The packed layout
+    // depends on the source data type (u8 or s8), recorded as gemm_src_dt.
+    const bool wei_format_any = memory_desc_wrapper(weights_md(0)).format_any();
+    const bool wei_already_packed = zen::is_zen_packed(*weights_md(0));
+    VDISPATCH_MATMUL(!wei_already_packed
+                    || memory_desc_wrapper(weights_md(0))
+                                    .zen_packed_desc()
+                                    .gemm_src_dt
+                            == src_dt,
+            VERBOSE_INCONSISTENT_MDS, "weights", "packed-gemm-src-dtype");
+
     VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
-    VDISPATCH_MATMUL(gemm_based::check_gemm_compatible_formats(*this),
+    if (wei_format_any)
+        VDISPATCH_MATMUL_SC(zen::init_zen_packed_md(weights_md_, src_dt, K(),
+                                    N(), is_batched ? wei_batch : 1),
+                VERBOSE_UNSUPPORTED_TAG);
+    const bool wei_zen_packed = wei_already_packed || wei_format_any;
+
+    VDISPATCH_MATMUL(
+            wei_zen_packed || gemm_based::check_gemm_compatible_formats(*this),
             VERBOSE_INCOMPATIBLE_GEMM_FMT);
 
     // Source and destination may have padded inner leading dimensions, but
@@ -383,8 +420,9 @@ status_t zen_lowp_matmul_t::pd_t::init(const engine_t *engine) {
                 batch_is_outermost(src_md(0)), VERBOSE_UNSUPPORTED_TAG);
         VDISPATCH_MATMUL(
                 batch_is_outermost(dst_md(0)), VERBOSE_UNSUPPORTED_TAG);
-        VDISPATCH_MATMUL(
-                batch_is_outermost(weights_md(0)), VERBOSE_UNSUPPORTED_TAG);
+        if (!wei_zen_packed)
+            VDISPATCH_MATMUL(
+                    batch_is_outermost(weights_md(0)), VERBOSE_UNSUPPORTED_TAG);
     }
 
     VDISPATCH_MATMUL(!::dnnl::impl::cpu::x64::binary_injector::
@@ -442,18 +480,30 @@ status_t zen_lowp_matmul_t::pd_t::init(const engine_t *engine) {
     const matmul_helper_t helper(memory_desc_wrapper(src_md(0)),
             memory_desc_wrapper(weights_md(0)), memory_desc_wrapper(dst_md(0)));
     const dim_t int_max = std::numeric_limits<int>::max();
+    // Packed weights have no blocking_desc; the backend uses ldb = N.
+    const dim_t wei_ldb = wei_zen_packed ? N() : helper.ldb();
     const dim_t batch_count = src_batch > wei_batch ? src_batch : wei_batch;
     bool fits_zen_int_api = helper.M() <= int_max && helper.N() <= int_max
             && helper.K() <= int_max && helper.lda() <= int_max
-            && helper.ldb() <= int_max && helper.ldc() <= int_max
+            && wei_ldb <= int_max && helper.ldc() <= int_max
             && src_batch <= int_max && wei_batch <= int_max
             && batch_count <= int_max;
 
+    // The per-batch weight stride is per_slice_size / element size, so the
+    // division must be exact.
+    if (is_batched && wei_zen_packed) {
+        const memory_desc_wrapper wei_d(weights_md(0));
+        const size_t wei_storage_size = wei_d.data_type_size();
+        const size_t per_slice = wei_d.zen_packed_desc().per_slice_size;
+        VDISPATCH_MATMUL(
+                wei_storage_size > 0 && per_slice % wei_storage_size == 0,
+                VERBOSE_INCONSISTENT_MDS, "weights", "packed-slice-size");
+    }
+
     if (is_batched && fits_zen_int_api) {
-        const auto bmm
-                = compute_zen_lowp_bmm_params(memory_desc_wrapper(src_md(0)),
-                        memory_desc_wrapper(weights_md(0)), helper,
-                        /*wei_is_zen_packed=*/false);
+        const auto bmm = compute_zen_lowp_bmm_params(
+                memory_desc_wrapper(src_md(0)),
+                memory_desc_wrapper(weights_md(0)), helper, wei_zen_packed);
         const size_t int_max_sz = static_cast<size_t>(int_max);
         fits_zen_int_api = bmm.stride_src <= int_max_sz
                 && bmm.stride_wei <= int_max_sz && bmm.stride_dst <= int_max_sz;
@@ -539,6 +589,11 @@ status_t zen_lowp_matmul_t::pd_t::init_woq(const engine_t *engine) {
 status_t zen_lowp_matmul_t::init(engine_t *engine) {
     MAYBE_UNUSED(engine);
 #if DNNL_X64_USE_ZEN
+    if (pd()->unpack_fallback().enabled()) {
+        unpack_fallback_ = pd()->unpack_fallback();
+        return unpack_fallback_.init_primitives(engine);
+    }
+
     // Build Zen matmul_post_op chain directly from oneDNN attributes.
     const auto &po = pd()->attr()->post_ops_;
     zen_postop_.clear();
@@ -784,6 +839,8 @@ status_t zen_lowp_matmul_t::execute_body(const exec_ctx_t &ctx) const {
 #if !DNNL_X64_USE_ZEN
     return status::unimplemented;
 #else
+    if (unpack_fallback_.enabled()) return unpack_fallback_.execute(ctx);
+
     const auto src_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());

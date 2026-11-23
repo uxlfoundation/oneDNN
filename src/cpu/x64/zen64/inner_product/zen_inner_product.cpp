@@ -240,6 +240,8 @@ status_t zen_inner_product_fwd_t::pd_t::init_matmul_params(
 
 const char *zen_inner_product_fwd_t::pd_t::impl_name() const {
     const char *matmul_name = matmul_pd_ ? matmul_pd_->name() : "";
+    if (std::strstr(matmul_name, "zen:unpack+"))
+        return "zen:ip:f32|bf16|f16:amd+unpack";
     if (std::strstr(matmul_name, "+pp_kernel"))
         return "zen:ip:f32|bf16|f16:amd+pp_kernel";
     if (std::strstr(matmul_name, "+post_ops_fallback"))

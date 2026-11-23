@@ -624,17 +624,21 @@ struct blocking_hw_t {
 
 struct query_blocking_t {
     dim_t granule;
-    dim_t max_block;
     dim_t item_rows;
     double concurrent_kv_bytes;
+    bool multiple_query_blocks_guaranteed;
     bool interleave_items;
 };
 
-bool kv_overflows_l3(dim_t seq_q, dim_t q_block_max, double concurrent_kv_bytes,
-        const blocking_hw_t &hw, double score_tile_bytes) {
+bool should_interleave_for_kv_reuse(bool multiple_query_blocks_guaranteed,
+        double concurrent_kv_bytes, const blocking_hw_t &hw,
+        double score_tile_bytes) {
+    // Interleaving promotes K/V reuse between query blocks of the same head.
+    if (!multiple_query_blocks_guaranteed) return false;
+
     const double l3_left_bytes = static_cast<double>(hw.nthr)
             * (static_cast<double>(hw.l3_bytes) - score_tile_bytes);
-    return seq_q > q_block_max && concurrent_kv_bytes > l3_left_bytes;
+    return concurrent_kv_bytes > l3_left_bytes;
 }
 
 query_blocking_t choose_query_blocking(const sdpa_desc_t &desc,
@@ -659,15 +663,16 @@ query_blocking_t choose_query_blocking(const sdpa_desc_t &desc,
             * desc.keys() * head_sizes * types::data_type_size(mm_dt);
     // Estimate at most one distinct KV head per thread. For this preliminary
     // L3 check, account for a per-thread score/P tile capped at q_block_max
-    // rows. If the concurrent K/V estimate exceeds the remaining budget,
-    // interleaving lets fused schedules assign neighboring query blocks to
-    // threads for K/V reuse. Require seq_q > q_block_max so each head has
-    // multiple blocks. Cache occupancy and sharing are estimates.
+    // rows.
     const double estimated_score_tile_bytes
             = nstl::min<double>(score_tile_target_bytes,
                     static_cast<double>(q_block_max) * score_row_bytes);
-    const bool interleave_items = kv_overflows_l3(desc.queries(), q_block_max,
-            concurrent_kv_bytes, hw, estimated_score_tile_bytes);
+    // Both L3 checks skip the budget comparison if the queries fit within
+    // the row cap, even if the chosen block is smaller.
+    const bool multiple_query_blocks_guaranteed = desc.queries() > q_block_max;
+    const bool interleave_items
+            = should_interleave_for_kv_reuse(multiple_query_blocks_guaranteed,
+                    concurrent_kv_bytes, hw, estimated_score_tile_bytes);
     // For one K/V traversal and R query rows, ideal K/V traffic per score is
     // head_sizes * element_size / R bytes. At the unshared minimum-row target
     // (R = head_sizes / 8), this is 16 bytes per score for bf16/f16, close to
@@ -683,8 +688,8 @@ query_blocking_t choose_query_blocking(const sdpa_desc_t &desc,
     dim_t item_rows = q_granule
             * std::lround(nstl::max(q_rows, q_rows_min) / q_granule);
     item_rows = utils::saturate(q_granule, q_block_max, item_rows);
-    return {q_granule, q_block_max, item_rows, concurrent_kv_bytes,
-            interleave_items};
+    return {q_granule, item_rows, concurrent_kv_bytes,
+            multiple_query_blocks_guaranteed, interleave_items};
 }
 
 dim_t choose_q_block(const sdpa_desc_t &desc, const query_blocking_t &blocking,
@@ -1047,11 +1052,14 @@ schedule_choice_t choose_schedule(const sdpa_desc_t &desc,
     } else if (!choice.interleave_items) {
         // The minimum row count or grouped-head rounding can exceed the
         // preliminary estimate. Only enable interleave; keep q_block.
+        // Keep the original row-cap guard: seq_q at or below the cap skips
+        // the L3 comparison even if the resolved q_block gives several blocks.
         const double chosen_score_tile_bytes = static_cast<double>(
                 heads_per_item * q_block * score_row_bytes);
-        choice.interleave_items = kv_overflows_l3(seq_q,
-                query_blocking.max_block, query_blocking.concurrent_kv_bytes,
-                hw, chosen_score_tile_bytes);
+        choice.interleave_items = should_interleave_for_kv_reuse(
+                query_blocking.multiple_query_blocks_guaranteed,
+                query_blocking.concurrent_kv_bytes, hw,
+                chosen_score_tile_bytes);
     }
     return choice;
 }

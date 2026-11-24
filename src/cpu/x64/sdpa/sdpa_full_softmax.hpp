@@ -137,39 +137,8 @@ struct tensor_copy_desc_t {
 // start at offset 0; unused areas have zero size.
 struct sdpa_full_softmax_thread_scratch_t {
     bool has_prob = false;
-    size_t pv = 0, prob = 0, amx_wsp = 0;
+    size_t pv = 0, prob = 0, brg_wsp = 0;
     size_t size = 0;
-
-    void set_compute_type(data_type_t dt, size_t dt_sz) {
-        has_prob = dt != data_type::f32;
-        prob_dt_size_ = dt_sz;
-    }
-
-    size_t score_tile_row_bytes(dim_t ld_scores, dim_t ld_prob) const {
-        return static_cast<size_t>(ld_scores) * sizeof(float)
-                + (has_prob ? static_cast<size_t>(ld_prob) * prob_dt_size_ : 0);
-    }
-
-    void set_tile_buffers(size_t item_q_rows, dim_t ld_scores, dim_t ld_prob,
-            dim_t ld_pv, bool mm2_direct, size_t amx_wsp_bytes) {
-        const size_t scores_bytes
-                = align64(item_q_rows * ld_scores * sizeof(float));
-        const size_t pv_bytes
-                = mm2_direct ? 0 : align64(item_q_rows * ld_pv * sizeof(float));
-        const size_t prob_bytes
-                = has_prob ? align64(item_q_rows * ld_prob * prob_dt_size_) : 0;
-        pv = scores_bytes;
-        prob = pv + pv_bytes;
-        amx_wsp = prob + prob_bytes;
-        size = amx_wsp + amx_wsp_bytes;
-    }
-
-private:
-    static size_t align64(size_t n) {
-        return (n + 63) & ~static_cast<size_t>(63);
-    }
-
-    size_t prob_dt_size_ = 0;
 };
 
 // Layout of the split_kv schedule. mm1 and mm2 split seq_kv into mm1_chunks
@@ -255,7 +224,7 @@ struct sdpa_full_softmax_conf_t {
     // Fold non-inverted select into mm1 for dense condition rows or a single
     // query row.
     bool mm1_select_postop = false;
-    size_t amx_wsp_bytes = 0;
+    size_t brg_wsp_bytes = 0;
     sdpa_full_softmax_thread_scratch_t thread_scratch;
     // The scratchpad holds one block per thread followed by a shared area.
     size_t scratch_per_thread = 0;

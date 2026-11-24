@@ -64,6 +64,11 @@ inline data_type_t mm_data_type(const sdpa_pd_t &pd) {
     return pd.desc()->qry_md()->data_type;
 }
 
+// P reuses the score buffer for f32 compute; otherwise it needs a separate buffer.
+bool has_separate_prob_buffer(data_type_t mm_dt) {
+    return mm_dt != data_type::f32;
+}
+
 // Return the physical row stride in elements. Add one cache line when the
 // row stride would otherwise alias L1 sets; keep short rows dense.
 dim_t scratch_row_ld(dim_t width, size_t dt_sz, bool allow_padding) {
@@ -604,10 +609,9 @@ void init_score_and_prob_layout(
     conf.ld_scores
             = scratch_row_ld(seq_kv, sizeof(float), !dense_scores_required);
     const data_type_t mm_dt = mm_data_type(pd);
-    const size_t mm_dt_size = types::data_type_size(mm_dt);
-    conf.thread_scratch.set_compute_type(mm_dt, mm_dt_size);
-    conf.ld_prob = conf.thread_scratch.has_prob
-            ? scratch_row_ld(seq_kv, mm_dt_size, /*allow_padding=*/true)
+    conf.ld_prob = has_separate_prob_buffer(mm_dt)
+            ? scratch_row_ld(seq_kv, types::data_type_size(mm_dt),
+                      /*allow_padding=*/true)
             : conf.ld_scores;
 }
 
@@ -1154,20 +1158,32 @@ size_t add_shared_buffer(size_t bytes, size_t &shared_offset) {
     return offset;
 }
 
-void layout_scratch(const sdpa_desc_t &desc, data_type_t mm_dt, size_t max_wsp,
-        sdpa_full_softmax_conf_t &conf) {
+void layout_scratch(const sdpa_desc_t &desc, data_type_t mm_dt,
+        size_t max_brg_wsp, sdpa_full_softmax_conf_t &conf) {
     const bool split_kv
             = conf.schedule == sdpa_full_softmax_schedule_t::split_kv;
-    auto &ts = conf.thread_scratch;
+    const size_t mm_dt_size = types::data_type_size(mm_dt);
+    sdpa_full_softmax_thread_scratch_t ts;
+    ts.has_prob = has_separate_prob_buffer(mm_dt);
     // Fused schedules keep score, P and pv tiles for each head of the work
     // item in its thread's scratch. split_kv keeps these tiles in shared
     // buffers instead.
     const size_t item_q_rows = split_kv
             ? 0
             : static_cast<size_t>(conf.query_heads_per_item) * conf.q_block;
-    conf.amx_wsp_bytes = align64(max_wsp);
-    ts.set_tile_buffers(item_q_rows, conf.ld_scores, conf.ld_prob, conf.ld_pv,
-            conf.mm2_direct, conf.amx_wsp_bytes);
+    conf.brg_wsp_bytes = align64(max_brg_wsp);
+    const size_t scores_bytes
+            = align64(item_q_rows * conf.ld_scores * sizeof(float));
+    const size_t pv_bytes = conf.mm2_direct
+            ? 0
+            : align64(item_q_rows * conf.ld_pv * sizeof(float));
+    const size_t prob_bytes = ts.has_prob
+            ? align64(item_q_rows * conf.ld_prob * mm_dt_size)
+            : 0;
+    ts.pv = scores_bytes;
+    ts.prob = ts.pv + pv_bytes;
+    ts.brg_wsp = ts.prob + prob_bytes;
+    ts.size = ts.brg_wsp + conf.brg_wsp_bytes;
 
     const dim_t batch = desc.batch();
     const dim_t num_head_kv = desc.num_kv_heads();
@@ -1210,15 +1226,16 @@ void layout_scratch(const sdpa_desc_t &desc, data_type_t mm_dt, size_t max_wsp,
                 * desc.queries();
         sk.scores = add_shared_buffer(
                 rows * conf.ld_scores * sizeof(float), shared_offset);
-        sk.prob = ts.has_prob ? add_shared_buffer(rows * conf.ld_prob
-                                                * types::data_type_size(mm_dt),
-                                        shared_offset)
-                              : sk.scores;
+        sk.prob = ts.has_prob
+                ? add_shared_buffer(
+                          rows * conf.ld_prob * mm_dt_size, shared_offset)
+                : sk.scores;
         if (!conf.mm2_direct)
             sk.partials = add_shared_buffer(
                     sk.mm2_chunks * rows * conf.ld_pv * sizeof(float),
                     shared_offset);
     }
+    conf.thread_scratch = ts;
     conf.scratch_per_thread = ts.size;
     conf.shared_scratch_bytes = shared_offset;
 }
@@ -1267,8 +1284,12 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
             platform::get_per_core_cache_size(3), brgemm_props.is_amx};
 
     init_score_and_prob_layout(pd, conf);
-    const size_t score_row_bytes = conf.thread_scratch.score_tile_row_bytes(
-            conf.ld_scores, conf.ld_prob);
+    const size_t prob_row_bytes = has_separate_prob_buffer(mm_dt)
+            ? static_cast<size_t>(conf.ld_prob) * types::data_type_size(mm_dt)
+            : 0;
+    const size_t score_row_bytes
+            = static_cast<size_t>(conf.ld_scores) * sizeof(float)
+            + prob_row_bytes;
     const auto query_blocking
             = choose_query_blocking(desc, hw, mm_dt, score_row_bytes);
     const auto kv_blocking = choose_kv_blocking(
@@ -1682,8 +1703,8 @@ class thread_state_t {
 public:
     thread_state_t(const exec_state_t &st, int tid)
         : scratch(st.thread_scratch(tid))
-        , amx_wsp(st.conf.amx_wsp_bytes > 0
-                          ? scratch + st.conf.thread_scratch.amx_wsp
+        , brg_wsp(st.conf.brg_wsp_bytes > 0
+                          ? scratch + st.conf.thread_scratch.brg_wsp
                           : nullptr) {
         heads.reserve(st.conf.query_heads_per_item);
         // Upper bound: one rhs per mm1 post-op, plus fill and condition.
@@ -1704,7 +1725,7 @@ public:
     };
 
     char *const scratch;
-    void *const amx_wsp;
+    void *const brg_wsp;
     std::vector<head_ptrs_t> heads;
     std::vector<const void *> rhs;
     int prev_brg_idx = -1;
@@ -1793,10 +1814,10 @@ public:
                             /*data_C_ptr_=*/scores.of(h),
                             /*first_mb_matrix_addr_off=*/0);
                     brgemm_kernel_execute_postops(kernel, 1, &be, c_blk, c_blk,
-                            pod, thread_state_.amx_wsp);
+                            pod, thread_state_.brg_wsp);
                 } else {
                     brgemm_kernel_execute(
-                            kernel, 1, &be, c_blk, thread_state_.amx_wsp);
+                            kernel, 1, &be, c_blk, thread_state_.brg_wsp);
                 }
             }
         });
@@ -1844,10 +1865,10 @@ public:
                                 + v0 * st_.out_d.data_type_size();
                         const brgemm_post_ops_data_t pod;
                         brgemm_kernel_execute_postops(kernel, 1, &be, c_blk,
-                                dst, pod, thread_state_.amx_wsp);
+                                dst, pod, thread_state_.brg_wsp);
                     } else {
                         brgemm_kernel_execute(
-                                kernel, 1, &be, c_blk, thread_state_.amx_wsp);
+                                kernel, 1, &be, c_blk, thread_state_.brg_wsp);
                     }
                 }
             });

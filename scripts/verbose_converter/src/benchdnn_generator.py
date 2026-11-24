@@ -681,7 +681,10 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
         for i in range(remainder):
             sizes[i] += 1
         group_sizes = "+".join(map(str, sizes))
-        return f"--grouped={var_idx}:{count}:{group_sizes}"
+        grouped = f"--grouped={var_idx}:{count}:{group_sizes}"
+        # exec lines carry the max group size hint, `*` means no hint
+        hint = self.entry.aux.get("hint_max_group_size", "*")
+        return grouped if hint == "*" else f"{grouped}:{hint}"
 
     @property
     def aux(self):

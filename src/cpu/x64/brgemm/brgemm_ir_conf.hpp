@@ -228,11 +228,14 @@ struct output_conf_t {
 //                           `block_acc_stores()`
 //   prefetch              - each block prefetches for write the lines it
 //                           stores
+//   convert_acc           - the stores convert the accumulators to the data
+//                           type of the destination
 struct store_conf_t {
     bool to_d = false;
     std::vector<output_stage_t> stages;
     bool interleave_acc_stores = false;
     bool prefetch = false;
+    bool convert_acc = false;
 
     bool has_stage(output_stage_t stage) const {
         return std::find(stages.begin(), stages.end(), stage) != stages.end();
@@ -265,10 +268,12 @@ struct conf_t {
     store_conf_t store_with_post_ops;
 
     // True if a post-ops call has anything to apply, that is if
-    // `store_with_post_ops` has output stages. Otherwise the kernel ignores
-    // `do_post_ops` and stores every call as `store_without_post_ops` says.
+    // `store_with_post_ops` has output stages or converts the accumulators.
+    // Otherwise the kernel ignores `do_post_ops` and stores every call as
+    // `store_without_post_ops` says.
     bool are_post_ops_applicable() const {
-        return !store_with_post_ops.stages.empty();
+        return !store_with_post_ops.stages.empty()
+                || store_with_post_ops.convert_acc;
     }
 
     // Element sizes in bytes of A, B, C, D, and the bias. The bias size is 0

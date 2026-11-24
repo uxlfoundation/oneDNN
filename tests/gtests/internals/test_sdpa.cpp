@@ -4190,7 +4190,7 @@ TEST_P(sdpa_microkernel_bf16_zp_test_t, SelectAndGenerateShim) {
     EXPECT_FALSE(pkg.binary.empty());
     EXPECT_EQ(pkg.status, Package::Status::Success);
 
-    // Intel Xe hardware does not support binary add with two bf16 sources
+    // The pre-Xe3p hardware tested here does not support binary add with two bf16 sources
     // (mixed-mode bf16 + f32 is required). Verify that asymmetric bf16
     // zero-point subtraction promotes the zero-point operand to f32 instead
     // of emitting an illegal add(bf, bf, bf) instruction.

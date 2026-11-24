@@ -85,7 +85,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     Txs_int = Tx;
     if (Tx == Type::bf16 && !pureBf16) {
         Txs_int = Type::f32;
-        if (Txo_int == Type::bf16) Txo_int = Type::f32;
+        if (Txo_int == Type::bf16 && hw < HW::Xe3p) Txo_int = Type::f32;
     }
     Txg_int = Txg;
 

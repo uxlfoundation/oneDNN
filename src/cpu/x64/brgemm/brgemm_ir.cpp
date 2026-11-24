@@ -692,16 +692,15 @@ void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
 // The output path of one block. Adds C when beta is 1, applies the output
 // stages of `store_cfg`, and stores the block to C or D as `store_cfg` says.
 //
-// It works on the accumulators as the rows of the output, one register per
-// (M row, N register).
+// It works on the rows of the output in `acc`, one register per (M row, N
+// register).
 void emit_output_path(ir::ir_t &ir, const conf_t &cfg,
-        const store_conf_t &store_cfg, const compute_path_t &cp,
-        const m_loop_input_regs_t &regs, const out_block_t &blk,
-        const std::vector<ir::vreg_t> &acc) {
+        const store_conf_t &store_cfg, const m_loop_input_regs_t &regs,
+        const out_block_t &blk, const std::vector<ir::vreg_t> &acc) {
 
-    // The kernel takes only 0 and 1 for beta. C is added here unless the
-    // accumulators started from it.
-    if (cfg.output.beta != 0.0f && !cp.loads_accumulators()) {
+    // The kernel takes only 0 and 1 for beta. On the output path the
+    // accumulators start at zero (`emit_block()`), so C is added here.
+    if (cfg.output.beta != 0.0f) {
         for (int bd = 0; bd < blk.bd_block; bd++) {
             for (int ld = 0; ld < blk.ld_block2; ld++) {
                 const ir::vreg_t c = ir.new_vec(cfg.output.dt_c);
@@ -739,9 +738,11 @@ void emit_output_path(ir::ir_t &ir, const conf_t &cfg,
 }
 
 // True if `emit_output_path()` stores the blocks instead of
-// `store_accumulators()`. Only the output path applies output stages.
+// `store_accumulators()`. Only the output path applies output stages and
+// converts the accumulators.
 bool uses_output_path(const compute_path_t &cp, const store_conf_t &store_cfg) {
-    return !cp.stores_accumulators() || !store_cfg.stages.empty();
+    return !cp.stores_accumulators() || !store_cfg.stages.empty()
+            || store_cfg.convert_acc;
 }
 
 // One output block.
@@ -764,7 +765,11 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
         const m_loop_input_regs_t &regs, const out_block_t &blk,
         acc_stores_t acc_stores, const prev_block_t &prev) {
 
-    const bool acc_from_c = cfg.output.beta != 0.0f && cp.loads_accumulators();
+    // On the output path C is added to the rows, which is faster than
+    // starting the accumulators from C.
+    const bool to_output_path = uses_output_path(cp, store_cfg);
+    const bool acc_from_c = cfg.output.beta != 0.0f && cp.loads_accumulators()
+            && !to_output_path;
     const std::vector<ir::vreg_t> acc = acc_from_c
             ? cp.load_accumulators(ir, cfg, blk, regs.advancing.c_ptr, prev)
             : cp.init_accumulators(ir, cfg, blk, prev);
@@ -793,8 +798,12 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
 
     emit_batch_level(ir, cfg, cp, regs, blk, acc, interleave);
 
-    if (uses_output_path(cp, store_cfg)) {
-        emit_output_path(ir, cfg, store_cfg, cp, regs, blk, acc);
+    if (to_output_path) {
+        cp.pass_accumulators_to_output_path(ir, cfg, blk, acc,
+                [&](const out_block_t &rows_blk,
+                        const std::vector<ir::vreg_t> &row_regs) {
+            emit_output_path(ir, cfg, store_cfg, regs, rows_blk, row_regs);
+        });
     } else if (acc_stores == acc_stores_t::none) {
         cp.store_accumulators(ir, cfg, blk, acc, regs.advancing.store_ptr);
     }
@@ -1288,8 +1297,8 @@ status_t init_output_conf(output_conf_t &output, const brgemm_desc_t &brg) {
     using namespace utils;
     const brgemm_attr_t &brgattr = brg.brgattr;
 
-    VCONDCHECK_BRGEMM_IR(
-            everyone_is(f32, brg.dt_c, brg.dt_d), VERBOSE_UNSUPPORTED_DT);
+    VCONDCHECK_BRGEMM_IR(brg.dt_c == f32, VERBOSE_UNSUPPORTED_DT);
+    VCONDCHECK_BRGEMM_IR(one_of(brg.dt_d, f32, bf16), VERBOSE_UNSUPPORTED_DT);
     VCONDCHECK_BRGEMM_IR(
             brg.alpha == 1.0f, VERBOSE_UNSUPPORTED_FEATURE, "alpha != 1");
     VCONDCHECK_BRGEMM_IR(brg.beta == 0.0f || brg.beta == 1.0f,
@@ -1375,6 +1384,7 @@ status_t init_store_confs(
         conf_t &conf, compute_path_kind_t kind, const brgemm_desc_t &brg) {
     const brgemm_attr_t &brgattr = brg.brgattr;
     const bool is_tmul = kind == compute_path_kind_t::tmul;
+    const data_type_t dt_acc = conf.compute_path.dt_acc;
 
     // `jit_brgemm_kernel_t` ignores `prfC`, and the uker emits nothing for its
     // distances other than `dist0`.
@@ -1386,8 +1396,10 @@ status_t init_store_confs(
     conf.store_without_post_ops.interleave_acc_stores = is_tmul
             && brgattr.use_interleave_stores
             && brg.bd_block2 * brg.ld_block2 == 4;
+    conf.store_without_post_ops.convert_acc = brg.dt_c != dt_acc;
 
     conf.store_with_post_ops.to_d = true;
+    conf.store_with_post_ops.convert_acc = brg.dt_d != dt_acc;
 
     // The order is the one oneDNN defines and the classic kernel follows:
     //   src scale -> weights scale -> bias -> post-ops -> dst scale.
@@ -1404,9 +1416,16 @@ status_t init_store_confs(
         stages.push_back(output_stage_t::injector_postops);
     if (brg.with_dst_scales) stages.push_back(output_stage_t::dst_scale);
 
-    // The TMUL compute path stores its accumulators only with tile stores so
-    // far, so no output stage can act on them.
-    VCONDCHECK_BRGEMM_IR(IMPLICATION(is_tmul, !conf.are_post_ops_applicable()),
+    // Only the TMUL compute path converts so far. Its ISA always has the
+    // conversion to bf16, unlike `avx2` and `avx512_core`.
+    VCONDCHECK_BRGEMM_IR(
+            IMPLICATION(!is_tmul, !conf.store_with_post_ops.convert_acc),
+            VERBOSE_UNSUPPORTED_DT);
+
+    // TODO: accept output stages on the TMUL compute path after testing them
+    // on the rows of its tiles.
+    VCONDCHECK_BRGEMM_IR(
+            IMPLICATION(is_tmul, conf.store_with_post_ops.stages.empty()),
             VERBOSE_UNSUPPORTED_FEATURE, "output stages on tiles");
     return status::success;
 }

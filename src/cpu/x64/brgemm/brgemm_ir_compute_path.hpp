@@ -21,6 +21,7 @@
 // (`brgemm_ir.cpp`) and its compute paths.
 
 #include <cassert>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -84,23 +85,22 @@ struct k_step_interleave_t {
 //
 // For each output block the builder calls `init_accumulators()` before the
 // batch loop, then `emit_microkernel()` for each K block of each batch element.
-// It calls `load_accumulators()` instead of `init_accumulators()` when beta is
-// 1 and `loads_accumulators()` is true. When `stores_accumulators()` is true
-// and the store configuration has no output stages, it calls
-// `store_accumulators()` at the end of the block, unless the accumulators are
-// stored in the K steps (`k_step_interleave_t`). With `store_conf_t::prefetch`,
-// it gets the prefetches of the block from `c_prefetches()`. The compute path
-// chooses the layout of the accumulators.
+// A block on the output path (`uses_output_path()`) ends with
+// `pass_accumulators_to_output_path()`. Any other block calls
+// `load_accumulators()` instead of `init_accumulators()` when beta is 1 and
+// `loads_accumulators()` is true, and ends with `store_accumulators()` unless
+// the K steps store it (`k_step_interleave_t`). With `store_conf_t::prefetch`,
+// it gets the prefetches of the block from `c_prefetches()`. The compute
+// path chooses the layout of the accumulators.
 struct compute_path_t {
     virtual ~compute_path_t() = default;
 
-    // True if the accumulators start from C when beta is 1. Otherwise they
-    // start at zero and the output path adds C.
+    // True if the accumulators start from C when beta is 1 and the block is
+    // not on the output path. Otherwise the output path adds C.
     virtual bool loads_accumulators() const { return false; }
 
-    // True if `store_accumulators()` ends the block when the store
-    // configuration has no output stages. Otherwise the output path applies
-    // the output stages to the accumulators and stores them.
+    // True if `store_accumulators()` ends a block with no output stages and
+    // no conversion. Otherwise the output path stores the block.
     virtual bool stores_accumulators() const { return false; }
 
     // Average size in bytes of the code of one IR operation of a kernel on
@@ -133,6 +133,21 @@ struct compute_path_t {
             const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
             ir::vreg_t c_ptr) const {
         assert(!"store_accumulators: not supported by the compute path");
+    }
+
+    // Passes the accumulators of `blk` to `output_path` as rows in vector
+    // registers, in one or more calls:
+    //   rows_blk - the part of `blk` the call covers
+    //   row_regs - its rows, one register per (M row, N register), in row order
+    // By default the whole block goes in one call, since the vector compute
+    // path keeps its accumulators as rows.
+    virtual void pass_accumulators_to_output_path(ir::ir_t &ir,
+            const conf_t &cfg, const out_block_t &blk,
+            const std::vector<ir::vreg_t> &acc,
+            const std::function<void(const out_block_t &rows_blk,
+                    const std::vector<ir::vreg_t> &row_regs)> &output_path)
+            const {
+        output_path(blk, acc);
     }
 
     // Returns the write prefetches of the C lines at `store_ptr` that the

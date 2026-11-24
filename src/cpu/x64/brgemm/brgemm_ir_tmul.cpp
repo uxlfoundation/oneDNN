@@ -18,10 +18,13 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/x64/brgemm/brgemm_ir_compute_path.hpp"
@@ -43,6 +46,14 @@ struct tmul_compute_path_t : public compute_path_t {
         ir.mov_imm(a_stride_, cfg.a_off(1, 0));
         ir.mov_imm(b_stride_, cfg.b_off(cfg.compute_path.vnni_granularity, 0));
         ir.mov_imm(c_stride_, cfg.c_off(1, 0));
+
+        // Only the post-ops nest passes its accumulators to the output path.
+        if (cfg.are_post_ops_applicable()) {
+            buf_ptr_ = ir.new_gpr();
+            ir.load_param(buf_ptr_, offsetof(brgemm_kernel_params_t, ptr_buf));
+            buf_stride_ = ir.new_gpr();
+            ir.mov_imm(buf_stride_, buf_row_size(cfg));
+        }
     }
 
     bool loads_accumulators() const override { return true; }
@@ -69,6 +80,56 @@ struct tmul_compute_path_t : public compute_path_t {
 
         for (int i = 0; i < (int)acc.size(); i++) {
             store_accumulator(ir, cfg, blk, acc, i, c_ptr);
+        }
+    }
+
+    // Stores each tile to the start of `ptr_buf` and passes it to
+    // `output_path` `store_bd_step` rows at a time, before the next tile is
+    // stored. One place for every tile is faster than a place per tile.
+    void pass_accumulators_to_output_path(ir::ir_t &ir, const conf_t &cfg,
+            const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
+            const std::function<void(const out_block_t &rows_blk,
+                    const std::vector<ir::vreg_t> &row_regs)> &output_path)
+            const override {
+
+        const data_type_t dt_acc = cfg.compute_path.dt_acc;
+        const int n_m = m_tiles(cfg, blk);
+        const int n_n = blk.ld_block2;
+
+        for (int m = 0; m < n_m; m++) {
+            for (int n = 0; n < n_n; n++) {
+                const int i = m * n_n + n;
+                ir.tstore(buf_ptr_, 0, acc[i], buf_stride_);
+
+                // The tile store writes only the columns of the tile, so the
+                // load of a row of the N tail zeroes the rest.
+                const ir::vreg_t ld_tail_mask = is_n_tail(blk, n)
+                        ? blk.ld_tail_mask
+                        : ir::vreg_t::none;
+                const int rows = c_tile_shape(cfg, blk, m, n).rows;
+
+                for (int bd = 0; bd < rows; bd += store_bd_step) {
+                    const int bd_block = std::min(store_bd_step, rows - bd);
+                    std::vector<ir::vreg_t> row_regs(bd_block);
+
+                    for (int r = 0; r < bd_block; r++) {
+                        const dim_t off = (bd + r) * buf_row_size(cfg);
+                        row_regs[r] = ir.new_vec(dt_acc);
+                        if (ld_tail_mask == ir::vreg_t::none) {
+                            ir.vload(row_regs[r], buf_ptr_, off, dt_acc);
+                        } else {
+                            ir.vload_masked(row_regs[r], buf_ptr_, off,
+                                    ld_tail_mask, dt_acc);
+                        }
+                    }
+
+                    const dim_t bd_start
+                            = blk.bd_start + m * m_tile_rows(cfg) + bd;
+                    const out_block_t rows_blk = {bd_block, 1, bd_start,
+                            cfg.ld_pos(blk, n), ld_tail_mask};
+                    output_path(rows_blk, row_regs);
+                }
+            }
         }
     }
 
@@ -166,9 +227,18 @@ private:
     // store, when another block follows (`acc_stores_t::next_block`).
     static constexpr int store_delay = 2;
 
+    // Rows of a tile per output path call (the uker's `store_bd_step()`).
+    static constexpr int store_bd_step = 3;
+
     // Row strides of the A, B, and C tiles in memory, in bytes. They are set
     // once for the whole kernel.
     ir::vreg_t a_stride_, b_stride_, c_stride_;
+
+    // `ptr_buf` and the row stride of a tile there, in bytes. `none` when
+    // post-ops are not applicable. `get_wsp_buffer_size()` reserves at least
+    // a tile there.
+    ir::vreg_t buf_ptr_ = ir::vreg_t::none;
+    ir::vreg_t buf_stride_ = ir::vreg_t::none;
 
     // Creates the accumulators of `blk` and loads them from C at `c_ptr`, or
     // zeroes them when `c_ptr` is `none`. Those that `init_or_load_pos()`
@@ -335,7 +405,15 @@ private:
         const dim_t bd = blk.bd_start + m * m_tile_rows(cfg);
         return cfg.c_off(bd, cfg.ld_pos(blk, n));
     }
+
+    // Bytes of a row of a tile in `ptr_buf`, one vector register.
+    static dim_t buf_row_size(const conf_t &cfg) {
+        return cfg.loop.ld_block
+                * (dim_t)types::data_type_size(cfg.compute_path.dt_acc);
+    }
 };
+
+constexpr int tmul_compute_path_t::store_bd_step;
 
 } // namespace
 

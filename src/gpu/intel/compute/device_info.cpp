@@ -452,7 +452,8 @@ status_t device_info_t::init_serialized_device_info(
 
 status_t device_info_t::init_from_cache_blob(
         const std::vector<uint8_t> &cache_blob) {
-    if (cache_blob.empty()) return status::invalid_arguments;
+    VERROR_ENGINE(!cache_blob.empty(), status::invalid_arguments,
+            "cache blob is empty");
 
     // The version is compared as raw bytes before any field is read because
     // the field layout of a blob from another build is unknown.

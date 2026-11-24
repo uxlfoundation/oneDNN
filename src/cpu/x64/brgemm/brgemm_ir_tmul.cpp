@@ -140,16 +140,17 @@ struct tmul_compute_path_t : public compute_path_t {
     // level counts the tiles from the first one of the block, so two blocks
     // can prefetch the same line.
     std::vector<std::vector<prefetch_t>> store_prefetches(const conf_t &cfg,
-            const store_conf_t &store_cfg, const out_block_t &blk,
+            const nest_conf_t &nest_cfg, const out_block_t &blk,
             ir::vreg_t store_ptr) const override {
 
-        const dim_t row_size = cfg.loop.ld_block
+        const store_conf_t &store_cfg = nest_cfg.store;
+        const dim_t row_size = cfg.blocking.ld_block
                 * (dim_t)types::data_type_size(cfg.store_dt(store_cfg));
         const dim_t tiles_per_line = std::max<dim_t>(
                 1, platform::get_cache_line_size() / row_size);
         // An unrolled level counts `ld_start` from its first block.
-        const dim_t first_n_tile = cfg.loop.n_form == level_form_t::unrolled
-                ? blk.ld_start / cfg.loop.ld_block
+        const dim_t first_n_tile = nest_cfg.n_form == level_form_t::unrolled
+                ? blk.ld_start / cfg.blocking.ld_block
                 : 0;
 
         const int n_m = m_tiles(cfg, blk);
@@ -427,7 +428,7 @@ private:
 
     // Bytes of a row of a tile in `ptr_buf`, one vector register.
     static dim_t buf_row_size(const conf_t &cfg) {
-        return cfg.loop.ld_block
+        return cfg.blocking.ld_block
                 * (dim_t)types::data_type_size(cfg.compute_path.dt_acc);
     }
 };

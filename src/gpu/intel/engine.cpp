@@ -86,6 +86,21 @@ status_t engine_t::init(const std::vector<uint8_t> &cache_blob) {
     return status::success;
 }
 
+status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
+    assert(utils::one_of(runtime_kind(), runtime_kind::ocl, runtime_kind::ze));
+    if (runtime_kind() == runtime_kind::ocl)
+        sstream.append_array(device_info()->platform_name().size(),
+                device_info()->platform_name().data());
+    sstream.append_array(
+            device_info()->name().size(), device_info()->name().data());
+    sstream.append(device_info()->runtime_version().major);
+    sstream.append(device_info()->runtime_version().minor);
+    sstream.append(device_info()->runtime_version().build);
+    sstream.append(device_info()->runtime_version().revision);
+
+    return status::success;
+}
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

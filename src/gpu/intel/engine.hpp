@@ -65,6 +65,16 @@ public:
         return device_info_.get();
     }
 
+    status_t serialize_device(serialization_stream_t &sstream) const override;
+
+    status_t get_cache_blob_size(size_t *size) const override {
+        return device_info_->get_cache_blob_size(size);
+    }
+
+    status_t get_cache_blob(size_t size, uint8_t *cache_blob) const override {
+        return device_info_->get_cache_blob(size, cache_blob);
+    }
+
     virtual status_t create_kernel(
             compute::kernel_t *kernel, jit::generator_base_t *jitter) const
             = 0;

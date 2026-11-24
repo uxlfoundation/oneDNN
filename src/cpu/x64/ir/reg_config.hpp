@@ -34,6 +34,9 @@ namespace ir {
 //  - `cvt_vec`: vector register the emitter narrows a value into before a
 //    converting store writes it (see `needs_cvt_vec()`). -1 when the IR has no
 //    such store, and then the register is allocatable.
+//  - `cvt_mask`: AVX-512 opmask holding a one-element pattern, which a
+//    narrowing scalar store writes its element through. Reserved together
+//    with `cvt_vec` on AVX-512, -1 otherwise.
 //
 // `pools` contains the registers that are available for allocation for each
 // register kind, along with the stack space needed when a value for that
@@ -42,6 +45,7 @@ struct reg_config_t {
     reg_pools_t pools;
     int param_reg = 0;
     int cvt_vec = -1;
+    int cvt_mask = -1;
 };
 
 // The tile configuration the kernel runs with. The IR does not configure the
@@ -96,7 +100,8 @@ struct reserved_regs_t {
 // a temp register for every spilled operand (see `temp_reg_t`).
 //
 // `reserve_cvt_vec` takes the last vector register that is not reserved out of
-// the pool as the scratch of the converting stores, `reg_config_t::cvt_vec`.
+// the pool as the scratch of the converting stores, `reg_config_t::cvt_vec`,
+// and on AVX-512 the last free opmask as `reg_config_t::cvt_mask`.
 //
 // Export for testing.
 reg_config_t DNNL_API make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,

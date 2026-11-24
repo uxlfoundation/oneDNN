@@ -461,7 +461,7 @@ void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
         postops_injector_t *postops) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
-        avx512_backend_t be(gen, isa, reg_cfg.cvt_vec);
+        avx512_backend_t be(gen, isa, reg_cfg.cvt_vec, reg_cfg.cvt_mask);
         emit(be, ir, alloc, reg_cfg, data, postops);
     } else {
         avx2_backend_t be(gen, isa, reg_cfg.cvt_vec);

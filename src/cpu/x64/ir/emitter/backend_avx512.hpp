@@ -47,10 +47,18 @@ namespace x64 {
 namespace ir {
 
 struct avx512_backend_t {
-    // `cvt_vec` is the scratch of a converting store (see `needs_cvt_vec()`),
-    // or -1 when the IR has none.
-    avx512_backend_t(jit_generator_t &gen, cpu_isa_t isa, int cvt_vec)
-        : gen_(gen), isa(isa), cvt_vec_(cvt_vec) {}
+    // `cvt_vec` and `cvt_mask` are the scratch of the converting stores (see
+    // `needs_cvt_vec()`), or -1 when the IR has none. The one-element pattern
+    // of `cvt_mask` is set once here, since no lowering changes it.
+    avx512_backend_t(
+            jit_generator_t &gen, cpu_isa_t isa, int cvt_vec, int cvt_mask)
+        : gen_(gen), isa(isa), cvt_vec_(cvt_vec), cvt_mask_(cvt_mask) {
+        if (cvt_mask_ >= 0) {
+            const Xbyak::Opmask k(cvt_mask_);
+            gen.kxnorq(k, k, k);
+            gen.kshiftrq(k, k, 63);
+        }
+    }
 
     jit_generator_t &gen() { return gen_; }
 
@@ -135,15 +143,20 @@ struct avx512_backend_t {
     }
 
     // Store element 0 of `src`. A narrowing form converts into the scratch and
-    // writes its first 16-bit element.
+    // writes its first 16-bit element under the one-element opmask, which is
+    // a plain store uop where `vpextrw` to memory is two.
     void vstore_scalar(int base, dim_t disp, int s, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
             gen().vmovss(addr, Xbyak::Xmm(s));
-        else if (is_narrowing(mem_dt, reg_dt))
-            gen().vpextrw(addr, Xbyak::Xmm(narrow(s, mem_dt).getIdx()), 0);
-        else { JIT_ASSERT(!"vstore_scalar: dtype not implemented"); }
+        } else if (is_narrowing(mem_dt, reg_dt)) {
+            JIT_ASSERT(cvt_mask_ >= 0 && "narrowing store: no scratch mask");
+            gen().vmovdqu16(addr | Xbyak::Opmask(cvt_mask_),
+                    Xbyak::Xmm(narrow(s, mem_dt).getIdx()));
+        } else {
+            JIT_ASSERT(!"vstore_scalar: dtype not implemented");
+        }
     }
 
     // Load one element and replicate it across `dst`. A bf16 or f16 element is
@@ -311,6 +324,7 @@ private:
 
     // Scratch of the narrowing stores, -1 when there is none.
     int cvt_vec_;
+    int cvt_mask_;
 };
 
 } // namespace ir

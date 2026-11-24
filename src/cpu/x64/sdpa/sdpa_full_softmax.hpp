@@ -103,6 +103,9 @@ struct sdpa_full_softmax_knobs_t {
     // Allow stacking the query from each head of a work item into the
     // BRGEMM rows when seq_q == 1 (see sdpa_full_softmax_conf_t::stack_heads).
     bool allow_stack_heads = true;
+    // Fold a non-inverted s8 select into the mm1 post-ops instead of the
+    // pre-pass. Negative s8 conditions then select the fill value.
+    bool fold_select = false;
 };
 
 // Runtime pointers / scalars, resolved per execute call. The buffers are laid
@@ -216,8 +219,8 @@ struct sdpa_full_softmax_conf_t {
     dim_t ld_scores = 0, ld_prob = 0, ld_pv = 0;
     dim_t v_block = 0, v_tail = 0;
     bool pack_k_for_aliasing = false;
-    // Fold non-inverted select into mm1 for dense condition rows or a single
-    // query row.
+    // Fold a non-inverted s8 select into mm1 for dense condition rows or a
+    // single query row; enabled only by knobs.fold_select.
     bool mm1_select_postop = false;
     size_t brg_wsp_bytes = 0;
     sdpa_full_softmax_thread_scratch_t thread_scratch;

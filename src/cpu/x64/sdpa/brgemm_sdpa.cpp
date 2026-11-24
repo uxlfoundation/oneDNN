@@ -174,8 +174,10 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     // ONEDNN_SDPA_SCHEDULE={per_head,kv_head_group,split_kv,auto},
     // ONEDNN_SDPA_SPLIT_KV_CHUNKS=<n> (seq_kv chunks per split_kv work item;
     // 0 or unset lets the cost model choose),
-    // ONEDNN_SDPA_KV_PACKING={ahead,per_tile,auto} and
-    // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking).
+    // ONEDNN_SDPA_KV_PACKING={ahead,per_tile,auto},
+    // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking) and
+    // ONEDNN_SDPA_FOLD_SELECT={0,1} (1 folds a non-inverted s8 select into
+    // mm1; default 0 applies every select in the pre-pass).
     sdpa_full_softmax_knobs_t knobs;
     const std::string schedule = getenv_string_user("SDPA_SCHEDULE");
     if (schedule == "per_head")
@@ -207,6 +209,11 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
                            std::string("1"), std::string("auto")),
             "unknown ONEDNN_SDPA_STACK_HEADS value '%s'", stack_heads.c_str());
     knobs.allow_stack_heads = stack_heads != "0";
+    const std::string fold_select = getenv_string_user("SDPA_FOLD_SELECT");
+    VDISPATCH_SDPA(utils::one_of(fold_select, std::string(), std::string("0"),
+                           std::string("1")),
+            "unknown ONEDNN_SDPA_FOLD_SELECT value '%s'", fold_select.c_str());
+    knobs.fold_select = fold_select == "1";
 
     VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(*this, knobs, full_conf_),
             "sdpa_full_softmax configuration failed");

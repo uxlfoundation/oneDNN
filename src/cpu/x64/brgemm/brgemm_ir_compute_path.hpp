@@ -151,10 +151,10 @@ struct compute_path_t {
     }
 
     // Returns the write prefetches of the lines at `store_ptr` that the
-    // accumulators of `blk` are stored to, in C or D as `store_cfg` says, one
-    // list per accumulator.
+    // accumulators of `blk` are stored to, in C or D as the store
+    // configuration of `nest_cfg` says, one list per accumulator.
     virtual std::vector<std::vector<prefetch_t>> store_prefetches(
-            const conf_t &cfg, const store_conf_t &store_cfg,
+            const conf_t &cfg, const nest_conf_t &nest_cfg,
             const out_block_t &blk, ir::vreg_t store_ptr) const {
         assert(!"store_prefetches: not supported by the compute path");
         return {};

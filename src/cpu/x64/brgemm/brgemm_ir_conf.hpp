@@ -62,15 +62,16 @@ struct out_block_t {
 
 // Builder configuration
 //
-// `conf_t` holds one configuration per module of the builder:
-//   loop         - the loop nest: the batch, the leading dimensions, and the
-//                  blocking
-//   compute_path - the compute path and the data types of A, B, and the
-//                  accumulators
-//   output       - the output path: beta, the bias, the scales, and the
-//                  attribute post-ops
+// `conf_t` holds the blocking and one configuration per module of the builder:
+//   blocking     - the blocks of M, N, K, and the batch, the same in every
+//                  loop nest
+//   compute_path - the compute path, the batch kind, the leading dimensions of
+//                  A and B, and the data types of A, B, and the accumulators
+//   output       - the output path: beta, the leading dimensions and data
+//                  types of C and D, the bias, the scales, and the attribute
+//                  post-ops
 //
-// It also holds one store configuration per value of `do_post_ops`.
+// It also holds one loop nest configuration per value of `do_post_ops`.
 //
 // Every field is a build-time constant.
 
@@ -97,50 +98,33 @@ enum class level_form_t { unrolled, looped };
 //   grouped  - the block of the full ones left over
 enum class tail_grouping_t { separate, grouped };
 
-// Loop nest configuration.
+// Blocking configuration: the blocks of M, N, K, and the batch. Every loop
+// nest of the kernel walks the same blocks.
 //
-//   m_form/n_form         - how the M and N levels are emitted
-//   bs_form               - how the batch level is emitted, looped with
-//                           `var_bs`
-//   k_form                - how the K level is emitted
-//   innermost_loop        - which of the M and N levels is inside the other
-//   n_tail_grouping       - which N block holds the partial vector register
-//                           or tile
-//   batch_kind            - how a batch element gives the address of its A
-//                           and B
-//   max_bs                - maximum batch size known at IR generation time
-//   var_bs                - the batch size can change on each call, up to
-//                           `max_bs`. The kernel reads `BS`.
-//   load_dim              - N, the columns of C
-//   lda/ldb/ldc/ldd       - leading dimensions of A, B, C, and D, in elements
-//   bd_block              - M rows per block
-//   ld_block              - N elements per vector register or tile
-//   ld_block2             - vector registers or tiles of N per block
-//   rd_block              - K elements reduced per K block
-//   bdb                   - number of full M blocks
-//   ldb2                  - number of full N blocks
-//   rdb                   - number of full K blocks
-//   bdb_tail              - M rows left over after the full M blocks
-//   ldb2_tail             - full N vector registers or tiles left over after
-//                           the full N blocks
-//   ldb_tail              - N columns left over after every full N vector
-//                           register or tile
-//   rdb_tail              - K elements left over after the full K blocks
-struct loop_conf_t {
-    level_form_t m_form = level_form_t::looped;
-    level_form_t n_form = level_form_t::looped;
-    level_form_t bs_form = level_form_t::looped;
-    level_form_t k_form = level_form_t::looped;
-    brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
-    tail_grouping_t n_tail_grouping = tail_grouping_t::separate;
-    brgemm_batch_kind_t batch_kind = brgemm_addr;
-    dim_t max_bs = 0;
-    bool var_bs = true;
-    dim_t load_dim = 0;
-    dim_t lda = 0, ldb = 0, ldc = 0, ldd = 0;
+//   bd_block        - M rows per block
+//   ld_block        - N elements per vector register or tile
+//   ld_block2       - vector registers or tiles of N per block
+//   rd_block        - K elements reduced per K block
+//   bdb             - number of full M blocks
+//   ldb2            - number of full N blocks
+//   rdb             - number of full K blocks
+//   bdb_tail        - M rows left over after the full M blocks
+//   ldb2_tail       - full N vector registers or tiles left over after the
+//                     full N blocks
+//   ldb_tail        - N columns left over after every full N vector register
+//                     or tile
+//   rdb_tail        - K elements left over after the full K blocks
+//   n_tail_grouping - which N block holds the partial vector register or tile
+//   max_bs          - maximum batch size known at IR generation time
+//   var_bs          - the batch size can change on each call, up to `max_bs`.
+//                     The kernel reads `BS`.
+struct blocking_conf_t {
     int bd_block = 0, ld_block = 0, ld_block2 = 0, rd_block = 0;
     dim_t bdb = 0, ldb2 = 0, rdb = 0;
     int bdb_tail = 0, ldb2_tail = 0, ldb_tail = 0, rdb_tail = 0;
+    tail_grouping_t n_tail_grouping = tail_grouping_t::separate;
+    dim_t max_bs = 0;
+    bool var_bs = true;
 };
 
 // Compute path configuration.
@@ -148,8 +132,11 @@ struct loop_conf_t {
 //   kind                    - how the product is computed
 //   dt_a/dt_b               - element data type of A and B in memory
 //   dt_acc                  - accumulation data type
+//   lda/ldb                 - leading dimensions of A and B, in elements
 //   vnni_granularity        - K elements of a column that B stores together,
 //                             1 for a plain B
+//   batch_kind              - how a batch element gives the address of its A
+//                             and B
 //   a_tile                  - shapes of the A tiles, indexed by whether the
 //                             tile holds the M tail
 //   b_tile                  - shapes of the B tiles, indexed by whether the
@@ -167,7 +154,9 @@ struct compute_path_conf_t {
     data_type_t dt_a = data_type::undef;
     data_type_t dt_b = data_type::undef;
     data_type_t dt_acc = data_type::undef;
+    dim_t lda = 0, ldb = 0;
     int vnni_granularity = 1;
+    brgemm_batch_kind_t batch_kind = brgemm_addr;
     ir::tile_shape_t a_tile[2] = {}, b_tile[2] = {}, c_tile[2][2] = {};
     ir::mem_hint_t a_load_hint = ir::mem_hint_t::none;
     ir::mem_hint_t b_load_hint = ir::mem_hint_t::none;
@@ -197,6 +186,7 @@ enum class output_stage_t {
 //   beta            - output scaling: 0 overwrites C, 1 accumulates into C
 //   dt_c            - element data type of C in memory
 //   dt_d            - element data type of D in memory
+//   ldc/ldd         - leading dimensions of C and D, in elements
 //   dt_bias         - element data type of the bias
 //   post_ops        - the attribute post-ops, applied through the post-ops
 //                     injector
@@ -210,6 +200,7 @@ struct output_conf_t {
     float beta = 0.0f;
     data_type_t dt_c = data_type::undef;
     data_type_t dt_d = data_type::undef;
+    dim_t ldc = 0, ldd = 0;
     data_type_t dt_bias = data_type::undef;
     post_ops_t post_ops;
     memory_desc_t dst_md;
@@ -242,38 +233,58 @@ struct store_conf_t {
     }
 };
 
+// Loop nest configuration: how one loop nest walks the blocks and stores them.
+//
+//   innermost_loop - which of the M and N levels is inside the other
+//   m_form/n_form  - how the M and N levels are emitted
+//   bs_form        - how the batch level is emitted, looped with `var_bs`
+//   k_form         - how the K level is emitted
+//   store          - how the nest stores its blocks
+struct nest_conf_t {
+    brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
+    level_form_t m_form = level_form_t::looped;
+    level_form_t n_form = level_form_t::looped;
+    level_form_t bs_form = level_form_t::looped;
+    level_form_t k_form = level_form_t::looped;
+    store_conf_t store;
+};
+
 // Builder configuration.
 //
-//   loop                   - loop nest configuration
-//   compute_path           - compute path configuration
-//   output                 - output path configuration
-//   store_without_post_ops - store configuration of the calls with
-//                            `do_post_ops == 0`, and of every call when
-//                            post-ops are not applicable
-//   store_with_post_ops    - store configuration of the calls with
-//                            `do_post_ops != 0` when post-ops are applicable
+//   blocking              - blocking configuration
+//   compute_path          - compute path configuration
+//   output                - output path configuration
+//   nest_without_post_ops - loop nest of the calls with `do_post_ops == 0`,
+//                           and of every call when post-ops are not
+//                           applicable
+//   nest_with_post_ops    - loop nest of the calls with `do_post_ops != 0`
+//                           when post-ops are applicable
 //
-// A call without post-ops applies no output stage, so only
-// `store_with_post_ops` has output stages. Code that emits a loop nest reads
-// the store configuration of that nest. Code that needs to know whether the
-// kernel has an output stage, such as the bias, reads `store_with_post_ops`.
+// A nest configuration holds everything that defines its nest, including what
+// both nests share, such as `innermost_loop`. Code that emits a loop nest
+// reads the configuration of that nest.
+//
+// A call without post-ops applies no output stage, so only the store of
+// `nest_with_post_ops` has output stages. Code that needs to know whether the
+// kernel has an output stage, such as the bias, reads
+// `nest_with_post_ops.store`.
 //
 // The member functions derive the addressing of the builder from the module
 // configurations.
 struct conf_t {
-    loop_conf_t loop;
+    blocking_conf_t blocking;
     compute_path_conf_t compute_path;
     output_conf_t output;
-    store_conf_t store_without_post_ops;
-    store_conf_t store_with_post_ops;
+    nest_conf_t nest_without_post_ops;
+    nest_conf_t nest_with_post_ops;
 
-    // True if a post-ops call has anything to apply, that is if
-    // `store_with_post_ops` has output stages or converts the accumulators.
-    // Otherwise the kernel ignores `do_post_ops` and stores every call as
-    // `store_without_post_ops` says.
+    // True if a post-ops call has anything to apply, that is if the store of
+    // `nest_with_post_ops` has output stages or converts the accumulators.
+    // Otherwise the kernel ignores `do_post_ops` and runs
+    // `nest_without_post_ops` on every call.
     bool are_post_ops_applicable() const {
-        return !store_with_post_ops.stages.empty()
-                || store_with_post_ops.convert_acc;
+        const store_conf_t &store_cfg = nest_with_post_ops.store;
+        return !store_cfg.stages.empty() || store_cfg.convert_acc;
     }
 
     // Element sizes in bytes of A, B, C, D, and the bias. The bias size is 0
@@ -287,20 +298,24 @@ struct conf_t {
     int dt_sz_c() const { return (int)types::data_type_size(output.dt_c); }
     int dt_sz_d() const { return (int)types::data_type_size(output.dt_d); }
     int dt_sz_bias() const {
-        return store_with_post_ops.has_stage(output_stage_t::bias)
+        const store_conf_t &store_cfg = nest_with_post_ops.store;
+        return store_cfg.has_stage(output_stage_t::bias)
                 ? (int)types::data_type_size(output.dt_bias)
                 : 0;
     }
     // Element size in bytes of a per-N weights scale, 0 for a common one,
     // which is never indexed.
     int dt_sz_wei_scales() const {
-        return store_with_post_ops.has_stage(output_stage_t::wei_scale_per_n)
+        const store_conf_t &store_cfg = nest_with_post_ops.store;
+        return store_cfg.has_stage(output_stage_t::wei_scale_per_n)
                 ? (int)types::data_type_size(output.dt_wei_scales)
                 : 0;
     }
 
     // Distance in bytes a B load prefetches ahead, one K block of B rows.
-    dim_t rdb_b_off() const { return dt_sz_b() * loop.rd_block * loop.ldb; }
+    dim_t rdb_b_off() const {
+        return dt_sz_b() * blocking.rd_block * compute_path.ldb;
+    }
 
     // Byte offset of an element of A, B, C, D, the bias, or a per-N weights
     // scale. `bd` is the row, `rd` the K index, and `ld` the N index of the
@@ -314,19 +329,20 @@ struct conf_t {
     // against int32, and the check is only meaningful if there is consistency
     // between the check and the builder.
     dim_t a_off(dim_t bd, dim_t rd) const {
-        return dt_sz_a() * (bd * loop.lda + rd);
+        return dt_sz_a() * (bd * compute_path.lda + rd);
     }
 
     dim_t b_off(dim_t rd, dim_t ld) const {
-        return dt_sz_b() * (rd * loop.ldb + ld * compute_path.vnni_granularity);
+        return dt_sz_b()
+                * (rd * compute_path.ldb + ld * compute_path.vnni_granularity);
     }
 
     dim_t c_off(dim_t bd, dim_t ld) const {
-        return dt_sz_c() * (bd * loop.ldc + ld);
+        return dt_sz_c() * (bd * output.ldc + ld);
     }
 
     dim_t d_off(dim_t bd, dim_t ld) const {
-        return dt_sz_d() * (bd * loop.ldd + ld);
+        return dt_sz_d() * (bd * output.ldd + ld);
     }
 
     // Byte offset of an element and `mem_dt` of the stores to C or D, whichever
@@ -349,7 +365,7 @@ struct conf_t {
     // from where the B and C pointers stand. B and C differ only in the
     // element size they scale it by.
     dim_t ld_pos(const out_block_t &blk, int ld) const {
-        return blk.ld_start + (dim_t)ld * loop.ld_block;
+        return blk.ld_start + (dim_t)ld * blocking.ld_block;
     }
 };
 

@@ -148,7 +148,7 @@ void emit_batch_element_ptrs(ir::ir_t &ir, const conf_t &cfg,
         const m_loop_input_regs_t &regs, ir::vreg_t batch_ptr, dim_t disp,
         ir::vreg_t a_ptr, ir::vreg_t b_ptr) {
 
-    switch (cfg.loop.batch_kind) {
+    switch (cfg.compute_path.batch_kind) {
         case brgemm_addr:
             ir.load(a_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(ptr.A));
             ir.load(b_ptr, batch_ptr, disp + GET_OFF_BATCH_ELEMENT(ptr.B));
@@ -169,16 +169,16 @@ void emit_batch_element_ptrs(ir::ir_t &ir, const conf_t &cfg,
         ir.add_reg(b_ptr, regs.advancing.b_off);
 }
 
-// Sets up the M-loop input registers of a loop nest that stores the blocks as
-// `store_cfg` says.
+// Sets up the M-loop input registers of the loop nest of `nest_cfg`.
 //
 // Loads the kernel argument pointers and the batch count, zeroes the running A
 // and B offsets, and sets the A and B pointers when no level moves them.
 m_loop_input_regs_t init_m_loop_input_regs(
-        ir::ir_t &ir, const conf_t &cfg, const store_conf_t &store_cfg) {
+        ir::ir_t &ir, const conf_t &cfg, const nest_conf_t &nest_cfg) {
 
     m_loop_input_regs_t regs;
-    const loop_conf_t &loop = cfg.loop;
+    const blocking_conf_t &blocking = cfg.blocking;
+    const store_conf_t &store_cfg = nest_cfg.store;
 
     if (!store_cfg.to_d || cfg.output.beta != 0.0f) {
         regs.advancing.c_ptr = ir.new_gpr();
@@ -188,24 +188,24 @@ m_loop_input_regs_t init_m_loop_input_regs(
     regs.invariant.batch = ir.new_gpr();
     ir.load_param(regs.invariant.batch, GET_OFF(batch));
 
-    if (loop.var_bs && loop.max_bs > 1) {
+    if (blocking.var_bs && blocking.max_bs > 1) {
         regs.invariant.bs = ir.new_gpr();
         ir.load_param(regs.invariant.bs, GET_OFF(BS));
     }
 
-    if (loop.batch_kind == brgemm_offs) {
+    if (cfg.compute_path.batch_kind == brgemm_offs) {
         regs.invariant.a_base = ir.new_gpr();
         ir.load_param(regs.invariant.a_base, GET_OFF(ptr_A));
         regs.invariant.b_base = ir.new_gpr();
         ir.load_param(regs.invariant.b_base, GET_OFF(ptr_B));
     }
 
-    if (loop.m_form == level_form_t::looped) {
+    if (nest_cfg.m_form == level_form_t::looped) {
         regs.advancing.a_off = ir.new_gpr();
         ir.mov_imm(regs.advancing.a_off, 0);
     }
 
-    if (loop.n_form == level_form_t::looped) {
+    if (nest_cfg.n_form == level_form_t::looped) {
         regs.advancing.b_off = ir.new_gpr();
         ir.mov_imm(regs.advancing.b_off, 0);
     }
@@ -213,9 +213,9 @@ m_loop_input_regs_t init_m_loop_input_regs(
     // With one batch element, only a looped M, N, or K level moves the A and B
     // pointers. When none of them is looped, the pointers are set once for the
     // kernel.
-    if (loop.max_bs == 1
-            && utils::everyone_is(level_form_t::unrolled, loop.m_form,
-                    loop.n_form, loop.k_form)) {
+    if (blocking.max_bs == 1
+            && utils::everyone_is(level_form_t::unrolled, nest_cfg.m_form,
+                    nest_cfg.n_form, nest_cfg.k_form)) {
         regs.invariant.a_ptr = ir.new_gpr();
         regs.invariant.b_ptr = ir.new_gpr();
 
@@ -277,37 +277,38 @@ struct block_run_t {
 // them: the full blocks, then each tail. N has two tails: `ldb2_tail` full
 // vector registers or tiles, then the partial one of `ldb_tail` columns.
 // `n_tail_grouping` gives each its own block or puts both in one block.
-std::vector<block_run_t> m_runs(const loop_conf_t &loop) {
-    return {{loop.bd_block, loop.bdb},
-            {loop.bdb_tail, loop.bdb_tail > 0 ? 1 : 0}};
+std::vector<block_run_t> m_runs(const blocking_conf_t &blocking) {
+    return {{blocking.bd_block, blocking.bdb},
+            {blocking.bdb_tail, blocking.bdb_tail > 0 ? 1 : 0}};
 }
 
-std::vector<block_run_t> n_runs(const loop_conf_t &loop) {
-    const dim_t full_size = (dim_t)loop.ld_block2 * loop.ld_block;
-    const dim_t ldb2_tail_size = (dim_t)loop.ldb2_tail * loop.ld_block;
+std::vector<block_run_t> n_runs(const blocking_conf_t &blocking) {
+    const dim_t full_size = (dim_t)blocking.ld_block2 * blocking.ld_block;
+    const dim_t ldb2_tail_size = (dim_t)blocking.ldb2_tail * blocking.ld_block;
 
-    switch (loop.n_tail_grouping) {
+    switch (blocking.n_tail_grouping) {
         case tail_grouping_t::separate:
-            return {{full_size, loop.ldb2},
-                    {ldb2_tail_size, loop.ldb2_tail > 0 ? 1 : 0},
-                    {loop.ldb_tail, loop.ldb_tail > 0 ? 1 : 0}};
+            return {{full_size, blocking.ldb2},
+                    {ldb2_tail_size, blocking.ldb2_tail > 0 ? 1 : 0},
+                    {blocking.ldb_tail, blocking.ldb_tail > 0 ? 1 : 0}};
         case tail_grouping_t::grouped: {
-            const dim_t tail_size = ldb2_tail_size + loop.ldb_tail;
-            return {{full_size, loop.ldb2}, {tail_size, tail_size > 0 ? 1 : 0}};
+            const dim_t tail_size = ldb2_tail_size + blocking.ldb_tail;
+            return {{full_size, blocking.ldb2},
+                    {tail_size, tail_size > 0 ? 1 : 0}};
         }
     }
     assert(!"unknown tail grouping");
     return {};
 }
 
-std::vector<block_run_t> k_runs(const loop_conf_t &loop) {
-    return {{loop.rd_block, loop.rdb},
-            {loop.rdb_tail, loop.rdb_tail > 0 ? 1 : 0}};
+std::vector<block_run_t> k_runs(const blocking_conf_t &blocking) {
+    return {{blocking.rd_block, blocking.rdb},
+            {blocking.rdb_tail, blocking.rdb_tail > 0 ? 1 : 0}};
 }
 
 // Runs of the batch: `max_bs` elements, each a block of size 1.
-std::vector<block_run_t> bs_runs(const loop_conf_t &loop) {
-    return {{1, loop.max_bs}};
+std::vector<block_run_t> bs_runs(const blocking_conf_t &blocking) {
+    return {{1, blocking.max_bs}};
 }
 
 // Emits one level of the loop nest from its runs, looped.
@@ -448,9 +449,10 @@ void emit_level(ir::ir_t &ir, const std::vector<block_run_t> &runs,
 // True if the batch and K levels are unrolled and the batch is not empty. Each
 // K step of a block is then its own call of `emit_microkernel()`, so it can
 // emit its own stores and prefetches (`k_step_interleave_t`).
-bool has_unrolled_k_steps(const loop_conf_t &loop) {
-    return loop.bs_form == level_form_t::unrolled
-            && loop.k_form == level_form_t::unrolled && loop.max_bs > 0;
+bool has_unrolled_k_steps(const conf_t &cfg, const nest_conf_t &nest_cfg) {
+    return nest_cfg.bs_form == level_form_t::unrolled
+            && nest_cfg.k_form == level_form_t::unrolled
+            && cfg.blocking.max_bs > 0;
 }
 
 // Returns the part of `interleave` of the batch element or K block that starts
@@ -483,9 +485,9 @@ k_step_interleave_t k_step_interleave_at(const k_step_interleave_t &interleave,
 // The K level of one batch element. Reduces K into `acc` from `a_ptr` and
 // `b_ptr`, which a looped K level moves. Each K step gets its part of
 // `interleave` (`k_step_interleave_at()`).
-void emit_k_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
-        const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
-        ir::vreg_t a_ptr, ir::vreg_t b_ptr,
+void emit_k_level(ir::ir_t &ir, const conf_t &cfg, const nest_conf_t &nest_cfg,
+        const compute_path_t &cp, const out_block_t &blk,
+        const std::vector<ir::vreg_t> &acc, ir::vreg_t a_ptr, ir::vreg_t b_ptr,
         const k_step_interleave_t &interleave) {
 
     // Advance the A and B pointers by `rd` elements of K.
@@ -494,13 +496,13 @@ void emit_k_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
         ir.add_imm(b_ptr, cfg.b_off(rd, 0));
     };
 
-    const std::vector<block_run_t> runs = k_runs(cfg.loop);
+    const std::vector<block_run_t> runs = k_runs(cfg.blocking);
     const dim_t k_size = level_size(runs);
 
     // K tail needs no mask. A reduction step reads a full B vector along N
     // and one element of A, so a short tail is just fewer steps.
     dim_t k_pos = 0;
-    emit_level(ir, runs, cfg.loop.k_form, k_pos,
+    emit_level(ir, runs, nest_cfg.k_form, k_pos,
             [&](dim_t rd_loop, dim_t rd_start) {
         const k_step_interleave_t step_interleave
                 = k_step_interleave_at(interleave, rd_start, rd_loop, k_size);
@@ -514,23 +516,24 @@ void emit_k_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 //
 // With `var_bs` it is a runtime loop over `BS` elements. Otherwise it is the
 // `max_bs` elements of `bs_runs()` in `bs_form`.
-void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
+void emit_batch_level(ir::ir_t &ir, const conf_t &cfg,
+        const nest_conf_t &nest_cfg, const compute_path_t &cp,
         const m_loop_input_regs_t &regs, const out_block_t &blk,
         const std::vector<ir::vreg_t> &acc,
         const k_step_interleave_t &interleave) {
 
-    const loop_conf_t &loop = cfg.loop;
+    const blocking_conf_t &blocking = cfg.blocking;
 
     // The only batch element, whose A and B pointers are set for the kernel.
     if (regs.invariant.a_ptr != ir::vreg_t::none) {
-        emit_k_level(ir, cfg, cp, blk, acc, regs.invariant.a_ptr,
+        emit_k_level(ir, cfg, nest_cfg, cp, blk, acc, regs.invariant.a_ptr,
                 regs.invariant.b_ptr, interleave);
         return;
     }
 
-    if (loop.var_bs) {
+    if (blocking.var_bs) {
         // `BS` is known only at run time, so the batch level cannot be unrolled.
-        assert(loop.bs_form == level_form_t::looped);
+        assert(nest_cfg.bs_form == level_form_t::looped);
 
         const ir::vreg_t batch_ptr = ir.new_gpr();
         ir.mov_reg(batch_ptr, regs.invariant.batch);
@@ -543,19 +546,20 @@ void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
 
             // Advance to the next batch element. A single batch element has no
             // next one, so nothing is emitted then.
-            if (loop.max_bs > 1) {
+            if (blocking.max_bs > 1) {
                 ir.add_imm(batch_ptr, sizeof(brgemm_batch_element_t));
 
                 // The classic kernel prefetches the next element for the
                 // address kind only.
-                if (loop.batch_kind == brgemm_addr)
+                if (cfg.compute_path.batch_kind == brgemm_addr)
                     ir.prefetch(batch_ptr, 0, ir::prefetch_kind_t::t0);
             }
 
-            emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr, interleave);
+            emit_k_level(
+                    ir, cfg, nest_cfg, cp, blk, acc, a_ptr, b_ptr, interleave);
         };
 
-        if (loop.max_bs > 1)
+        if (blocking.max_bs > 1)
             ir::emit_loop_reg(ir, regs.invariant.bs, element);
         else
             ir::emit_loop_imm(ir, 1, element);
@@ -566,22 +570,23 @@ void emit_batch_level(ir::ir_t &ir, const conf_t &cfg, const compute_path_t &cp,
     // An unrolled batch addresses every element from the `batch` argument. A
     // looped one moves its pointer, so it uses a copy of `batch`.
     ir::vreg_t batch_ptr = regs.invariant.batch;
-    if (loop.bs_form == level_form_t::looped) {
+    if (nest_cfg.bs_form == level_form_t::looped) {
         batch_ptr = ir.new_gpr();
         ir.mov_reg(batch_ptr, regs.invariant.batch);
     }
 
+    const std::vector<block_run_t> runs = bs_runs(blocking);
     const dim_t element_size = sizeof(brgemm_batch_element_t);
     dim_t bs_pos = 0;
 
-    emit_level(ir, bs_runs(loop), loop.bs_form, bs_pos, [&](dim_t, dim_t bs) {
+    emit_level(ir, runs, nest_cfg.bs_form, bs_pos, [&](dim_t, dim_t bs) {
         const ir::vreg_t a_ptr = ir.new_gpr();
         const ir::vreg_t b_ptr = ir.new_gpr();
 
         emit_batch_element_ptrs(
                 ir, cfg, regs, batch_ptr, bs * element_size, a_ptr, b_ptr);
-        emit_k_level(ir, cfg, cp, blk, acc, a_ptr, b_ptr,
-                k_step_interleave_at(interleave, bs, 1, loop.max_bs));
+        emit_k_level(ir, cfg, nest_cfg, cp, blk, acc, a_ptr, b_ptr,
+                k_step_interleave_at(interleave, bs, 1, blocking.max_bs));
     }, [&](dim_t bs) { ir.add_imm(batch_ptr, bs * element_size); });
 }
 
@@ -667,13 +672,13 @@ void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
             for (int bd = 0; bd < blk.bd_block; bd++)
                 for (int ld = 0; ld < blk.ld_block2; ld++)
                     out_byte_off[bd * blk.ld_block2 + ld] = cfg.store_off(
-                            store_cfg, bd, (dim_t)ld * cfg.loop.ld_block);
+                            store_cfg, bd, (dim_t)ld * cfg.blocking.ld_block);
 
             // A block is either all full registers or the one masked
             // register of the N tail, which holds `ldb_tail` elements.
             const int n_elems = blk.ld_tail_mask != ir::vreg_t::none
-                    ? cfg.loop.ldb_tail
-                    : cfg.loop.ld_block;
+                    ? cfg.blocking.ldb_tail
+                    : cfg.blocking.ld_block;
             ir.inject_postops(acc, blk_ptr, out_byte_off, n_elems);
             break;
         }
@@ -745,13 +750,13 @@ bool uses_output_path(const compute_path_t &cp, const store_conf_t &store_cfg) {
             || store_cfg.convert_acc;
 }
 
-// One output block.
+// One output block of the loop nest of `nest_cfg`.
 //
 // Creates the accumulators of the block with the compute path and reduces them
-// over the batch. Then they are stored as `store_cfg` says. When
-// `uses_output_path()` is true, the output path stores them. Otherwise the
-// compute path stores them to C, in the K steps when `acc_stores` is not
-// `none` and after them when it is.
+// over the batch. Then they are stored as the store configuration of the nest
+// says. When `uses_output_path()` is true, the output path stores them.
+// Otherwise the compute path stores them to C, in the K steps when
+// `acc_stores` is not `none` and after them when it is.
 //
 // With `store_cfg.prefetch`, the block prefetches the lines it stores, in its K
 // steps when `has_unrolled_k_steps()` is true and before the batch level
@@ -761,9 +766,11 @@ bool uses_output_path(const compute_path_t &cp, const store_conf_t &store_cfg) {
 // of the accumulators of `prev`. Returns this block when `acc_stores` is
 // `next_block`, and an empty `prev_block_t` otherwise.
 prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
-        const store_conf_t &store_cfg, const compute_path_t &cp,
+        const nest_conf_t &nest_cfg, const compute_path_t &cp,
         const m_loop_input_regs_t &regs, const out_block_t &blk,
         acc_stores_t acc_stores, const prev_block_t &prev) {
+
+    const store_conf_t &store_cfg = nest_cfg.store;
 
     // On the output path C is added to the rows, which is faster than
     // starting the accumulators from C.
@@ -777,7 +784,7 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
     std::vector<std::vector<prefetch_t>> prefetches;
     if (store_cfg.prefetch)
         prefetches = cp.store_prefetches(
-                cfg, store_cfg, blk, regs.advancing.store_ptr);
+                cfg, nest_cfg, blk, regs.advancing.store_ptr);
 
     k_step_interleave_t interleave;
     interleave.prev = prev;
@@ -787,7 +794,7 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
 
     // A K step in a loop would issue its prefetches on every iteration, and an
     // empty batch has no K step.
-    if (has_unrolled_k_steps(cfg.loop)) {
+    if (has_unrolled_k_steps(cfg, nest_cfg)) {
         interleave.prefetches = std::move(prefetches);
     } else {
         for (const std::vector<prefetch_t> &acc_prefetches : prefetches) {
@@ -797,7 +804,7 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
         }
     }
 
-    emit_batch_level(ir, cfg, cp, regs, blk, acc, interleave);
+    emit_batch_level(ir, cfg, nest_cfg, cp, regs, blk, acc, interleave);
 
     if (to_output_path) {
         cp.pass_accumulators_to_output_path(ir, cfg, blk, acc,
@@ -819,8 +826,8 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
 out_block_t make_out_block(const conf_t &cfg, dim_t bd_block, dim_t bd_start,
         dim_t ld_elems, dim_t ld_start, ir::vreg_t ld_tail_mask) {
 
-    const bool is_ld_tail = ld_elems % cfg.loop.ld_block != 0;
-    return {(int)bd_block, (int)utils::div_up(ld_elems, cfg.loop.ld_block),
+    const bool is_ld_tail = ld_elems % cfg.blocking.ld_block != 0;
+    return {(int)bd_block, (int)utils::div_up(ld_elems, cfg.blocking.ld_block),
             bd_start, ld_start, is_ld_tail ? ld_tail_mask : ir::vreg_t::none};
 }
 
@@ -849,52 +856,55 @@ void emit_mn_step(ir::ir_t &ir, const conf_t &cfg,
 // Returns what the last K step of the block that ends at row `bd_end` and N
 // element `ld_end` stores, see `acc_stores_t`.
 //
-// It is `none` without `store_cfg.interleave_acc_stores` or when
+// It is `none` without `nest_cfg.store.interleave_acc_stores` or when
 // `has_unrolled_k_steps()` is false. Otherwise it is `next_block` when the
 // next block follows with no loop between them, and `block` otherwise. With N
 // inside M, the next block is the next N block of an unrolled N level, or the
 // first N block of the next M block when both levels are unrolled. The same
 // holds with M inside N. Positions are compared only for unrolled levels,
 // which count them from their first block.
-acc_stores_t block_acc_stores(const loop_conf_t &loop,
-        const store_conf_t &store_cfg, dim_t bd_end, dim_t ld_end) {
+acc_stores_t block_acc_stores(const conf_t &cfg, const nest_conf_t &nest_cfg,
+        dim_t bd_end, dim_t ld_end) {
 
-    if (!store_cfg.interleave_acc_stores || !has_unrolled_k_steps(loop))
+    if (!nest_cfg.store.interleave_acc_stores
+            || !has_unrolled_k_steps(cfg, nest_cfg)) {
         return acc_stores_t::none;
+    }
 
-    const bool is_m_unrolled = loop.m_form == level_form_t::unrolled;
-    const bool is_n_unrolled = loop.n_form == level_form_t::unrolled;
-    const bool has_m_next = bd_end < level_size(m_runs(loop));
-    const bool has_n_next = ld_end < level_size(n_runs(loop));
+    const bool is_m_unrolled = nest_cfg.m_form == level_form_t::unrolled;
+    const bool is_n_unrolled = nest_cfg.n_form == level_form_t::unrolled;
+    const bool has_m_next = bd_end < level_size(m_runs(cfg.blocking));
+    const bool has_n_next = ld_end < level_size(n_runs(cfg.blocking));
 
-    const bool has_next_block = loop.innermost_loop == brgemm_ld_loop_innermost
+    const bool has_next_block
+            = nest_cfg.innermost_loop == brgemm_ld_loop_innermost
             ? is_n_unrolled && (has_n_next || (is_m_unrolled && has_m_next))
             : is_m_unrolled && (has_m_next || (is_n_unrolled && has_n_next));
     return has_next_block ? acc_stores_t::next_block : acc_stores_t::block;
 }
 
-// Emits the loop nest over the output blocks, which stores them as `store_cfg`
-// says.
+// Emits the loop nest of `nest_cfg` over the output blocks.
 //
 // `innermost_loop` decides which of the M and N levels is inside the other, as
 // in `top_loop()` of the uker.
-void emit_nest(ir::ir_t &ir, const conf_t &cfg, const store_conf_t &store_cfg,
+void emit_nest(ir::ir_t &ir, const conf_t &cfg, const nest_conf_t &nest_cfg,
         const compute_path_t &cp) {
 
-    const m_loop_input_regs_t regs = init_m_loop_input_regs(ir, cfg, store_cfg);
-    const loop_conf_t &loop = cfg.loop;
+    const m_loop_input_regs_t regs = init_m_loop_input_regs(ir, cfg, nest_cfg);
+    const blocking_conf_t &blocking = cfg.blocking;
+    const store_conf_t &store_cfg = nest_cfg.store;
 
     // The partial vector register or tile of every block has `ldb_tail`
     // columns, so one mask serves the whole kernel.
     ir::vreg_t ld_tail_mask = ir::vreg_t::none;
 
-    if (loop.ldb_tail > 0) {
+    if (blocking.ldb_tail > 0) {
         ld_tail_mask = ir.new_mask();
-        ir.set_mask_imm(ld_tail_mask, loop.ldb_tail);
+        ir.set_mask_imm(ld_tail_mask, blocking.ldb_tail);
     }
 
-    const std::vector<block_run_t> m = m_runs(loop);
-    const std::vector<block_run_t> n = n_runs(loop);
+    const std::vector<block_run_t> m = m_runs(blocking);
+    const std::vector<block_run_t> n = n_runs(blocking);
 
     // Where the M and N pointers stand, in elements from the first block.
     dim_t m_pos = 0, n_pos = 0;
@@ -903,17 +913,17 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const store_conf_t &store_cfg,
     // stored.
     prev_block_t prev;
 
-    if (loop.innermost_loop == brgemm_ld_loop_innermost) {
-        emit_level(ir, m, loop.m_form, m_pos, n_pos,
+    if (nest_cfg.innermost_loop == brgemm_ld_loop_innermost) {
+        emit_level(ir, m, nest_cfg.m_form, m_pos, n_pos,
                 [&](dim_t bd_block, dim_t bd_start) {
-            emit_level(ir, n, loop.n_form, n_pos,
+            emit_level(ir, n, nest_cfg.n_form, n_pos,
                     [&](dim_t ld_elems, dim_t ld_start) {
                 const out_block_t blk = make_out_block(cfg, bd_block, bd_start,
                         ld_elems, ld_start, ld_tail_mask);
-                const acc_stores_t acc_stores = block_acc_stores(loop,
-                        store_cfg, bd_start + bd_block, ld_start + ld_elems);
+                const acc_stores_t acc_stores = block_acc_stores(cfg, nest_cfg,
+                        bd_start + bd_block, ld_start + ld_elems);
                 prev = emit_block(
-                        ir, cfg, store_cfg, cp, regs, blk, acc_stores, prev);
+                        ir, cfg, nest_cfg, cp, regs, blk, acc_stores, prev);
             }, [&](dim_t ld) {
                 emit_mn_step(ir, cfg, store_cfg, regs.advancing, 0, ld);
             });
@@ -921,16 +931,16 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const store_conf_t &store_cfg,
             emit_mn_step(ir, cfg, store_cfg, regs.advancing, bd, ld);
         });
     } else {
-        emit_level(ir, n, loop.n_form, n_pos, m_pos,
+        emit_level(ir, n, nest_cfg.n_form, n_pos, m_pos,
                 [&](dim_t ld_elems, dim_t ld_start) {
-            emit_level(ir, m, loop.m_form, m_pos,
+            emit_level(ir, m, nest_cfg.m_form, m_pos,
                     [&](dim_t bd_block, dim_t bd_start) {
                 const out_block_t blk = make_out_block(cfg, bd_block, bd_start,
                         ld_elems, ld_start, ld_tail_mask);
-                const acc_stores_t acc_stores = block_acc_stores(loop,
-                        store_cfg, bd_start + bd_block, ld_start + ld_elems);
+                const acc_stores_t acc_stores = block_acc_stores(cfg, nest_cfg,
+                        bd_start + bd_block, ld_start + ld_elems);
                 prev = emit_block(
-                        ir, cfg, store_cfg, cp, regs, blk, acc_stores, prev);
+                        ir, cfg, nest_cfg, cp, regs, blk, acc_stores, prev);
             }, [&](dim_t bd) {
                 emit_mn_step(ir, cfg, store_cfg, regs.advancing, bd, 0);
             });
@@ -960,11 +970,11 @@ void emit_nest(ir::ir_t &ir, const conf_t &cfg, const store_conf_t &store_cfg,
 // `level_form_t` of each level decides how the loop nest walks the blocks.
 //
 // When post-ops are applicable, the kernel has one loop nest per value of
-// `do_post_ops` and picks one on entry. Each nest stores the blocks as its
-// store configuration says, so no code in it depends on the kind of call.
+// `do_post_ops` and picks one on entry. Each nest is emitted from its own
+// configuration, so no code in it depends on the kind of call.
 void build_brgemm(const conf_t &cfg, const compute_path_t &cp, ir::ir_t &ir) {
     if (!cfg.are_post_ops_applicable()) {
-        emit_nest(ir, cfg, cfg.store_without_post_ops, cp);
+        emit_nest(ir, cfg, cfg.nest_without_post_ops, cp);
         return;
     }
 
@@ -972,9 +982,9 @@ void build_brgemm(const conf_t &cfg, const compute_path_t &cp, ir::ir_t &ir) {
     ir.load_param(do_post_ops, GET_OFF(do_post_ops));
 
     const int if_post_ops = ir.if_begin(do_post_ops, ir::cmp_t::ne, 0);
-    emit_nest(ir, cfg, cfg.store_with_post_ops, cp);
+    emit_nest(ir, cfg, cfg.nest_with_post_ops, cp);
     ir._else(if_post_ops);
-    emit_nest(ir, cfg, cfg.store_without_post_ops, cp);
+    emit_nest(ir, cfg, cfg.nest_without_post_ops, cp);
     ir.if_end(if_post_ops);
 }
 
@@ -998,11 +1008,11 @@ bool has_loop(const std::vector<block_run_t> &runs) {
     return false;
 }
 
-// Returns the number of levels of `loop` that have a loop.
-int n_levels_with_loop(const loop_conf_t &loop) {
+// Returns the number of levels that have a loop.
+int n_levels_with_loop(const blocking_conf_t &blocking) {
     int n = 0;
-    for (const std::vector<block_run_t> &runs :
-            {m_runs(loop), n_runs(loop), bs_runs(loop), k_runs(loop)}) {
+    for (const std::vector<block_run_t> &runs : {m_runs(blocking),
+                 n_runs(blocking), bs_runs(blocking), k_runs(blocking)}) {
         if (has_loop(runs)) n++;
     }
     return n;
@@ -1021,20 +1031,22 @@ level_form_t next_level_form(
     return level_form_t::unrolled;
 }
 
-// Unrolls the `n` innermost levels of `loop` that have a loop and loops the
-// other levels that have one. From the inside, the levels are K, the batch,
-// then N and M if N is inside M (`brgemm_ld_loop_innermost`), M and N
-// otherwise.
-void set_level_forms(loop_conf_t &loop, int n) {
-    loop.k_form = next_level_form(k_runs(loop), n);
-    loop.bs_form = next_level_form(bs_runs(loop), n);
+// Unrolls the `n` innermost levels of the nest of `nest_cfg` that have a loop
+// and loops the other levels that have one. From the inside, the levels are K,
+// the batch, then N and M if N is inside M (`brgemm_ld_loop_innermost`), M and
+// N otherwise.
+void set_level_forms(
+        nest_conf_t &nest_cfg, const blocking_conf_t &blocking, int n) {
 
-    if (loop.innermost_loop == brgemm_ld_loop_innermost) {
-        loop.n_form = next_level_form(n_runs(loop), n);
-        loop.m_form = next_level_form(m_runs(loop), n);
+    nest_cfg.k_form = next_level_form(k_runs(blocking), n);
+    nest_cfg.bs_form = next_level_form(bs_runs(blocking), n);
+
+    if (nest_cfg.innermost_loop == brgemm_ld_loop_innermost) {
+        nest_cfg.n_form = next_level_form(n_runs(blocking), n);
+        nest_cfg.m_form = next_level_form(m_runs(blocking), n);
     } else {
-        loop.m_form = next_level_form(m_runs(loop), n);
-        loop.n_form = next_level_form(n_runs(loop), n);
+        nest_cfg.m_form = next_level_form(m_runs(blocking), n);
+        nest_cfg.n_form = next_level_form(n_runs(blocking), n);
     }
 }
 
@@ -1048,7 +1060,8 @@ void set_level_forms(loop_conf_t &loop, int n) {
 // The prediction still counts the pointer steps of the levels it unrolls, so
 // the IR built is never larger than predicted.
 void build_unrolled_ir(conf_t cfg, ir::ir_t &ir) {
-    set_level_forms(cfg.loop, 0);
+    set_level_forms(cfg.nest_without_post_ops, cfg.blocking, 0);
+    set_level_forms(cfg.nest_with_post_ops, cfg.blocking, 0);
 
     ir::ir_t looped_ir;
     const std::unique_ptr<compute_path_t> looped_cp
@@ -1060,7 +1073,7 @@ void build_unrolled_ir(conf_t cfg, ir::ir_t &ir) {
     // TODO: tune the budget. Half of L1i is a safe starting point.
     const double budget = l1i_size / 2.0;
     const double bytes_per_op = looped_cp->code_bytes_per_op();
-    const int n_loop_levels = n_levels_with_loop(cfg.loop);
+    const int n_loop_levels = n_levels_with_loop(cfg.blocking);
 
     int n = 0;
     while (n < n_loop_levels) {
@@ -1074,47 +1087,56 @@ void build_unrolled_ir(conf_t cfg, ir::ir_t &ir) {
         return;
     }
 
-    set_level_forms(cfg.loop, n);
+    set_level_forms(cfg.nest_without_post_ops, cfg.blocking, n);
+    set_level_forms(cfg.nest_with_post_ops, cfg.blocking, n);
     const std::unique_ptr<compute_path_t> cp = make_compute_path(ir, cfg);
     build_brgemm(cfg, *cp, ir);
     assert(ir.n_ops() <= ir::n_ops_unrolled(looped_ir, n));
 }
 
-// Picks the compute path the caller chose when it created the descriptor.
+// Picks the compute path the caller chose when it created the descriptor, and
+// fills the fields of the compute path configuration that do not depend on the
+// compute path: the batch kind and the leading dimensions of A and B.
 //
 // The finalized descriptor already holds the choice (`is_ace()`, `is_tmm`), so
 // it is read from there. The ACE compute path does not exist yet and is
 // rejected.
 status_t init_compute_path(
-        compute_path_kind_t &kind, const brgemm_desc_t &brg) {
-    VCONDCHECK_BRGEMM_IR(!brg.is_ace(), VERBOSE_UNSUPPORTED_FEATURE, "ACE");
+        compute_path_conf_t &compute_path, const brgemm_desc_t &brg) {
+    using namespace utils;
 
-    kind = brg.is_tmm ? compute_path_kind_t::tmul : compute_path_kind_t::vector;
+    VCONDCHECK_BRGEMM_IR(!brg.is_ace(), VERBOSE_UNSUPPORTED_FEATURE, "ACE");
+    VCONDCHECK_BRGEMM_IR(one_of(brg.type, brgemm_addr, brgemm_offs),
+            VERBOSE_UNSUPPORTED_FEATURE, "batch kind");
+    VCONDCHECK_BRGEMM_IR(brg.layout == brgemm_row_major,
+            VERBOSE_UNSUPPORTED_FEATURE, "column-major layout");
+    VCONDCHECK_BRGEMM_IR(
+            !brg.is_blocked, VERBOSE_UNSUPPORTED_FEATURE, "blocked layout");
+    VCONDCHECK_BRGEMM_IR(
+            everyone_is(false, brg.is_runtime_lda, brg.is_runtime_ldb),
+            VERBOSE_UNSUPPORTED_FEATURE, "runtime leading dimension");
+
+    compute_path.kind = brg.is_tmm ? compute_path_kind_t::tmul
+                                   : compute_path_kind_t::vector;
+    compute_path.batch_kind = brg.type;
+    compute_path.lda = brg.LDA;
+    compute_path.ldb = brg.LDB;
     return status::success;
 }
 
-// Fills the loop nest configuration.
+// Fills the blocking configuration.
 //
 // A tile descriptor counts its blocks differently from a vector one. `bdb` and
 // `ldb` include the tail block, and the uker groups `bd_block2` M blocks and
 // `ld_block2` N blocks into one block of the loop nest, with the tail block in
 // the last group of its level (`fill_imap()`).
-status_t init_loop_conf(
-        loop_conf_t &loop, compute_path_kind_t kind, const brgemm_desc_t &brg) {
+status_t init_blocking_conf(blocking_conf_t &blocking, compute_path_kind_t kind,
+        const brgemm_desc_t &brg) {
     using namespace utils;
     const brgemm_attr_t &brgattr = brg.brgattr;
 
-    VCONDCHECK_BRGEMM_IR(one_of(brg.type, brgemm_addr, brgemm_offs),
-            VERBOSE_UNSUPPORTED_FEATURE, "batch kind");
     VCONDCHECK_BRGEMM_IR(!brgattr.var_bs, VERBOSE_UNSUPPORTED_FEATURE,
             "variable batch size");
-    VCONDCHECK_BRGEMM_IR(brg.layout == brgemm_row_major,
-            VERBOSE_UNSUPPORTED_FEATURE, "column-major layout");
-    VCONDCHECK_BRGEMM_IR(
-            !brg.is_blocked, VERBOSE_UNSUPPORTED_FEATURE, "blocked layout");
-    VCONDCHECK_BRGEMM_IR(everyone_is(false, brg.is_runtime_lda,
-                                 brg.is_runtime_ldb, brg.is_runtime_ldc),
-            VERBOSE_UNSUPPORTED_FEATURE, "runtime leading dimension");
     VCONDCHECK_BRGEMM_IR(
             everyone_is(0, brgattr.max_top_vpad, brgattr.max_bottom_vpad),
             VERBOSE_UNSUPPORTED_PAD_FEATURE, "virtual padding");
@@ -1126,68 +1148,31 @@ status_t init_loop_conf(
 
     // When `can_dispatch_uker()` is true, `use_uker` is set and `max_bs` is the
     // only batch size of a call. Otherwise the kernel reads `BS`.
-    const bool can_dispatch_uker = brg.can_dispatch_uker();
-    loop.var_bs = !can_dispatch_uker;
-
-    // Every level is unrolled when the classic kernels use the uker, and looped
-    // when they use `jit_brgemm_kernel_t`.
-    const level_form_t form
-            = can_dispatch_uker ? level_form_t::unrolled : level_form_t::looped;
-    loop.m_form = form;
-    loop.n_form = form;
-    loop.bs_form = form;
-    loop.k_form = form;
+    blocking.var_bs = !brg.can_dispatch_uker();
 
     const bool is_tmul = kind == compute_path_kind_t::tmul;
-    VCONDCHECK_BRGEMM_IR(IMPLICATION(is_tmul, !loop.var_bs),
+    VCONDCHECK_BRGEMM_IR(IMPLICATION(is_tmul, !blocking.var_bs),
             VERBOSE_UNSUPPORTED_FEATURE, "variable batch size with tiles");
 
-    // Reject the uker features that the kernel does not have yet, under the
-    // conditions in which the uker uses them.
-    if (can_dispatch_uker) {
-        auto prefetches = [](const brgemm_prf_t &prf) {
-            return prf.sprinkled || prf.dist0 >= 0 || prf.dist1 >= 0
-                    || prf.dist2 >= 0 || prf.distNTA >= 0;
-        };
-
-        VCONDCHECK_BRGEMM_IR(!prefetches(brg.prfA), VERBOSE_UNSUPPORTED_FEATURE,
-                "A prefetch");
-        VCONDCHECK_BRGEMM_IR(!prefetches(brg.prfB), VERBOSE_UNSUPPORTED_FEATURE,
-                "B prefetch");
-        // A `prfC.dist0` above 0 prefetches the lines of a later block in the
-        // loop order of the uker.
-        VCONDCHECK_BRGEMM_IR(brg.prfC.dist0 <= 0, VERBOSE_UNSUPPORTED_FEATURE,
-                "C prefetch of a later block");
-    }
-
-    // Without the uker, N is inside M, as in `jit_brgemm_kernel_t`.
-    loop.innermost_loop
-            = can_dispatch_uker ? brg.innermost_loop : brgemm_ld_loop_innermost;
-    loop.batch_kind = brg.type;
-    loop.max_bs = brgattr.max_bs;
-    loop.load_dim = brg.load_dim;
-    loop.lda = brg.LDA;
-    loop.ldb = brg.LDB;
-    loop.ldc = brg.LDC;
-    loop.ldd = brg.LDD;
-    loop.ld_block = brg.ld_block;
-    loop.ld_block2 = brg.ld_block2;
-    loop.rd_block = brg.rd_block;
-    loop.rdb = brg.rdb;
-    loop.rdb_tail = brg.rdb_tail;
+    blocking.max_bs = brgattr.max_bs;
+    blocking.ld_block = brg.ld_block;
+    blocking.ld_block2 = brg.ld_block2;
+    blocking.rd_block = brg.rd_block;
+    blocking.rdb = brg.rdb;
+    blocking.rdb_tail = brg.rdb_tail;
 
     switch (kind) {
         case compute_path_kind_t::vector:
-            loop.bd_block = brg.bd_block;
-            loop.bdb = brg.bdb;
-            loop.bdb_tail = brg.bdb_tail;
-            loop.ldb2 = brg.ldb2;
-            loop.ldb2_tail = brg.ldb2_tail;
-            loop.ldb_tail = brg.ldb_tail;
+            blocking.bd_block = brg.bd_block;
+            blocking.bdb = brg.bdb;
+            blocking.bdb_tail = brg.bdb_tail;
+            blocking.ldb2 = brg.ldb2;
+            blocking.ldb2_tail = brg.ldb2_tail;
+            blocking.ldb_tail = brg.ldb_tail;
             // The vector microkernel and the output path treat every vector
             // register of a block that has `ld_tail_mask` as partial, so the
             // partial vector register is a block of its own.
-            loop.n_tail_grouping = tail_grouping_t::separate;
+            blocking.n_tail_grouping = tail_grouping_t::separate;
             break;
         case compute_path_kind_t::tmul: {
             VCONDCHECK_BRGEMM_IR(brg.rdb_tail == 0, VERBOSE_UNSUPPORTED_FEATURE,
@@ -1198,15 +1183,16 @@ status_t init_loop_conf(
             const dim_t full_m_tiles = brg.bdb - (brg.bdb_tail != 0 ? 1 : 0);
             const dim_t full_n_tiles = brg.ldb - (brg.ldb_tail != 0 ? 1 : 0);
 
-            loop.bd_block = brg.bd_block2 * brg.bd_block;
-            loop.bdb = full_m_tiles / brg.bd_block2;
-            loop.bdb_tail = (int)(brg.bcast_dim - loop.bdb * loop.bd_block);
-            loop.ldb2 = full_n_tiles / brg.ld_block2;
-            loop.ldb2_tail = (int)(full_n_tiles % brg.ld_block2);
-            loop.ldb_tail = brg.ldb_tail;
+            blocking.bd_block = brg.bd_block2 * brg.bd_block;
+            blocking.bdb = full_m_tiles / brg.bd_block2;
+            blocking.bdb_tail
+                    = (int)(brg.bcast_dim - blocking.bdb * blocking.bd_block);
+            blocking.ldb2 = full_n_tiles / brg.ld_block2;
+            blocking.ldb2_tail = (int)(full_n_tiles % brg.ld_block2);
+            blocking.ldb_tail = brg.ldb_tail;
             // A separate block for the partial tile would load the A tiles of
             // the M block again at every K step.
-            loop.n_tail_grouping = tail_grouping_t::grouped;
+            blocking.n_tail_grouping = tail_grouping_t::grouped;
             break;
         }
     }
@@ -1361,12 +1347,15 @@ status_t init_output_conf(output_conf_t &output, const brgemm_desc_t &brg) {
 
     VCONDCHECK_BRGEMM_IR(IMPLICATION(brg.with_bias, brg.dt_bias == f32),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
-    VCONDCHECK_BRGEMM_IR(!brg.is_runtime_ldd, VERBOSE_UNSUPPORTED_FEATURE,
-            "runtime leading dimension");
+    VCONDCHECK_BRGEMM_IR(
+            everyone_is(false, brg.is_runtime_ldc, brg.is_runtime_ldd),
+            VERBOSE_UNSUPPORTED_FEATURE, "runtime leading dimension");
 
     output.beta = brg.beta;
     output.dt_c = brg.dt_c;
     output.dt_d = brg.dt_d;
+    output.ldc = brg.LDC;
+    output.ldd = brg.LDD;
     output.dt_bias = brg.dt_bias;
     output.dt_src_scales = brg.dt_src_scales;
     output.dt_wei_scales = brg.dt_wei_scales;
@@ -1378,31 +1367,64 @@ status_t init_output_conf(output_conf_t &output, const brgemm_desc_t &brg) {
     return status::success;
 }
 
-// Fills the store configurations, one per value of `do_post_ops`. A call with
-// post-ops applies the output stages and stores to D. A call without them
+// Fills the nest configurations, one per value of `do_post_ops`. Both nests
+// start with the loop order and the level forms of the classic kernel. A call
+// with post-ops applies the output stages and stores to D. A call without them
 // stores to C.
-status_t init_store_confs(
+status_t init_nest_confs(
         conf_t &conf, compute_path_kind_t kind, const brgemm_desc_t &brg) {
     const brgemm_attr_t &brgattr = brg.brgattr;
     const bool is_tmul = kind == compute_path_kind_t::tmul;
     const data_type_t dt_acc = conf.compute_path.dt_acc;
+    const bool can_dispatch_uker = brg.can_dispatch_uker();
+
+    // Reject the uker features that the kernel does not have yet, under the
+    // conditions in which the uker uses them.
+    if (can_dispatch_uker) {
+        auto prefetches = [](const brgemm_prf_t &prf) {
+            return prf.sprinkled || prf.dist0 >= 0 || prf.dist1 >= 0
+                    || prf.dist2 >= 0 || prf.distNTA >= 0;
+        };
+
+        VCONDCHECK_BRGEMM_IR(!prefetches(brg.prfA), VERBOSE_UNSUPPORTED_FEATURE,
+                "A prefetch");
+        VCONDCHECK_BRGEMM_IR(!prefetches(brg.prfB), VERBOSE_UNSUPPORTED_FEATURE,
+                "B prefetch");
+        // A `prfC.dist0` above 0 prefetches the lines of a later block in the
+        // loop order of the uker.
+        VCONDCHECK_BRGEMM_IR(brg.prfC.dist0 <= 0, VERBOSE_UNSUPPORTED_FEATURE,
+                "C prefetch of a later block");
+    }
+
+    // Every level is unrolled when the classic kernels use the uker, and looped
+    // when they use `jit_brgemm_kernel_t`. Without the uker, N is inside M, as
+    // in `jit_brgemm_kernel_t`.
+    const level_form_t form
+            = can_dispatch_uker ? level_form_t::unrolled : level_form_t::looped;
+    conf.nest_without_post_ops.innermost_loop
+            = can_dispatch_uker ? brg.innermost_loop : brgemm_ld_loop_innermost;
+    conf.nest_without_post_ops.m_form = form;
+    conf.nest_without_post_ops.n_form = form;
+    conf.nest_without_post_ops.bs_form = form;
+    conf.nest_without_post_ops.k_form = form;
+    conf.nest_with_post_ops = conf.nest_without_post_ops;
 
     // `use_interleave_stores` allows the accumulators of a block to be stored
     // in its K steps and in the first K step of the next block.
     // TODO: interleave blockings other than 4 C tiles once they are measured.
-    conf.store_without_post_ops.interleave_acc_stores = is_tmul
+    conf.nest_without_post_ops.store.interleave_acc_stores = is_tmul
             && brgattr.use_interleave_stores
             && brg.bd_block2 * brg.ld_block2 == 4;
-    conf.store_without_post_ops.convert_acc = brg.dt_c != dt_acc;
+    conf.nest_without_post_ops.store.convert_acc = brg.dt_c != dt_acc;
 
-    conf.store_with_post_ops.to_d = true;
-    conf.store_with_post_ops.convert_acc = brg.dt_d != dt_acc;
+    conf.nest_with_post_ops.store.to_d = true;
+    conf.nest_with_post_ops.store.convert_acc = brg.dt_d != dt_acc;
 
     // The order is the one oneDNN defines and the classic kernel follows:
     //   src scale -> weights scale -> bias -> post-ops -> dst scale.
     // The scales are applied one at a time, as in the classic kernel, so the
     // result rounds the same way.
-    std::vector<output_stage_t> &stages = conf.store_with_post_ops.stages;
+    std::vector<output_stage_t> &stages = conf.nest_with_post_ops.store.stages;
     if (brg.with_src_scales) stages.push_back(output_stage_t::src_scale);
     if (brg.with_wei_scales)
         stages.push_back(brg.is_single_wei_scale
@@ -1416,26 +1438,26 @@ status_t init_store_confs(
     // `jit_brgemm_kernel_t` ignores `prfC`, and the uker emits nothing for its
     // distances other than `dist0`. In a kernel with a post-ops call, the uker
     // prefetches nothing on a call without post-ops.
-    const bool prefetch = brg.can_dispatch_uker() && brg.prfC.dist0 == 0;
-    conf.store_with_post_ops.prefetch = prefetch;
-    conf.store_without_post_ops.prefetch
+    const bool prefetch = can_dispatch_uker && brg.prfC.dist0 == 0;
+    conf.nest_with_post_ops.store.prefetch = prefetch;
+    conf.nest_without_post_ops.store.prefetch
             = prefetch && !conf.are_post_ops_applicable();
 
     // Only the TMUL compute path converts so far. Its ISA always has the
     // conversion to bf16, unlike `avx2` and `avx512_core`.
     VCONDCHECK_BRGEMM_IR(
-            IMPLICATION(!is_tmul, !conf.store_with_post_ops.convert_acc),
+            IMPLICATION(!is_tmul, !conf.nest_with_post_ops.store.convert_acc),
             VERBOSE_UNSUPPORTED_DT);
 
     // TODO: accept output stages on the TMUL compute path after testing them
     // on the rows of its tiles.
     VCONDCHECK_BRGEMM_IR(
-            IMPLICATION(is_tmul, conf.store_with_post_ops.stages.empty()),
+            IMPLICATION(is_tmul, conf.nest_with_post_ops.store.stages.empty()),
             VERBOSE_UNSUPPORTED_FEATURE, "output stages on tiles");
     return status::success;
 }
 
-// Rejects a configuration whose addresses the builder cannot encode.
+// Rejects a loop nest whose addresses the builder cannot encode.
 //
 // Every address the builder emits is a base register plus a build-time
 // displacement encoded in the instruction, and every pointer move is a
@@ -1447,13 +1469,13 @@ status_t init_store_confs(
 // `emit_microkernel()`. `build_unrolled_ir()` only loops levels that are
 // unrolled here. A looped level stays within the bounds of an unrolled one, as
 // `max_looped_pos()` is at most `level_size()`.
-status_t check_displacements(const conf_t &conf) {
+status_t check_displacements(const conf_t &conf, const nest_conf_t &nest_cfg) {
     auto fits = [](dim_t v) { return jit_generator_t::imm_fits_int32(v); };
 
-    const loop_conf_t &loop = conf.loop;
-    const dim_t m = max_level_pos(m_runs(loop), loop.m_form);
-    const dim_t n = max_level_pos(n_runs(loop), loop.n_form);
-    const dim_t k = max_level_pos(k_runs(loop), loop.k_form);
+    const blocking_conf_t &blocking = conf.blocking;
+    const dim_t m = max_level_pos(m_runs(blocking), nest_cfg.m_form);
+    const dim_t n = max_level_pos(n_runs(blocking), nest_cfg.n_form);
+    const dim_t k = max_level_pos(k_runs(blocking), nest_cfg.k_form);
 
     VCONDCHECK_BRGEMM_IR(fits(conf.a_off(m, k)), VERBOSE_UNSUPPORTED_FEATURE,
             "A displacement overflows int32");
@@ -1462,7 +1484,7 @@ status_t check_displacements(const conf_t &conf) {
     VCONDCHECK_BRGEMM_IR(fits(conf.c_off(m, n)), VERBOSE_UNSUPPORTED_FEATURE,
             "C displacement overflows int32");
     VCONDCHECK_BRGEMM_IR(
-            IMPLICATION(conf.are_post_ops_applicable(), fits(conf.d_off(m, n))),
+            IMPLICATION(nest_cfg.store.to_d, fits(conf.d_off(m, n))),
             VERBOSE_UNSUPPORTED_FEATURE, "D displacement overflows int32");
     VCONDCHECK_BRGEMM_IR(fits(conf.bias_off(n)), VERBOSE_UNSUPPORTED_FEATURE,
             "bias displacement overflows int32");
@@ -1472,9 +1494,9 @@ status_t check_displacements(const conf_t &conf) {
 
     // Without `var_bs`, the batch elements are addressed with displacements
     // from the batch pointer.
-    const dim_t bs = max_level_pos(bs_runs(loop), loop.bs_form);
+    const dim_t bs = max_level_pos(bs_runs(blocking), nest_cfg.bs_form);
     const dim_t batch_off = bs * (dim_t)sizeof(brgemm_batch_element_t);
-    VCONDCHECK_BRGEMM_IR(IMPLICATION(!loop.var_bs, fits(batch_off)),
+    VCONDCHECK_BRGEMM_IR(IMPLICATION(!blocking.var_bs, fits(batch_off)),
             VERBOSE_UNSUPPORTED_FEATURE, "batch displacement overflows int32");
 
     return status::success;
@@ -1497,9 +1519,9 @@ status_t init_conf(
     VCONDCHECK_BRGEMM_IR(!brg.is_gemv, VERBOSE_UNSUPPORTED_FEATURE, "gemv");
     VCONDCHECK_BRGEMM_IR(!brg.is_dgmm, VERBOSE_UNSUPPORTED_FEATURE, "dgmm");
 
-    CHECK(init_compute_path(conf.compute_path.kind, brg));
+    CHECK(init_compute_path(conf.compute_path, brg));
     const compute_path_kind_t kind = conf.compute_path.kind;
-    CHECK(init_loop_conf(conf.loop, kind, brg));
+    CHECK(init_blocking_conf(conf.blocking, kind, brg));
     switch (kind) {
         case compute_path_kind_t::vector:
             CHECK(init_vector_conf(conf.compute_path, brg));
@@ -1509,8 +1531,14 @@ status_t init_conf(
             break;
     }
     CHECK(init_output_conf(conf.output, brg));
-    CHECK(init_store_confs(conf, kind, brg));
-    return check_displacements(conf);
+    CHECK(init_nest_confs(conf, kind, brg));
+
+    // `build_brgemm()` emits `nest_with_post_ops` only when post-ops are
+    // applicable.
+    CHECK(check_displacements(conf, conf.nest_without_post_ops));
+    if (conf.are_post_ops_applicable())
+        CHECK(check_displacements(conf, conf.nest_with_post_ops));
+    return status::success;
 }
 
 // IR-based BRGEMM kernel.
@@ -1537,7 +1565,7 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
         }
 
         ir::codegen_config_t codegen_cfg;
-        if (conf_.store_with_post_ops.has_stage(
+        if (conf_.nest_with_post_ops.store.has_stage(
                     output_stage_t::injector_postops)) {
             ir::postops_config_t &postops = codegen_cfg.postops;
             postops.post_ops = &conf_.output.post_ops;

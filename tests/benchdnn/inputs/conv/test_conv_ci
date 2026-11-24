@@ -98,3 +98,11 @@
 --dtag=any,axb
 --attr-fpmath=bf16,tf32
 --batch=shapes_basic
+
+## Ternary select post-op on forward convolution.
+--reset
+--dir=FWD_D
+--dt=f32
+--attr-post-ops=select:s8
+g1mb1ic16ih8oc16oh8kh3ph1n"ic16ih8oc16oh8kh3ph1"
+g1mb2ic8ih7oc8oh7kh3ph1n"ic8ih7oc8oh7kh3ph1"

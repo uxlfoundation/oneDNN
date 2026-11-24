@@ -51,3 +51,11 @@
 --stag=ab
 --wtag=ba
 --batch=shapes_dlrm # no spatial shapes, fits wtag=ba.
+
+## Ternary select post-op: the fused path shares one injector with binary.
+--reset
+--dir=FWD_D
+--dt=f32
+--attr-post-ops=select:s8
+mb8ic16oc8
+mb3ic17oc5

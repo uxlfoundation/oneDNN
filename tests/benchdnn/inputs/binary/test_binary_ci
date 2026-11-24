@@ -51,3 +51,26 @@
 
 --ddt=s32 --sdt=s32:s32
 --batch=shapes_ci
+
+# Ternary select post-op: the condition is a truth value, so its fill range has
+# to cover the negative half for signed data types (#6225). Lengths around the
+# 16-lane vector tail are included on purpose.
+--alg=ADD
+--attr-post-ops=select:s8
+
+--ddt=f32 --sdt=f32:f32
+1x1:1x1
+1x15:1x15
+1x16:1x16
+1x17:1x17
+1x64:1x64
+1x65:1x65
+
+# A float condition takes the same truth-value path.
+--attr-post-ops=select:f32
+1x1:1x1
+1x15:1x15
+1x16:1x16
+1x17:1x17
+1x64:1x64
+1x65:1x65

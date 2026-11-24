@@ -51,3 +51,16 @@
 
 --ddt=s32 --sdt=s32:s32
 --batch=shapes_ci
+
+# Ternary select post-op. The binary driver had no problem for it at all, so the
+# fused select path was only reachable through other drivers.
+--alg=ADD
+--attr-post-ops=select:s8
+
+--ddt=f32 --sdt=f32:f32
+1x1:1x1
+1x15:1x15
+1x16:1x16
+1x17:1x17
+1x64:1x64
+1x65:1x65

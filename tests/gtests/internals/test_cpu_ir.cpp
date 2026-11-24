@@ -712,16 +712,22 @@ TEST(RegConfigTests, ReservesScratchForNarrowingStores) {
     EXPECT_EQ(std::count(rc.pools.files[1].regs.begin(),
                       rc.pools.files[1].regs.end(), rc.cvt_vec),
             0);
+    // The opmask of the narrowing scalar store leaves the mask file too.
+    EXPECT_EQ(rc.cvt_mask, 7);
+    EXPECT_EQ(rc.pools.files[2].regs, std::vector<int>({1, 2, 3, 4, 5, 6}));
 
     // The scratch skips the reserved vectors, which leave the pool as well.
     reserved_regs_t reserved;
     reserved.gprs = {Xbyak::Operand::R12};
     reserved.vecs = {31, 30};
+    reserved.masks = {6, 7};
     const reg_config_t rc_reserved = make_reg_config(avx512_core,
             /*param_reg=*/0, /*rsp_reg=*/Xbyak::Operand::RSP, reserved, {},
             /*reserve_cvt_vec=*/true);
     EXPECT_EQ(rc_reserved.cvt_vec, 29);
+    EXPECT_EQ(rc_reserved.cvt_mask, 5);
     EXPECT_EQ(rc_reserved.pools.files[1].regs.size(), 29u);
+    EXPECT_EQ(rc_reserved.pools.files[2].regs, std::vector<int>({1, 2, 3, 4}));
     EXPECT_EQ(rc_reserved.pools.files[0].regs.size(),
             rc.pools.files[0].regs.size() - 1);
     EXPECT_EQ(std::count(rc_reserved.pools.files[0].regs.begin(),

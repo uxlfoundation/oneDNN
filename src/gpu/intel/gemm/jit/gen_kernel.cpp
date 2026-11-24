@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstdio>
+#include <functional>
 #include <stdexcept>
 
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
@@ -57,13 +59,17 @@ std::string ms_hint(double score, int eu_count, int freq_mhz) {
     return b;
 }
 
-SelectionObserver make_entry_observer(int eu_count, int freq_mhz) {
-    return [eu_count, freq_mhz](const kcatalog::Entry *entry, double score,
-                   EvaluateAuxOutput) {
-        gpu_debug() << "[" << lpad(entry - catalog().entries, 4)
-                    << "] consider score:" << score
-                    << ms_hint(score, eu_count, freq_mhz) << " "
-                    << entry->str();
+SelectionObserver make_entry_observer(int eu_count, int freq_mhz,
+        std::function<std::string(const kcatalog::Entry *)> resolve = nullptr) {
+    return [eu_count, freq_mhz, resolve](const kcatalog::Entry *entry,
+                   double score, EvaluateAuxOutput) {
+        auto row = [&]() {
+            if (!resolve) return entry->str();
+            auto r = resolve(entry);
+            return r.empty() ? std::string("(unresolved)") : r;
+        };
+        gpu_debug() << "[" << catalog_ref(entry) << "] consider score:" << score
+                    << ms_hint(score, eu_count, freq_mhz) << " " << row();
     };
 }
 
@@ -721,8 +727,16 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     eval_params_.deterministic = (mode & mode_deterministic);
     eval_params_.Tc_ext = problem.Tc_ext;
 
+    auto resolve = [this, &problem](const kcatalog::Entry *entry) {
+        gen_nocopy_desc_t d = *this;
+        d.set_kernel_override("");
+        d.set_entry(entry);
+        d.set_problem(problem);
+        return d.finalize() == status::success ? d.resolved_str_
+                                               : std::string();
+    };
     SelectionObserver observer = make_entry_observer(
-            dev_info.eu_count(), dev_info.max_clock_mhz());
+            dev_info.eu_count(), dev_info.max_clock_mhz(), resolve);
     tags_ = match_params[0].tags;
     k_chunk_beta_ = true;
     Ts_ = problem.Ts;
@@ -1238,6 +1252,15 @@ status_t gen_kernel_t::get_kernel(
 
 std::string gen_desc_t::str() const {
     return dump_kernel(hw_, problem_, strategy_);
+}
+
+std::string gen_desc_t::hash() const {
+    auto s = serialize();
+    s.append(aux_params_.k0);
+    s.append(aux_params_.wgK);
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)s.get_hash());
+    return buf;
 }
 
 void gen_kernel_t::maybe_print_verbose() {

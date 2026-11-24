@@ -111,18 +111,13 @@ struct sdpa_full_softmax_run_args_t {
     const char *q = nullptr;
     const char *k = nullptr;
     const char *v = nullptr;
-    // Select condition (u8/s8), or null without a select mask.
-    const char *cond = nullptr;
+    // Additive mask or select condition.
+    const char *mask_data = nullptr;
     char *out = nullptr;
 
     void *scratch = nullptr;
+    float scale = 1.0f;
     float fill = 0.0f;
-    // Base pointers for the mm1 binary post-op right-hand sides, one per binary
-    // entry in sdpa_full_softmax_conf_t::mm1_post_ops (in the same order; eltwise
-    // entries consume none). Each is offset per (batch, head, query-tile) using
-    // the entry's dims/strides. For a scalar rhs (e.g. the QK scale) the pointer
-    // addresses a single element and is not offset.
-    std::vector<const void *> mm1_post_op_rhs;
 };
 
 struct tensor_copy_desc_t {

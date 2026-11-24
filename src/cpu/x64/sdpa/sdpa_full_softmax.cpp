@@ -231,40 +231,6 @@ void for_each_block(dim_t begin, dim_t end, dim_t block, const F &f) {
         f(start, end - start < block);
 }
 
-// Appends the mm1 post-op right-hand sides of one query head in chain order:
-// one per binary in mm1_post_ops, then the fill scalar and condition of a
-// folded select. A scalar rhs is used as is; a tensor rhs is offset by batch,
-// head and the first query row q0. Its key column comes from the output
-// pointer at execution.
-void append_mm1_rhs(std::vector<const void *> &rhs,
-        const std::vector<sdpa_mm1_post_op_t> &mm1_post_ops,
-        const sdpa_full_softmax_run_args_t &args, dim_t batch_idx,
-        dim_t query_head_idx, dim_t q0, bool select_in_mm1,
-        const uint8_t *cond) {
-    for (size_t pi = 0; pi < mm1_post_ops.size(); ++pi) {
-        const auto &pop = mm1_post_ops[pi];
-        if (!pop.is_binary) continue;
-        const char *base = static_cast<const char *>(args.mm1_post_op_rhs[pi]);
-        if (!pop.rhs_is_scalar) {
-            // The RHS is [batch, query_head, query, key]; broadcast axes
-            // (dim == 1) contribute nothing.
-            const auto &d = pop.rhs_dims;
-            const auto &s = pop.rhs_strides;
-            dim_t off = 0;
-            if (d[0] != 1) off += batch_idx * s[0];
-            if (d[1] != 1) off += query_head_idx * s[1];
-            if (d[sdpa_pd_t::mask_q_index] != 1)
-                off += q0 * s[sdpa_pd_t::mask_q_index];
-            base += off * types::data_type_size(pop.rhs_dt);
-        }
-        rhs.push_back(base);
-    }
-    if (select_in_mm1) {
-        rhs.push_back(&args.fill);
-        rhs.push_back(cond);
-    }
-}
-
 // Writes an f32 [m x n] tile to the user output, converting to out_dt.
 // Unit-stride rows use the bulk converters; a strided output column falls
 // back to scalar stores.
@@ -1546,12 +1512,27 @@ struct exec_state_t {
     char *out(dim_t batch_idx, dim_t head, dim_t q0) const {
         return get_arg_ptr(args.out, out_d, batch_idx, head, q0);
     }
+    const char *mask(dim_t batch_idx, dim_t head, dim_t q0) const {
+        return get_arg_ptr(
+                args.mask_data, desc.attn_mask_md(), batch_idx, head, q0);
+    }
     // Select condition rows of a query head from query q0, or null without a
     // select.
     const uint8_t *cond(dim_t batch_idx, dim_t head, dim_t q0) const {
         if (!pd.with_select_mask()) return nullptr;
-        return reinterpret_cast<const uint8_t *>(get_arg_ptr(
-                args.cond, desc.attn_mask_md(), batch_idx, head, q0));
+        return reinterpret_cast<const uint8_t *>(mask(batch_idx, head, q0));
+    }
+
+    void append_mm1_rhs(std::vector<const void *> &rhs, dim_t batch_idx,
+            dim_t head, dim_t q0, const uint8_t *cond) const {
+        // Match the BRGEMM post-op order. The injector supplies the key
+        // column offset relative to the full score tile.
+        if (pd.with_attn_scale()) rhs.push_back(&args.scale);
+        if (pd.with_buffer_mask()) rhs.push_back(mask(batch_idx, head, q0));
+        if (conf.mm1_select_postop) {
+            rhs.push_back(&args.fill);
+            rhs.push_back(cond);
+        }
     }
 
     const sdpa_pd_t &pd;
@@ -1770,8 +1751,7 @@ public:
             hp.out = st.out(batch_idx, head, q0);
             hp.cond = st.cond(batch_idx, head, q0);
             if (has_mm1_postops_)
-                append_mm1_rhs(rhs, st.conf.mm1_post_ops, st.args, batch_idx,
-                        head, q0, conf_.mm1_select_postop, hp.cond);
+                st.append_mm1_rhs(rhs, batch_idx, head, q0, hp.cond);
         }
         rhs_per_head_ = rhs.size() / conf_.query_heads_per_item;
     }

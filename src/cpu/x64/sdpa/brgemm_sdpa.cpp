@@ -279,22 +279,18 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
     auto *v = CTX_IN_MEM(const void *, DNNL_ARG_VALUES);
     auto *out = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    // The scale is applied as a multiply; invert_scale means the user stored a
-    // divisor, so multiply by its reciprocal. The local outlives the execute
-    // call (the full-softmax path passes &scale_val by pointer). A host scalar scale is read
-    // from host storage; a regular tensor scale from its device buffer.
     float scale_val = 1.0f;
     if (pd()->with_attn_scale()) {
         CHECK(get_scalar_value(ctx, *pd(), DNNL_ARG_SCALE, scale_val));
         if (pd()->desc()->invert_scale) scale_val = 1.0f / scale_val;
     }
 
-    // The condition tensor is passed as the attention-mask argument.
-    // For select masks, the fill value is a scalar.
-    const void *cond = nullptr;
+    const bool with_select_mask = pd()->with_select_mask();
+    const void *mask_data = with_select_mask || pd()->with_buffer_mask()
+            ? CTX_IN_MEM(const void *, DNNL_ARG_ATTN_MASK)
+            : nullptr;
     float fill_val = 0.0f;
-    if (pd()->with_select_mask()) {
-        cond = CTX_IN_MEM(const void *, DNNL_ARG_ATTN_MASK);
+    if (with_select_mask) {
         CHECK(get_scalar_value(ctx, *pd(), DNNL_ARG_ATTN_MASK_FILL, fill_val));
     }
 
@@ -303,7 +299,7 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
         args.q = q;
         args.k = k;
         args.v = v;
-        args.cond = cond;
+        args.cond = with_select_mask ? mask_data : nullptr;
         args.out = out;
         args.scale = scale_val;
         args.fill = fill_val;
@@ -315,16 +311,11 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
     args.q = static_cast<const char *>(q);
     args.k = static_cast<const char *>(k);
     args.v = static_cast<const char *>(v);
-    args.cond = static_cast<const char *>(cond);
+    args.mask_data = static_cast<const char *>(mask_data);
     args.out = static_cast<char *>(out);
     args.scratch = scratch;
+    args.scale = scale_val;
     args.fill = fill_val;
-    // rhs base pointers for the mm1 binary post-ops, in the same order
-    // configure() builds conf.mm1_post_ops: scale (scalar) then attention mask.
-    if (pd()->with_attn_scale()) args.mm1_post_op_rhs.push_back(&scale_val);
-    if (pd()->with_buffer_mask())
-        args.mm1_post_op_rhs.push_back(
-                CTX_IN_MEM(const void *, DNNL_ARG_ATTN_MASK));
     return sdpa_full_softmax::execute(*pd(), pd()->full_softmax_conf(),
             full_kernels_, args, pd()->nthr());
 }

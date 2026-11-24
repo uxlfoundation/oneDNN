@@ -1050,29 +1050,28 @@ void set_level_forms(
     }
 }
 
-// Builds the IR of `cfg` with as many of its innermost levels unrolled as fit
-// in half of L1i.
+// Returns how many of the innermost levels that have a loop the nest of
+// `nest_cfg` unrolls within half of L1i, and builds into `looped_ir` the IR of
+// the nest alone with no loop unrolled.
 //
-// The IR is built first with no loop unrolled. From it, `ir::n_ops_unrolled()`
-// predicts the op count with the `n` innermost levels that have a loop
-// unrolled, and `n` grows while that count times `code_bytes_per_op()` fits in
-// half of L1i. The IR is built again with `n` levels unrolled, unless `n` is 0.
-// The prediction still counts the pointer steps of the levels it unrolls, so
-// the IR built is never larger than predicted.
-void build_unrolled_ir(conf_t cfg, ir::ir_t &ir) {
-    set_level_forms(cfg.nest_without_post_ops, cfg.blocking, 0);
-    set_level_forms(cfg.nest_with_post_ops, cfg.blocking, 0);
+// From `looped_ir`, `ir::n_ops_unrolled()` predicts the op count with the `n`
+// innermost levels that have a loop unrolled, and `n` grows while that count
+// times `code_bytes_per_op()` fits in half of L1i. The prediction still counts
+// the pointer steps of the levels it unrolls, so the nest built with `n` levels
+// unrolled is never larger than predicted.
+int n_levels_to_unroll(
+        const conf_t &cfg, nest_conf_t nest_cfg, ir::ir_t &looped_ir) {
 
-    ir::ir_t looped_ir;
-    const std::unique_ptr<compute_path_t> looped_cp
+    set_level_forms(nest_cfg, cfg.blocking, 0);
+    const std::unique_ptr<compute_path_t> cp
             = make_compute_path(looped_ir, cfg);
-    build_brgemm(cfg, *looped_cp, looped_ir);
+    emit_nest(looped_ir, cfg, nest_cfg, *cp);
 
     const unsigned l1i_size = platform::get_per_core_cache_size(
             1, platform::cache_type_t::instruction);
     // TODO: tune the budget. Half of L1i is a safe starting point.
     const double budget = l1i_size / 2.0;
-    const double bytes_per_op = looped_cp->code_bytes_per_op();
+    const double bytes_per_op = cp->code_bytes_per_op();
     const int n_loop_levels = n_levels_with_loop(cfg.blocking);
 
     int n = 0;
@@ -1081,17 +1080,37 @@ void build_unrolled_ir(conf_t cfg, ir::ir_t &ir) {
         if ((double)n_ops * bytes_per_op > budget) break;
         n++;
     }
+    return n;
+}
 
-    if (n == 0) {
-        ir = std::move(looped_ir);
+// Builds the IR of `cfg` with as many innermost levels of each nest unrolled
+// as fit in half of L1i.
+//
+// A call runs one nest, so `n_levels_to_unroll()` sizes each nest on its own,
+// and each nest can use the whole budget. The kernel is then built with the
+// level forms of each nest. A kernel with one nest that unrolls no level is
+// the IR that sized its nest, and is not built again.
+void build_unrolled_ir(conf_t cfg, ir::ir_t &ir) {
+    ir::ir_t looped_ir_without_post_ops;
+    const int n_without_post_ops = n_levels_to_unroll(
+            cfg, cfg.nest_without_post_ops, looped_ir_without_post_ops);
+
+    if (!cfg.are_post_ops_applicable() && n_without_post_ops == 0) {
+        ir = std::move(looped_ir_without_post_ops);
         return;
     }
+    set_level_forms(
+            cfg.nest_without_post_ops, cfg.blocking, n_without_post_ops);
 
-    set_level_forms(cfg.nest_without_post_ops, cfg.blocking, n);
-    set_level_forms(cfg.nest_with_post_ops, cfg.blocking, n);
+    if (cfg.are_post_ops_applicable()) {
+        ir::ir_t looped_ir_with_post_ops;
+        const int n_with_post_ops = n_levels_to_unroll(
+                cfg, cfg.nest_with_post_ops, looped_ir_with_post_ops);
+        set_level_forms(cfg.nest_with_post_ops, cfg.blocking, n_with_post_ops);
+    }
+
     const std::unique_ptr<compute_path_t> cp = make_compute_path(ir, cfg);
     build_brgemm(cfg, *cp, ir);
-    assert(ir.n_ops() <= ir::n_ops_unrolled(looped_ir, n));
 }
 
 // Picks the compute path the caller chose when it created the descriptor, and

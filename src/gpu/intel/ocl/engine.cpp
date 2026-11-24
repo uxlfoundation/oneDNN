@@ -29,11 +29,11 @@
 #include "gemmstone/microkernel/fuser.hpp"
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
-#include "gpu/intel/logging.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 #include "gpu/intel/ocl/stream.hpp"
 #include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -53,18 +53,6 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
     *engine = e.release();
 
     return status::success;
-}
-
-void maybe_print_build_info(const std::vector<const char *> &kernel_names,
-        const compute::kernel_ctx_t &kernel_ctx) {
-
-    gpu_info() << "build kernels:" << [&]() {
-        ostringstream_t names;
-        for (const char *name : kernel_names)
-            if (name) names << " " << name;
-        return names.str();
-    }();
-    gpu_info() << "build options: " << kernel_ctx.options();
 }
 
 status_t engine_t::init() {

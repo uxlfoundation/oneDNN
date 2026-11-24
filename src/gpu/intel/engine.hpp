@@ -54,6 +54,9 @@ struct generator_base_t;
 namespace dsl = gemmstone::dsl;
 } // namespace jit
 
+void maybe_print_build_info(const std::vector<const char *> &kernel_names,
+        const compute::kernel_ctx_t &kernel_ctx);
+
 class engine_t : public gpu::engine_t {
 public:
     engine_t(impl::engine_impl_t *impl) : gpu::engine_t(impl) {}

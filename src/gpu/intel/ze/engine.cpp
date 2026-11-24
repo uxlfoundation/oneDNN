@@ -123,6 +123,8 @@ status_t engine_t::create_kernels(std::vector<compute::kernel_t> *kernels,
         return status::invalid_arguments;
     }
 
+    maybe_print_build_info(kernel_names, kernel_ctx);
+
     const char *source = nullptr;
     for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
         source = intel::get_kernel_source(kernel_names[i]);

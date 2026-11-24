@@ -18,6 +18,8 @@
 
 #include "gpu/intel/engine.hpp"
 
+#include "gpu/intel/logging.hpp"
+
 #include "common/rw_mutex.hpp"
 #include "common/utils.hpp"
 
@@ -25,6 +27,18 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+
+void maybe_print_build_info(const std::vector<const char *> &kernel_names,
+        const compute::kernel_ctx_t &kernel_ctx) {
+
+    gpu_info() << "build kernels:" << [&]() {
+        ostringstream_t names;
+        for (const char *name : kernel_names)
+            if (name) names << " " << name;
+        return names.str();
+    }();
+    gpu_info() << "build options: " << kernel_ctx.options();
+}
 
 // Cache for device_info_t objects. Reuse the already initialized
 // device_info_t objects to save time on HW detection and nGEN binary

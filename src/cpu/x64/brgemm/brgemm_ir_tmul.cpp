@@ -27,6 +27,7 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
+#include "cpu/platform.hpp"
 #include "cpu/x64/brgemm/brgemm_ir_compute_path.hpp"
 #include "cpu/x64/ir/ir.hpp"
 
@@ -133,10 +134,23 @@ struct tmul_compute_path_t : public compute_path_t {
         }
     }
 
-    // One prefetch per row of each accumulator tile, the lines that
-    // `store_accumulator()` stores the tile to.
-    std::vector<std::vector<prefetch_t>> c_prefetches(const conf_t &cfg,
-            const out_block_t &blk, ir::vreg_t store_ptr) const override {
+    // One prefetch per row of each accumulator tile, the lines in C or D that
+    // the row is stored to. A row shorter than a line shares it with the next
+    // N tiles, so only every `tiles_per_line`-th N tile prefetches. A looped N
+    // level counts the tiles from the first one of the block, so two blocks
+    // can prefetch the same line.
+    std::vector<std::vector<prefetch_t>> store_prefetches(const conf_t &cfg,
+            const store_conf_t &store_cfg, const out_block_t &blk,
+            ir::vreg_t store_ptr) const override {
+
+        const dim_t row_size = cfg.loop.ld_block
+                * (dim_t)types::data_type_size(cfg.store_dt(store_cfg));
+        const dim_t tiles_per_line = std::max<dim_t>(
+                1, platform::get_cache_line_size() / row_size);
+        // An unrolled level counts `ld_start` from its first block.
+        const dim_t first_n_tile = cfg.loop.n_form == level_form_t::unrolled
+                ? blk.ld_start / cfg.loop.ld_block
+                : 0;
 
         const int n_m = m_tiles(cfg, blk);
         const int n_n = blk.ld_block2;
@@ -144,12 +158,17 @@ struct tmul_compute_path_t : public compute_path_t {
 
         for (int m = 0; m < n_m; m++) {
             for (int n = 0; n < n_n; n++) {
+                if ((first_n_tile + n) % tiles_per_line != 0) continue;
+
                 const int i = m * n_n + n;
-                const dim_t off = c_tile_off(cfg, blk, m, n);
+                const dim_t bd = blk.bd_start + m * m_tile_rows(cfg);
+                const dim_t off
+                        = cfg.store_off(store_cfg, bd, cfg.ld_pos(blk, n));
                 const int rows = c_tile_shape(cfg, blk, m, n).rows;
                 prefetches[i].reserve(rows);
                 for (int r = 0; r < rows; r++) {
-                    const dim_t row_off = off + r * cfg.c_off(1, 0);
+                    const dim_t row_off
+                            = off + r * cfg.store_off(store_cfg, 1, 0);
                     prefetches[i].push_back(
                             {store_ptr, row_off, ir::prefetch_kind_t::write});
                 }

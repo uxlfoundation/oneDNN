@@ -38,7 +38,6 @@
 
 #include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
-#include "cpu/x64/brgemm/brgemm_utils.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/jit_uni_softmax.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
@@ -532,30 +531,27 @@ status_t build_brgemm_descs(const sdpa_pd_t &pd,
     return status::success;
 }
 
-status_t is_vnni_b_required(
-        data_type_t dt, bool attr_b_is_vnni, bool &needs_vnni_b) {
-    brgemm_desc_t brg {};
-    brg.dt_a = brg.dt_b = dt;
-    CHECK(init_kernel_datatype(&brg, dt, dt));
+struct brgemm_props_t {
+    bool is_amx;
+    bool k_needs_vnni;
+    bool v_needs_vnni;
+};
 
-    brgemm_utils::set_isa_impl(&brg);
-    if (brg.isa_impl == isa_undef) return status::unimplemented;
-
-    needs_vnni_b = brgemm_desc_t::is_b_data_layout_vnni(
-            dt, dt, attr_b_is_vnni, brg.isa_impl);
-
-    return status::success;
-}
-
-// Whether BRGEMM computes dt x dt products in AMX tiles on this CPU.
-status_t uses_amx_tiles(data_type_t dt, bool &is_amx) {
+status_t query_brgemm_props(data_type_t dt, bool transpose_k, bool transpose_v,
+        brgemm_props_t &props) {
     constexpr dim_t probe = 16;
     brgemm_desc_t brg;
     CHECK(brgemm_desc_init(&brg, isa_undef, brgemm_addr, dt, dt,
             /*transA=*/false, /*transB=*/false, brgemm_row_major,
             /*alpha=*/1.0f, /*beta=*/0.0f, probe, probe, probe, probe, probe,
             probe, /*strides=*/nullptr));
-    is_amx = brg.is_tmm;
+    if (brg.isa_impl == isa_undef) return status::unimplemented;
+
+    props.is_amx = brg.is_tmm;
+    props.k_needs_vnni = brgemm_desc_t::is_b_data_layout_vnni(
+            dt, dt, transpose_k, brg.isa_impl);
+    props.v_needs_vnni = brgemm_desc_t::is_b_data_layout_vnni(
+            dt, dt, transpose_v, brg.isa_impl);
     return status::success;
 }
 
@@ -1257,18 +1253,18 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
             = memory_desc_wrapper(desc.key_md()).strides()[ndims - 1] != 1;
     const bool transpose_v
             = memory_desc_wrapper(desc.val_md()).strides()[ndims - 1] != 1;
-    CHECK(is_vnni_b_required(mm_dt, mm1_transpose_k, conf.mm1_needs_vnni_b));
-    CHECK(is_vnni_b_required(mm_dt, transpose_v, conf.mm2_needs_vnni_b));
+    brgemm_props_t brgemm_props;
+    CHECK(query_brgemm_props(
+            mm_dt, mm1_transpose_k, transpose_v, brgemm_props));
+    conf.mm1_needs_vnni_b = brgemm_props.k_needs_vnni;
+    conf.mm2_needs_vnni_b = brgemm_props.v_needs_vnni;
 
     const bool need_copy_v = conf.mm2_needs_vnni_b || transpose_v;
 
-    bool is_amx = false;
-    CHECK(uses_amx_tiles(mm_dt, is_amx));
-
     const unsigned l2_bytes = platform::get_per_core_cache_size(2);
     conf.nthr = dnnl_get_max_threads();
-    const blocking_hw_t hw {
-            conf.nthr, l2_bytes, platform::get_per_core_cache_size(3), is_amx};
+    const blocking_hw_t hw {conf.nthr, l2_bytes,
+            platform::get_per_core_cache_size(3), brgemm_props.is_amx};
 
     init_score_and_prob_layout(pd, conf);
     const size_t score_row_bytes = conf.thread_scratch.score_tile_row_bytes(

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
+* Copyright 2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,6 +57,22 @@ struct cudnn_matmul_t : public gpu::primitive_t {
             bool bf16_case = utils::everyone_is(bf16, src_dt, wei_dt, dst_dt);
             bool s8_case = utils::everyone_is(s8, src_dt, wei_dt)
                     && utils::one_of(dst_dt, s8, f32);
+            // cuBLAS GemmEx supports f16*f16->f32 natively.
+            bool f16_src_f32_dst
+                    = utils::everyone_is(f16, src_dt, wei_dt) && dst_dt == f32;
+
+            const bool has_sum
+                    = attr()->post_ops_.find(primitive_kind::sum) != -1;
+            const bool has_eltwise
+                    = attr()->post_ops_.find(primitive_kind::eltwise) != -1;
+            const bool with_dst_scale
+                    = !attr()->scales_.has_default_values(DNNL_ARG_DST);
+
+            // The runtime-parameter path (cudnn_matmul_runtime_args_exec_t)
+            // does not reconstruct post_op_sum_ or act_desc_, so post-ops are
+            // dropped there. Reject the f16*f16->f32 combination with runtime
+            // dims/strides and post-ops until that path preserves them.
+            const bool has_runtime_dims = has_runtime_dims_or_strides();
 
             auto *sycl_engine_impl
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
@@ -68,7 +85,15 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                     && IMPLICATION(bf16_case,
                             has_bf16_support(sycl_engine_impl->device()))
                     && set_default_formats()
-                    && (f32_case || f16_case || bf16_case || s8_case)
+                    && (f32_case || f16_case || bf16_case || s8_case
+                            || f16_src_f32_dst)
+                    && IMPLICATION(f16_src_f32_dst && has_runtime_dims,
+                            !(has_sum || has_eltwise))
+                    // The GEMM applies the destination scale to the product
+                    // only, while sum adds the old destination unscaled, so a
+                    // non-default dst scale with sum is applied in the wrong
+                    // order. Reject it for the new f16*f16->f32 combination.
+                    && IMPLICATION(f16_src_f32_dst && with_dst_scale, !has_sum)
                     && IMPLICATION(with_bias(),
                             (IMPLICATION(f32_case, utils::one_of(bia_dt, f32))
                                     && IMPLICATION(f16_case,
@@ -76,7 +101,13 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                                     && IMPLICATION(bf16_case,
                                             utils::one_of(bia_dt, bf16, f32))
                                     && IMPLICATION(s8_case,
-                                            utils::one_of(bia_dt, s8, f32))))
+                                            utils::one_of(bia_dt, s8, f32))
+                                    // f16*f16->f32 computes in f32. A f16 bias
+                                    // would make the intermediate output f16
+                                    // (bias_dt_mismatch_ sets dst_type_ to the
+                                    // bias type), losing the f32 dst.
+                                    && IMPLICATION(f16_src_f32_dst,
+                                            utils::one_of(bia_dt, f32))))
                     && !(with_bias() && s8_case);
             if (!ok) return status::unimplemented;
 
@@ -99,14 +130,14 @@ struct cudnn_matmul_t : public gpu::primitive_t {
             const auto &supported_args
                     = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
             if (!scales.has_default_values(supported_args)) return false;
+            // The cuDNN path reads every scale as a device-side f32 value.
+            if (scales.has_host_scalars()) return false;
             // cuDNN does not support scaling per dimension.
             for (auto arg : supported_args) {
                 if (scales.has_default_values(arg)) continue;
 
                 if (scales.get_mask(arg) > 0) return false;
-                if (!utils::one_of(
-                            scales.get_data_type(arg), s8, s32, f32, f16, bf16))
-                    return false;
+                if (scales.get_data_type(arg) != f32) return false;
             }
             return true;
         }

@@ -661,10 +661,12 @@ class Parser:
         input: Iterable[str],
         events: Iterable[str] = _default_events,
         error_handler: ContextManager = nullcontext(),
+        trace_ids: Optional[Iterable[int]] = None,
     ):
         self.input = input
         self.events = set(events)
         self.error_handler = error_handler
+        self.trace_ids = None if trace_ids is None else set(trace_ids)
 
     def _fix_template(self, template) -> Optional[str]:
         return template
@@ -700,13 +702,51 @@ class Parser:
                 operation, args = args.split(",", 1)
             yield line, version, timestamp, component, operation, args
 
+    @staticmethod
+    def _parse_trace_marker(
+        operation: str, args: str
+    ) -> Optional[Tuple[str, int]]:
+        # Trace markers are `<create|exec>:trace` records ending with a
+        # `<start|end>_id:<id>` field.
+        if not operation.endswith(":trace"):
+            return None
+        kind, _, value = args.rsplit(",", 1)[-1].partition("_id:")
+        if kind not in ("start", "end") or not value.isdigit():
+            return None
+        return kind, int(value)
+
+    def _filter_trace_ids(self, parsed):
+        # Keeps records printed between the start and end trace markers of the
+        # selected trace IDs, together with info records needed for parsing.
+        if self.trace_ids is None:
+            yield from parsed
+            return
+        open_ids: Set[int] = set()
+        for item in parsed:
+            _, _, _, _, operation, args = item
+            marker = self._parse_trace_marker(operation, args)
+            if marker is not None:
+                kind, trace_id = marker
+                if trace_id in self.trace_ids:
+                    if kind == "start":
+                        open_ids.add(trace_id)
+                    else:
+                        open_ids.discard(trace_id)
+                continue
+            if open_ids or operation.split(":", 1)[0] == "info":
+                yield item
+
     def __iter__(self) -> Iterator[Tuple[str, ir.Entry]]:
         template = None
         cache: Dict[str, dict] = {}
         errors: Set[str] = set()
-        parsed = self._parse_leading_fields(self.input)
+        parsed = self._filter_trace_ids(self._parse_leading_fields(self.input))
         for line, version, timestamp, component, operation, args in parsed:
             if component == "graph":
+                continue
+            # Trace markers carry a trace ID instead of a time and are not
+            # timing samples.
+            if operation.endswith(":trace"):
                 continue
             event = operation.split(":", 1)[0]
             if event == "info":

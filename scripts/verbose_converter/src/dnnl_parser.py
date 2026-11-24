@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from . import ir, parse
 
@@ -42,20 +42,24 @@ class LogParser:
         self.error_handler = LoggingContext(logger)
         self.data: List[Tuple[str, ir.Entry]] = []
 
-    def process(self, filter_events):
+    def process(self, filter_events, trace_ids: Optional[Iterable[int]] = None):
         """
         Adds data from the last log file.
 
         Parameters:
         -----------
         filter_events -- List of events to parse, other events are ignored.
+        trace_ids (default: None) -- If set, only records printed between the
+        start and end trace markers of these trace IDs are parsed.
 
         Returns:
         --------
         None
         """
 
-        parser = parse.Parser(self.input, filter_events, self.error_handler)
+        parser = parse.Parser(
+            self.input, filter_events, self.error_handler, trace_ids
+        )
         self.data = list(parser)
 
     def get_data(self):

@@ -1826,9 +1826,14 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
             assert(attr.post_ops.entry[bin_po_idx]
                             .is_binary_kind_with_ternary_op());
             const auto alg = attr.post_ops.entry[bin_po_idx].kind;
-            // Binary post-op filling for src2 conditional tensor
-            // Use values bigger than 1 to ensure it works correctly.
-            fill_cfg_t def_binary_cfg(mem.dt(), 0, 16.f,
+            // Binary post-op filling for src2 conditional tensor.
+            // The condition is a truth value, so cover zero, positive and - for
+            // signed conditions - negative values. Keeping the negative half
+            // out left the JIT select post-op untested for negative conditions
+            // (#6225).
+            const bool signed_cond
+                    = mem.dt() == dnnl_s8 || mem.dt() == dnnl_s32;
+            fill_cfg_t def_binary_cfg(mem.dt(), signed_cond ? -16.f : 0.f, 16.f,
                     /* int = */ true, alg, "def_binary_post_op_src2");
             const auto it = fill_cfg_map.find(DNNL_ARG_SRC_2);
             const bool has_external_cfg = it != fill_cfg_map.end();

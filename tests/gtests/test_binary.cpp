@@ -363,6 +363,53 @@ TEST(binary_attr_test, BinaryPostOpHonorsRhsOffset0) {
     EXPECT_FLOAT_EQ(dst[3], rhs_parent[3]);
 }
 
+TEST(binary_attr_test, BinarySelectPostOpTreatsNegativeConditionAsTrue) {
+    // The condition of the select post-op is a truth value: any non-zero
+    // element selects src0, negative values included. Reported in #6225.
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "The test requires host-accessible memory.");
+
+    auto eng = get_test_engine();
+    auto strm = make_stream(eng);
+
+    const memory::dim n = 16;
+    const memory::desc data_md({1, n}, data_type::f32, memory::format_tag::ab);
+    const memory::desc cond_md({1, n}, data_type::s8, memory::format_tag::ab);
+
+    const std::vector<int8_t> cond {
+            0, -1, 1, -128, 127, 2, -2, 100, -100, 5, -5, 126, -127, 3, -3, 0};
+
+    post_ops ops;
+    ops.append_binary(algorithm::binary_select, data_md, cond_md);
+    primitive_attr attr;
+    attr.set_post_ops(ops);
+
+    const binary::primitive_desc pd(
+            eng, algorithm::binary_add, data_md, data_md, data_md, attr);
+
+    std::vector<float> src0(n, 2.f), src1(n, 5.f), zeros(n, 0.f), dst(n, -1.f);
+    memory src0_mem(data_md, eng, src0.data());
+    memory src1_mem(data_md, eng, src1.data());
+    memory zeros_mem(data_md, eng, zeros.data());
+    memory dst_mem(data_md, eng, dst.data());
+    memory cond_mem(cond_md, eng, const_cast<int8_t *>(cond.data()));
+
+    // The op is binary_add, so dst becomes src0 before the post-op runs; the
+    // select then picks that value where the condition is true and src1 where
+    // it is false.
+    binary(pd).execute(strm,
+            {{DNNL_ARG_SRC_0, src0_mem}, {DNNL_ARG_SRC_1, zeros_mem},
+                    {DNNL_ARG_DST, dst_mem},
+                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                            src1_mem},
+                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_2,
+                            cond_mem}});
+    strm.wait();
+
+    for (memory::dim i = 0; i < n; i++)
+        EXPECT_EQ(dst[i], cond[i] != 0 ? src0[0] : src1[0]) << "i=" << i;
+}
+
 static auto expected_failures = []() {
     return ::testing::Values(
             // test tag::any support

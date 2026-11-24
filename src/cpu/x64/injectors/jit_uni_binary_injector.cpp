@@ -3030,7 +3030,12 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
             push_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
             host_->vxorps(dst, dst, dst);
-            host_->vpcmpgtd(cmp_mask | host_->T_z, tmp_vmm, dst);
+            // The condition is a truth value: every non-zero element selects
+            // src0, negative values included, so the test is "not equal" rather
+            // than "greater". A float compare covers both f32 conditions and
+            // integral ones, which are converted to f32 before this point.
+            host_->vcmpps(cmp_mask | host_->T_z, tmp_vmm, dst,
+                    jit_generator_t::_cmp_neq_uq);
             pop_vmm(host_, dst);
             host_->vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
             host_->vblendmps(dst | cmp_mask, tmp_vmm, dst);
@@ -3059,7 +3064,7 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
             push_vmm(host_, dst);
             host_->vxorps(dst, dst, dst);
 
-            host_->vcmpps(tmp_vmm, tmp_vmm, dst, jit_generator_t::_cmp_nle_us);
+            host_->vcmpps(tmp_vmm, tmp_vmm, dst, jit_generator_t::_cmp_neq_uq);
             pop_vmm(host_, dst);
             host_->vpand(dst, dst, tmp_vmm);
             push_vmm(host_, dst);

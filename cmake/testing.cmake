@@ -34,6 +34,7 @@ set(DNNL_TEST_SET_COVERAGE_STR "")
 set(DNNL_TEST_SET_HAS_NO_CORR "0")
 set(DNNL_TEST_SET_HAS_ADD_BITWISE "0")
 set(DNNL_TEST_SET_HAS_GRAPH_EXE "0")
+set(DNNL_TEST_SET_HAS_ADD_DEVICELESS "0")
 
 function(check_consistency entry)
     if(NOT DNNL_TEST_SET_COVERAGE EQUAL 0)
@@ -65,6 +66,8 @@ foreach(entry ${DNNL_TEST_SET})
         set(DNNL_TEST_SET_HAS_ADD_BITWISE "1")
     elseif(entry STREQUAL "GRAPH_EXE")
         set(DNNL_TEST_SET_HAS_GRAPH_EXE "1")
+    elseif(entry STREQUAL "ADD_DEVICELESS")
+        set(DNNL_TEST_SET_HAS_ADD_DEVICELESS "1")
     elseif(entry STREQUAL "CI_NO_CORR") # Left here for compatibility till v4.0
         set(DNNL_TEST_SET_COVERAGE ${DNNL_TEST_SET_CI})
         set(DNNL_TEST_SET_COVERAGE_STR "CI")
@@ -76,7 +79,8 @@ foreach(entry ${DNNL_TEST_SET})
         message(FATAL_ERROR
                 "The DNNL_TEST_SET entry ${entry} is not recognized. "
                 "Supported values are:"
-                "WEEKLY, NIGHTLY, CI, SMOKE, NO_CORR, ADD_BITWISE, GRAPH_EXE.")
+                "WEEKLY, NIGHTLY, CI, SMOKE, NO_CORR, ADD_BITWISE, GRAPH_EXE, "
+                "ADD_DEVICELESS.")
     endif()
 endforeach()
 
@@ -89,4 +93,7 @@ if(DNNL_TEST_SET_HAS_ADD_BITWISE EQUAL 1)
 endif()
 if(DNNL_TEST_SET_HAS_GRAPH_EXE EQUAL 1)
     message(STATUS "Enabled testing modifier: Use graph execution")
+endif()
+if(DNNL_TEST_SET_HAS_ADD_DEVICELESS EQUAL 1)
+    message(STATUS "Enabled testing modifier: Device-less engine validation")
 endif()

@@ -89,6 +89,9 @@ function(register_benchdnn_test engine driver test_file)
        AND NOT ${DNNL_GPU_VENDOR} MATCHES "NVIDIA"
        AND NOT ${DNNL_GPU_VENDOR} MATCHES "AMD")
         set(mode_modifier "--mode-modifier=P")
+        if(DNNL_TEST_SET_HAS_ADD_DEVICELESS EQUAL 1)
+            set(mode_modifier "${mode_modifier}D")
+        endif()
     endif()
 
     foreach(tm ${test_mode})

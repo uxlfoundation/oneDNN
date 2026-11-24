@@ -171,6 +171,7 @@ Refer to [modes](benchdnn_general_info.md) for details.
   - empty for no modifiers (the default)
   - `P` or `p` for parallel backend object creation
   - `M` or `m` for disabling usage of reference memory
+  - `D` or `d` for validating implementations on a device-less engine
 
 Refer to [mode modifiers](benchdnn_general_info.md) for details.
 

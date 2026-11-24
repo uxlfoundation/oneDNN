@@ -68,6 +68,8 @@ public:
         return device_info_.get();
     }
 
+    // Shared by the runtime and device-less engines so that a primitive blob
+    // exported from either is found by the same cache blob ID.
     status_t serialize_device(serialization_stream_t &sstream) const override;
 
     status_t get_cache_blob_size(size_t *size) const override {

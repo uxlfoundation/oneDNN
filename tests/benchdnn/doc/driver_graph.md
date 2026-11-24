@@ -271,7 +271,8 @@ Deterministic mode is enabled by default in this mode; see
 ```
 
 The graph driver does not support parallel test object creation
-(`--mode-modifier=P`). Other modes, including fast performance mode
+(`--mode-modifier=P`) and device-less engine validation
+(`--mode-modifier=D`). Other modes, including fast performance mode
 (`--mode=F`), are supported. The no-reference-memory modifier
 (`--mode-modifier=M`) is supported with modes that do not require reference
 results.

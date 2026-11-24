@@ -26,6 +26,10 @@
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/ocl/utils.hpp"
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/deviceless/engine.hpp"
+#endif
+
 using namespace dnnl::impl;
 
 status_t dnnl_ocl_interop_engine_create(
@@ -44,7 +48,8 @@ status_t dnnl_ocl_interop_engine_create(
 status_t dnnl_ocl_interop_engine_get_context(
         engine_t *engine, cl_context *context) {
     bool args_ok = !utils::any_null(engine, context)
-            && (engine->runtime_kind() == runtime_kind::ocl);
+            && (engine->runtime_kind() == runtime_kind::ocl)
+            && !engine->is_deviceless();
 
     if (!args_ok) return status::invalid_arguments;
 
@@ -56,7 +61,8 @@ status_t dnnl_ocl_interop_engine_get_context(
 
 status_t dnnl_ocl_interop_get_device(engine_t *engine, cl_device_id *device) {
     bool args_ok = !utils::any_null(engine, device)
-            && (engine->runtime_kind() == runtime_kind::ocl);
+            && (engine->runtime_kind() == runtime_kind::ocl)
+            && !engine->is_deviceless();
 
     if (!args_ok) return status::invalid_arguments;
 
@@ -80,6 +86,21 @@ status_t dnnl_ocl_interop_engine_create_from_cache_blob(engine_t **engine,
 
     const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
     return f.engine_create(engine, device, context, index, cb);
+}
+
+status_t dnnl_ocl_interop_deviceless_engine_create(
+        engine_t **engine, size_t size, const uint8_t *cache_blob) {
+    VERROR_ENGINE(!utils::any_null(engine, cache_blob),
+            status::invalid_arguments, VERBOSE_NULL_ARG);
+    VERROR_ENGINE(
+            size > 0, status::invalid_arguments, VERBOSE_BAD_PARAM, "size");
+
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
+    return gpu::intel::deviceless::engine_create(engine, runtime_kind::ocl, cb);
+#else
+    return status::unimplemented;
+#endif
 }
 
 status_t dnnl_ocl_interop_engine_get_cache_blob(

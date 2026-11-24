@@ -48,6 +48,13 @@ static bool in_cleanup() {
 
 status_t lookup_zero_pool(
         intel::engine_t *engine, size_t chunk_size, zero_pool_t **out_pool) {
+    // The pool allocates device memory, which a device-less engine doesn't
+    // have. Its primitives are never executed, so they need no pool.
+    if (engine->is_deviceless()) {
+        *out_pool = nullptr;
+        return status::success;
+    }
+
     status_t status = status::success;
 
     (void)in_cleanup();

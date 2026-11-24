@@ -120,6 +120,72 @@ using namespace dnnl;
 }
 ~~~
 
+## Device-less Engine
+
+An application that has no access to the GPU driver in the process that
+compiles a model can still populate a persistent cache with a device-less
+engine. Such an engine is created from an engine cache blob and generates
+primitive cache blobs without making any runtime calls:
+
+1. On the target machine, export the engine cache blob from a real engine.
+2. In the compilation process, create a device-less engine from that blob via
+@ref dnnl::ocl_interop::make_deviceless_engine or
+@ref dnnl::ze_interop::make_deviceless_engine, create primitive descriptors and
+primitives on it, and store their cache blob IDs and cache blobs.
+3. On the same machine, create a real engine of the same runtime from the
+device, the context, and the engine cache blob via
+@ref dnnl::ocl_interop::make_engine(cl_device_id, cl_context, const std::vector<uint8_t> &)
+or
+@ref dnnl::ze_interop::make_engine(ze_driver_handle_t, ze_device_handle_t, ze_context_handle_t, const std::vector<uint8_t> &),
+and create primitives on it from the stored cache blobs.
+
+The cache blob ID of a primitive descriptor is the same on the device-less and
+the real engines, so the cache blobs are found by the same key.
+
+@note
+A device-less engine is created only from an engine cache blob exported by an
+engine of the same runtime; otherwise, the creation fails with
+#dnnl_invalid_arguments. A device-less engine requires the offline compiler
+shipped with the GPU driver; when it is missing, the creation fails with
+#dnnl_runtime_error.
+
+A device-less engine supports primitive descriptor and primitive creation and
+primitive cache blob retrieval only. Primitives can't be executed, and memory
+objects and streams can't be created on it. Interop getters and interop memory
+creation return #dnnl_invalid_arguments for it. Primitive creation from a cache
+blob on a device-less engine is not supported.
+
+### API Usage Example (OpenCL GPU Runtime)
+
+~~~cpp
+using namespace dnnl;
+
+// On the target machine.
+{
+    engine ocl_engine = ocl_interop::make_engine(device, context);
+    store_engine_blob_on_disk(ocl_interop::get_engine_cache_blob(ocl_engine));
+}
+
+// In a process without driver access.
+{
+    engine dl_engine = ocl_interop::make_deviceless_engine(
+            load_engine_blob_from_disk());
+    convolution_forward::primitive_desc conv_pd(dl_engine, ...);
+    convolution_forward conv(conv_pd);
+    store_cache_blob_on_disk(conv_pd.get_cache_blob_id(), conv.get_cache_blob());
+}
+
+// On the target machine.
+{
+    engine ocl_engine = ocl_interop::make_engine(
+            device, context, load_engine_blob_from_disk());
+    convolution_forward::primitive_desc conv_pd(ocl_engine, ...);
+    std::vector<uint8_t> value
+            = load_cache_blob_from_disk(conv_pd.get_cache_blob_id());
+    convolution_forward conv(conv_pd, value);
+}
+~~~
+
 ## Memory descriptor
 
 When serializing primitives, a binary blob can be obtained from a

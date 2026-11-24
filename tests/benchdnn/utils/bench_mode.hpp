@@ -53,6 +53,10 @@ enum class mode_modifier_t : unsigned {
     // Disable usage of reference memories in the flow. It removes mapping,
     // unmapping and filling functionality.
     no_ref_memory = 0x2,
+    // Validate that the tested implementation compiles on a device-less
+    // engine created from the test engine cache blob. It recompiles kernels,
+    // which is why it's not enabled by default.
+    deviceless = 0x4,
 };
 
 mode_modifier_t operator|(mode_modifier_t lhs, mode_modifier_t rhs);

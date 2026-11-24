@@ -23,6 +23,8 @@
 #include "xpu/ze/engine_impl.hpp"
 #include "xpu/ze/utils.hpp"
 
+#include "gpu/intel/deviceless/engine.hpp"
+
 using namespace dnnl::impl;
 
 status_t dnnl_ze_interop_engine_create(engine_t **engine,
@@ -44,7 +46,8 @@ status_t dnnl_ze_interop_engine_create(engine_t **engine,
 status_t dnnl_ze_interop_engine_get_context(
         engine_t *engine, ze_context_handle_t *context) {
     bool args_ok = !utils::any_null(engine, context)
-            && (engine->runtime_kind() == runtime_kind::ze);
+            && (engine->runtime_kind() == runtime_kind::ze)
+            && !engine->is_deviceless();
     if (!args_ok) return status::invalid_arguments;
 
     auto *ze_engine_impl
@@ -57,7 +60,8 @@ status_t dnnl_ze_interop_engine_get_context(
 status_t dnnl_ze_interop_engine_get_device(
         engine_t *engine, ze_device_handle_t *device) {
     bool args_ok = !utils::any_null(engine, device)
-            && (engine->runtime_kind() == runtime_kind::ze);
+            && (engine->runtime_kind() == runtime_kind::ze)
+            && !engine->is_deviceless();
     if (!args_ok) return status::invalid_arguments;
 
     auto *ze_engine_impl
@@ -70,7 +74,8 @@ status_t dnnl_ze_interop_engine_get_device(
 status_t dnnl_ze_interop_engine_get_driver(
         engine_t *engine, ze_driver_handle_t *driver) {
     bool args_ok = !utils::any_null(engine, driver)
-            && (engine->runtime_kind() == runtime_kind::ze);
+            && (engine->runtime_kind() == runtime_kind::ze)
+            && !engine->is_deviceless();
     if (!args_ok) return status::invalid_arguments;
 
     auto *ze_engine_impl
@@ -97,6 +102,17 @@ status_t dnnl_ze_interop_engine_create_from_cache_blob(engine_t **engine,
 
     const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
     return f.engine_create(engine, driver, device, context, index, cb);
+}
+
+status_t dnnl_ze_interop_deviceless_engine_create(
+        engine_t **engine, size_t size, const uint8_t *cache_blob) {
+    VERROR_ENGINE(engine, status::invalid_arguments, VERBOSE_NULL_ARG);
+    VERROR_ENGINE(cache_blob, status::invalid_arguments, VERBOSE_NULL_ARG);
+    VERROR_ENGINE(
+            size > 0, status::invalid_arguments, VERBOSE_BAD_PARAM, "size");
+
+    const std::vector<uint8_t> cb(cache_blob, cache_blob + size);
+    return gpu::intel::deviceless::engine_create(engine, runtime_kind::ze, cb);
 }
 
 status_t dnnl_ze_interop_engine_get_cache_blob(

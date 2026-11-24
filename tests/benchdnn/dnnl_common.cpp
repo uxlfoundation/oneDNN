@@ -2171,6 +2171,62 @@ int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
     return OK;
 }
 
+namespace {
+// A device-less primitive can't be executed as the engine has no streams or
+// memory. Checking that it compiles with the same implementation verifies it's
+// a valid replacement of the tested one.
+int check_deviceless_impl(dnnl_primitive_t prim,
+        const init_pd_func_t &init_pd_func, const base_prb_t *base_prb,
+        res_t *res, dir_t dir, const_dnnl_primitive_desc_t hint) {
+    const auto &deviceless_engine = get_deviceless_engine();
+    if (!deviceless_engine) return OK;
+
+    // A copy keeps the device-less creation out of the tested primitive timers.
+    res_t deviceless_res = *res;
+    benchdnn_dnnl_wrapper_t<dnnl_primitive_t> deviceless_primw;
+    const int status = create_primitive(deviceless_primw, deviceless_engine,
+            init_pd_func, base_prb, &deviceless_res, dir, hint,
+            /* is_service_prim = */ false, /* src_md = */ nullptr,
+            /* force_f32_dt = */ false);
+    const auto fail = [&](const std::string &msg) {
+        BENCHDNN_PRINT(0, "Error: device-less engine %s.\n", msg.c_str());
+        res->state = FAILED;
+        res->reason = reason_t::failed_deviceless;
+        return FAIL;
+    };
+
+    // The tested primitive was created, so any skip here means the device-less
+    // engine dispatched differently.
+    if (status != OK || deviceless_res.state == SKIPPED)
+        return fail("failed to create a primitive");
+
+    // The name goes first as the most readable report of a dispatch mismatch.
+    const auto deviceless_pd = query_pd(deviceless_primw);
+    const auto deviceless_impl_name = query_impl_info(deviceless_pd);
+    if (deviceless_impl_name != res->impl_name)
+        return fail("implementation `" + deviceless_impl_name
+                + "` doesn't match `" + res->impl_name + "`");
+
+    // A primitive blob compiled ahead of time is found on the target device by
+    // this ID, so it must match the one of the real engine.
+    std::vector<uint8_t> id, deviceless_id;
+    if (get_cache_blob_id(id, query_pd(prim)) != OK
+            || get_cache_blob_id(deviceless_id, deviceless_pd) != OK)
+        return fail("failed to query a cache blob ID");
+    if (deviceless_id != id) return fail("cache blob ID doesn't match");
+
+    // The same implementation may still generate different kernels, e.g., when
+    // its configuration depends on the device properties.
+    std::vector<uint8_t> blob, deviceless_blob;
+    if (get_cache_blob(blob, prim) != OK
+            || get_cache_blob(deviceless_blob, deviceless_primw) != OK)
+        return fail("failed to get a cache blob");
+    if (deviceless_blob != blob) return fail("cache blob doesn't match");
+
+    return OK;
+}
+} // namespace
+
 int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
         const init_pd_func_t &init_pd_func, const base_prb_t *base_prb,
         res_t *res, dir_t dir, const_dnnl_primitive_desc_t hint,
@@ -2227,6 +2283,12 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
     auto pd = query_pd(primw);
     res->impl_name = query_impl_info(pd);
     BENCHDNN_PRINT(5, "oneDNN implementation: %s\n", res->impl_name.c_str());
+
+    if (has_bench_mode_modifier(mode_modifier_t::deviceless)) {
+        SAFE(check_deviceless_impl(
+                     primw, init_pd_func, base_prb, res, dir, hint),
+                WARN);
+    }
     // Collect memory footprint (perf report) for a given primitive descriptor.
     SAFE(get_memory_footprint(pd, res), WARN);
 

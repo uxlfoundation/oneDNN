@@ -48,6 +48,14 @@ struct ref_inner_product_int8_fwd_t : public primitive_t {
             const bool allow_all_tags = true; // ref should support all tags
 
             VDISPATCH_INNER_PRODUCT(is_fwd(), VERBOSE_BAD_PROPKIND);
+            if (with_bias()) {
+                VDISPATCH_INNER_PRODUCT_SC(
+                        platform::has_data_type_support(bia_type),
+                        VERBOSE_UNSUPPORTED_DT);
+            }
+            VDISPATCH_INNER_PRODUCT_SC(
+                    platform::has_data_type_support(dst_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     utils::one_of(src_type, s8, u8), VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(wei_type == s8, VERBOSE_UNSUPPORTED_DT);
@@ -57,12 +65,6 @@ struct ref_inner_product_int8_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     utils::one_of(dst_type, f32, f16, bf16, s32, s8, u8),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(
-                    IMPLICATION(with_bias(),
-                            platform::has_data_type_support(bia_type)),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(platform::has_data_type_support(dst_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     set_default_params(allow_all_tags) == status::success,
@@ -77,7 +79,7 @@ struct ref_inner_product_int8_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_INNER_PRODUCT(
                     attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_INNER_PRODUCT(
+            VDISPATCH_INNER_PRODUCT_SC(
                     ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_INNER_PRODUCT(

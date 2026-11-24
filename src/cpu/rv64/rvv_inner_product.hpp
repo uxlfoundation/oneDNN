@@ -112,8 +112,11 @@ struct rvv_inner_product_fwd_t : public primitive_t {
                     with_bias(), utils::one_of(bia_type, f32, src_type));
             return dst_ok && src_wei_ok && bia_ok
                     && platform::has_data_type_support(src_type)
+                    == status::success
                     && platform::has_data_type_support(wei_type)
-                    && platform::has_data_type_support(dst_type);
+                    == status::success
+                    && platform::has_data_type_support(dst_type)
+                    == status::success;
         }
 
         bool check_layouts(const memory_desc_wrapper &src_d,

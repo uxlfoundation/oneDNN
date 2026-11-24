@@ -43,17 +43,18 @@ struct ref_binary_t : public primitive_t {
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
 
-            VDISPATCH_BINARY(
+            VDISPATCH_BINARY_SC(
                     platform::has_data_type_support(src_md(0)->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BINARY(
+            VDISPATCH_BINARY_SC(
                     platform::has_data_type_support(src_md(1)->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BINARY(IMPLICATION(is_ternary_op(),
-                                     platform::has_data_type_support(
-                                             src_md(2)->data_type)),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BINARY(
+            if (is_ternary_op()) {
+                VDISPATCH_BINARY_SC(
+                        platform::has_data_type_support(src_md(2)->data_type),
+                        VERBOSE_UNSUPPORTED_DT);
+            }
+            VDISPATCH_BINARY_SC(
                     platform::has_data_type_support(dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(set_default_params() == status::success,
@@ -64,7 +65,7 @@ struct ref_binary_t : public primitive_t {
             VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),
                                      check_scales_mask()),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_BINARY(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
+            VDISPATCH_BINARY_SC(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_BINARY(
                     attr_.set_default_formats(dst_md(0)) == status::success,

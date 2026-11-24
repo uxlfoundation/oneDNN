@@ -78,7 +78,8 @@ struct jit_uni_shuffle_t : public primitive_t {
             // so we support all the data 32/16 sized types.
             VDISPATCH_SHUFFLE(utils::one_of(dt, f32, s32, f16, bf16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SHUFFLE(platform::has_data_type_support(dt),
+            VDISPATCH_SHUFFLE(
+                    platform::has_data_type_support(dt) == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SHUFFLE(axis() == 1, VERBOSE_BAD_AXIS);
             VDISPATCH_SHUFFLE(

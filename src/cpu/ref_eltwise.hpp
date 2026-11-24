@@ -48,18 +48,18 @@ struct ref_eltwise_fwd_t : public primitive_t {
             const memory_desc_wrapper dst_d(dst_md());
 
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_ELTWISE_SC(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_ISA_DT_MISMATCH);
             VDISPATCH_ELTWISE(utils::one_of(src_md()->data_type, f32, bf16, f16,
                                       s32, s8, u8, f8_e4m3, f8_e5m2),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_INCONSISTENT_DT, "src", "dst");
             VDISPATCH_ELTWISE(
-                    platform::has_data_type_support(src_md()->data_type),
-                    VERBOSE_ISA_DT_MISMATCH);
-            VDISPATCH_ELTWISE(
                     attr()->has_default_values(sm::post_ops | sm::dropout),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_ELTWISE(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
+            VDISPATCH_ELTWISE_SC(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_ELTWISE(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
@@ -144,6 +144,9 @@ struct ref_eltwise_bwd_t : public primitive_t {
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
 
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_ELTWISE_SC(
+                    platform::has_data_type_support(data_md()->data_type),
+                    VERBOSE_ISA_DT_MISMATCH);
             VDISPATCH_ELTWISE(utils::one_of(data_md()->data_type, f32, bf16,
                                       f16, f8_e4m3, f8_e5m2),
                     VERBOSE_UNSUPPORTED_DT);
@@ -151,9 +154,6 @@ struct ref_eltwise_bwd_t : public primitive_t {
                     utils::everyone_is(data_md()->data_type,
                             diff_src_md()->data_type, diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_ELTWISE(
-                    platform::has_data_type_support(data_md()->data_type),
-                    VERBOSE_ISA_DT_MISMATCH);
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_ELTWISE(

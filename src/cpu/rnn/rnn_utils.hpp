@@ -739,7 +739,8 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
         rnn.dt_conf = all_f32;
     else if (utils::everyone_is(data_type::bf16, src_layer_d.data_type(),
                      dst_layer_d.data_type(), weights_layer_d.data_type())) {
-        if (!platform::has_data_type_support(data_type::bf16)) return false;
+        if (platform::has_data_type_support(data_type::bf16) != status::success)
+            return false;
 #if DNNL_X64
         if (!(x64::mayiuse(x64::avx512_core) || x64::mayiuse(x64::avx2_vnni_2)))
             return false;
@@ -749,7 +750,8 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
         rnn.dt_conf = all_bf16;
     } else if (utils::everyone_is(data_type::f16, src_layer_d.data_type(),
                        dst_layer_d.data_type(), weights_layer_d.data_type())) {
-        if (!platform::has_data_type_support(data_type::f16)) return false;
+        if (platform::has_data_type_support(data_type::f16) != status::success)
+            return false;
 #if DNNL_X64
         if (!(x64::mayiuse(x64::avx512_core_fp16)
                     || x64::mayiuse(x64::avx2_vnni_2)))
@@ -783,7 +785,9 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
             rnn.dt_conf = f32u8f32f32;
     }
 
-    if (!rnn.is_fwd && !platform::has_training_support(src_layer_d.data_type()))
+    if (!rnn.is_fwd
+            && platform::has_training_support(src_layer_d.data_type())
+                    != status::success)
         return false;
 
     // Set problem members defining problem sizes

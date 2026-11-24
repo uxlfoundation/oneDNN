@@ -44,8 +44,10 @@ protected:
         bool has_bf16 = false;
         bool has_f16 = false;
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-        has_bf16 = dnnl::impl::cpu::platform::has_data_type_support(dnnl_bf16);
-        has_f16 = dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16);
+        has_bf16 = dnnl::impl::cpu::platform::has_data_type_support(dnnl_bf16)
+                == dnnl_success;
+        has_f16 = dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16)
+                == dnnl_success;
 #endif
 
 #if DNNL_X64 && DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE

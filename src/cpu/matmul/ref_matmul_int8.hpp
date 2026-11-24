@@ -51,6 +51,16 @@ struct ref_matmul_int8_t : public primitive_t {
 
             VDISPATCH_MATMUL(
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(src_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(wei_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL_SC(platform::has_data_type_support(dst_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            if (with_bias()) {
+                VDISPATCH_MATMUL_SC(platform::has_data_type_support(bia_type),
+                        VERBOSE_UNSUPPORTED_DT);
+            }
             VDISPATCH_MATMUL(
                     utils::one_of(src_type, s8, u8), VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(utils::one_of(wei_type, s8, u8, s4, u4, u2, u3),
@@ -61,15 +71,6 @@ struct ref_matmul_int8_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(
                     utils::one_of(dst_type, f32, bf16, f16, s32, s8, u8),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(src_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(wei_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(platform::has_data_type_support(dst_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_MATMUL(IMPLICATION(with_bias(),
-                                     platform::has_data_type_support(bia_type)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_MATMUL(
                     attr()->has_default_values(smask_t::scales_data_type
@@ -84,7 +85,7 @@ struct ref_matmul_int8_t : public primitive_t {
             VDISPATCH_MATMUL(attr_.post_ops_.check_sum_consistency(dst_type,
                                      /* is_int8 */ true),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
+            VDISPATCH_MATMUL_SC(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             CHECK(attr_scales_ok(engine,
                     {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},

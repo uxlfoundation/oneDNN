@@ -60,7 +60,8 @@ struct jit_uni_dwconv_fwd_t : public primitive_t {
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(with_groups() && IC() == G(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(platform::has_data_type_support(src_d.data_type()),
+            VDISPATCH_CONV(platform::has_data_type_support(src_d.data_type())
+                            == status::success,
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(src_d.data_type() == f16, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);

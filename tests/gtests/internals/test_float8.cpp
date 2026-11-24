@@ -32,8 +32,8 @@ using dnnl::impl::utils::bit_cast;
 namespace dnnl {
 
 TEST(test_ref_float8_conversions, f8_e5m2_to_f32) {
-    SKIP_IF(!impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e5m2),
+    SKIP_IF(impl::cpu::platform::has_data_type_support(impl::data_type::f8_e5m2)
+                    != dnnl_success,
             "Engine does not support this data type.");
     // check all 256 f8_e5m2 values
     impl::parallel_nd(0xff, [=](uint16_t u16) {
@@ -60,8 +60,8 @@ TEST(test_ref_float8_conversions, f8_e5m2_to_f32) {
 }
 
 TEST(test_ref_float8_conversions, f8_e4m3_to_f32) {
-    SKIP_IF(!impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e4m3),
+    SKIP_IF(impl::cpu::platform::has_data_type_support(impl::data_type::f8_e4m3)
+                    != dnnl_success,
             "Engine does not support this data type.");
     // check all 256 f8_e4m3 values
     impl::parallel_nd(0xff, [=](uint16_t u16) {
@@ -90,8 +90,8 @@ TEST(test_ref_float8_conversions, f8_e4m3_to_f32) {
 }
 
 TEST(test_ref_float8_conversions, f8_e5m2_to_bf16) {
-    SKIP_IF(!impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e5m2),
+    SKIP_IF(impl::cpu::platform::has_data_type_support(impl::data_type::f8_e5m2)
+                    != dnnl_success,
             "Engine does not support this data type.");
     // check all 256 f8_e5m2 values
     impl::parallel_nd(0xff, [&](uint16_t u16) {
@@ -119,8 +119,8 @@ TEST(test_ref_float8_conversions, f8_e5m2_to_bf16) {
 }
 
 TEST(test_ref_float8_conversions, f8_e4m3_to_bf16) {
-    SKIP_IF(!impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e4m3),
+    SKIP_IF(impl::cpu::platform::has_data_type_support(impl::data_type::f8_e4m3)
+                    != dnnl_success,
             "Engine does not support this data type.");
     // check all 256 f8_e4m3 values
     impl::parallel_nd(0xff, [&](uint16_t u16) {
@@ -150,8 +150,8 @@ TEST(test_ref_float8_conversions, f8_e4m3_to_bf16) {
 }
 
 TEST(test_ref_float8_conversions, f32_to_f8_e4m3) {
-    SKIP_IF(!impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e4m3),
+    SKIP_IF(impl::cpu::platform::has_data_type_support(impl::data_type::f8_e4m3)
+                    != dnnl_success,
             "Engine does not support this data type.");
     // check all 2^32 f32 values
     impl::parallel_nd(0x100000000, [=](int64_t s64) {
@@ -180,8 +180,8 @@ TEST(test_ref_float8_conversions, f32_to_f8_e4m3) {
 
 #if DNNL_X64
 TEST(test_jit_float8_conversions, f8_e5m2_to_f32) {
-    SKIP_IF(!impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e5m2),
+    SKIP_IF(impl::cpu::platform::has_data_type_support(impl::data_type::f8_e5m2)
+                    != dnnl_success,
             "Engine does not support this data type.");
 
     // check all 2^8 fp8 values
@@ -225,8 +225,8 @@ TEST(test_jit_float8_conversions, f8_e5m2_to_f32) {
 }
 
 TEST(test_jit_float8_conversions, f8_e4m3_to_f32) {
-    SKIP_IF(!impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e4m3),
+    SKIP_IF(impl::cpu::platform::has_data_type_support(impl::data_type::f8_e4m3)
+                    != dnnl_success,
             "Engine does not support this data type.");
 
     // check all 2^8 fp8 values
@@ -270,10 +270,10 @@ TEST(test_jit_float8_conversions, f8_e4m3_to_f32) {
 
 TEST(test_jit_float8_conversions, f16_to_fp8) {
     const bool is_fp8_supported = impl::utils::everyone_is(true,
-            impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e5m2),
-            impl::cpu::platform::has_data_type_support(
-                    impl::data_type::f8_e4m3));
+            impl::cpu::platform::has_data_type_support(impl::data_type::f8_e5m2)
+                    == dnnl_success,
+            impl::cpu::platform::has_data_type_support(impl::data_type::f8_e4m3)
+                    == dnnl_success);
     SKIP_IF(!is_fp8_supported, "Engine does not support this data type.");
 
     // check all 2^16 f16 values

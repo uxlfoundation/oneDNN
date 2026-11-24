@@ -178,7 +178,8 @@ final string must contain a single value for a set and as many compatible values
 for modifiers.
 
 The set value is defined by one of: `SMOKE`, `CI`, `NIGHTLY`, or `WEEKLY`. These
-may be used with one of the following modifier values: `NO_CORR`, `ADD_BITWISE`.
+may be used with one of the following modifier values: `NO_CORR`, `ADD_BITWISE`,
+`ADD_DEVICELESS`.
 The set and modifiers are passed as a semicolon separated list. For example:
 ~~~sh
 -DONEDNN_TEST_SET=CI;NO_CORR
@@ -200,6 +201,10 @@ when correctness validation is not necessary.
 When `ADD_BITWISE` modifier value is specified, the build system will add an
 additional set of tests with a bitwise validation mode for benchdnn. The
 correctness set remains unmodified.
+When `ADD_DEVICELESS` modifier value is specified, benchdnn testing targets for
+Intel GPU validate that every tested implementation is also created on a
+device-less engine. It recompiles OpenCL C kernels, which increases testing
+time.
 
 @anchor opt_use_clang_sanitizer
 #### ONEDNN_USE_CLANG_SANITIZER

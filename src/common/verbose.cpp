@@ -324,6 +324,9 @@ std::ostream &operator<<(std::ostream &ss, engine_kind_t eng_kind) {
 
 std::ostream &operator<<(std::ostream &ss, const engine_t *engine) {
     ss << dnnl_engine_kind2str(engine->kind());
+    // A device-less engine has no device index, and its primitives must not
+    // be mistaken for ones created on a real device.
+    if (engine->is_deviceless()) return ss << ":deviceless";
     if (dnnl_engine_get_count(engine->kind()) > 1)
         ss << ":" + std::to_string(engine->index());
     return ss;

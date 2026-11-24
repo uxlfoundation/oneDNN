@@ -28,7 +28,8 @@ status_t dnnl_ze_interop_memory_create(memory_t **memory,
         const memory_desc_t *md, engine_t *engine, int nhandles,
         void **handles) {
     bool ok = !utils::any_null(memory, md, engine, handles) && nhandles > 0
-            && engine->runtime_kind() == runtime_kind::ze;
+            && engine->runtime_kind() == runtime_kind::ze
+            && !engine->is_deviceless();
     if (!ok) return status::invalid_arguments;
 
     const auto mdw = memory_desc_wrapper(md);

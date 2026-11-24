@@ -109,6 +109,10 @@ status_t get_device_ip(ze_device_handle_t device, uint32_t &ip_version) {
 
     ZE_CHECK(xpu::ze::zeDeviceGetProperties(device, &deviceProps));
     ip_version = devicePropsIP.ipVersion;
+    // Drivers without the IP version extension leave it zero silently, while
+    // offline kernel compilation needs a valid one to name the target.
+    VERROR_ENGINE(ip_version != 0, status::runtime_error,
+            "Level Zero driver doesn't report the device IP version");
     return status::success;
 }
 

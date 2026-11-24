@@ -33,7 +33,8 @@ status_t dnnl_ocl_interop_memory_create_v2(memory_t **memory,
         xpu::ocl::memory_kind_t memory_kind, int nhandles, void **handles) {
 
     bool ok = !utils::any_null(memory, md, engine, handles) && nhandles > 0
-            && engine->runtime_kind() == runtime_kind::ocl;
+            && engine->runtime_kind() == runtime_kind::ocl
+            && !engine->is_deviceless();
     if (!ok) return status::invalid_arguments;
 
     const auto mdw = memory_desc_wrapper(md);
@@ -88,7 +89,8 @@ status_t dnnl_ocl_interop_memory_create(memory_t **memory,
         xpu::ocl::memory_kind_t memory_kind, void *handle) {
 
     bool ok = !utils::any_null(memory, md, engine)
-            && engine->runtime_kind() == runtime_kind::ocl;
+            && engine->runtime_kind() == runtime_kind::ocl
+            && !engine->is_deviceless();
     if (!ok) return status::invalid_arguments;
 
     const auto mdw = memory_desc_wrapper(md);

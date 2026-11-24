@@ -127,6 +127,13 @@ following modifiers are supported:
   need reference memory, like run mode. It includes skipping
   mapping/unmapping memory objects and also skipping filling functions. Every
   value of a device memory object is assigned with a special value directly.
+* Device-less engine validation (`D`). This is an extension of step 4, when each
+  tested primitive is also created on a device-less engine made from the test
+  engine cache blob. The test fails if the device-less engine picks a different
+  implementation, or if the primitive cache blob ID or the primitive cache blob
+  differ from the ones of the tested primitive. Applicable only for Intel GPU
+  engines with OpenCL or Level Zero runtime, no-op otherwise. OpenCL C kernels
+  are compiled twice, once for each engine.
 
 ## Problem Statuses
 

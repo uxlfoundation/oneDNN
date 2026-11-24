@@ -142,6 +142,9 @@ enum class reason_t {
     // The internal reorder primitive when moving data from on dnn_mem_t object
     // to another failed for some reason.
     failed_service_reorder,
+    // The device-less engine couldn't create the tested primitive or picked a
+    // different implementation.
+    failed_deviceless,
     // The problem requires more RAM than the system provides.
     skip_not_enough_ram,
     // The library fetched the implementation that was requested to be skipped.

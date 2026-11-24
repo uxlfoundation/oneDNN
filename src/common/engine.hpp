@@ -152,6 +152,11 @@ struct dnnl_engine {
 
     virtual bool mayiuse_system_memory_allocators() const { return false; }
 
+    // A device-less engine reports a runtime kind but owns no runtime
+    // objects, so interop and runtime-specific code must check this before
+    // relying on the runtime kind.
+    virtual bool is_deviceless() const { return false; }
+
     const dnnl::impl::engine_impl_t *impl() const { return impl_.get(); }
 
 #ifdef ONEDNN_BUILD_GRAPH

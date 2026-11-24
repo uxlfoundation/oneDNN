@@ -146,7 +146,7 @@ synchronization on entry and on exit in the `dnnl::primitive::execute()` call.
 To ensure accurate tracking of timing information for GPU runtimes, the verbose
 mode uses a non-blocking approach which prints device-measured
 times for primitive execution instead of relying on the wall time
-measurements. Asynchronous profiling is currently supported for OpenCL, SYCL 
+measurements. Asynchronous profiling is currently supported for OpenCL, SYCL
 and L0 runtimes on Intel GPUs.
 
 Asynchronous profiling is also supported for CPU runtimes using the
@@ -290,6 +290,10 @@ where:
    memory is dense, the field will be empty.
 5. `extra_flags` is unspecified information that is intended for development
    purposes.
+
+@note
+Grouped matmul lines show `hint_max_group_size:*` in the auxiliary information.
+When max group size hint is passed during the execution, `*` is replaced with the hint value.
 
 @note
 When oneDNN verbose mode is enabled for builds with

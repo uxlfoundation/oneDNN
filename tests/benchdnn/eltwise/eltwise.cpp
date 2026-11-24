@@ -230,6 +230,7 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
     const bool is_log = prb->alg == alg_t::LOG;
+    const bool is_exp = prb->alg == alg_t::EXP || prb->alg == alg_t::EXP_DST;
 
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
@@ -253,10 +254,16 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
         std::uniform_real_distribution<> fgen(0.f, 0.09f);
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            const int64_t num_of_generation_variants
-                    = 13 + (2 * static_cast<int64_t>(is_log));
+            // Keep an odd variant count for `is_exp` (17) so special values
+            // naturally hit all power-of-two SIMD lanes (e.g., 16 f32 lanes on
+            // AVX-512), and offset by `kind` so `SRC` and `DIFF_DST` don't pair
+            // `NaN` at the same index on backward.
+            const int64_t num_of_generation_variants = 13
+                    + (2 * static_cast<int64_t>(is_log || is_exp))
+                    + (2 * static_cast<int64_t>(is_exp));
+            const int64_t gen_idx = is_exp ? (idx + kind) : idx;
             float value = FLT_MAX;
-            switch (idx % num_of_generation_variants) {
+            switch (gen_idx % num_of_generation_variants) {
                 case 0: value = (float)igen(msr); break; // [0-10] pos
                 case 1: value = -(float)igen(msr); break; // [0-10] neg
                 case 2: value = fgen(msr); break; // [0.-0.1) pos
@@ -276,8 +283,14 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
                     break; // values close to logf(FLT_MAX)/2.0 for fwd mish alg testing
                 case 11: value = prb->alpha; break; // `x = alpha` corner cases
                 case 12: value = prb->beta; break; // `x = beta` corner cases
-                case 13: value = INFINITY; break; // used in LOG alg only
-                case 14: value = -INFINITY; break; // used in LOG alg only
+                case 13:
+                    value = INFINITY;
+                    break; // used in LOG and EXP algs only
+                case 14:
+                    value = -INFINITY;
+                    break; // used in LOG and EXP algs only
+                case 15: value = NAN; break; // used in EXP algs only
+                case 16: value = -NAN; break; // used in EXP algs only
             }
             value = round_to_nearest_representable(prb->dt, value);
 

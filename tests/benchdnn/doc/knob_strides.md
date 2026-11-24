@@ -39,6 +39,9 @@ Just source strides specification looks like this: `--strides=3x4x5x6:`.
 be supported for a single argument simultaneously. However, for the example
 above, specifying `--dtag=TAG` would be legit.
 
+With `--inplace=true`, the destination reuses the source memory, so only source
+strides can be specified; destination strides are rejected as invalid input.
+
 ## Limitations
 
 The option has limited support across drivers in benchdnn.

@@ -115,13 +115,13 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     const auto src_tag = (dir & FLAG_FWD) ? prb->tag : tag::any;
 
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> src_d;
-    DNN_SAFE_STATUS(
-            dnn_mem_t::init_md(src_d, prb->ndims, prb->src_dims().data(),
-                    force_f32_dt ? dnnl_f32 : prb->src_dt(), src_tag));
+    DNN_SAFE_STATUS(dnn_mem_t::init_md(src_d, prb->ndims,
+            prb->src_dims().data(), force_f32_dt ? dnnl_f32 : prb->src_dt(),
+            src_tag, prb->strides[0]));
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dst_d;
-    DNN_SAFE_STATUS(
-            dnn_mem_t::init_md(dst_d, prb->ndims, prb->dst_dims().data(),
-                    force_f32_dt ? dnnl_f32 : prb->dst_dt(), tag::any));
+    DNN_SAFE_STATUS(dnn_mem_t::init_md(dst_d, prb->ndims,
+            prb->dst_dims().data(), force_f32_dt ? dnnl_f32 : prb->dst_dt(),
+            tag::any, prb->strides[1]));
 
     attr_args_t attr_args;
     DNN_SAFE_STATUS(attr_args.prepare_post_ops_mds(
@@ -138,13 +138,13 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
         TIME_C_PD(DNN_SAFE_STATUS(dnnl_pooling_forward_primitive_desc_create(
                 &init_pd_args.pd, init_pd_args.engine, prop_kind, alg,
                 init_pd_args.src_md ? init_pd_args.src_md : src_d, dst_d,
-                prb->strides().data(), prb->kernel().data(),
+                prb->kstrides().data(), prb->kernel().data(),
                 prb->dilations().data(), prb->padding().data(),
                 prb->padding_r().data(), dnnl_attr)));
     } else {
         TIME_C_PD(DNN_SAFE_STATUS(dnnl_pooling_backward_primitive_desc_create(
                 &init_pd_args.pd, init_pd_args.engine, alg, src_d, dst_d,
-                prb->strides().data(), prb->kernel().data(),
+                prb->kstrides().data(), prb->kernel().data(),
                 prb->dilations().data(), prb->padding().data(),
                 prb->padding_r().data(), init_pd_args.hint, dnnl_attr)));
     }
@@ -332,7 +332,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
                 break;
             case DNNL_ARG_DST:
-                SAFE(!check_md_consistency_with_tag(mem.md_, prb->tag), WARN);
+                SAFE(!check_md_consistency_with_tag(
+                             mem.md_, prb->tag, prb->strides[1]),
+                        WARN);
                 break;
             default:
                 std::unordered_map<int, fill_cfg_t> fill_cfg_map;

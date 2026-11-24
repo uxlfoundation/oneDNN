@@ -15,6 +15,9 @@ where *resampling-knobs* are:
             Refer to [data types](knobs_dt.md) for details.
  - `--tag={nchw [default], ...}` -- physical src and dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
+ - `--strides=SRC_STRIDES:DST_STRIDES` -- physical memory layout specification
+            for `src` and `dst` tensors through strides values.
+            Refer to [option documentation](knob_strides.md) for details.
  - `--alg={nearest [default], linear}` -- resampling algorithm.
             `nearest` or `resampling_nearest` is dnnl_resampling_nearest;
             `linear` or `resampling_linear` is dnnl_resampling_linear;

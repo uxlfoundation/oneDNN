@@ -14,6 +14,9 @@ where *gnorm-knobs* are:
  - `--tag={abcd:any [default], ...}` -- physical src and dst memory format.
             If only src memory format is provided, dst memory format will be set
             to `any`. Refer to [tags](knobs_tag.md) for details.
+ - `--strides=SRC_STRIDES:DST_STRIDES` -- physical memory layout specification
+            for `src` and `dst` tensors through strides values.
+            Refer to [option documentation](knob_strides.md) for details.
  - `--flags=[|G|C|H]` -- group normalization flags, default `none`; where
             multiple simultaneous flags are supported.
             `G` is dnnl_use_global_stats;

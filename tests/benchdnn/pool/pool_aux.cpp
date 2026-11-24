@@ -260,7 +260,7 @@ dims_t desc_t::dst_dims() const {
     return dst_dims;
 }
 
-dims_t desc_t::strides() const {
+dims_t desc_t::kstrides() const {
     dims_t strides {sd, sh, sw};
     return dims_t(strides.begin() + (5 - ndims), strides.end());
 }
@@ -336,6 +336,8 @@ std::string prb_t::set_repro_line() {
     if (canonical || dir != def.dir[0]) s << "--dir=" << dir << " ";
     if (canonical || !has_default_dts) s << "--dt=" << dt << " ";
     if (canonical || tag != def.tag[0]) s << "--tag=" << tag << " ";
+    if (canonical || strides != def.strides[0])
+        s << "--strides=" << vdims2str(strides) << " ";
     if (canonical || alg != def.alg[0]) s << "--alg=" << alg2str(alg) << " ";
 
     s << attr;

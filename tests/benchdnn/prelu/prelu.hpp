@@ -37,6 +37,7 @@ struct settings_t : public base_settings_t {
     std::vector<dir_t> dir {FWD_D};
     std::vector<std::vector<dnnl_data_type_t>> sdt {{dnnl_f32, dnnl_f32}};
     std::vector<std::vector<std::string>> stag {{tag::abx, tag::any}};
+    std::vector<vdims_t> strides {vdims_t(STRIDES_SIZE)};
 
     const char *perf_template_csv() const {
         static const std::string args = "%dir%,%sdt%,%stag%";
@@ -47,14 +48,14 @@ struct settings_t : public base_settings_t {
 
     bool has_single_setup() const override {
         return dir.size() == 1 && sdt.size() == 1 && stag.size() == 1
-                && base_settings_t::has_single_setup();
+                && strides.size() == 1 && base_settings_t::has_single_setup();
     }
 };
 
 struct prb_t : public prb_vdims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
-        : prb_t(s.prb_vdims, s.dir[0], s.sdt[0], s.stag[0],
+        : prb_t(s.prb_vdims, s.dir[0], s.sdt[0], s.stag[0], s.strides[0],
                   s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
                   s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
@@ -62,13 +63,14 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
 
     prb_t(const prb_vdims_t &prb_vdims, dir_t dir,
             const std::vector<dnnl_data_type_t> &sdt,
-            const std::vector<std::string> &stag, const attr_t &attr,
-            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
-            const impl_filter_t &impl_filter)
+            const std::vector<std::string> &stag, const vdims_t &strides,
+            const attr_t &attr, const thr_ctx_t &ctx_init,
+            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
         , base_prb_t(dir, false, attr, ctx_init, ctx_exe, impl_filter)
         , sdt(sdt)
-        , stag(stag) {
+        , stag(stag)
+        , strides(strides) {
         // Broadcast data types if needed
         broadcast_vector(this->sdt, sdt[0], 2);
 
@@ -76,6 +78,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     }
     std::vector<dnnl_data_type_t> sdt;
     std::vector<std::string> stag;
+    vdims_t strides;
 
     static const prb_t *from(const base_prb_t *base_prb) {
         return downcast<const prb_t *>(base_prb);

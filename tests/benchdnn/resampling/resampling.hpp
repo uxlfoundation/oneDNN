@@ -67,6 +67,7 @@ struct settings_t : public base_settings_t {
     std::vector<dnnl_data_type_t> sdt {dnnl_f32};
     std::vector<dnnl_data_type_t> ddt {dnnl_f32};
     std::vector<std::string> tag {tag::abx};
+    std::vector<vdims_t> strides {vdims_t(2)};
     std::vector<alg_t> alg {nearest};
 
     const char *perf_template_csv() const {
@@ -78,7 +79,7 @@ struct settings_t : public base_settings_t {
 
     bool has_single_setup() const override {
         return dir.size() == 1 && sdt.size() == 1 && ddt.size() == 1
-                && tag.size() == 1 && alg.size() == 1
+                && tag.size() == 1 && strides.size() == 1 && alg.size() == 1
                 && base_settings_t::has_single_setup();
     }
 };
@@ -86,21 +87,23 @@ struct settings_t : public base_settings_t {
 struct prb_t : public desc_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
-        : prb_t(s.desc, s.dir[0], s.sdt[0], s.ddt[0], s.tag[0], s.alg[0],
-                  s.mb[0], s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
-                  s.impl_filter) {
+        : prb_t(s.desc, s.dir[0], s.sdt[0], s.ddt[0], s.tag[0], s.strides[0],
+                  s.alg[0], s.mb[0], s.attributes.front(), s.ctx_init[0],
+                  s.ctx_exe[0], s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
     prb_t(const desc_t &desc, dir_t dir, dnnl_data_type_t sdt,
-            dnnl_data_type_t ddt, const std::string &tag, alg_t alg, int64_t mb,
-            const attr_t &attr, const thr_ctx_t &ctx_init,
-            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
+            dnnl_data_type_t ddt, const std::string &tag,
+            const vdims_t &strides, alg_t alg, int64_t mb, const attr_t &attr,
+            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
+            const impl_filter_t &impl_filter)
         : desc_t(desc)
         , base_prb_t(dir, false, attr, ctx_init, ctx_exe, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , tag(tag)
+        , strides(strides)
         , alg(alg)
         , user_mb(mb) {
         if (mb) this->mb = mb;
@@ -108,6 +111,7 @@ struct prb_t : public desc_t, public base_prb_t {
     }
     dnnl_data_type_t sdt, ddt;
     std::string tag;
+    vdims_t strides;
     alg_t alg;
     int64_t user_mb;
 

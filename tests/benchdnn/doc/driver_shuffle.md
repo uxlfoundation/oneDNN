@@ -13,6 +13,9 @@ where *shuffle-knobs* are:
             Refer to [data types](knobs_dt.md) for details.
  - `--tag={nchw [default], ...}` -- physical src and dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
+ - `--strides=SRC_STRIDES:DST_STRIDES` -- physical memory layout specification
+            for `src` and `dst` tensors through strides values.
+            Refer to [option documentation](knob_strides.md) for details.
  - `--axis=INT` -- dimension on which operation will be performed, also called
             the shuffle axis. The default is `1` and corresponds to channels in
             logical memory layout.

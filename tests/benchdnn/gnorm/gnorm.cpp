@@ -477,9 +477,9 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     bool force_f32_dt = init_pd_args.force_f32_dt;
 
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> src_d;
-    DNN_SAFE_STATUS(
-            dnn_mem_t::init_md(src_d, prb->ndims, prb->data_dims().data(),
-                    force_f32_dt ? dnnl_f32 : prb->dt[0], prb->tag[0]));
+    DNN_SAFE_STATUS(dnn_mem_t::init_md(src_d, prb->ndims,
+            prb->data_dims().data(), force_f32_dt ? dnnl_f32 : prb->dt[0],
+            prb->tag[0], prb->strides[0]));
 
     attr_args_t attr_args;
     DNN_SAFE_STATUS(attr_args.prepare_post_ops_mds(
@@ -491,9 +491,9 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     auto flags = (dnnl_normalization_flags_t)prb->flags;
     if (prb->dir & FLAG_FWD) {
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dst_d;
-        DNN_SAFE_STATUS(
-                dnn_mem_t::init_md(dst_d, prb->ndims, prb->data_dims().data(),
-                        force_f32_dt ? dnnl_f32 : prb->dt[1], prb->tag[1]));
+        DNN_SAFE_STATUS(dnn_mem_t::init_md(dst_d, prb->ndims,
+                prb->data_dims().data(), force_f32_dt ? dnnl_f32 : prb->dt[1],
+                prb->tag[1], prb->strides[1]));
         auto prop = prb->dir & FLAG_INF ? dnnl_forward_inference
                                         : dnnl_forward_training;
         TIME_C_PD(DNN_SAFE_STATUS(
@@ -505,11 +505,11 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> diff_src_d;
         DNN_SAFE_STATUS(dnn_mem_t::init_md(diff_src_d, prb->ndims,
                 prb->data_dims().data(), force_f32_dt ? dnnl_f32 : prb->dt[0],
-                prb->tag[0]));
+                prb->tag[0], prb->strides[0]));
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> diff_dst_d;
         DNN_SAFE_STATUS(dnn_mem_t::init_md(diff_dst_d, prb->ndims,
                 prb->data_dims().data(), force_f32_dt ? dnnl_f32 : prb->dt[1],
-                prb->tag[1]));
+                prb->tag[1], prb->strides[1]));
         auto prop = prb->dir & FLAG_WEI ? dnnl_backward : dnnl_backward_data;
         TIME_C_PD(DNN_SAFE_STATUS(
                 dnnl_group_normalization_backward_primitive_desc_create(

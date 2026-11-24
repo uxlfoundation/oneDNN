@@ -179,6 +179,8 @@ std::string prb_t::set_repro_line() {
     if (canonical || dir != def.dir[0]) s << "--dir=" << dir << " ";
     if (canonical || dt != def.dt[0]) s << "--dt=" << dt << " ";
     if (canonical || tag != def.tag[0]) s << "--tag=" << tag << " ";
+    if (canonical || strides != def.strides[0])
+        s << "--strides=" << vdims2str(strides) << " ";
     if (canonical || alg != def.alg[0]) s << "--alg=" << alg2str(alg) << " ";
 
     s << attr;

@@ -86,10 +86,10 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
 
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> src_d;
     DNN_SAFE_STATUS(dnn_mem_t::init_md(src_d, prb->ndims, prb->vdims[0].data(),
-            force_f32_dt ? dnnl_f32 : prb->sdt, prb->stag));
+            force_f32_dt ? dnnl_f32 : prb->sdt, prb->stag, prb->strides[0]));
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dst_d;
     DNN_SAFE_STATUS(dnn_mem_t::init_md(dst_d, prb->ndims, prb->vdims[1].data(),
-            force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag));
+            force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag, prb->strides[1]));
 
     attr_args_t attr_args;
     DNN_SAFE_STATUS(attr_args.prepare_post_ops_mds(

@@ -15,6 +15,9 @@ where *reduction-knobs* are:
             Refer to [tags](knobs_tag.md) for details.
  - `--dtag={any [default], ...}` -- physical dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
+ - `--strides=SRC_STRIDES:DST_STRIDES` -- physical memory layout specification
+            for `src` and `dst` tensors through strides values.
+            Refer to [option documentation](knob_strides.md) for details.
  - `--alg={sum [default], ...}` -- algorithm for reduction operations.
             Refer to [reduction primitive](https://uxlfoundation.github.io/oneDNN/dev_guide_reduction.html)
             for details.

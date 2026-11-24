@@ -81,10 +81,10 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     if (prb->dir & FLAG_FWD) {
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> src_d;
         DNN_SAFE_STATUS(dnn_mem_t::init_md(src_d, prb->ndims, prb->dims.data(),
-                force_f32_dt ? dnnl_f32 : prb->dt, prb->tag));
+                force_f32_dt ? dnnl_f32 : prb->dt, prb->tag, prb->strides[0]));
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dst_d;
         DNN_SAFE_STATUS(dnn_mem_t::init_md(dst_d, prb->ndims, prb->dims.data(),
-                force_f32_dt ? dnnl_f32 : prb->dt, tag::any));
+                force_f32_dt ? dnnl_f32 : prb->dt, tag::any, prb->strides[1]));
 
         auto prop_kind = prb->dir & FLAG_INF ? dnnl_forward_inference
                                              : dnnl_forward_training;
@@ -95,10 +95,12 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     } else {
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> diff_src_d;
         DNN_SAFE_STATUS(dnn_mem_t::init_md(diff_src_d, prb->ndims,
-                prb->dims.data(), force_f32_dt ? dnnl_f32 : prb->dt, tag::any));
+                prb->dims.data(), force_f32_dt ? dnnl_f32 : prb->dt, tag::any,
+                prb->strides[0]));
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> diff_dst_d;
         DNN_SAFE_STATUS(dnn_mem_t::init_md(diff_dst_d, prb->ndims,
-                prb->dims.data(), force_f32_dt ? dnnl_f32 : prb->dt, tag::any));
+                prb->dims.data(), force_f32_dt ? dnnl_f32 : prb->dt, tag::any,
+                prb->strides[1]));
 
         TIME_C_PD(DNN_SAFE_STATUS(dnnl_shuffle_backward_primitive_desc_create(
                 &init_pd_args.pd, init_pd_args.engine, diff_src_d, diff_dst_d,

@@ -17,6 +17,9 @@ where *softmax-knobs* are:
             Refer to [tags](knobs_tag.md) for details.
  - `--dtag={any [default], ...}` -- physical dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
+ - `--strides=SRC_STRIDES:DST_STRIDES` -- physical memory layout specification
+            for `src` and `dst` tensors through strides values.
+            Refer to [option documentation](knob_strides.md) for details.
  - `--alg={SOFTMAX [default], LOGSOFTMAX, SOFTMAX_INF_AS_ZERO}` -- softmax algorithm.
             `SOFTMAX` or `softmax_accurate` is `dnnl_softmax_accurate`;
             `LOGSOFTMAX` or `softmax_log` is `dnnl_softmax_log`;

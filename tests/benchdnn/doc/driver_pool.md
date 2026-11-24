@@ -15,6 +15,9 @@ where *pool-knobs* are:
             tensors. Refer to [data types](knobs_dt.md) for details.
  - `--tag={nchw [default], ...}` -- physical src and dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
+ - `--strides=SRC_STRIDES:DST_STRIDES` -- physical memory layout specification
+            for `src` and `dst` tensors through strides values.
+            Refer to [option documentation](knob_strides.md) for details.
  - `--alg={max [default], avg_np, avg_p}` -- pooling algorithm.
             `max` or `pooling_max` is dnnl_pooling_max;
             `avg_np` or `pooling_avg_exclude_padding` is

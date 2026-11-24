@@ -66,6 +66,8 @@ std::string prb_t::set_repro_line() {
         else
             s << tag[0] << " ";
     }
+    if (canonical || strides != def.strides[0])
+        s << "--strides=" << vdims2str(strides) << " ";
     if (canonical || stat_tag != def.stat_tag[0])
         s << "--stat_tag=" << stat_tag << " ";
     if (canonical || ss_dt != def.ss_dt[0]) s << "--ss_dt=" << ss_dt << " ";

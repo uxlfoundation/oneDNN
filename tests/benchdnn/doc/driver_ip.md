@@ -21,6 +21,10 @@ where *ip-knobs* are:
             Refer to [tags](knobs_tag.md) for details.
  - `--dtag={any [default], ...}` -- physical dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
+ - `--strides=SRC_STRIDES:WEI_STRIDES:DST_STRIDES` -- physical memory layout
+            specification for `src`, `weights`, and `dst` tensors through
+            strides values. Refer to [option documentation](knob_strides.md)
+            for details.
  - `--bia-dt={undef [default], f32, bf16, f16, ...}` -- bias data type.
             To run Inner Product without bias, use `undef` data type (default).
             `--dir=FWD_B|BWD_WB` will set `--bia-dt` to `f32` to preserve

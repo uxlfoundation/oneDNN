@@ -14,6 +14,9 @@ where *lnorm-knobs* are:
  - `--tag={tnc:any [default], ...}` -- physical src and dst memory format.
             If only src memory format is provided, dst memory format will be set
             to `any`. Refer to [tags](knobs_tag.md) for details.
+ - `--strides=SRC_STRIDES:DST_STRIDES` -- physical memory layout specification
+            for `src` and `dst` tensors through strides values.
+            Refer to [option documentation](knob_strides.md) for details.
  - `--stat_tag={any [default], ...}` -- physical mean and variance memory format.
             Refer to [tags](knobs_tag.md) for details.
  - `--ss_dt={f32 [default], ...}` -- data type of scale and shift.

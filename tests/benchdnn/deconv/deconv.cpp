@@ -229,22 +229,22 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     bool force_f32_dt = init_pd_args.force_f32_dt;
 
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> src_d;
-    DNN_SAFE_STATUS(
-            dnn_mem_t::init_md(src_d, prb->ndims, prb->src_dims().data(),
-                    force_f32_dt ? dnnl_f32 : prb->get_dt(SRC), prb->stag));
+    DNN_SAFE_STATUS(dnn_mem_t::init_md(src_d, prb->ndims,
+            prb->src_dims().data(), force_f32_dt ? dnnl_f32 : prb->get_dt(SRC),
+            prb->stag, prb->strides[STRIDES_SRC]));
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> wei_d;
     DNN_SAFE_STATUS(dnn_mem_t::init_md(wei_d, prb->ndims + prb->has_groups,
             prb->wei_dims().data(), force_f32_dt ? dnnl_f32 : prb->get_dt(WEI),
-            prb->wtag));
+            prb->wtag, prb->strides[STRIDES_WEI]));
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> bia_d {};
     if (prb->bia_dt() != dnnl_data_type_undef) {
         DNN_SAFE_STATUS(dnn_mem_t::init_md(bia_d, 1, prb->bia_dims().data(),
                 force_f32_dt ? dnnl_f32 : prb->get_dt(BIA), tag::any));
     }
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dst_d;
-    DNN_SAFE_STATUS(
-            dnn_mem_t::init_md(dst_d, prb->ndims, prb->dst_dims().data(),
-                    force_f32_dt ? dnnl_f32 : prb->get_dt(DST), prb->dtag));
+    DNN_SAFE_STATUS(dnn_mem_t::init_md(dst_d, prb->ndims,
+            prb->dst_dims().data(), force_f32_dt ? dnnl_f32 : prb->get_dt(DST),
+            prb->dtag, prb->strides[STRIDES_DST]));
 
     dnnl_alg_kind_t alg = dnnl_deconvolution_direct;
     if (prb->alg == WINO) alg = dnnl_deconvolution_winograd;
@@ -275,7 +275,7 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
                                               : dnnl_forward_training,
                             alg,
                             init_pd_args.src_md ? init_pd_args.src_md : src_d,
-                            wei_d, bia_d, dst_d, prb->strides().data(),
+                            wei_d, bia_d, dst_d, prb->kstrides().data(),
                             prb->dilations().data(), prb->padding().data(),
                             prb->padding_r().data(), dnnl_attr)));
             break;
@@ -283,7 +283,7 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
             TIME_C_PD(DNN_SAFE_STATUS(
                     dnnl_deconvolution_backward_data_primitive_desc_create(
                             &init_pd_args.pd, init_pd_args.engine, alg, src_d,
-                            wei_d, dst_d, prb->strides().data(),
+                            wei_d, dst_d, prb->kstrides().data(),
                             prb->dilations().data(), prb->padding().data(),
                             prb->padding_r().data(), init_pd_args.hint,
                             dnnl_attr)));
@@ -293,7 +293,7 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
             TIME_C_PD(DNN_SAFE_STATUS(
                     dnnl_deconvolution_backward_weights_primitive_desc_create(
                             &init_pd_args.pd, init_pd_args.engine, alg, src_d,
-                            wei_d, bia_d, dst_d, prb->strides().data(),
+                            wei_d, bia_d, dst_d, prb->kstrides().data(),
                             prb->dilations().data(), prb->padding().data(),
                             prb->padding_r().data(), init_pd_args.hint,
                             dnnl_attr)));
@@ -340,8 +340,9 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
         // `DIRECT` algorithm is used to prevent fallback to the slow benchdnn
         // reference implementation.
         prb_t prb_cpu {*prb, prb->dir, prim_ref_dt_i, prim_ref_bia_dt_i,
-                tag::any, tag::any, tag::any, DIRECT, prb->mb, cpu_attr,
-                prb->ctx_init, prb->ctx_exe, prb->impl_filter};
+                tag::any, tag::any, tag::any, {vdims_t(STRIDES_SIZE)}, DIRECT,
+                prb->mb, cpu_attr, prb->ctx_init, prb->ctx_exe,
+                prb->impl_filter};
 
         auto st = init_prim_ref_common(prim_ref, &prb_cpu, res, init_pd);
         if (st == OK) return OK;

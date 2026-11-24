@@ -61,6 +61,7 @@ struct settings_t : public base_settings_t {
     std::vector<dir_t> dir {FWD_D};
     std::vector<std::vector<dnnl_data_type_t>> dt {{dnnl_f32}};
     std::vector<std::vector<std::string>> tag {{tag::abx, tag::any}};
+    std::vector<vdims_t> strides {vdims_t(2)};
     std::vector<flags_t> flags {NONE};
     check_alg_t check_alg = bnorm::ALG_AUTO;
 
@@ -73,29 +74,31 @@ struct settings_t : public base_settings_t {
 
     bool has_single_setup() const override {
         return dir.size() == 1 && dt.size() == 1 && tag.size() == 1
-                && flags.size() == 1 && base_settings_t::has_single_setup();
+                && strides.size() == 1 && flags.size() == 1
+                && base_settings_t::has_single_setup();
     }
 };
 
 struct prb_t : public desc_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
-        : prb_t(s.desc, s.dir[0], s.dt[0], s.tag[0], s.flags[0], s.check_alg,
-                  s.mb[0], s.inplace[0], s.attributes.front(), s.ctx_init[0],
-                  s.ctx_exe[0], s.impl_filter) {
+        : prb_t(s.desc, s.dir[0], s.dt[0], s.tag[0], s.strides[0], s.flags[0],
+                  s.check_alg, s.mb[0], s.inplace[0], s.attributes.front(),
+                  s.ctx_init[0], s.ctx_exe[0], s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
     prb_t(const desc_t &desc, dir_t dir,
             const std::vector<dnnl_data_type_t> &dt,
-            const std::vector<std::string> &tag, flags_t flags,
-            check_alg_t check_alg, int64_t mb, bool inplace, const attr_t &attr,
-            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
-            const impl_filter_t &impl_filter)
+            const std::vector<std::string> &tag, const vdims_t &strides,
+            flags_t flags, check_alg_t check_alg, int64_t mb, bool inplace,
+            const attr_t &attr, const thr_ctx_t &ctx_init,
+            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : desc_t(desc)
         , base_prb_t(dir, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , tag(tag)
+        , strides(strides)
         , flags(flags)
         , check_alg(check_alg)
         , user_mb(mb) {
@@ -111,6 +114,7 @@ struct prb_t : public desc_t, public base_prb_t {
     std::string stat_tag;
     std::vector<dnnl_data_type_t> dt;
     std::vector<std::string> tag;
+    vdims_t strides;
     flags_t flags;
     check_alg_t check_alg;
     int64_t user_mb;

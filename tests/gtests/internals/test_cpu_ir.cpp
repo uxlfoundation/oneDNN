@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include <algorithm>
+#include <bitset>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -202,10 +203,10 @@ void expect_valid_unused_regs(const ir_t &ir, const reg_pools_t &pools,
     const int n_files = (int)pools.files.size();
     ASSERT_EQ(res.unused_regs_at.size(), (size_t)(n_files * n_ops));
 
-    std::vector<uint32_t> pool(n_files, 0);
+    std::vector<std::bitset<32>> pool(n_files);
     for (int f = 0; f < n_files; f++)
         for (int phys : pools.files[f].regs)
-            pool[f] |= 1u << phys;
+            pool[f].set(phys);
 
     std::vector<bool> file_has_spill(n_files, false);
     for (int v = 0; v < ir.n_vregs(); v++) {
@@ -216,10 +217,10 @@ void expect_valid_unused_regs(const ir_t &ir, const reg_pools_t &pools,
 
     for (int i = 0; i < n_ops; i++) {
         // Per file, registers that hold a value live at `i` or a temp of `i`.
-        std::vector<uint32_t> held(n_files, 0);
+        std::vector<std::bitset<32>> held(n_files);
         auto hold = [&](int v, int phys) {
             const int f = pools.file_of(ir.vreg_info()[v]);
-            if (f >= 0) held[f] |= 1u << phys;
+            if (f >= 0) held[f].set(phys);
         };
         for (const temp_reg_t &t : res.temps[i])
             hold((int)t.vreg, t.phys);
@@ -229,10 +230,10 @@ void expect_valid_unused_regs(const ir_t &ir, const reg_pools_t &pools,
                 hold(v, res.assignments[v].phys);
 
         for (int f = 0; f < n_files; f++) {
-            const uint32_t unused = res.unused_regs_at[f * n_ops + i];
-            EXPECT_EQ(unused & ~pool[f], 0u)
+            const std::bitset<32> unused = res.unused_regs_at[f * n_ops + i];
+            EXPECT_TRUE((unused & ~pool[f]).none())
                     << "op " << i << ", file " << f << ": outside the pool";
-            EXPECT_EQ(unused & held[f], 0u)
+            EXPECT_TRUE((unused & held[f]).none())
                     << "op " << i << ", file " << f << ": register in use";
             if (!file_has_spill[f]) {
                 EXPECT_EQ(unused, pool[f] & ~held[f])

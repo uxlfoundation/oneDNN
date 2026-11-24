@@ -90,7 +90,7 @@ struct k_step_interleave_t {
 // `load_accumulators()` instead of `init_accumulators()` when beta is 1 and
 // `loads_accumulators()` is true, and ends with `store_accumulators()` unless
 // the K steps store it (`k_step_interleave_t`). With `store_conf_t::prefetch`,
-// it gets the prefetches of the block from `c_prefetches()`. The compute
+// it gets the prefetches of the block from `store_prefetches()`. The compute
 // path chooses the layout of the accumulators.
 struct compute_path_t {
     virtual ~compute_path_t() = default;
@@ -150,11 +150,13 @@ struct compute_path_t {
         output_path(blk, acc);
     }
 
-    // Returns the write prefetches of the C lines at `store_ptr` that the
-    // accumulators of `blk` are stored to, one list per accumulator.
-    virtual std::vector<std::vector<prefetch_t>> c_prefetches(const conf_t &cfg,
+    // Returns the write prefetches of the lines at `store_ptr` that the
+    // accumulators of `blk` are stored to, in C or D as `store_cfg` says, one
+    // list per accumulator.
+    virtual std::vector<std::vector<prefetch_t>> store_prefetches(
+            const conf_t &cfg, const store_conf_t &store_cfg,
             const out_block_t &blk, ir::vreg_t store_ptr) const {
-        assert(!"c_prefetches: not supported by the compute path");
+        assert(!"store_prefetches: not supported by the compute path");
         return {};
     }
 

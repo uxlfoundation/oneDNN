@@ -776,7 +776,8 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
 
     std::vector<std::vector<prefetch_t>> prefetches;
     if (store_cfg.prefetch)
-        prefetches = cp.c_prefetches(cfg, blk, regs.advancing.store_ptr);
+        prefetches = cp.store_prefetches(
+                cfg, store_cfg, blk, regs.advancing.store_ptr);
 
     k_step_interleave_t interleave;
     interleave.prev = prev;
@@ -1386,10 +1387,6 @@ status_t init_store_confs(
     const bool is_tmul = kind == compute_path_kind_t::tmul;
     const data_type_t dt_acc = conf.compute_path.dt_acc;
 
-    // `jit_brgemm_kernel_t` ignores `prfC`, and the uker emits nothing for its
-    // distances other than `dist0`.
-    conf.store_without_post_ops.prefetch
-            = brg.can_dispatch_uker() && brg.prfC.dist0 == 0;
     // `use_interleave_stores` allows the accumulators of a block to be stored
     // in its K steps and in the first K step of the next block.
     // TODO: interleave blockings other than 4 C tiles once they are measured.
@@ -1415,6 +1412,14 @@ status_t init_store_confs(
     if (brg.with_eltwise || brg.with_binary || brg.with_sum)
         stages.push_back(output_stage_t::injector_postops);
     if (brg.with_dst_scales) stages.push_back(output_stage_t::dst_scale);
+
+    // `jit_brgemm_kernel_t` ignores `prfC`, and the uker emits nothing for its
+    // distances other than `dist0`. In a kernel with a post-ops call, the uker
+    // prefetches nothing on a call without post-ops.
+    const bool prefetch = brg.can_dispatch_uker() && brg.prfC.dist0 == 0;
+    conf.store_with_post_ops.prefetch = prefetch;
+    conf.store_without_post_ops.prefetch
+            = prefetch && !conf.are_post_ops_applicable();
 
     // Only the TMUL compute path converts so far. Its ISA always has the
     // conversion to bf16, unlike `avx2` and `avx512_core`.

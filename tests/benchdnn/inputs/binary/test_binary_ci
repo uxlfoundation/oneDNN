@@ -64,3 +64,8 @@
 1x17:1x17
 1x64:1x64
 1x65:1x65
+
+# The masked form goes through the rhs-arg expansion path.
+--attr-post-ops=select:s8:per_oc
+1x64:1x64
+1x65:1x65

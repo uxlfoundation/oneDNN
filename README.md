@@ -284,15 +284,6 @@ performance results on Intel Architecture Processors, we recommend using the
 [Threading Building Blocks (TBB)]: https://www.threadingbuildingblocks.org/
 [Intel oneAPI DPC++/C++ Compiler]: https://www.intel.com/content/www/us/en/developer/tools/oneapi/dpc-compiler.html
 
-On a CPU based on Arm AArch64 architecture, oneDNN CPU engine can be built with
-[Arm Compute Library (ACL)] integration. ACL is an open-source library for
-machine learning applications and provides AArch64-optimized implementations
-of core functions. This functionality currently requires that ACL is downloaded
-and built separately. See the [Build from Source] section of the Developer Guide for
-details. The minimum supported version of ACL is 53.1.0.
-
-[Arm Compute Library (ACL)]: https://github.com/arm-software/ComputeLibrary
-
 #### GPU Engine
 
 The oneDNN GPU engine is used to execute primitives on various accelerators

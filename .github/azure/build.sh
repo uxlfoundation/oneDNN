@@ -30,9 +30,6 @@ while [[ $# -gt 0 ]]; do
         --source-dir)
         SORUCE_DIR="$2"
         ;;
-        --acl-dir)
-        ACL_DIR="$2"
-        ;;
         --build-dir)
         BUILD_DIR="$2"
         ;;
@@ -74,14 +71,6 @@ CMAKE_OPTIONS="${CMAKE_OPTIONS}
                -DDNNL_GPU_RUNTIME=${GPU_RUNTIME}
                -DDNNL_TEST_SET=SMOKE
               "
-
-# Enable Compute Library backend if a location for the built library is given
-# NOTE: only for AArch64 builds.
-if [ ! -z ${ACL_DIR} ]; then
-  export ACL_ROOT_DIR=$ACL_DIR
-  CMAKE_OPTIONS="${CMAKE_OPTIONS} -DDNNL_AARCH64_USE_ACL=ON"
-  echo "Info: Building with Arm Compute Library backend for Aarch64..."
-fi
 
 if [ "$(uname)" == "Linux" ]; then
     MAKE_OP="-j$(grep -c processor /proc/cpuinfo)"

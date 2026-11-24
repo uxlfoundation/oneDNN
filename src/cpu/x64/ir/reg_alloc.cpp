@@ -452,10 +452,11 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
     //               each one a temp while registers last.
     // last_ref:     latest operation so far that references each vreg.
     std::vector<int> free_regs(file.regs.rbegin(), file.regs.rend());
-    uint32_t free_bits = 0;
+    std::bitset<32> free_bits;
     for (int phys : file.regs) {
-        assert(phys < 32 && "register index does not fit `free_bits`");
-        free_bits |= 1u << phys;
+        assert(phys < (int)free_bits.size()
+                && "register index does not fit `free_bits`");
+        free_bits.set(phys);
     }
     std::vector<int> active, still_active, wanted;
     std::vector<int> last_ref(n_vregs, -1);
@@ -463,7 +464,7 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
     // Puts `phys` on top of `free_regs` and sets its bit in `free_bits`.
     auto release = [&](int phys) {
         free_regs.push_back(phys);
-        free_bits |= 1u << phys;
+        free_bits.set(phys);
     };
 
     // Takes the top register off `free_regs`, clears its bit in `free_bits`,
@@ -471,7 +472,7 @@ void alloc_file(const ir_t &ir, int file_idx, const reg_pools_t &pools,
     auto hand_out = [&]() {
         const int phys = free_regs.back();
         free_regs.pop_back();
-        free_bits &= ~(1u << phys);
+        free_bits.reset(phys);
         return phys;
     };
 

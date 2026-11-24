@@ -17,6 +17,7 @@
 #ifndef CPU_X64_IR_REG_ALLOC_HPP
 #define CPU_X64_IR_REG_ALLOC_HPP
 
+#include <bitset>
 #include <cstdint>
 #include <vector>
 
@@ -97,7 +98,7 @@ struct temp_reg_t {
 struct reg_alloc_result_t {
     std::vector<assignment_t> assignments;
     std::vector<std::vector<temp_reg_t>> temps;
-    std::vector<uint32_t> unused_regs_at;
+    std::vector<std::bitset<32>> unused_regs_at;
     size_t frame_bytes = 0;
     bool any_spill = false;
 };

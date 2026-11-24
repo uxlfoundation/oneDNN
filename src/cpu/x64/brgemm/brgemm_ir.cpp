@@ -1404,12 +1404,6 @@ status_t init_store_confs(
         stages.push_back(output_stage_t::injector_postops);
     if (brg.with_dst_scales) stages.push_back(output_stage_t::dst_scale);
 
-    // TODO: accept `LDC != LDD` after testing it. The stores to D already use
-    // `d_off()`.
-    VCONDCHECK_BRGEMM_IR(
-            IMPLICATION(conf.are_post_ops_applicable(), brg.LDC == brg.LDD),
-            VERBOSE_UNSUPPORTED_FEATURE, "LDC != LDD");
-
     // The TMUL compute path stores its accumulators only with tile stores so
     // far, so no output stage can act on them.
     VCONDCHECK_BRGEMM_IR(IMPLICATION(is_tmul, !conf.are_post_ops_applicable()),

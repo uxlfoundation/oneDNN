@@ -357,8 +357,7 @@ struct gen_t : public primitive_t {
             auto try_entry = [&](const gemmstone::kcatalog::Entry *entry,
                                      size_t entry_idx) -> bool {
                 auto g = [&]() -> std::string {
-                    return ovr ? "override"
-                               : lpad(entry - jit::catalog().entries, 4);
+                    return ovr ? "override" : jit::catalog_ref(entry);
                 };
                 auto pos = [&]() {
                     return std::to_string(entry_idx) + "/"
@@ -454,6 +453,11 @@ struct gen_t : public primitive_t {
                                 << (ovr ? ""
                                         : pos() + (index >= 0 ? " pin " : " "))
                                 << kernel_desc_.resolved_str();
+                        gpu_info() << "[" << g() << "] final "
+                                   << kernel_desc_.str() << " launch k0="
+                                   << kernel_desc_.aux_params()->k0
+                                   << " wgK=" << kernel_desc_.aux_params()->wgK
+                                   << " hash=" << kernel_desc_.hash();
                         return true;
                     }
                     skip("Kernel generation failed.");

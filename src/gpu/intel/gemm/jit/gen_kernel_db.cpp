@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <utility>
+
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
 
 namespace gemmstone {
@@ -38,6 +40,18 @@ gemmstone::kcatalog::Catalog catalog() {
 
 gemmstone::kcatalog::Catalog lut_catalog() {
     return gemmstone::gemm_lut_catalog;
+}
+
+std::string catalog_ref(const gemmstone::kcatalog::Entry *entry) {
+    using tier_t = std::pair<const char *, gemmstone::kcatalog::Catalog>;
+    for (const auto &t :
+            {tier_t {"kernel.db", catalog()}, {"lut.db", lut_catalog()}}) {
+        const auto &c = t.second;
+        if (entry >= c.entries && entry < c.entries + c.entryCount)
+            return std::string(t.first) + ":"
+                    + std::to_string(entry - c.entries);
+    }
+    return "?";
 }
 
 } // namespace jit

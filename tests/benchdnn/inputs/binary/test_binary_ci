@@ -51,3 +51,12 @@
 
 --ddt=s32 --sdt=s32:s32
 --batch=shapes_ci
+
+# per_oc, trailing spatial extent 1: strides[1] == strides[2] here, which must
+# still be a per-channel broadcast (the operand changes with the channel index).
+--reset
+--alg=ADD
+--attr-post-ops=add:f32:per_oc
+16x17x1:16x17x1
+8x16x1:8x16x1
+2x17x1x1:2x17x1x1

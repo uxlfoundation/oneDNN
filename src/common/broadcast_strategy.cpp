@@ -210,9 +210,13 @@ broadcasting_strategy_t get_per_oc_bcast(
         const auto &strides = dst_d.blocking_desc().strides;
 
         //per_oc_spatial used in nchw data format and matmul having ndims >= 3
+        // With a spatial extent of 1, strides[1] == strides[2] holds even in
+        // nchw, and such a layout is per-channel like any other. Keep it on the
+        // per_oc path: per_oc_spatial does not advance over it in the binary
+        // driver, which made the operand read as a scalar there.
         return (dst_d.is_plain() && strides[0] >= strides[1]
                        && IMPLICATION(ndims < 3, strides[1] != 1)
-                       && IMPLICATION(ndims >= 3, strides[1] >= strides[2]))
+                       && IMPLICATION(ndims >= 3, strides[1] > strides[2]))
                 ? broadcasting_strategy_t::per_oc_spatial
                 : broadcasting_strategy_t::per_oc;
     }

@@ -65,3 +65,32 @@ TEST(primitive_attr_test, binary_post_op_null_descriptors) {
 
     dnnl_memory_desc_destroy(src1);
 }
+
+// binary select takes the conditional input as its third operand, and that
+// operand must be s8; every other data type is rejected at append time.
+TEST(primitive_attr_test, binary_select_requires_s8_condition) {
+    const dnnl_dims_t dims = {2, 8};
+    dnnl_memory_desc_t data;
+    ASSERT_EQ(
+            dnnl_memory_desc_create_with_tag(&data, 2, dims, dnnl_f32, dnnl_ab),
+            dnnl_success);
+
+    auto append = [&](dnnl_data_type_t cond_dt) {
+        dnnl_memory_desc_t cond = nullptr;
+        dnnl_memory_desc_create_with_tag(&cond, 2, dims, cond_dt, dnnl_ab);
+        dnnl_post_ops_t post_ops;
+        dnnl_post_ops_create(&post_ops);
+        const dnnl_status_t status = dnnl_post_ops_append_binary_v2(
+                post_ops, dnnl_binary_select, data, cond);
+        dnnl_memory_desc_destroy(cond);
+        dnnl_post_ops_destroy(post_ops);
+        return status;
+    };
+
+    EXPECT_EQ(append(dnnl_s8), dnnl_success);
+    EXPECT_EQ(append(dnnl_u8), dnnl_invalid_arguments);
+    EXPECT_EQ(append(dnnl_f32), dnnl_invalid_arguments);
+    EXPECT_EQ(append(dnnl_s32), dnnl_invalid_arguments);
+
+    dnnl_memory_desc_destroy(data);
+}

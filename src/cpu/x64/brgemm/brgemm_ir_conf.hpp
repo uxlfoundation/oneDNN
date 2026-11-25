@@ -165,17 +165,20 @@ struct compute_path_conf_t {
 // A stage of the output path. Each one acts on the complete sum, so it runs
 // only on a post-ops call.
 //
-//   src_scale        - multiplies by the common source scale
-//   wei_scale        - multiplies by the common weights scale
-//   wei_scale_per_n  - multiplies by the weights scale of each output column
-//   bias             - adds the bias of each output column
-//   injector_postops - applies the attribute post-ops (eltwise, binary, sum)
-//                      through the post-ops injector
-//   dst_scale        - multiplies by the common destination scale
+//   src_wei_scale       - multiplies by the common source scale times the
+//                         common weights scale
+//   src_wei_scale_per_n - multiplies by the common source scale times the
+//                         weights scale of each output column
+//   bias                - adds the bias of each output column
+//   injector_postops    - applies the attribute post-ops (eltwise, binary, sum)
+//                         through the post-ops injector
+//   dst_scale           - multiplies by the common destination scale
+//
+// A scale the call does not have counts as 1 in `src_wei_scale` and
+// `src_wei_scale_per_n`.
 enum class output_stage_t {
-    src_scale,
-    wei_scale,
-    wei_scale_per_n,
+    src_wei_scale,
+    src_wei_scale_per_n,
     bias,
     injector_postops,
     dst_scale,
@@ -192,7 +195,8 @@ enum class output_stage_t {
 //                     injector
 //   dst_md          - the destination memory descriptor, which a binary
 //                     post-op needs to locate its right-hand-side argument
-//   dt_src_scales / dt_wei_scales - element data type of each scale
+//   dt_src_scales / dt_wei_scales - element data type of each scale, `undef`
+//                                   when the call does not have it
 //
 // Adding C and the store are not stages. The builder emits them on every
 // call: adding C before the stages when `beta` is 1, and the store after them.
@@ -307,7 +311,7 @@ struct conf_t {
     // which is never indexed.
     int dt_sz_wei_scales() const {
         const store_conf_t &store_cfg = nest_with_post_ops.store;
-        return store_cfg.has_stage(output_stage_t::wei_scale_per_n)
+        return store_cfg.has_stage(output_stage_t::src_wei_scale_per_n)
                 ? (int)types::data_type_size(output.dt_wei_scales)
                 : 0;
     }

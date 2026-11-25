@@ -1688,11 +1688,13 @@ dnnl_status_t create_dnnl_attr(
                         (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1));
                 const auto &src2_md = attr_args.get_md(
                         (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2));
-                assert(query_md_ndims(src1_md) != 0);
-
-                if (e.is_binary_kind_with_ternary_op()) {
-                    assert(query_md_ndims(src2_md) != 0);
-                }
+                // A binary post-op without a source operand is a driver bug;
+                // report it as such rather than relying on an assert, which is
+                // compiled out in release builds.
+                if (query_md_ndims(src1_md) == 0) return dnnl_invalid_arguments;
+                if (e.is_binary_kind_with_ternary_op()
+                        && query_md_ndims(src2_md) == 0)
+                    return dnnl_invalid_arguments;
 
                 DNN_SAFE_STATUS(dnnl_post_ops_append_binary_v2(
                         ops, e.binary.alg, src1_md, src2_md));

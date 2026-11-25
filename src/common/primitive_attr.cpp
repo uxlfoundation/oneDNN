@@ -239,6 +239,11 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
     bool is_ternary_op = (alg == binary_select);
 
     VCHECK_ATTR(alg_ok, VERBOSE_BAD_ALGORITHM);
+    // A null descriptor is a caller error: report it instead of dereferencing
+    // it. Binary select also requires the second operand descriptor.
+    VCHECK_ATTR(user_src1_desc != nullptr, VERBOSE_NULL_ARG);
+    VCHECK_ATTR(IMPLICATION(is_ternary_op, user_src2_desc != nullptr),
+            VERBOSE_NULL_ARG);
     CHECK(memory_desc_sanity_check(*user_src1_desc));
 
     // A sub-byte src1 with `any` format gets its strides resolved from

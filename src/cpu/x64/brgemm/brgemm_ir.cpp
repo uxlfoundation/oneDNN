@@ -106,8 +106,8 @@ struct advancing_regs_t {
     // it moves like `b_off`. `none` without the `bias` stage.
     ir::vreg_t bias_ptr = ir::vreg_t::none;
     // Current weights-scale pointer. A per-N scale moves like `bias_ptr`. A
-    // common one stays at its only element. `none` without a weights scale
-    // stage.
+    // common one stays at its only element. `none` without a weights scale or
+    // without a `src_wei_scale*` stage.
     ir::vreg_t wei_scale_ptr = ir::vreg_t::none;
 };
 
@@ -128,8 +128,9 @@ struct invariant_regs_t {
     // and `emit_batch_level()` creates them for each batch element.
     ir::vreg_t a_ptr = ir::vreg_t::none;
     ir::vreg_t b_ptr = ir::vreg_t::none;
-    // Common source and destination scale pointers.
-    // `none` without the `src_scale` and `dst_scale` stages respectively.
+    // Common source and destination scale pointers. `src_scale_ptr` is `none`
+    // without a source scale or without a `src_wei_scale*` stage,
+    // `dst_scale_ptr` without the `dst_scale` stage.
     ir::vreg_t src_scale_ptr = ir::vreg_t::none;
     ir::vreg_t dst_scale_ptr = ir::vreg_t::none;
 };
@@ -228,15 +229,19 @@ m_loop_input_regs_t init_m_loop_input_regs(
         ir.load_param(regs.advancing.bias_ptr, GET_OFF(ptr_bias));
     }
 
-    if (store_cfg.has_stage(output_stage_t::src_scale)) {
-        regs.invariant.src_scale_ptr = ir.new_gpr();
-        ir.load_param(regs.invariant.src_scale_ptr, GET_OFF(ptr_src_scales));
-    }
-
-    if (store_cfg.has_stage(output_stage_t::wei_scale)
-            || store_cfg.has_stage(output_stage_t::wei_scale_per_n)) {
-        regs.advancing.wei_scale_ptr = ir.new_gpr();
-        ir.load_param(regs.advancing.wei_scale_ptr, GET_OFF(ptr_wei_scales));
+    // A `src_wei_scale*` stage reads the scales the call has.
+    if (store_cfg.has_stage(output_stage_t::src_wei_scale)
+            || store_cfg.has_stage(output_stage_t::src_wei_scale_per_n)) {
+        if (cfg.output.dt_src_scales != data_type::undef) {
+            regs.invariant.src_scale_ptr = ir.new_gpr();
+            ir.load_param(
+                    regs.invariant.src_scale_ptr, GET_OFF(ptr_src_scales));
+        }
+        if (cfg.output.dt_wei_scales != data_type::undef) {
+            regs.advancing.wei_scale_ptr = ir.new_gpr();
+            ir.load_param(
+                    regs.advancing.wei_scale_ptr, GET_OFF(ptr_wei_scales));
+        }
     }
 
     if (store_cfg.has_stage(output_stage_t::dst_scale)) {
@@ -590,15 +595,12 @@ void emit_batch_level(ir::ir_t &ir, const conf_t &cfg,
     }, [&](dim_t bs) { ir.add_imm(batch_ptr, bs * element_size); });
 }
 
-// Broadcasts the common value at `ptr` to an f32 register and returns it once
-// for each N register of `blk`, so a stage reads a common value as it reads a
-// per-N one. `mem_dt` is the data type of the value in memory.
-std::vector<ir::vreg_t> load_common(ir::ir_t &ir, const out_block_t &blk,
-        ir::vreg_t ptr, data_type_t mem_dt) {
-
+// Broadcasts the common value at `ptr` to an f32 register. `mem_dt` is the data
+// type of the value in memory.
+ir::vreg_t load_common(ir::ir_t &ir, ir::vreg_t ptr, data_type_t mem_dt) {
     const ir::vreg_t v = ir.new_vec(data_type::f32);
     ir.vload_bcast(v, ptr, 0, mem_dt);
-    return std::vector<ir::vreg_t>(blk.ld_block2, v);
+    return v;
 }
 
 // Loads the per-N values of N register `ld` of `blk` from `ptr` at byte offset
@@ -628,23 +630,38 @@ std::vector<ir::vreg_t> load_stage_regs(ir::ir_t &ir, const conf_t &cfg,
         output_stage_t stage) {
 
     const output_conf_t &output = cfg.output;
+    const ir::vreg_t src_scale_ptr = regs.invariant.src_scale_ptr;
+    const ir::vreg_t wei_scale_ptr = regs.advancing.wei_scale_ptr;
+    const bool with_src_scale = output.dt_src_scales != data_type::undef;
+    const bool with_wei_scale = output.dt_wei_scales != data_type::undef;
     std::vector<ir::vreg_t> stage_regs;
 
     switch (stage) {
-        case output_stage_t::src_scale:
-            stage_regs = load_common(ir, blk, regs.invariant.src_scale_ptr,
-                    output.dt_src_scales);
+        case output_stage_t::src_wei_scale: {
+            // Both scales are common, so one register holds their product.
+            const ir::vreg_t v = with_src_scale
+                    ? load_common(ir, src_scale_ptr, output.dt_src_scales)
+                    : load_common(ir, wei_scale_ptr, output.dt_wei_scales);
+            if (with_src_scale && with_wei_scale) {
+                const ir::vreg_t wei
+                        = load_common(ir, wei_scale_ptr, output.dt_wei_scales);
+                ir.vmul(v, wei);
+            }
+            stage_regs.assign(blk.ld_block2, v);
             break;
-        case output_stage_t::wei_scale:
-            stage_regs = load_common(ir, blk, regs.advancing.wei_scale_ptr,
-                    output.dt_wei_scales);
-            break;
-        case output_stage_t::wei_scale_per_n:
+        }
+        case output_stage_t::src_wei_scale_per_n:
             for (int ld = 0; ld < blk.ld_block2; ld++) {
                 const dim_t off = cfg.wei_scale_off(cfg.ld_pos(blk, ld));
-                stage_regs.push_back(
-                        load_per_n(ir, blk, ld, regs.advancing.wei_scale_ptr,
-                                off, output.dt_wei_scales));
+                stage_regs.push_back(load_per_n(
+                        ir, blk, ld, wei_scale_ptr, off, output.dt_wei_scales));
+            }
+            if (with_src_scale) {
+                const ir::vreg_t src
+                        = load_common(ir, src_scale_ptr, output.dt_src_scales);
+                for (const ir::vreg_t &v : stage_regs) {
+                    ir.vmul(v, src);
+                }
             }
             break;
         case output_stage_t::bias:
@@ -655,11 +672,13 @@ std::vector<ir::vreg_t> load_stage_regs(ir::ir_t &ir, const conf_t &cfg,
             }
             break;
         case output_stage_t::injector_postops: break;
-        case output_stage_t::dst_scale:
+        case output_stage_t::dst_scale: {
             // The caller passes the destination scale as f32.
-            stage_regs = load_common(
-                    ir, blk, regs.invariant.dst_scale_ptr, data_type::f32);
+            const ir::vreg_t v = load_common(
+                    ir, regs.invariant.dst_scale_ptr, data_type::f32);
+            stage_regs.assign(blk.ld_block2, v);
             break;
+        }
     }
     return stage_regs;
 }
@@ -673,9 +692,8 @@ void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
         output_stage_t stage, const std::vector<ir::vreg_t> &stage_regs) {
 
     switch (stage) {
-        case output_stage_t::src_scale:
-        case output_stage_t::wei_scale:
-        case output_stage_t::wei_scale_per_n:
+        case output_stage_t::src_wei_scale:
+        case output_stage_t::src_wei_scale_per_n:
         case output_stage_t::dst_scale:
             // The caller passes the inverted destination scale, so every scale
             // is a multiply.
@@ -930,7 +948,7 @@ void emit_mn_step(ir::ir_t &ir, const conf_t &cfg,
     if (ld != 0) {
         if (store_cfg.has_stage(output_stage_t::bias))
             ir.add_imm(regs.bias_ptr, cfg.bias_off(ld));
-        if (store_cfg.has_stage(output_stage_t::wei_scale_per_n))
+        if (store_cfg.has_stage(output_stage_t::src_wei_scale_per_n))
             ir.add_imm(regs.wei_scale_ptr, cfg.wei_scale_off(ld));
     }
 }
@@ -1459,8 +1477,8 @@ status_t init_output_conf(output_conf_t &output, const brgemm_desc_t &brg) {
     output.ldc = brg.LDC;
     output.ldd = brg.LDD;
     output.dt_bias = brg.dt_bias;
-    output.dt_src_scales = brg.dt_src_scales;
-    output.dt_wei_scales = brg.dt_wei_scales;
+    if (brg.with_src_scales) output.dt_src_scales = brg.dt_src_scales;
+    if (brg.with_wei_scales) output.dt_wei_scales = brg.dt_wei_scales;
 
     if (brg.with_eltwise || brg.with_binary || brg.with_sum) {
         output.post_ops = brg.attr()->post_ops_;
@@ -1524,14 +1542,14 @@ status_t init_nest_confs(
 
     // The order is the one oneDNN defines and the classic kernel follows:
     //   src scale -> weights scale -> bias -> post-ops -> dst scale.
-    // The scales are applied one at a time, as in the classic kernel, so the
-    // result rounds the same way.
+    // The source and weights scales are one stage, so each row is multiplied
+    // once by their product. The result can differ in the last bit from
+    // multiplying by each scale in turn.
     std::vector<output_stage_t> &stages = conf.nest_with_post_ops.store.stages;
-    if (brg.with_src_scales) stages.push_back(output_stage_t::src_scale);
-    if (brg.with_wei_scales)
-        stages.push_back(brg.is_single_wei_scale
-                        ? output_stage_t::wei_scale
-                        : output_stage_t::wei_scale_per_n);
+    if (brg.with_src_scales || brg.with_wei_scales)
+        stages.push_back(brg.with_wei_scales && !brg.is_single_wei_scale
+                        ? output_stage_t::src_wei_scale_per_n
+                        : output_stage_t::src_wei_scale);
     if (brg.with_bias) stages.push_back(output_stage_t::bias);
     if (brg.with_eltwise || brg.with_binary || brg.with_sum)
         stages.push_back(output_stage_t::injector_postops);

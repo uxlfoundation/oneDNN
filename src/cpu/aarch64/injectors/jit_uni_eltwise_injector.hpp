@@ -201,7 +201,7 @@ private:
             const injector_utils::vmm_index_set_iterator_t &end_idx_it);
     void injector_preamble(const injector_utils::vmm_index_set_t &vmm_idxs);
     void injector_preamble_tail(
-            const injector_utils::vmm_index_set_iterator_t start_idx_it);
+            const injector_utils::vmm_index_set_iterator_t &start_idx_it);
     void injector_postamble();
     void assign_regs();
     void store_preserved_vec(size_t slot, size_t vmm_idx);

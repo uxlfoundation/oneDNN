@@ -1550,11 +1550,14 @@ status_t init_nest_confs(
             IMPLICATION(!is_tmul, !conf.nest_with_post_ops.store.convert_acc),
             VERBOSE_UNSUPPORTED_DT);
 
-    // TODO: accept output stages on the TMUL compute path after testing them
-    // on the rows of its tiles.
-    VCONDCHECK_BRGEMM_IR(
-            IMPLICATION(is_tmul, conf.nest_with_post_ops.store.stages.empty()),
-            VERBOSE_UNSUPPORTED_FEATURE, "output stages on tiles");
+    // TODO: accept the other output stages on the TMUL compute path after
+    // testing them on the rows of its tiles.
+    for (const output_stage_t stage : stages) {
+        VCONDCHECK_BRGEMM_IR(
+                IMPLICATION(is_tmul, stage == output_stage_t::bias),
+                VERBOSE_UNSUPPORTED_FEATURE,
+                "output stages other than the bias on tiles");
+    }
     return status::success;
 }
 

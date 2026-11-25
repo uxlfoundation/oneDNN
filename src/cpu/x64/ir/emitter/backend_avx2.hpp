@@ -41,10 +41,14 @@ namespace x64 {
 namespace ir {
 
 struct avx2_backend_t {
-    avx2_backend_t(jit_generator_t &gen, cpu_isa_t isa) : gen_(gen), isa(isa) {
+    // `cvt_vec` is the scratch of a converting store (see `needs_cvt_vec()`).
+    // No AVX2 lowering converts on a store yet, so it is not read.
+    avx2_backend_t(jit_generator_t &gen, cpu_isa_t isa, int cvt_vec)
+        : gen_(gen), isa(isa) {
         // `isa` is stored for future ISA-specific dispatch (e.g. avx2_vnni_2)
         // but is not read yet.
         MAYBE_UNUSED(this->isa);
+        MAYBE_UNUSED(cvt_vec);
     }
 
     jit_generator_t &gen() { return gen_; }

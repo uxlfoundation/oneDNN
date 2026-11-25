@@ -59,6 +59,7 @@ namespace {
 //
 //   m / k        - dimensions of matrix A (GEMV always has n = 1)
 //   lda / incy   - leading dimensions of A and stride between elements of `y`
+//   ldd          - stride between elements of the output `d` (see `store_to_d`)
 //   max_bs       - maximum batch size known at IR generation time
 //   trans_a      - whether A is transposed (K-major). It selects how an M
 //                  block is reduced (see `emit_m_block`)
@@ -68,8 +69,8 @@ namespace {
 //                  where each accumulator is horizontally reduced to a single
 //                  output, and the SIMD width for transposed A, where each
 //                  accumulator holds a vector of neighboring outputs
-//   dt_sz_a/x/y  - element size in bytes of A, x, and y
-//   dt_a/x/y     - element data type of A, x, and y in memory
+//   dt_sz_a/x/y/d - element size in bytes of A, x, y, and d
+//   dt_a/x/y/d   - element data type of A, x, y, and d in memory
 //   dt_a_reg / dt_x_reg - data type of the vec vreg holding A and x. It is the
 //                  memory type when the reduction consumes it as it is, and
 //                  f32 when the load converts. Paired with `k_block`, which is
@@ -82,10 +83,14 @@ namespace {
 //   k_tail       - remaining K elements after the full blocks
 //   acc_tail     - outputs held by the last, partially filled accumulator of
 //                  the M tail. 0 when every accumulator is full
-//   mblk_*_off   - byte offset to advance A/y pointers between M blocks
+//   mblk_*_off   - byte offset to advance A/y/d pointers between M blocks
 //   kblk_*_off   - byte offset to advance A/x pointers between K blocks
 //   pf_*_off     - byte distance along K at which A/x are SW-prefetched ahead
 //                  of their loads. 0 disables the prefetch
+//   store_to_d   - whether the kernel has post-accumulation work (a post-op or
+//                  a conversion of the accumulator) and so writes `d` instead
+//                  of `y` when `do_post_ops` is set. Mirrors
+//                  `brgemm_desc_t::are_post_ops_applicable()`
 //   with_bias    - whether a bias is added to the output
 //   treat_y_as_row - whether the output y is a row. When true the bias is
 //                    indexed per M row, otherwise broadcast from bias[0]
@@ -100,7 +105,10 @@ namespace {
 //   single_wei_scale - whether the weights scale is one scalar for the whole
 //                    output. False only for per-N scales with a row output,
 //                    where each output element has its own scale
-//   dt_src_scales / dt_wei_scales - element data type of each scale
+//   with_dst_scales - whether a destination scale multiplies the output after
+//                    the post-ops. Always a single common scalar
+//   dt_src_scales / dt_wei_scales / dt_dst_scales - element data type of each
+//                    scale
 //   dt_sz_wei_scales - element size in bytes of the weights scale
 //   mblk_wei_scale_off - byte offset to advance the weights-scale pointer
 //                    between M blocks
@@ -110,6 +118,7 @@ struct brgemv_ir_conf_t {
         , k(brg.reduce_dim)
         , lda(brg.LDA)
         , incy(brg.LDC)
+        , ldd(brg.LDD)
         , max_bs(brg.brgattr.max_bs)
         , trans_a(brg.transA)
         , m_block(brg.bd_block)
@@ -118,9 +127,11 @@ struct brgemv_ir_conf_t {
         , dt_sz_a(brg.typesize_A)
         , dt_sz_x(brg.typesize_B)
         , dt_sz_y(brg.typesize_C)
+        , dt_sz_d(brg.typesize_D)
         , dt_a(brg.dt_a)
         , dt_x(brg.dt_b)
         , dt_y(brg.dt_c)
+        , dt_d(brg.dt_d)
         , dt_a_reg(brg.gemv_use_vdpbf16ps() ? brg.dt_a : data_type::f32)
         , dt_x_reg(brg.gemv_use_vdpbf16ps() ? brg.dt_b : data_type::f32)
         , dt_acc(data_type::f32)
@@ -136,11 +147,13 @@ struct brgemv_ir_conf_t {
         , mblk_a_off(trans_a ? dt_sz_a * (dim_t)m_block
                              : dt_sz_a * (dim_t)m_block * lda)
         , mblk_y_off(dt_sz_y * m_block * incy)
+        , mblk_d_off(dt_sz_d * m_block * ldd)
         , kblk_a_off(trans_a ? dt_sz_a * (dim_t)k_block * lda
                              : dt_sz_a * (dim_t)k_block)
         , kblk_x_off(dt_sz_x * k_block)
         , pf_a_off(brg.gemv_pf_rd_blocks() * kblk_a_off)
         , pf_x_off(brg.gemv_pf_rd_blocks() * kblk_x_off)
+        , store_to_d(brg.are_post_ops_applicable())
         , with_bias(brg.with_bias)
         , treat_y_as_row(brg.treat_y_as_row)
         , dt_bias(brg.dt_bias)
@@ -151,40 +164,49 @@ struct brgemv_ir_conf_t {
         , with_src_scales(brg.with_src_scales)
         , with_wei_scales(brg.with_wei_scales)
         , single_wei_scale(brg.gemv_single_wei_scale())
+        , with_dst_scales(brg.with_dst_scales)
         , dt_src_scales(brg.dt_src_scales)
         , dt_wei_scales(brg.dt_wei_scales)
+        // The brgemm descriptor carries no type for the destination scale.
+        // The driver passes it as f32 (see `brgemm_kernel_params_t`).
+        , dt_dst_scales(data_type::f32)
         , dt_sz_wei_scales(with_wei_scales
                           ? (int)types::data_type_size(dt_wei_scales)
                           : 0)
         , mblk_wei_scale_off(dt_sz_wei_scales * m_block) {}
 
-    const dim_t m, k, lda, incy;
+    const dim_t m, k, lda, incy, ldd;
     const dim_t max_bs;
     const bool trans_a;
     const int m_block, k_block, acc_elems;
-    const int dt_sz_a, dt_sz_x, dt_sz_y;
-    const data_type_t dt_a, dt_x, dt_y;
+    const int dt_sz_a, dt_sz_x, dt_sz_y, dt_sz_d;
+    const data_type_t dt_a, dt_x, dt_y, dt_d;
     const data_type_t dt_a_reg, dt_x_reg;
     const data_type_t dt_acc;
     const float beta;
     const dim_t m_blocks, m_tail, k_blocks, k_tail;
     const int acc_tail;
-    const dim_t mblk_a_off, mblk_y_off;
+    const dim_t mblk_a_off, mblk_y_off, mblk_d_off;
     const dim_t kblk_a_off, kblk_x_off;
     const dim_t pf_a_off, pf_x_off;
+    const bool store_to_d;
     const bool with_bias, treat_y_as_row;
     const data_type_t dt_bias;
     const int dt_sz_bias;
     const dim_t mblk_bias_off;
     const bool with_injector_postops;
     const bool with_src_scales, with_wei_scales, single_wei_scale;
-    const data_type_t dt_src_scales, dt_wei_scales;
+    const bool with_dst_scales;
+    const data_type_t dt_src_scales, dt_wei_scales, dt_dst_scales;
     const int dt_sz_wei_scales;
     const dim_t mblk_wei_scale_off;
 
+    // Whether the kernel applies a post-op to the reduced accumulators. A
+    // subset of `store_to_d`, which also covers a plain conversion of the
+    // accumulator into `d`.
     bool has_post_ops() const {
         return with_bias || with_injector_postops || with_src_scales
-                || with_wei_scales;
+                || with_wei_scales || with_dst_scales;
     }
 };
 
@@ -203,15 +225,14 @@ struct brgemv_ir_conf_t {
 
 // Registers that advance each M-block iteration by a fixed byte offset.
 struct advancing_regs_t {
-    // Current `y` pointer, the vector `beta` accumulates into. Advances by
-    // `mblk_y_off` per M-block.
+    // Current `y` pointer, the vector `beta` accumulates into and the output
+    // of a block without post-accumulation work. Advances by `mblk_y_off` per
+    // M-block.
     ir::vreg_t y_ptr = ir::vreg_t::none;
-    // Pointer used to store the M-block result. Usually this is `y_ptr`, but
-    // when post-ops run it holds `ptr_D`, which may be a separate output
-    // buffer. The accumulation and output buffers share the same type and
-    // stride (enforced by `brgemv_ir_supported()`), so `store_ptr` advances
-    // together with `y_ptr`.
-    ir::vreg_t store_ptr = ir::vreg_t::none;
+    // Current `d` pointer, the output of a block with post-accumulation work
+    // (`ptr_D`, which may be a separate buffer of a different type and stride).
+    // Advances by `mblk_d_off` per M-block. `none` unless `store_to_d`.
+    ir::vreg_t d_ptr = ir::vreg_t::none;
     // Byte offset into A for the current M-block. Starts at 0 and advances by
     // `mblk_a_off` each iteration.
     ir::vreg_t a_off = ir::vreg_t::none;
@@ -238,13 +259,16 @@ struct invariant_regs_t {
     // elements. Shared by every masked access to its outputs and to its slice
     // of A. `none` when `acc_tail` is zero.
     ir::vreg_t acc_tail_mask = ir::vreg_t::none;
-    // Post-ops flag (params.do_post_ops). Non-zero applies the post-ops, zero
-    // stores the raw accumulator. `none` unless the kernel has a post-op to
-    // apply (bias, scales, or injector post-ops).
+    // Post-ops flag (params.do_post_ops). Non-zero applies the post-ops and
+    // stores to `d`, zero stores the raw accumulator to `y`. `none` unless
+    // `store_to_d`.
     ir::vreg_t do_post_ops = ir::vreg_t::none;
     // Source-scale pointer. A single common scalar, so it never advances.
     // `none` unless `with_src_scales`.
     ir::vreg_t src_scale_ptr = ir::vreg_t::none;
+    // Destination-scale pointer. A single common scalar, so it never advances.
+    // `none` unless `with_dst_scales`.
+    ir::vreg_t dst_scale_ptr = ir::vreg_t::none;
 };
 
 // Complete input register set for the M-loop, partitioned by whether values
@@ -304,19 +328,17 @@ m_loop_input_regs_t init_m_loop_input_regs(
         ir.load_param(regs.advancing.wei_scale_ptr, GET_OFF(ptr_wei_scales));
     }
 
-    if (cfg.has_post_ops()) {
+    if (cfg.with_dst_scales) {
+        regs.invariant.dst_scale_ptr = ir.new_gpr();
+        ir.load_param(regs.invariant.dst_scale_ptr, GET_OFF(ptr_dst_scales));
+    }
+
+    if (cfg.store_to_d) {
         regs.invariant.do_post_ops = ir.new_gpr();
         ir.load_param(regs.invariant.do_post_ops, GET_OFF(do_post_ops));
 
-        regs.advancing.store_ptr = ir.new_gpr();
-        ir.mov_reg(regs.advancing.store_ptr, regs.advancing.y_ptr);
-
-        const int if_post_ops
-                = ir.if_begin(regs.invariant.do_post_ops, ir::cmp_t::ne, 0);
-        ir.load_param(regs.advancing.store_ptr, GET_OFF(ptr_D));
-        ir.if_end(if_post_ops);
-    } else {
-        regs.advancing.store_ptr = regs.advancing.y_ptr;
+        regs.advancing.d_ptr = ir.new_gpr();
+        ir.load_param(regs.advancing.d_ptr, GET_OFF(ptr_D));
     }
 
     return regs;
@@ -392,7 +414,7 @@ std::vector<acc_t> init_accumulators(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         // case where beta = 1 we load `y` into the accumulator registers and
         // then the reduction adds the results of the multiplication to them.
         //
-        // This reads `y_ptr` while a sum post-op reads `store_ptr`, so the two
+        // This reads `y_ptr` while a sum post-op reads `d_ptr`, so the two
         // never count the same value twice.
         if (cfg.beta == 0.0f)
             ir.vzero(acc[acc_idx].reg);
@@ -446,7 +468,7 @@ void emit_batch_loop(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 // Post-ops of an M block.
 //
 // Applies scales, bias and injector post-ops in place to the reduced
-// accumulators.
+// accumulators. Emitted inside the `do_post_ops` branch of `emit_m_block`.
 void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         const m_loop_input_regs_t &regs, const std::vector<acc_t> &acc) {
     if (!cfg.has_post_ops()) return;
@@ -458,17 +480,17 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 
     // The implemented order conforms to oneDNN's defined semantics for
     // applying scales, bias and post-ops:
-    //   src scale -> weights scale -> bias -> post-ops.
+    //   src scale -> weights scale -> bias -> post-ops -> dst scale.
     // Scales apply to the accumulated result before the bias add and
     // post-ops apply after bias. The two scales can swap because both are
     // multiplies but a scale must not move past the bias and the bias must
-    // not move past the post-ops.
-    const int if_post_ops
-            = ir.if_begin(regs.invariant.do_post_ops, ir::cmp_t::ne, 0);
-
+    // not move past the post-ops. The destination scale comes last, after
+    // the post-ops.
+    // Scales and bias are loaded into accumulator-typed vregs, so a 16-bit
+    // float in memory is widened by its load.
     if (cfg.with_src_scales) {
         // Loaded once and applied to every output.
-        const ir::vreg_t sc = ir.new_vec(cfg.dt_src_scales);
+        const ir::vreg_t sc = ir.new_vec(cfg.dt_acc);
         emit_bcast_load(ir, sc, regs.invariant.src_scale_ptr, 0, bcast_elems,
                 cfg.dt_src_scales);
 
@@ -479,7 +501,7 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     if (cfg.with_wei_scales) {
         // The single scale is loop invariant, so load it once above the
         // loop. The per-N case loads a separate scale per output element.
-        const ir::vreg_t sc = ir.new_vec(cfg.dt_wei_scales);
+        const ir::vreg_t sc = ir.new_vec(cfg.dt_acc);
         if (cfg.single_wei_scale)
             emit_bcast_load(ir, sc, regs.advancing.wei_scale_ptr, 0,
                     bcast_elems, cfg.dt_wei_scales);
@@ -496,7 +518,7 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     if (cfg.with_bias) {
         // The broadcast bias is loop invariant, so load it once outside the
         // loop. A row output loads a separate bias per output element.
-        const ir::vreg_t bias = ir.new_vec(cfg.dt_bias);
+        const ir::vreg_t bias = ir.new_vec(cfg.dt_acc);
         if (!cfg.treat_y_as_row)
             emit_bcast_load(ir, bias, regs.advancing.bias_ptr, 0, bcast_elems,
                     cfg.dt_bias);
@@ -513,7 +535,7 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     if (cfg.with_injector_postops) {
         // One `inject_postops` operation takes a single valid-element count,
         // so each run of accumulators that hold the same number of outputs
-        // goes into its own operation. The output offsets match the store
+        // goes into its own operation. The output offsets match the `d` store
         // displacements in `emit_m_block`, so a sum post-op reads each element
         // from the address its result is written to.
         for (int beg = 0; beg < n_acc;) {
@@ -522,15 +544,23 @@ void emit_post_ops(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             int end = beg;
             for (; end < n_acc && acc[end].n_elems == acc[beg].n_elems; end++) {
                 run_acc.push_back(acc[end].reg);
-                run_off.push_back(acc_off(cfg, end, cfg.dt_sz_y, cfg.incy));
+                run_off.push_back(acc_off(cfg, end, cfg.dt_sz_d, cfg.ldd));
             }
-            ir.inject_postops(run_acc, regs.advancing.store_ptr, run_off,
-                    acc[beg].n_elems);
+            ir.inject_postops(
+                    run_acc, regs.advancing.d_ptr, run_off, acc[beg].n_elems);
             beg = end;
         }
     }
 
-    ir.if_end(if_post_ops);
+    if (cfg.with_dst_scales) {
+        // Loaded once and applied to every output.
+        const ir::vreg_t sc = ir.new_vec(cfg.dt_acc);
+        emit_bcast_load(ir, sc, regs.invariant.dst_scale_ptr, 0, bcast_elems,
+                cfg.dt_dst_scales);
+
+        for (int acc_idx = 0; acc_idx < n_acc; acc_idx++)
+            ir.vmul(acc[acc_idx].reg, sc);
+    }
 }
 
 } // namespace
@@ -673,10 +703,24 @@ void emit_reduce(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 
 namespace {
 
+// Stores the accumulators of an M block to the output at `base`, an
+// output-shaped buffer of `dt_sz`-byte elements of type `mem_dt` placed `inc`
+// elements apart.
+void emit_acc_stores(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
+        const m_loop_input_regs_t &regs, const std::vector<acc_t> &acc,
+        ir::vreg_t base, int dt_sz, dim_t inc, data_type_t mem_dt) {
+    for (int acc_idx = 0; acc_idx < (int)acc.size(); acc_idx++)
+        emit_acc_store(ir, cfg, regs, base, acc_off(cfg, acc_idx, dt_sz, inc),
+                acc[acc_idx].reg, acc[acc_idx].n_elems, mem_dt);
+}
+
 // One M block covering `rows` outputs.
 //
-// Reduces the block into its accumulators, applies the post-ops and stores the
-// result. Finally, advances the M-block pointers to the next block.
+// Reduces the block into its accumulators and stores the result. With
+// post-accumulation work the store depends on `do_post_ops`: non-zero applies
+// the post-ops and stores to `d`, zero stores the raw accumulators to `y`, as
+// the driver does when it reduces K across several kernel calls through `y`.
+// Finally, advances the M-block pointers to the next block.
 void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         const m_loop_input_regs_t &regs, int rows) {
     const std::vector<acc_t> acc = init_accumulators(ir, cfg, regs, rows);
@@ -689,20 +733,25 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     else
         nontrans::emit_reduce(ir, cfg, regs, acc);
 
-    emit_post_ops(ir, cfg, regs, acc);
-
-    for (int acc_idx = 0; acc_idx < (int)acc.size(); acc_idx++)
-        emit_acc_store(ir, cfg, regs, regs.advancing.store_ptr,
-                acc_off(cfg, acc_idx, cfg.dt_sz_y, cfg.incy), acc[acc_idx].reg,
-                acc[acc_idx].n_elems, cfg.dt_y);
+    if (cfg.store_to_d) {
+        const int if_post_ops
+                = ir.if_begin(regs.invariant.do_post_ops, ir::cmp_t::ne, 0);
+        emit_post_ops(ir, cfg, regs, acc);
+        emit_acc_stores(ir, cfg, regs, acc, regs.advancing.d_ptr, cfg.dt_sz_d,
+                cfg.ldd, cfg.dt_d);
+        ir._else(if_post_ops);
+        emit_acc_stores(ir, cfg, regs, acc, regs.advancing.y_ptr, cfg.dt_sz_y,
+                cfg.incy, cfg.dt_y);
+        ir.if_end(if_post_ops);
+    } else {
+        emit_acc_stores(ir, cfg, regs, acc, regs.advancing.y_ptr, cfg.dt_sz_y,
+                cfg.incy, cfg.dt_y);
+    }
 
     // Advance to next M block
     ir.add_imm(regs.advancing.a_off, cfg.mblk_a_off);
     ir.add_imm(regs.advancing.y_ptr, cfg.mblk_y_off);
-    // When `!has_post_ops()`, `store_ptr` is the same IR vreg as `y_ptr` (see
-    // `init_m_loop_input_regs`), so advancing `y_ptr` above covers both.
-    if (cfg.has_post_ops())
-        ir.add_imm(regs.advancing.store_ptr, cfg.mblk_y_off);
+    if (cfg.store_to_d) ir.add_imm(regs.advancing.d_ptr, cfg.mblk_d_off);
 
     if (cfg.with_bias && cfg.treat_y_as_row)
         ir.add_imm(regs.advancing.bias_ptr, cfg.mblk_bias_off);
@@ -727,7 +776,8 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 //     horizontally reduces each accumulator to its single output
 //   - transposed A: one A row at a time, multiplied by a broadcast element of
 //     x
-// - Applies the post-ops and stores the accumulators to memory
+// - Applies the post-ops and stores the accumulators to memory, converting
+//   them to the output type on the way (see `emit_m_block`)
 void build_gemv(const brgemm_desc_t &brg, ir::ir_t &ir) {
     const brgemv_ir_conf_t cfg(brg);
     const m_loop_input_regs_t regs = init_m_loop_input_regs(ir, cfg);
@@ -791,25 +841,19 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
             || (brg.dt_a == f16 && brg.isa_impl == avx512_core_fp16);
     VCONDCHECK_BRGEMV_IR(dt_isa_ok, VERBOSE_UNSUPPORTED_ISA);
     VCONDCHECK_BRGEMV_IR(brg.dt_b == brg.dt_a, VERBOSE_UNSUPPORTED_DT);
-    // The kernel accumulates in f32 and has no conversion on the way out.
+    // The kernel accumulates in f32 and has no conversion on the way out to C.
     VCONDCHECK_BRGEMV_IR(brg.dt_c == f32, VERBOSE_UNSUPPORTED_DT);
-
-    // With post-ops the kernel stores to D instead of C. It cannot convert the
-    // accumulator on the way out, so it takes only `dt_d == dt_c`. The check is
-    // unconditional because `dt_c != dt_d` alone already routes the descriptor
-    // through the store-to-D path (see `are_post_ops_applicable()`), which the
-    // `has_post_ops` below does not cover.
-    VCONDCHECK_BRGEMV_IR(brg.dt_d == brg.dt_c, VERBOSE_UNSUPPORTED_DT);
-
-    const bool has_post_ops = brg.with_bias || brg.with_eltwise
-            || brg.with_binary || brg.with_sum || brg.with_src_scales
-            || brg.with_wei_scales;
-    VCONDCHECK_BRGEMV_IR(IMPLICATION(has_post_ops, brg.LDC == brg.LDD),
-            VERBOSE_UNSUPPORTED_FEATURE, "LDC != LDD");
+    // The store to D narrows the accumulator to a 16-bit float at most, and
+    // the avx2 backend has no narrowing store. The GEMV ISAs for bf16 and f16
+    // inputs both have `vcvtneps2bf16`.
+    VCONDCHECK_BRGEMV_IR(brg.dt_d == f32
+                    || (utils::one_of(brg.dt_d, bf16, f16)
+                            && is_superset(brg.isa_impl, avx512_core_bf16)),
+            VERBOSE_UNSUPPORTED_DT);
 
     // Post-ops go through the JIT injector. Accept eltwise, binary and sum, and
-    // only binary arguments the injector can handle on this ISA. Other kinds
-    // fall back.
+    // only binary arguments the injector can handle on this ISA, fp8 ones
+    // included (see `ir::postops_injector_t`). Other kinds fall back.
     if (brg.attr()) {
         const memory_desc_wrapper dst_d(brg.dst_md());
         const std::vector<injector::post_op_type> accepted
@@ -824,34 +868,29 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
                         binary_injector::
                                 get_all_strategies_supported_by_injector()}),
                 VERBOSE_UNSUPPORTED_POSTOP);
-
-        // The binary injector loads an fp8 argument through fp8 converters,
-        // which `ir::postops_injector_t` does not create.
-        const post_ops_t &post_ops = brg.attr()->post_ops_;
-        for (int i = 0; i < post_ops.len(); i++) {
-            const auto &e = post_ops.entry_[i];
-            VCONDCHECK_BRGEMV_IR(!e.is_binary()
-                            || !utils::one_of(e.binary.src1_desc.data_type,
-                                    f8_e5m2, f8_e4m3),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-        }
     }
-    VCONDCHECK_BRGEMV_IR(!brg.with_dst_scales, VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMV_IR(!brg.is_per_k_src_scales && !brg.is_per_k_wei_scales,
             VERBOSE_UNSUPPORTED_SCALES_CFG);
+    // Scales and bias are f32 or a 16-bit float the load widens, which the
+    // avx2 backend has no lowering for.
+    const auto epilogue_dt_ok = [&](data_type_t dt) {
+        return dt == f32
+                || (utils::one_of(dt, bf16, f16)
+                        && is_superset(brg.isa_impl, avx512_core));
+    };
     VCONDCHECK_BRGEMV_IR(
-            IMPLICATION(brg.with_src_scales, brg.dt_src_scales == f32),
+            IMPLICATION(brg.with_src_scales, epilogue_dt_ok(brg.dt_src_scales)),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMV_IR(
-            IMPLICATION(brg.with_wei_scales, brg.dt_wei_scales == f32),
+            IMPLICATION(brg.with_wei_scales, epilogue_dt_ok(brg.dt_wei_scales)),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMV_IR(!brg.req_s8s8_compensation,
             VERBOSE_UNSUPPORTED_FEATURE, "s8s8 compensation");
     VCONDCHECK_BRGEMV_IR(utils::everyone_is(brgemm_broadcast_t::none,
                                  brg.zp_type_a, brg.zp_type_b, brg.zp_type_c),
             VERBOSE_UNSUPPORTED_ZP_CFG);
-    VCONDCHECK_BRGEMV_IR(
-            !brg.with_bias || brg.dt_bias == f32, VERBOSE_UNSUPPORTED_BIAS_CFG);
+    VCONDCHECK_BRGEMV_IR(!brg.with_bias || epilogue_dt_ok(brg.dt_bias),
+            VERBOSE_UNSUPPORTED_BIAS_CFG);
     VCONDCHECK_BRGEMV_IR(
             brg.alpha == 1.0f, VERBOSE_UNSUPPORTED_FEATURE, "alpha != 1");
     VCONDCHECK_BRGEMV_IR(brg.beta == 0.0f || brg.beta == 1.0f,
@@ -861,14 +900,19 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
             !brg.is_runtime_lda, VERBOSE_UNSUPPORTED_FEATURE, "runtime lda");
     VCONDCHECK_BRGEMV_IR(
             !brg.is_runtime_ldc, VERBOSE_UNSUPPORTED_FEATURE, "runtime ldc");
+    VCONDCHECK_BRGEMV_IR(
+            !brg.is_runtime_ldd, VERBOSE_UNSUPPORTED_FEATURE, "runtime ldd");
 
     const brgemv_ir_conf_t cfg(brg);
 
     // With a transposed A each accumulator holds a vector of neighboring
-    // outputs and stores them with a single instruction, so `y` has to be
-    // contiguous.
+    // outputs and stores them with a single instruction, so `y` and `d` have
+    // to be contiguous.
     VCONDCHECK_BRGEMV_IR(IMPLICATION(cfg.trans_a, cfg.incy == 1),
             VERBOSE_UNSUPPORTED_FEATURE, "strided y with transposed A");
+    VCONDCHECK_BRGEMV_IR(
+            IMPLICATION(cfg.trans_a && cfg.store_to_d, cfg.ldd == 1),
+            VERBOSE_UNSUPPORTED_FEATURE, "strided d with transposed A");
 
     // Ensure indexed displacements fit in 32-bit
     auto fits = [](dim_t v) { return v <= INT32_MAX && v >= INT32_MIN; };
@@ -881,6 +925,8 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
             "A reduction step overflows int32");
     VCONDCHECK_BRGEMV_IR(fits(cfg.mblk_y_off), VERBOSE_UNSUPPORTED_FEATURE,
             "y block offset overflows int32");
+    VCONDCHECK_BRGEMV_IR(fits(cfg.mblk_d_off), VERBOSE_UNSUPPORTED_FEATURE,
+            "d block offset overflows int32");
 
     return status::success;
 }

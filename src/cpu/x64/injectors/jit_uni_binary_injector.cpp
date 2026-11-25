@@ -164,19 +164,41 @@ static bool should_use_shared_axes_fallback(broadcasting_strategy_t bcast_type,
                 broadcasting_strategy_t::no_broadcast,
                 broadcasting_strategy_t::shared_axes))
         return false;
+    if (!dst_d.is_plain() || (!rhs_d.format_any() && !rhs_d.is_plain()))
+        return false;
+    if (dst_d.has_runtime_dims_or_strides()
+            || (!rhs_d.format_any() && rhs_d.has_runtime_dims_or_strides()))
+        return false;
 
     const int ndims = dst_d.ndims();
+    if (ndims < 1) return false;
+
+    // per_oc and per_oc_spatial natively support ncsp, nspc (axb), cspn, and c_blocked
+    if (ndims <= 5
+            && utils::one_of(bcast_type, broadcasting_strategy_t::per_oc,
+                    broadcasting_strategy_t::per_oc_spatial)
+            && injector_utils::get_layout_type(dst_d)
+                    != injector_utils::layout_t::unsupported
+            && (rhs_d.format_any() || rhs_d.is_dense(true)))
+        return false;
+
     const bool is_innermost_bcast = is_shared_axes_bcast(rhs_d, dst_d);
+
+    // shared_axes requires unit stride on the innermost dst dimension
+    const bool can_use_shared_axes
+            = dst_d.blocking_desc().strides[ndims - 1] == 1
+            && (is_innermost_bcast || rhs_d.format_any()
+                    || rhs_d.blocking_desc().strides[ndims - 1] == 1);
+    if (!can_use_shared_axes) return false;
 
     const bool legacy_emits_vector_load = utils::one_of(bcast_type,
             broadcasting_strategy_t::per_mb_spatial,
             broadcasting_strategy_t::per_mb_w, broadcasting_strategy_t::per_w,
             broadcasting_strategy_t::per_hw, broadcasting_strategy_t::batch);
 
-    return dst_d.is_plain()
-            && (ndims > 5 || !is_strict_ncsp_layout(dst_d)
-                    || (!rhs_d.format_any() && !is_strict_ncsp_layout(rhs_d))
-                    || (legacy_emits_vector_load && is_innermost_bcast));
+    return ndims > 5 || !is_strict_ncsp_layout(dst_d)
+            || (!rhs_d.format_any() && !is_strict_ncsp_layout(rhs_d))
+            || (legacy_emits_vector_load && is_innermost_bcast);
 }
 
 bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,

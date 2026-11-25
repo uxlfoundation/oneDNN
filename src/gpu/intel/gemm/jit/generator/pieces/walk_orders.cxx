@@ -568,12 +568,19 @@ void Generator<hw>::gemmReorderLocalIDs(const GEMMProblem &problem, const GEMMSt
         auto temp = state.ra.alloc_sub<uint16_t>();
         auto slidO = lidO;
 
-        if (adjustEvery > 1) {
-            shr(1, temp, lidO, ilog2(adjustEvery));
+        // If threads are fused along the outer loop, fused partners differ only
+        // in the low bit of lidO and must keep identical lidI (they share the
+        // operand indexed by lidI, e.g. for dpasw). Drop the partner bit before
+        // skewing so both partners receive the same skew.
+        bool fusedOuter = strategy.fused && (strategy.fusedLoop != strategy.loopOrder[0]);
+        int shift = ilog2(adjustEvery) + (fusedOuter ? 1 : 0);
+
+        if (shift > 0) {
+            shr(1, temp, lidO, shift);
             slidO = temp;
         }
 
-        if (strategy.fused)
+        if (strategy.fused && !fusedOuter)
             emad(1, lidI, lidI, slidO, 2, strategy, state);
         else
             add(1, lidI, lidI, slidO);

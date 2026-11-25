@@ -77,11 +77,28 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     auto wgTileMN = strategy.wgTile(isA ? LoopM : LoopN);
 
     // Offsets applied after the scales (x = q * scale - offset) are fused with the scales into one mad.
-    // bf16 data uses f32 quantization data (mixed mode), except on Xe3p+ which has pure bf16 mad.
+    // bf16 data uses f32 quantization data (mixed mode), except on Xe3p+ which has pure bf16 arithmetic.
     bool offsetAfterScale = isA ? problem.aOffsetAfterScale : problem.bOffsetAfterScale;
-    bool pureBf16 = (hw >= HW::Xe3p) && offsetAfterScale && Tx == Type::bf16 && Txs == Tx && Txo == Tx;
+    bool pureBf16 = (hw >= HW::Xe3p) && Tx == Type::bf16 && Txs == Tx && (!offsetAfterScale || Txo == Tx);
+
+    // Xe3p+: subtract integer offsets from integer A/B data directly in bf16 when exact (|x - offset| <= 256).
+    bool pureBf16Offset = false;
+    if (hw >= HW::Xe3p && Tx == Type::bf16 && !offsetAfterScale && Tx_ext.isInteger() && Tx_ext.bits() <= 8
+            && Txo.isValid() && Txo.isInteger() && Txo.bits() <= 8) {
+        auto range = [](Type T, int &lo, int &hi) {
+            int b = T.bits();
+            lo = T.isSigned() ? -(1 << (b - 1)) : 0;
+            hi = T.isSigned() ? (1 << (b - 1)) - 1 : (1 << b) - 1;
+        };
+        int xlo, xhi, olo, ohi;
+        range(Tx_ext, xlo, xhi);
+        range(Txo, olo, ohi);
+        pureBf16Offset = std::max(std::abs(xlo - ohi), std::abs(xhi - olo)) <= 256;
+    }
 
     Txo_int = Txo.isInteger() ? Tx.asSignedInt() : Tx;
+    if (pureBf16Offset)
+        Txo_int = Type::bf16;
     Txs_int = Tx;
     if (Tx == Type::bf16 && !pureBf16)
         Txs_int = Type::f32;

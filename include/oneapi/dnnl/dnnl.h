@@ -961,7 +961,8 @@ dnnl_status_t DNNL_API dnnl_post_ops_append_binary(dnnl_post_ops_t post_ops,
 /// @param src1_desc Memory descriptor of a second operand.
 /// @param src2_desc Memory descriptor of a third operand. If the specificed
 /// algorithm is not one that requires a ternary input, src2_desc will be
-/// ignored.
+/// ignored. For #dnnl_binary_select this operand is the conditional input,
+/// and it must have the #dnnl_s8 data type.
 
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.

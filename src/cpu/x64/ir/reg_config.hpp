@@ -28,9 +28,12 @@ namespace cpu {
 namespace x64 {
 namespace ir {
 
-// One physical register is selected before the emitter runs and passed in.
-// The register allocator avoids using it, so it is always available:
+// Physical registers selected before the emitter runs and passed in. The
+// register allocator avoids using them, so they are always available:
 //  - `param_reg`: stores a pointer to the kernel's input arguments.
+//  - `cvt_vec`: vector register the emitter narrows a value into before a
+//    converting store writes it (see `needs_cvt_vec()`). -1 when the IR has no
+//    such store, and then the register is allocatable.
 //
 // `pools` contains the registers that are available for allocation for each
 // register kind, along with the stack space needed when a value for that
@@ -38,6 +41,7 @@ namespace ir {
 struct reg_config_t {
     reg_pools_t pools;
     int param_reg = 0;
+    int cvt_vec = -1;
 };
 
 // The tile configuration the kernel runs with. The IR does not configure the
@@ -48,6 +52,20 @@ struct reg_config_t {
 //            without tiles has no shapes.
 struct tile_config_t {
     std::vector<tile_shape_t> shapes;
+};
+
+// Registers a kernel hands to code outside the IR that writes them without
+// restoring them. They are taken out of the allocatable pools. The JIT post-ops
+// injector is the one such consumer today (see `postops_injector_t`).
+//
+//   gprs  - general-purpose registers
+//   vecs  - vector registers
+//   masks - opmasks, on AVX-512 only. On AVX2* a mask is a vector register, so
+//           they are ignored there
+struct reserved_regs_t {
+    std::vector<int> gprs;
+    std::vector<int> vecs;
+    std::vector<int> masks;
 };
 
 // Creates the register config for the given ISA.
@@ -72,20 +90,18 @@ struct tile_config_t {
 // - `rsp_reg` (stack pointer)
 // - `param_reg` (parameter pointer)
 // - `rbp` (frame pointer) when the build option `DNNL_SAFE_RBP` was specified.
-// - `reserved_masks` opmasks, on AVX-512 only
+// - the registers `reserved` names (see `reserved_regs_t`)
 //
 // Spilled values need no reserved register. The allocator gives each operation
 // a temp register for every spilled operand (see `temp_reg_t`).
 //
-// `reserved_masks` names the opmasks a kernel hands to code outside the IR that
-// writes them without restoring them. The JIT post-ops injector is the one such
-// consumer today (see `postops_injector_t`). On AVX2* a mask is a vector
-// register, so `reserved_masks` is ignored there.
+// `reserve_cvt_vec` takes the last vector register that is not reserved out of
+// the pool as the scratch of the converting stores, `reg_config_t::cvt_vec`.
 //
 // Export for testing.
 reg_config_t DNNL_API make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
-        const std::vector<int> &reserved_masks,
-        const tile_config_t &tiles = {});
+        const reserved_regs_t &reserved, const tile_config_t &tiles = {},
+        bool reserve_cvt_vec = false);
 
 } // namespace ir
 } // namespace x64

@@ -440,7 +440,9 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
                 auto &L = isA ? state.A_layout : state.B_layout;
                 bool kLeading = (isColMajor(X.layout) != isA);
                 int lateGran = std::max<int>(minOPCount, kLeading ? 1 : L.crosspack());
-                if (lateGran > groupK || groupK % lateGran != 0)
+                // BDPAS: one step spans whole groups (K % 64 == 0 gate in pd.cpp).
+                bool ok = groupK % lateGran == 0 || (state.useBDPAS && lateGran % groupK == 0);
+                if (!ok)
                     stub("Late quantization remainder spanning multiple groups is not supported");
                 groups = 1;
             }

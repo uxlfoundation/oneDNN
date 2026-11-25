@@ -590,67 +590,108 @@ void emit_batch_level(ir::ir_t &ir, const conf_t &cfg,
     }, [&](dim_t bs) { ir.add_imm(batch_ptr, bs * element_size); });
 }
 
-// One stage of a post-ops call, applied to the accumulators of the block.
+// Broadcasts the common value at `ptr` to an f32 register and returns it once
+// for each N register of `blk`, so a stage reads a common value as it reads a
+// per-N one. `mem_dt` is the data type of the value in memory.
+std::vector<ir::vreg_t> load_common(ir::ir_t &ir, const out_block_t &blk,
+        ir::vreg_t ptr, data_type_t mem_dt) {
+
+    const ir::vreg_t v = ir.new_vec(data_type::f32);
+    ir.vload_bcast(v, ptr, 0, mem_dt);
+    return std::vector<ir::vreg_t>(blk.ld_block2, v);
+}
+
+// Loads the per-N values of N register `ld` of `blk` from `ptr` at byte offset
+// `off` into an f32 register. `mem_dt` is their data type in memory. Only the
+// last N register is partial when `blk` has `ld_tail_mask`
+// (`make_out_block()`).
+ir::vreg_t load_per_n(ir::ir_t &ir, const out_block_t &blk, int ld,
+        ir::vreg_t ptr, dim_t off, data_type_t mem_dt) {
+
+    const ir::vreg_t v = ir.new_vec(data_type::f32);
+    const bool is_tail
+            = blk.ld_tail_mask != ir::vreg_t::none && ld == blk.ld_block2 - 1;
+
+    if (is_tail) {
+        ir.vload_masked(v, ptr, off, blk.ld_tail_mask, mem_dt);
+    } else {
+        ir.vload(v, ptr, off, mem_dt);
+    }
+    return v;
+}
+
+// Loads what `stage` reads for the rows of `blk`, one f32 register for each N
+// register of `blk`. A common value is the same register for each. Returns no
+// register for `injector_postops`, which loads its own arguments.
+std::vector<ir::vreg_t> load_stage_regs(ir::ir_t &ir, const conf_t &cfg,
+        const m_loop_input_regs_t &regs, const out_block_t &blk,
+        output_stage_t stage) {
+
+    const output_conf_t &output = cfg.output;
+    std::vector<ir::vreg_t> stage_regs;
+
+    switch (stage) {
+        case output_stage_t::src_scale:
+            stage_regs = load_common(ir, blk, regs.invariant.src_scale_ptr,
+                    output.dt_src_scales);
+            break;
+        case output_stage_t::wei_scale:
+            stage_regs = load_common(ir, blk, regs.advancing.wei_scale_ptr,
+                    output.dt_wei_scales);
+            break;
+        case output_stage_t::wei_scale_per_n:
+            for (int ld = 0; ld < blk.ld_block2; ld++) {
+                const dim_t off = cfg.wei_scale_off(cfg.ld_pos(blk, ld));
+                stage_regs.push_back(
+                        load_per_n(ir, blk, ld, regs.advancing.wei_scale_ptr,
+                                off, output.dt_wei_scales));
+            }
+            break;
+        case output_stage_t::bias:
+            for (int ld = 0; ld < blk.ld_block2; ld++) {
+                const dim_t off = cfg.bias_off(cfg.ld_pos(blk, ld));
+                stage_regs.push_back(load_per_n(ir, blk, ld,
+                        regs.advancing.bias_ptr, off, output.dt_bias));
+            }
+            break;
+        case output_stage_t::injector_postops: break;
+        case output_stage_t::dst_scale:
+            // The caller passes the destination scale as f32.
+            stage_regs = load_common(
+                    ir, blk, regs.invariant.dst_scale_ptr, data_type::f32);
+            break;
+    }
+    return stage_regs;
+}
+
+// One stage of a post-ops call, applied to the rows of `blk` in `acc`.
+// `stage_regs` holds what the stage reads for each N register of `blk`
+// (`load_stage_regs()`).
 void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
         const store_conf_t &store_cfg, const m_loop_input_regs_t &regs,
         const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
-        output_stage_t stage) {
+        output_stage_t stage, const std::vector<ir::vreg_t> &stage_regs) {
 
     switch (stage) {
-        case output_stage_t::src_scale: {
-            const ir::vreg_t sc = ir.new_vec(cfg.output.dt_src_scales);
-            ir.vload_bcast(sc, regs.invariant.src_scale_ptr, 0,
-                    cfg.output.dt_src_scales);
-            for (const ir::vreg_t &v : acc)
-                ir.vmul(v, sc);
-            break;
-        }
-        case output_stage_t::wei_scale: {
-            const ir::vreg_t sc = ir.new_vec(cfg.output.dt_wei_scales);
-            ir.vload_bcast(sc, regs.advancing.wei_scale_ptr, 0,
-                    cfg.output.dt_wei_scales);
-            for (const ir::vreg_t &v : acc)
-                ir.vmul(v, sc);
-            break;
-        }
-        case output_stage_t::wei_scale_per_n: {
-            // One scale vector per N register, shared by every M row of the
-            // block.
-            for (int ld = 0; ld < blk.ld_block2; ld++) {
-                const ir::vreg_t sc = ir.new_vec(cfg.output.dt_wei_scales);
-                if (blk.ld_tail_mask == ir::vreg_t::none)
-                    ir.vload(sc, regs.advancing.wei_scale_ptr,
-                            cfg.wei_scale_off(cfg.ld_pos(blk, ld)),
-                            cfg.output.dt_wei_scales);
-                else
-                    ir.vload_masked(sc, regs.advancing.wei_scale_ptr,
-                            cfg.wei_scale_off(cfg.ld_pos(blk, ld)),
-                            blk.ld_tail_mask, cfg.output.dt_wei_scales);
-
-                for (int bd = 0; bd < blk.bd_block; bd++)
-                    ir.vmul(acc[bd * blk.ld_block2 + ld], sc);
+        case output_stage_t::src_scale:
+        case output_stage_t::wei_scale:
+        case output_stage_t::wei_scale_per_n:
+        case output_stage_t::dst_scale:
+            // The caller passes the inverted destination scale, so every scale
+            // is a multiply.
+            for (int bd = 0; bd < blk.bd_block; bd++) {
+                for (int ld = 0; ld < blk.ld_block2; ld++) {
+                    ir.vmul(acc[bd * blk.ld_block2 + ld], stage_regs[ld]);
+                }
             }
             break;
-        }
-        case output_stage_t::bias: {
-            // One bias vector per N register, shared by every M row of the
-            // block.
-            for (int ld = 0; ld < blk.ld_block2; ld++) {
-                const ir::vreg_t bias = ir.new_vec(cfg.output.dt_bias);
-                if (blk.ld_tail_mask == ir::vreg_t::none)
-                    ir.vload(bias, regs.advancing.bias_ptr,
-                            cfg.bias_off(cfg.ld_pos(blk, ld)),
-                            cfg.output.dt_bias);
-                else
-                    ir.vload_masked(bias, regs.advancing.bias_ptr,
-                            cfg.bias_off(cfg.ld_pos(blk, ld)), blk.ld_tail_mask,
-                            cfg.output.dt_bias);
-
-                for (int bd = 0; bd < blk.bd_block; bd++)
-                    ir.vadd(acc[bd * blk.ld_block2 + ld], bias);
+        case output_stage_t::bias:
+            for (int bd = 0; bd < blk.bd_block; bd++) {
+                for (int ld = 0; ld < blk.ld_block2; ld++) {
+                    ir.vadd(acc[bd * blk.ld_block2 + ld], stage_regs[ld]);
+                }
             }
             break;
-        }
         case output_stage_t::injector_postops: {
             // The injector gets the address of the block and the offset of
             // each accumulator in the block, as `jit_brgemm_kernel_t` passes
@@ -682,26 +723,25 @@ void emit_post_ops_stage(ir::ir_t &ir, const conf_t &cfg,
             ir.inject_postops(acc, blk_ptr, out_byte_off, n_elems);
             break;
         }
-        case output_stage_t::dst_scale: {
-            // The caller passes the inverted f32 destination scale, so it is a
-            // multiply.
-            const ir::vreg_t sc = ir.new_vec(data_type::f32);
-            ir.vload_bcast(sc, regs.invariant.dst_scale_ptr, 0, data_type::f32);
-            for (const ir::vreg_t &v : acc)
-                ir.vmul(v, sc);
-            break;
-        }
     }
 }
 
-// The output path of one block. Adds C when beta is 1, applies the output
-// stages of `store_cfg`, and stores the block to C or D as `store_cfg` says.
+// The output path of the block `blk`, a whole output block or a part of one
+// (`pass_accumulators_to_output_path()`). Adds C when beta is 1, applies the
+// output stages of `store_cfg`, and stores the block to C or D as `store_cfg`
+// says.
 //
 // It works on the rows of the output in `acc`, one register per (M row, N
 // register).
+//
+// For a part of a block passed in parts, `blk_stage_regs` holds what each
+// stage of `store_cfg.stages` reads for `blk`, loaded before the first part.
+// Otherwise it is empty, and each stage loads what it reads right before it is
+// applied.
 void emit_output_path(ir::ir_t &ir, const conf_t &cfg,
         const store_conf_t &store_cfg, const m_loop_input_regs_t &regs,
-        const out_block_t &blk, const std::vector<ir::vreg_t> &acc) {
+        const out_block_t &blk, const std::vector<ir::vreg_t> &acc,
+        const std::vector<std::vector<ir::vreg_t>> &blk_stage_regs) {
 
     // The kernel takes only 0 and 1 for beta. On the output path the
     // accumulators start at zero (`emit_block()`), so C is added here.
@@ -722,8 +762,14 @@ void emit_output_path(ir::ir_t &ir, const conf_t &cfg,
         }
     }
 
-    for (const output_stage_t stage : store_cfg.stages)
-        emit_post_ops_stage(ir, cfg, store_cfg, regs, blk, acc, stage);
+    for (size_t i = 0; i < store_cfg.stages.size(); i++) {
+        const output_stage_t stage = store_cfg.stages[i];
+        const std::vector<ir::vreg_t> stage_regs = blk_stage_regs.empty()
+                ? load_stage_regs(ir, cfg, regs, blk, stage)
+                : blk_stage_regs[i];
+        emit_post_ops_stage(
+                ir, cfg, store_cfg, regs, blk, acc, stage, stage_regs);
+    }
 
     for (int bd = 0; bd < blk.bd_block; bd++) {
         for (int ld = 0; ld < blk.ld_block2; ld++) {
@@ -748,6 +794,28 @@ void emit_output_path(ir::ir_t &ir, const conf_t &cfg,
 bool uses_output_path(const compute_path_t &cp, const store_conf_t &store_cfg) {
     return !cp.stores_accumulators() || !store_cfg.stages.empty()
             || store_cfg.convert_acc;
+}
+
+// Returns what each output stage reads for the rows `rows_blk` of `blk`, out of
+// `blk_stage_regs`, which holds what it reads for all of `blk`. Empty when
+// `blk_stage_regs` is.
+std::vector<std::vector<ir::vreg_t>> rows_stage_regs(const conf_t &cfg,
+        const out_block_t &blk, const out_block_t &rows_blk,
+        const std::vector<std::vector<ir::vreg_t>> &blk_stage_regs) {
+
+    // The rows start at N register `ld_first` of the block.
+    const int ld_first
+            = (int)((rows_blk.ld_start - blk.ld_start) / cfg.blocking.ld_block);
+    std::vector<std::vector<ir::vreg_t>> stage_regs(blk_stage_regs.size());
+
+    for (size_t i = 0; i < blk_stage_regs.size(); i++) {
+        // `injector_postops` reads no register.
+        if (blk_stage_regs[i].empty()) continue;
+
+        const auto first = blk_stage_regs[i].begin() + ld_first;
+        stage_regs[i].assign(first, first + rows_blk.ld_block2);
+    }
+    return stage_regs;
 }
 
 // One output block of the loop nest of `nest_cfg`.
@@ -807,10 +875,24 @@ prev_block_t emit_block(ir::ir_t &ir, const conf_t &cfg,
     emit_batch_level(ir, cfg, nest_cfg, cp, regs, blk, acc, interleave);
 
     if (to_output_path) {
+        // For a block passed in parts, what the stages read is loaded once,
+        // before the first part. For a block passed in one call, the output
+        // path loads what each stage reads right before the stage, since on the
+        // vector compute path the accumulators take most vector registers
+        // (`calculate_max_bcast_block()`).
+        std::vector<std::vector<ir::vreg_t>> blk_stage_regs;
+        if (cp.passes_block_in_parts()) {
+            for (const output_stage_t stage : store_cfg.stages) {
+                blk_stage_regs.push_back(
+                        load_stage_regs(ir, cfg, regs, blk, stage));
+            }
+        }
+
         cp.pass_accumulators_to_output_path(ir, cfg, blk, acc,
                 [&](const out_block_t &rows_blk,
                         const std::vector<ir::vreg_t> &row_regs) {
-            emit_output_path(ir, cfg, store_cfg, regs, rows_blk, row_regs);
+            emit_output_path(ir, cfg, store_cfg, regs, rows_blk, row_regs,
+                    rows_stage_regs(cfg, blk, rows_blk, blk_stage_regs));
         });
     } else if (acc_stores == acc_stores_t::none) {
         cp.store_accumulators(ir, cfg, blk, acc, regs.advancing.store_ptr);

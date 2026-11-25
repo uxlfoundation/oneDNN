@@ -103,6 +103,11 @@ struct compute_path_t {
     // no conversion. Otherwise the output path stores the block.
     virtual bool stores_accumulators() const { return false; }
 
+    // True if `pass_accumulators_to_output_path()` can pass a block in more
+    // than one call. The builder then loads what every part of the block reads
+    // once, before the first call.
+    virtual bool passes_block_in_parts() const { return false; }
+
     // Average size in bytes of the code of one IR operation of a kernel on
     // this compute path. The kernel estimates its code size from it.
     virtual double code_bytes_per_op() const {

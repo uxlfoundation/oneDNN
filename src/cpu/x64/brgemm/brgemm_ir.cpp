@@ -1446,7 +1446,8 @@ status_t init_output_conf(output_conf_t &output, const brgemm_desc_t &brg) {
     VCONDCHECK_BRGEMM_IR(!brg.with_weights_scale_adjust,
             VERBOSE_UNSUPPORTED_FEATURE, "weights scale adjust");
 
-    VCONDCHECK_BRGEMM_IR(IMPLICATION(brg.with_bias, brg.dt_bias == f32),
+    VCONDCHECK_BRGEMM_IR(
+            IMPLICATION(brg.with_bias, one_of(brg.dt_bias, f32, bf16)),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
     VCONDCHECK_BRGEMM_IR(
             everyone_is(false, brg.is_runtime_ldc, brg.is_runtime_ldd),
@@ -1549,6 +1550,11 @@ status_t init_nest_confs(
     VCONDCHECK_BRGEMM_IR(
             IMPLICATION(!is_tmul, !conf.nest_with_post_ops.store.convert_acc),
             VERBOSE_UNSUPPORTED_DT);
+
+    // Only the TMUL compute path takes a bf16 bias so far.
+    VCONDCHECK_BRGEMM_IR(IMPLICATION(!is_tmul && brg.with_bias,
+                                 brg.dt_bias == data_type::f32),
+            VERBOSE_UNSUPPORTED_BIAS_CFG);
 
     // TODO: accept the other output stages on the TMUL compute path after
     // testing them on the rows of its tiles.

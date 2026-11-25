@@ -90,6 +90,7 @@ status_t gen_desc_t::create_generator(
 
 compute::scalar_type_t gen_desc_t::scalar_type() const {
     switch (problem_.Ts) {
+        case Type::invalid: return compute::scalar_type_t::_float;
         case Type::u2: return compute::scalar_type_t::_uint2;
         case Type::s4: return compute::scalar_type_t::_int4;
         case Type::u4: return compute::scalar_type_t::_uint4;
@@ -322,6 +323,9 @@ status_t gen_desc_t::finalize(const char *tags) {
 
     // Always use variable beta for global k-parallel kernels.
     if (strategy_.kParallel && !strategy_.fuseBeta) problem_.beta = Scalar();
+    if ((!problem_.alpha.fixed() || !problem_.beta.fixed())
+            && problem_.Ts == Type::invalid)
+        problem_.Ts = Type::f32;
 
     // Omit periodic barriers when k is small.
     if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * strategy_.barrierFreq)
@@ -642,6 +646,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     eval_params_.batch = (problem.batchDims > 0);
     eval_params_.deterministic = (mode & mode_deterministic);
     eval_params_.Tc_ext = problem.Tc_ext;
+    eval_params_.Ts = problem.Ts;
 
     SelectionObserver observer = make_entry_observer(
             dev_info.eu_count(), dev_info.max_clock_mhz());
@@ -707,8 +712,6 @@ status_t gen_nocopy_desc_t::finalize() {
     use_tf32(problem_.Tb_ext, Tb_ext_new);
     problem_.Ts = Ts_;
 
-    if (problem_.Ts == Type::invalid) problem_.Ts = problem_.Tc;
-
     auto block_k = entry_->driverInfo.blocking[LoopK];
     problem_.beta = beta_;
     // An override applies its own k blocking.
@@ -755,7 +758,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     problem_.Tb = problem_.Tb_ext = convert_dnnl_to_kernel_type(b_type);
     problem_.Tc = convert_dnnl_to_kernel_type(acc_type);
     problem_.Tc_ext = convert_dnnl_to_kernel_type(c_type);
-    problem_.Ts = Type::f32;
+    problem_.Ts = Type::invalid;
     problem_.Tao = convert_dnnl_to_kernel_type(ao_type);
     problem_.Tbo = convert_dnnl_to_kernel_type(bo_type);
     problem_.Tco = convert_dnnl_to_kernel_type(co_type);
@@ -807,6 +810,10 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
         problem_.CO.alignment = problem_.C.alignment;
     }
 
+    if (problem_.needsTsConvert() || problem_.cOffset != COffset::None
+            || problem_.binaryPostProcess())
+        problem_.Ts = Type::f32;
+
     // Find it in the catalog.
     MatchParams match_params(hw_, true, product_, problem_);
 
@@ -842,6 +849,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.cConvert = (acc_type != c_type);
     eval_params.batch = (batch_dims > 0);
     eval_params.Tc_ext = problem_.Tc_ext;
+    eval_params.Ts = problem_.Ts;
 
     SelectionObserver observer = make_entry_observer(
             dev_info.eu_count(), dev_info.max_clock_mhz());
@@ -902,7 +910,9 @@ void gen_kernel_t::init_interface() {
     auto &strategy = *desc()->strategy();
 
     interface_ = NEOInterfaceHandler {desc()->hw_};
-    auto s_type_ngen = problem.Ts.ngen();
+    auto s_type_ngen
+            = (problem.Ts == Type::invalid ? Type(Type::f32) : problem.Ts)
+                      .ngen();
 
     auto a_access = strategy.A.getGlobalAccessType();
     auto b_access = strategy.B.getGlobalAccessType();

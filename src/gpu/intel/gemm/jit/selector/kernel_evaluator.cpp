@@ -556,6 +556,10 @@ DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateP
     dp.hwThreadsPartialWave = threadsPerWG * ssCount;
     dp.partialWaveCount = divUp(dp.hwThreadCapacity, dp.hwThreadsPartialWave);
 
+    // Disable atomic accumulations that round on each chunk.
+    bool accScales = p.Ts != Type::invalid && !e.driverInfo.fusedPostOps();
+    dp.noCAtomics |= !e.driverInfo.needsTempC() && (p.cConvert || (accScales && p.Ts != p.Tc_ext));
+
     dp.autoatomic = (dp.beta == 1) && !p.cConvert && !p.postOps && e.driverInfo.mayUseAutoAtomic();
 
     return dp;

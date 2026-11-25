@@ -589,9 +589,6 @@ status_t transfer_post_ops(
         problem.postOps.binaryBatch = {};
         problem.postOps.binaryTrans = {};
 
-        if (problem.Ta == Type::f16) problem.Ts = Type::f32;
-        if (problem.Ta.isF8() || problem.Tb.isF8()) problem.Ts = Type::f32;
-
         for (size_t i = 0; i < po_count; i++) {
             const auto &entry = post_ops[i];
             if (!entry.is_binary()) {
@@ -743,7 +740,7 @@ status_t pd_t::init_GEMMProblem(
     problem.Tb = problem.Tb_ext = convert_dnnl_to_kernel_type(b_type);
     problem.Tc = convert_dnnl_to_kernel_type(acc_type);
     problem.Tc_ext = convert_dnnl_to_kernel_type(c_type);
-    problem.Ts = problem.Tc;
+    problem.Ts = Type::invalid;
     problem.Tao = convert_dnnl_to_kernel_type(a_quant.zp_type);
     problem.Tbo = convert_dnnl_to_kernel_type(b_quant.zp_type);
     problem.Tco = convert_dnnl_to_kernel_type(co_type);
@@ -840,8 +837,6 @@ status_t pd_t::init_GEMMProblem(
         if (!s8s4_dpas_ok) problem.Tb = Type::s8;
     }
 
-    if (problem.Ta.isInteger()) problem.Ts = Type::f32;
-
     if (alpha() == 1.0f) problem.alpha = (int)alpha();
     if (beta() == 0.0f || beta() == 1.0f) problem.beta = (int)beta();
 
@@ -874,6 +869,17 @@ status_t pd_t::init_GEMMProblem(
     problem.hasGroupSumsB = b_quant.force_gs;
 
     problem.postOps.cStochasticRound = dst_sround;
+
+    if (problem.needsTsConvert() || problem.cOffset != COffset::None
+            || problem.binaryPostProcess() || problem.hasAScalePtr()
+            || problem.hasBScalePtr()) {
+        problem.Ts = problem.Tc;
+        if (problem.Ta.isInteger()
+                || (!problem.postOps.empty()
+                        && (problem.Ta == Type::f16 || problem.Ta.isF8()
+                                || problem.Tb.isF8())))
+            problem.Ts = Type::f32;
+    }
 
     if (problem.needsAGroupSums() || problem.needsBGroupSums())
         problem.autoTypeConversions(has_systolic);

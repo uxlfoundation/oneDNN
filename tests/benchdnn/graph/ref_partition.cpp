@@ -192,6 +192,12 @@ int ref_partition_t::init_graph_mem(
             partition_mem_map.emplace(id,
                     dnn_graph_mem_t(lt_id_2_mems_.at(id), lt_id_2_lt_.at(id),
                             /*is_op_input=*/true, res));
+            if (res->state == SKIPPED) return OK;
+            if (res->state == FAILED) {
+                BENCHDNN_PRINT(0,
+                        "Fail: cannot fill graph memory for tensor %zu\n", id);
+                return FAIL;
+            }
         } else
             partition_mem_map.emplace(id,
                     dnn_graph_mem_t({}, lt_id_2_lt_.at(id),

@@ -246,8 +246,8 @@ struct sdpa_full_softmax_conf_t {
     // thread's scratch block, padded_k is that of a full (non-tail) tile.
     utils::optional_t<tensor_copy_desc_t> k_tile_desc, v_tile_desc;
 
-    size_t scratch_total(int n) const {
-        return scratch_per_thread * static_cast<size_t>(n)
+    size_t scratch_total() const {
+        return scratch_per_thread * static_cast<size_t>(nthr)
                 + shared_scratch_bytes;
     }
 };
@@ -304,7 +304,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
 
 status_t execute(const sdpa_pd_t &pd, const sdpa_full_softmax_conf_t &conf,
         const sdpa_full_softmax_kernels_t &kernels,
-        const sdpa_full_softmax_run_args_t &args, int nthr);
+        const sdpa_full_softmax_run_args_t &args);
 
 } // namespace sdpa_full_softmax
 

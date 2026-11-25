@@ -164,9 +164,8 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     if (kind_ == sdpa_impl_kind_t::online_softmax) {
         VDISPATCH_SDPA_SC(sdpa_online_softmax::configure(*this, online_conf_),
                 "sdpa_online_softmax configuration failed");
-        nthr_ = online_conf_.nthr;
         scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
-                online_conf_.scratch_total(nthr_), 1, 64);
+                online_conf_.scratch_total(), 1, 64);
         return status::success;
     }
 
@@ -217,9 +216,8 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
 
     VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(*this, knobs, full_conf_),
             "sdpa_full_softmax configuration failed");
-    nthr_ = full_conf_.nthr;
     scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
-            full_conf_.scratch_total(nthr_), 1, 64);
+            full_conf_.scratch_total(), 1, 64);
 
     return status::success;
 }
@@ -302,7 +300,7 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
         args.scale = scale_val;
         args.fill = fill_val;
         return sdpa_online_softmax::execute(*pd(), pd()->online_softmax_conf(),
-                online_kernels_, args, scratch, pd()->nthr());
+                online_kernels_, args, scratch);
     }
 
     sdpa_full_softmax_run_args_t args;
@@ -314,8 +312,8 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
     args.scratch = scratch;
     args.scale = scale_val;
     args.fill = fill_val;
-    return sdpa_full_softmax::execute(*pd(), pd()->full_softmax_conf(),
-            full_kernels_, args, pd()->nthr());
+    return sdpa_full_softmax::execute(
+            *pd(), pd()->full_softmax_conf(), full_kernels_, args);
 }
 
 } // namespace x64

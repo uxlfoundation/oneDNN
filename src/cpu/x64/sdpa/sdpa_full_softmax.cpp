@@ -1486,7 +1486,7 @@ namespace {
 struct exec_state_t {
     exec_state_t(const sdpa_pd_t &pd, const sdpa_full_softmax_conf_t &conf,
             const sdpa_full_softmax_kernels_t &kernels,
-            const sdpa_full_softmax_run_args_t &args, int nthr)
+            const sdpa_full_softmax_run_args_t &args)
         : pd(pd)
         , desc(*pd.desc())
         , conf(conf)
@@ -1496,7 +1496,7 @@ struct exec_state_t {
         , mm_dt(mm_data_type(pd))
         , mm_dt_sz(types::data_type_size(mm_dt))
         , scratch(static_cast<char *>(args.scratch))
-        , shared_area_offset(conf.scratch_per_thread * nthr)
+        , shared_area_offset(conf.scratch_per_thread * conf.nthr)
         , k_td(args.k, desc.key_md(), conf.k_copy_desc, scratch,
                   shared_area_offset)
         , v_td(args.v, desc.val_md(), conf.v_copy_desc, scratch,
@@ -1559,7 +1559,7 @@ struct exec_state_t {
 // When packing ahead, materialise mm1's B (K as a dense [hs_qk, seq_kv]
 // matrix; the brgemm ukernel has no transposed-B mode) and mm2's B (V) once
 // per (batch, kv_head) into the shared area.
-void pack_kv_ahead(const exec_state_t &st, int nthr) {
+void pack_kv_ahead(const exec_state_t &st) {
     const dim_t num_head_kv = st.desc.num_kv_heads();
     const bool pack_k = st.k_td.copy_desc;
     const bool pack_v = st.v_td.copy_desc;
@@ -1578,7 +1578,7 @@ void pack_kv_ahead(const exec_state_t &st, int nthr) {
 
     const dim_t batch_head_count = st.desc.batch() * num_head_kv;
     const dim_t coarse_work = batch_head_count * (pack_k + pack_v);
-    const bool fine_grained = coarse_work < nthr;
+    const bool fine_grained = coarse_work < st.conf.nthr;
 
     constexpr dim_t packer_panel_n = b_packer_t::panel_n;
     const dim_t k_n_panels
@@ -1599,7 +1599,7 @@ void pack_kv_ahead(const exec_state_t &st, int nthr) {
     const dim_t work = k_work + v_work;
 
     // Keep whole-head tasks unless they cannot fill the team.
-    parallel(adjust_num_threads(nthr, work), [&](int ithr, int nthr) {
+    parallel(adjust_num_threads(st.conf.nthr, work), [&](int ithr, int nthr) {
         dim_t start = 0, end = 0;
         balance211(work, nthr, ithr, start, end);
         for (dim_t task = start; task < end; ++task) {
@@ -1904,7 +1904,7 @@ private:
 
 // per_head and kv_head_group: each work item computes all keys of its query
 // block in the thread's score, P and pv tiles.
-void execute_fused(const exec_state_t &st, int nthr) {
+void execute_fused(const exec_state_t &st) {
     const auto &conf = st.conf;
     assert(conf.mm2_output != mm2_output_t::merge_partials);
     const sdpa_desc_t &desc = st.desc;
@@ -1936,7 +1936,7 @@ void execute_fused(const exec_state_t &st, int nthr) {
         }
     };
     const dim_t work = desc.batch() * n_items * n_qblk;
-    parallel(adjust_num_threads(nthr, work), [&](int ithr, int nthr) {
+    parallel(adjust_num_threads(conf.nthr, work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
         if (conf.interleave_items) {
             for (dim_t i = ithr; i < work; i += nthr)
@@ -1961,7 +1961,7 @@ void execute_fused(const exec_state_t &st, int nthr) {
 //     write the output. With a single mm2 chunk, the mm2 tasks write the
 //     output instead.
 // P is normalized over all keys, so the chunk results are summed as is.
-void execute_split_kv(const exec_state_t &st, int nthr) {
+void execute_split_kv(const exec_state_t &st) {
     const auto &conf = st.conf;
     const sdpa_desc_t &desc = st.desc;
     const auto &sk = conf.split_kv;
@@ -1997,7 +1997,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                 desc.queries() * row_bytes};
     };
     const dim_t mm1_work = item_work * sk.mm1_chunks;
-    parallel(adjust_num_threads(nthr, mm1_work), [&](int ithr, int nthr) {
+    parallel(adjust_num_threads(conf.nthr, mm1_work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
         for_nd(ithr, nthr, desc.batch(), n_items, n_qblk, sk.mm1_chunks,
                 [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx,
@@ -2012,7 +2012,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
         });
     });
 
-    parallel_nd_ext(nthr, desc.batch(), desc.num_q_heads(), n_qblk,
+    parallel_nd_ext(conf.nthr, desc.batch(), desc.num_q_heads(), n_qblk,
             [&](int, int, dim_t batch_idx, dim_t head, dim_t q_block_idx) {
         const dim_t q0 = q_block_idx * conf.q_block;
         softmax_rows(st,
@@ -2024,7 +2024,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
     });
 
     const dim_t mm2_work = item_work * sk.mm2_chunks;
-    parallel(adjust_num_threads(nthr, mm2_work), [&](int ithr, int nthr) {
+    parallel(adjust_num_threads(conf.nthr, mm2_work), [&](int ithr, int nthr) {
         thread_state_t thread_state(st, ithr);
         for_nd(ithr, nthr, desc.batch(), n_items, n_qblk, sk.mm2_chunks,
                 [&](dim_t batch_idx, dim_t item_head_idx, dim_t q_block_idx,
@@ -2054,7 +2054,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
             && utils::one_of(
                     st.out_d.data_type(), data_type::bf16, data_type::f16);
     auto &acc_ker = *st.kernels.split_kv_acc;
-    parallel_nd_ext(nthr, desc.batch(), desc.num_q_heads(), n_qblk,
+    parallel_nd_ext(conf.nthr, desc.batch(), desc.num_q_heads(), n_qblk,
             [&](int, int, dim_t batch_idx, dim_t head, dim_t q_block_idx) {
         const dim_t q0 = q_block_idx * conf.q_block;
         const dim_t m = nstl::min(conf.q_block, desc.queries() - q0);
@@ -2086,13 +2086,13 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
 
 status_t execute(const sdpa_pd_t &pd, const sdpa_full_softmax_conf_t &conf,
         const sdpa_full_softmax_kernels_t &kernels,
-        const sdpa_full_softmax_run_args_t &args, int nthr) {
-    const exec_state_t st(pd, conf, kernels, args, nthr);
-    if (conf.kv_packing == kv_packing_t::ahead) pack_kv_ahead(st, nthr);
+        const sdpa_full_softmax_run_args_t &args) {
+    const exec_state_t st(pd, conf, kernels, args);
+    if (conf.kv_packing == kv_packing_t::ahead) pack_kv_ahead(st);
     if (conf.schedule == schedule_t::split_kv)
-        execute_split_kv(st, nthr);
+        execute_split_kv(st);
     else
-        execute_fused(st, nthr);
+        execute_fused(st);
     return status::success;
 }
 

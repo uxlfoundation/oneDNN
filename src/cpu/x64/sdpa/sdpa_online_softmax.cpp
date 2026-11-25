@@ -245,8 +245,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
 
 status_t execute(const sdpa_pd_t &pd, const sdpa_online_softmax_conf_t &conf,
         const sdpa_online_softmax_kernels_t &kernels,
-        const sdpa_online_softmax_run_args_t &args, void *scratch_base,
-        int nthr) {
+        const sdpa_online_softmax_run_args_t &args, void *scratch_base) {
     constexpr int ndims = sdpa_pd_t::ndims;
     constexpr int row_dim = ndims - 2;
 
@@ -300,7 +299,7 @@ status_t execute(const sdpa_pd_t &pd, const sdpa_online_softmax_conf_t &conf,
     const dim_t q_row = q_d.strides()[row_dim];
     const dim_t n_qblk = utils::div_up(seq_q, q_blk);
 
-    parallel_nd_ext(nthr, desc.batch(), desc.num_q_heads(), n_qblk,
+    parallel_nd_ext(conf.nthr, desc.batch(), desc.num_q_heads(), n_qblk,
             [&](int tid, int, dim_t bo, dim_t bi, dim_t qblk) {
         const dim_t kvh = bi / group;
         const dim_t q0 = qblk * q_blk;

@@ -71,16 +71,18 @@ bool has_separate_prob_buffer(data_type_t mm_dt) {
     return mm_dt != data_type::f32;
 }
 
-// Return the physical row stride in elements. Add one cache line when the
-// row stride would otherwise alias L1 sets; keep short rows dense.
-dim_t scratch_row_ld(dim_t width, size_t dt_sz, bool allow_padding) {
-    const size_t line = platform::get_cache_line_size();
+// Align paddable rows to a cache line. For long rows, add a line if the
+// aligned stride would map successive row starts to the same L1 set.
+dim_t scratch_row_ld(dim_t width, size_t dt_sz, bool allow_padding = true) {
+    if (!allow_padding) return width;
+
+    constexpr size_t line = platform::get_cache_line_size();
+    size_t row_bytes = utils::rnd_up(static_cast<size_t>(width) * dt_sz, line);
     const size_t l1_way_bytes = platform::get_num_sets_in_cache(1) * line;
-    const size_t row_bytes = static_cast<size_t>(width) * dt_sz;
-    if (!allow_padding || l1_way_bytes == 0 || row_bytes % l1_way_bytes != 0
-            || row_bytes < 2 * l1_way_bytes)
-        return width;
-    return static_cast<dim_t>((row_bytes + line) / dt_sz);
+    if (l1_way_bytes != 0 && row_bytes >= 2 * l1_way_bytes
+            && row_bytes % l1_way_bytes == 0)
+        row_bytes += line;
+    return static_cast<dim_t>(row_bytes / dt_sz);
 }
 
 // Returns the peak load of an f32 tile on the L2 cache: the largest number of
@@ -583,8 +585,7 @@ void init_score_and_prob_layout(const sdpa_pd_t &pd,
             = scratch_row_ld(seq_kv, sizeof(float), !dense_scores_required);
     const data_type_t mm_dt = mm_data_type(pd);
     conf.ld_prob = has_separate_prob_buffer(mm_dt)
-            ? scratch_row_ld(seq_kv, types::data_type_size(mm_dt),
-                      /*allow_padding=*/true)
+            ? scratch_row_ld(seq_kv, types::data_type_size(mm_dt))
             : conf.ld_scores;
 }
 
@@ -1089,7 +1090,7 @@ void resolve_brgemm_layout(const sdpa_pd_t &pd, bool allow_stack_heads,
         conf.mm2_output = mm2_output_t::scratch_then_store;
     }
     const dim_t hs_v = desc.values();
-    conf.ld_pv = scratch_row_ld(hs_v, sizeof(float), /*allow_padding=*/true);
+    conf.ld_pv = scratch_row_ld(hs_v, sizeof(float));
 
     const auto *folded_select
             = conf.mm1_select_postop ? desc.attn_mask_md() : nullptr;

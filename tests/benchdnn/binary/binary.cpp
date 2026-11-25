@@ -98,6 +98,18 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     res_t *res = init_pd_args.res;
     bool force_f32_dt = init_pd_args.force_f32_dt;
 
+    // `stag` carries one entry per source, and the reads below are positional,
+    // so a shorter list indexes past the end. Report it instead: a missing
+    // entry used to be read as garbage and surfaced as an uncaught
+    // `std::logic_error` out of `std::string`.
+    if (prb->stag.size() < prb->vdims.size()) {
+        BENCHDNN_PRINT(0,
+                "Error: option `--stag` requires %zu values, one per source, "
+                "separated by `:`. Given: %zu.\n",
+                prb->vdims.size(), prb->stag.size());
+        return static_cast<dnnl_status_t>(dnnl_invalid_arguments);
+    }
+
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> src0_d;
     DNN_SAFE_STATUS(dnn_mem_t::init_md(src0_d, prb->ndims, prb->vdims[0].data(),
             force_f32_dt ? dnnl_f32 : prb->sdt[0], prb->stag[0],

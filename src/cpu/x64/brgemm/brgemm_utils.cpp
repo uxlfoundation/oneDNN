@@ -742,11 +742,10 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
 }
 
 /**
- * GEMV Register Blocking Strategy (Row-Major A)
- * ============================================
+ * GEMV Register Blocking (see `brgemv_ir.cpp` for the kernel)
+ * ===========================================================
  *
  * Assumptions:
- * - Target ISA: AVX2 (for now)
  * - Only N = 1 is supported (no blocking along load dimension)
  * - A is in row-major layout
  *
@@ -754,76 +753,32 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
  * not transposed (non-transA)
  * ------------------------------------------------------------
  *
- * Blocking scheme:
  * bd_block = 8:
- *   - Uses 8 independent accumulators: acc0 to acc7
+ *   - 8 independent accumulators, one per A row, each horizontally reduced
+ *     to its single output
  *
- * rd_block = simd_w:
- *   - 1 vector register for x
- *   - 1 vector register (a0_reg), reused to load one A micro-row at a time
- *
- * Register usage:
- *   [x_reg]   = vector register holding x[j .. j + rd_block - 1]
- *   [a0_reg]  = vector register reused for each A micro-row
- *   [acc0..7] = accumulators for bd_block rows
- *
- * Microkernel loop:
- *
- *   Load x_reg = x[0 .. rd_block - 1]          // Load entire vector block once
- *
- *   for bd in 0 .. bd_block - 1:
- *     Load a0_reg = A[bd][0 .. rd_block - 1]   // Load A micro-row
- *     acc[bd] += dot(a0_reg, x_reg)            // Accumulate partial results
+ * rd_block:
+ *   - the number of A and x elements one vector register holds at the data
+ *     type the reduction consumes: simd_w f32 elements after a widening load,
+ *     or 2 * simd_w bf16 elements for `vdpbf16ps`
  *
  * ---------------------------------------------------
  * transposed (transA)
  * ---------------------------------------------------
  *
- * In the transposed GEMV case one broadcasted scalar from B is reused across
- * several independent accumulators to increase ILP.
+ * One broadcast element of x is reused across several independent vector
+ * accumulators, each holding simd_w neighboring outputs:
  *
- * 1. First-level register blocking
- *    - one accumulator is one vector register
- *    - for AVX f32, simd_w = 8 (hardcoded for now)
+ *   - `gemv_transa_bd_unroll` is the number of such accumulators updated per
+ *     reduction step
+ *   - `gemv_bd_block()` returns this logical GEMV block size
  *
- * 2. Second-level register blocking
- *    - `gemv_transa_bd_unroll` is the number of such accumulators
- *      updated per reduction step
- *    - `gemv_bd_block()` returns this logical GEMV block size
- *
- * To preserve the existing brgemm harness and outer bdb counting logic
- * `bd_block` is encoded as:
+ * To preserve the brgemm harness and the outer bdb counting logic `bd_block`
+ * is encoded as:
  *
  *     bd_block = simd_w * gemv_transa_bd_unroll
  *
- * This encoding is used only for GEMV + transA.
- *
- * Tail handling in GEMV + transA follows the same two-level structure:
- *
- * 1. Second-level tail
- *    - number of full accumulators in the tail block
- *    - returned by `gemv_bdb_tail()`
- *
- * 2. First-level tail
- *    - remaining valid elements in the final accumulator
- *    - stored in `gemv_tail`
- *
- * So for GEMV + transA:
- *
- *     bdb_tail = gemv_bdb_tail() * simd_w + gemv_tail
- *
- * Microkernel structure:
- *
- * for rd:
- *     broadcast b
- *     for bd in 0 .. gemv_bd_block() - 1:
- *         load one vector a
- *         acc[bd] += a * b
- *
- * Tail block:
- *   - process `gemv_bdb_tail()` full accumulators
- *   - if `gemv_tail > 0` process one final masked vector
- *
+ * rd_block = 1: each reduction step reads one A row, so there is no K tail.
  */
 status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
     assert(utils::one_of(
@@ -852,8 +807,6 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
         brg->rdb = brg->reduce_dim / brg->rd_block;
         brg->rdb_tail = brg->reduce_dim % brg->rd_block;
 
-        brg->gemv_tail = brg->rdb_tail;
-
         return status::success;
     }
 
@@ -876,8 +829,6 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
     brg->rd_block = 1;
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;
-
-    brg->gemv_tail = brg->bdb_tail % simd_w;
 
     return status::success;
 }

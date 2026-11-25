@@ -63,16 +63,26 @@ void generate_kernel(
                 && "generate_kernel: more tiles than the palette has");
     }
 
-    // AVX-512 opmasks reserved for the post-ops injector, which writes both
-    // and restores neither (see `postops_injector_t`).
+    // Registers reserved for the post-ops injector, which writes them and
+    // restores none (see `postops_injector_t`): the AVX-512 opmasks of the
+    // eltwise and binary injectors, and the scratch of the fp8 converters when
+    // a binary right-hand side is fp8.
     const int eltwise_opmask = 6, binary_tail_opmask = 7;
-    const std::vector<int> reserved_masks = with_postops
-            ? std::vector<int> {eltwise_opmask, binary_tail_opmask}
-            : std::vector<int> {};
+    reserved_regs_t reserved;
+    postops_injector_t::fp8_cvt_regs_t fp8_regs;
+    if (with_postops) {
+        reserved.masks = {eltwise_opmask, binary_tail_opmask};
+        if (postops_injector_t::needs_fp8_cvt(*postops.post_ops)) {
+            fp8_regs = postops_injector_t::fp8_cvt_regs(isa);
+            reserved.vecs = fp8_regs.vecs;
+            reserved.masks.push_back(fp8_regs.opmask);
+            reserved.gprs.push_back(fp8_regs.gpr);
+        }
+    }
 
     // Build the register configuration for code emission.
     const reg_config_t reg_cfg = make_reg_config(isa, abi_param1.getIdx(),
-            Xbyak::Operand::RSP, reserved_masks, cfg.tiles);
+            Xbyak::Operand::RSP, reserved, cfg.tiles, needs_cvt_vec(ir));
 
     // Allocate registers.
     const reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools);
@@ -91,7 +101,7 @@ void generate_kernel(
         injector.reset(new postops_injector_t(gen, isa, *postops.post_ops,
                 *postops.dst_md, postops.bcast_set, abi_param1,
                 postops.rhs_arg_offset, postops.dst_orig_off, tail_elems,
-                eltwise_opmask, binary_tail_opmask));
+                eltwise_opmask, binary_tail_opmask, fp8_regs));
     }
 
     gen.preamble();
@@ -113,8 +123,8 @@ void generate_kernel(
     // Emit any static data the emitter accumulated.
     emit_data_section(gen, data);
 
-    // Emit the injector's constant table (a no-op unless the chain has eltwise
-    // or sum).
+    // Emit the injector's constant tables (a no-op unless the chain has
+    // eltwise, sum, or an fp8 right-hand side).
     if (injector) injector->maybe_prepare_table();
 
     // Debug output (see `ir/dump.hpp`). Prints nothing unless enabled.

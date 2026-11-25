@@ -39,20 +39,14 @@ void horizontal_add_ps(
 
     code->vaddps(xmm_src, xmm_src, xmm_ws);
 
-    // XMM indices 16-31 can only be encoded with EVEX. vhaddps/haddps have no
-    // EVEX form so for high registers we have to use an EVEX-encodable
-    // vshufps + vaddps reduction.
-    if (requires_evex) {
-        assert(code->is_valid_isa(avx512_core));
-        code->vshufps(xmm_ws, xmm_src, xmm_src, 0xB1); // [1,0,3,2]
-        code->vaddps(xmm_src, xmm_src, xmm_ws);
-        code->vshufps(xmm_ws, xmm_src, xmm_src, 0x4E); // [2,3,0,1]
-        code->vaddps(xmm_src, xmm_src, xmm_ws);
-    } else {
-        assert(code->is_valid_isa(avx2));
-        code->vhaddps(xmm_src, xmm_src, xmm_src);
-        code->vhaddps(xmm_src, xmm_src, xmm_src);
-    }
+    // vshufps + vaddps rather than two vhaddps: vhaddps is 3 uops with a
+    // 6-cycle latency on Intel cores, the shuffle pair is 2 single-uop
+    // instructions per step. It also encodes with EVEX, which vhaddps does
+    // not, so the same sequence serves xmm16-31.
+    code->vshufps(xmm_ws, xmm_src, xmm_src, 0xB1); // [1,0,3,2]
+    code->vaddps(xmm_src, xmm_src, xmm_ws);
+    code->vshufps(xmm_ws, xmm_src, xmm_src, 0x4E); // [2,3,0,1]
+    code->vaddps(xmm_src, xmm_src, xmm_ws);
 }
 
 void horizontal_add_ps(

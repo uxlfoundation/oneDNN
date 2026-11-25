@@ -26,7 +26,8 @@ namespace x64 {
 namespace ir {
 
 reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
-        const std::vector<int> &reserved_masks, const tile_config_t &tiles) {
+        const reserved_regs_t &reserved, const tile_config_t &tiles,
+        bool reserve_cvt_vec) {
     reg_config_t rc;
     rc.param_reg = param_reg;
 
@@ -41,25 +42,35 @@ reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
     };
 
     // GPR file includes every gpr except the stack pointer (`rsp`), the
-    // argument pointer and the frame pointer (`rbp`) if requested.
-    // The spill slot size is 8 bytes.
+    // argument pointer, the frame pointer (`rbp`) if requested, and the
+    // reserved ones. The spill slot size is 8 bytes.
     const bool with_rbp = jit_generator_t::may_use_rbp();
     reg_file_t gpr_file;
     gpr_file.slot_size = 8;
     for (int i = 0; i < n_gpr; i++) {
         if (i == rsp_reg || i == param_reg) continue;
         if (i == Xbyak::Operand::RBP && !with_rbp) continue;
+        if (contains(reserved.gprs, i)) continue;
         gpr_file.regs.push_back(i);
     }
 
-    // Vector file includes every vector register. On AVX2* a mask is a vector
-    // register, so masks allocate from this same file (see `kind_to_file`
-    // below) and spill like vectors. Spill slot is the vector size 32 for ymm
-    // and 64 for zmm.
+    // Vector file includes every vector register but the reserved ones and the
+    // converting-store scratch, when one is reserved. On AVX2* a mask is a
+    // vector register, so masks allocate from this same file (see
+    // `kind_to_file` below) and spill like vectors. Spill slot is the vector
+    // size 32 for ymm and 64 for zmm.
+    if (reserve_cvt_vec) {
+        rc.cvt_vec = n_vec - 1;
+        while (contains(reserved.vecs, rc.cvt_vec))
+            rc.cvt_vec--;
+        assert(rc.cvt_vec >= 0);
+    }
     reg_file_t vec_file;
     vec_file.slot_size = isa_max_vlen(isa);
-    for (int i = 0; i < n_vec; i++)
+    for (int i = 0; i < n_vec; i++) {
+        if (i == rc.cvt_vec || contains(reserved.vecs, i)) continue;
         vec_file.regs.push_back(i);
+    }
 
     rc.pools.files = {gpr_file, vec_file};
 
@@ -71,13 +82,21 @@ reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
     //    on AVX-512, which has a dedicated k-register file.
     //  * tile: the tile files, which follow the others (see below).
     if (is_superset(isa, avx512_core)) {
-        // Mask file holds `k1` to `k7` minus `reserved_masks`. `k0` is excluded
-        // because it cannot encode a write mask. A k-register is never spilled,
-        // so the file has no spill slot.
+        // Mask file holds `k1` to `k7` minus the reserved ones and the scratch
+        // of the narrowing scalar stores. `k0` is excluded because it cannot
+        // encode a write mask. A k-register is never spilled, so the file has
+        // no spill slot.
+        if (reserve_cvt_vec) {
+            rc.cvt_mask = 7;
+            while (contains(reserved.masks, rc.cvt_mask))
+                rc.cvt_mask--;
+            assert(rc.cvt_mask >= 1);
+        }
         reg_file_t mask_file;
         mask_file.spillable = false;
         for (int i = 1; i < 8; i++) {
-            if (!contains(reserved_masks, i)) mask_file.regs.push_back(i);
+            if (i == rc.cvt_mask || contains(reserved.masks, i)) continue;
+            mask_file.regs.push_back(i);
         }
 
         rc.pools.files.push_back(mask_file);

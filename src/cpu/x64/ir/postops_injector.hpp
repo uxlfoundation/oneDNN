@@ -53,6 +53,10 @@
 //
 //   Both are unused on AVX2*, where a mask is a vector register and the tail
 //   size is an integer inside the injector.
+// - An fp8 binary right-hand side is converted by emulation on an ISA without
+//   native fp8 conversions. The converters write fixed scratch registers
+//   without restoring them, so `generate_kernel()` reserves those too (see
+//   `fp8_cvt_regs_t`).
 
 #include <memory>
 #include <vector>
@@ -66,10 +70,36 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace x64 {
+
+struct fp8_conversion_e5m2_t;
+struct fp8_conversion_e4m3_t;
+
 namespace ir {
 
 // Interfaces marked with DNNL_API are exported for testing purposes only.
 struct postops_injector_t {
+    // Fixed registers of the fp8 emulation of a binary right-hand side (see
+    // `needs_fp8_cvt()`). The converters write them without restoring them,
+    // so the kernel keeps them out of the allocator's pools (see
+    // `reserved_regs_t`). Empty when the chain needs no emulation.
+    //   vecs   - the converters' scratch vectors, and last the vector the
+    //            binary injector converts a right-hand side into
+    //   opmask - the converters' scratch opmask
+    //   gpr    - the converters' table pointer
+    struct fp8_cvt_regs_t {
+        std::vector<int> vecs;
+        int opmask = -1;
+        int gpr = -1;
+    };
+
+    // Whether a binary post-op of `post_ops` reads an fp8 right-hand side, which
+    // the injector converts through the fp8 converters.
+    static bool DNNL_API needs_fp8_cvt(const post_ops_t &post_ops);
+
+    // The fixed registers the fp8 converters take on `isa`, chosen clear of
+    // the registers the injector itself borrows.
+    static fp8_cvt_regs_t DNNL_API fp8_cvt_regs(cpu_isa_t isa);
+
     // gen                - generator the injected post-op code is emitted into
     // isa                - kernel ISA
     // post_ops           - attribute post-ops chain to apply
@@ -91,11 +121,15 @@ struct postops_injector_t {
     // eltwise_opmask     - AVX-512 opmask the eltwise injector uses as scratch
     // binary_tail_opmask - AVX-512 opmask holding the `tail_elems` pattern for
     //                      the binary injector
+    // fp8_regs           - registers of the fp8 converters. Required when
+    //                      `needs_fp8_cvt(post_ops)`, ignored otherwise
     DNNL_API postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
             const post_ops_t &post_ops, const memory_desc_t &dst_md,
             const bcast_set_t &bcast_set, const Xbyak::Reg64 &param_reg,
             int rhs_arg_offset, dim_t dst_orig_off, int tail_elems,
-            int eltwise_opmask, int binary_tail_opmask);
+            int eltwise_opmask, int binary_tail_opmask,
+            const fp8_cvt_regs_t &fp8_regs);
+    DNNL_API ~postops_injector_t();
 
     postops_injector_t(const postops_injector_t &) = delete;
     postops_injector_t &operator=(const postops_injector_t &) = delete;
@@ -116,14 +150,19 @@ struct postops_injector_t {
     void DNNL_API inject(const std::vector<int> &acc_phys, int base_phys,
             const std::vector<dim_t> &out_byte_off, int n_elems);
 
-    // Emit the post-ops constant table. Call once, after the postamble. Only
-    // eltwise and sum post-ops have a table, so this is a no-op without one.
+    // Emit the post-ops constant tables. Call once, after the postamble. Only
+    // eltwise and sum post-ops and the fp8 converters have a table, so this is
+    // a no-op without one.
     void DNNL_API maybe_prepare_table();
 
 private:
     // Type-erased `jit_uni_postops_injector_t<Vmm>`. Cast to the target
     // type when used, based on `is_zmm_`.
     std::shared_ptr<void> injector_;
+    // The fp8 converters of a binary right-hand side, one per fp8 type the
+    // chain reads. Null otherwise.
+    std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
+    std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
     bool is_zmm_ = false;
     // Whether the chain has an eltwise post-op.
     bool with_eltwise_ = false;

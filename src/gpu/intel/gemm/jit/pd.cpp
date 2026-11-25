@@ -315,7 +315,7 @@ status_t pd_t::init_attrs(const impl::engine_t *engine) {
         quant_dim = new_dim;
         return status::success;
     };
-    const auto &set_a_groups = [&set_if_consistent](quant_params &quant,
+    const auto &set_a_groups = [&set_if_consistent](quant_params_t &quant,
                                        const quant_entry_t &entry) -> status_t {
         if (entry.has_default_groups()) return status::success;
         CHECK(set_if_consistent(
@@ -350,7 +350,7 @@ status_t pd_t::init_attrs(const impl::engine_t *engine) {
     b_quant.gs_type = b_gs.get_data_type();
     b_quant.force_gs = !b_gs.has_default_values();
     b_quant.zp_host_scalar = b_zp_host_scalar();
-    const auto &set_b_groups = [&set_if_consistent](quant_params &quant,
+    const auto &set_b_groups = [&set_if_consistent](quant_params_t &quant,
                                        const quant_entry_t &entry) -> status_t {
         if (entry.has_default_groups()) return status::success;
         CHECK(set_if_consistent(
@@ -728,8 +728,8 @@ status_t pd_t::init_GEMMProblem(
     bool c_offset = with_c_zero_points();
     bool bias = with_bias();
 
-    jit::quant_params a_quant = this->a_quant;
-    jit::quant_params b_quant = this->b_quant;
+    jit::quant_params_t a_quant = this->a_quant;
+    jit::quant_params_t b_quant = this->b_quant;
 
     if (swap_ab()) {
         std::swap(a_quant, b_quant);

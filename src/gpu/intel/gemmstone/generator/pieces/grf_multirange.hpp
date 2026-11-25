@@ -27,7 +27,7 @@ GEMMSTONE_NAMESPACE_START
 struct GRFMultirange {
     std::vector<ngen::GRFRange> ranges;
 
-    GRFMultirange() {}
+    GRFMultirange() = default;
     GRFMultirange(ngen::GRFRange range) : ranges{1, range} {}
 
     ngen::GRF operator[](int idx) const { return lookup(idx); }
@@ -69,7 +69,7 @@ struct GRFMultirange {
         for (auto &r : ranges) {
             if (start < r.getLen()) {
                 auto got = std::min(count, r.getLen() - start);
-                result.ranges.push_back(ngen::GRFRange{r.getBase() + start, got});
+                result.ranges.emplace_back(r.getBase() + start, got);
                 count -= got;
                 start = 0;
                 if (count <= 0) break;
@@ -89,7 +89,7 @@ struct GRFMultirange {
     }
 
     void append(ngen::GRF r) {
-        append(r-r);
+        append(ngen::GRFRange(r.getBase(), 1));
     }
 
     void append(ngen::GRFRange r) {

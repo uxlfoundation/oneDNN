@@ -134,7 +134,7 @@ struct RegisterBlock {
     int32_t offsetAddr;         // Address offset, for sharing address registers. For 2D addressing, contains x/y offsets in low/high words.
 
     // Constructors.
-    RegisterBlock() {}
+    RegisterBlock() = default;
     RegisterBlock(ngen::HW hw_, Type T, int r, int c, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
                   bool remainderR = false, bool remainderC = false, bool writable = false, RemainderOptions remOpts = AvoidFragment,
                   int maxRBlock = 0, int maxCBlock = 0);
@@ -245,7 +245,7 @@ public:
     /* Constructors */
 
     // (1) Create an uninitialized (invalid) layout.
-    RegisterLayout() {}
+    RegisterLayout() = default;
 
     // (2) Create a RegisterLayout for reading from (and optionally writing to) memory.
     RegisterLayout(ngen::HW hw_, Type T_, int r, int c, const MatrixAddressing &atype_, const MatrixAddressingStrategy &astrategy_,

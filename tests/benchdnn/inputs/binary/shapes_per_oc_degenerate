@@ -1,0 +1,4 @@
+# Shapes where every dimension inside the channel has extent 1.
+16x17x1:16x17x1
+2x16x1x1:2x16x1x1
+16x1x1:16x1x1

@@ -51,3 +51,18 @@
 
 --ddt=s32 --sdt=s32:s32
 --batch=shapes_ci
+
+# A per-channel binary post-op operand is read from the wrong offset when every
+# dimension inside the channel has extent 1 and the channel is not the innermost
+# one: the plain layout then reports the same strides as a channel-innermost
+# layout, `get_op_type()` resolves it as `n_spatial_c`, and the post-op
+# broadcast takes the path that assumes a tight channel. Two shapes cover it,
+# one three-dimensional and one where a spatial extent other than the last is
+# the only one left above 1.
+--reset --sdt=f32:f32 --ddt=f32
+--attr-post-ops=add:f32:per_oc
+--batch=shapes_per_oc_degenerate
+
+--reset --sdt=f32:f32 --ddt=f32
+--attr-post-ops=mul:f32:per_oc
+--batch=shapes_per_oc_degenerate

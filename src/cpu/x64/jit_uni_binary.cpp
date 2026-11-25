@@ -272,6 +272,22 @@ op_t jit_uni_binary_t::pd_t::get_op_type(const memory_desc_wrapper &src0_d) {
 
     if (!src0_d.is_plain() && src0_d.blocking_desc().inner_idxs[0] == 1)
         return op_t::c_blocked;
+
+    // A unit innermost extent frees its own stride, so a descriptor can carry
+    // `strides[1] == 1` both when the channel is innermost and when it is not:
+    // `(16, 17, 1)` with strides `(17, 1, 1)` reads either way. Resolving that
+    // ambiguity as `n_spatial_c` sends the per-channel post-op broadcast down a
+    // path that assumes the channel is innermost, and the channel-outermost
+    // reading then reads the operand from the wrong offset.
+    //
+    // Only three dimensions or more can be ambiguous: with two, `strides[1]` is
+    // the innermost dimension itself. Pick `n_c_spatial` for the ambiguous case,
+    // which is what the same sequence gets once the innermost extent exceeds
+    // one, and leave the unambiguous cases untouched.
+    const bool ambiguous_per_oc_layout
+            = ndims >= 3 && strides[1] == 1 && strides[ndims - 1] == 1;
+    if (ambiguous_per_oc_layout)
+        return op_t::n_c_spatial;
     else if (strides[1] == 1)
         return op_t::n_spatial_c;
     else if (strides[0] >= strides[1]

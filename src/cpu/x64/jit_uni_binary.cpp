@@ -272,7 +272,15 @@ op_t jit_uni_binary_t::pd_t::get_op_type(const memory_desc_wrapper &src0_d) {
 
     if (!src0_d.is_plain() && src0_d.blocking_desc().inner_idxs[0] == 1)
         return op_t::c_blocked;
-    else if (strides[1] == 1)
+
+    // When the innermost extent is 1 the descriptor is ambiguous between the
+    // n-spatial-c and the n-c-spatial layout: both are described by the same
+    // strides, and the `strides[1] == 1` test would pick n_spatial_c, which
+    // takes the per-oc post-op broadcast down a path that assumes the channel
+    // is innermost. Route that degenerate case through n_c_spatial, the path
+    // the same sequence takes once the innermost extent is larger than one.
+    const bool innermost_is_1 = src0_d.dims()[ndims - 1] == 1;
+    if (strides[1] == 1 && !innermost_is_1)
         return op_t::n_spatial_c;
     else if (strides[0] >= strides[1]
             && IMPLICATION(ndims >= 3, strides[1] >= strides[2]))

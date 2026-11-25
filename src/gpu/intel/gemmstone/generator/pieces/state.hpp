@@ -81,9 +81,8 @@ struct Address2DParams {
 // Cached set of leading dimension multiples for address increments.
 struct LDIncrements {
     using value_type = std::pair<int, SubregisterPair>;
-    LDIncrements(ngen::HW hw, const MatrixAddressingStrategy &s) {
-        type = s.base.isA64() ? ngen::DataType::q : ngen::DataType::ud;
-    }
+    LDIncrements(ngen::HW hw, const MatrixAddressingStrategy &s)
+        : type(s.base.isA64() ? ngen::DataType::q : ngen::DataType::ud) {}
     std::vector<value_type>::iterator begin() { return increments.begin(); }
     std::vector<value_type>::const_iterator begin()const { return increments.begin(); }
     std::vector<value_type>::iterator end() { return increments.end(); }

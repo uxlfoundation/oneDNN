@@ -36,7 +36,7 @@ namespace jit {
 
 #define GEMM_MAX_PO 36
 
-struct quant_params {
+struct quant_params_t {
     data_type_t scales_type = data_type::undef;
     data_type_t zp_type = data_type::undef;
     data_type_t gs_type = data_type::undef;
@@ -128,7 +128,7 @@ struct pd_t : public gemm::pd_t {
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
 
-    quant_params a_quant, b_quant, c_quant;
+    quant_params_t a_quant, b_quant, c_quant;
 
     bool non_scale_po_ = false;
 

@@ -42,10 +42,8 @@ struct VirtualFlag {
     uint8_t n : 2;
 
     constexpr VirtualFlag() : idx(0), n(0) {}
-    VirtualFlag(const ngen::FlagRegister &flag, ngen::HW hw) {
-        idx = flag.index(hw);
-        n = flag.getBytes() >> 1;
-    }
+    VirtualFlag(const ngen::FlagRegister &flag, ngen::HW hw)
+        : idx(flag.index(hw)), n(flag.getBytes() >> 1) {}
     explicit constexpr VirtualFlag(int idx_, int n_ = 1) : idx(idx_), n(n_) {}
 
     ngen::FlagRegister toPhysical(ngen::HW hw = ngen::HW::Unknown) const;
@@ -64,9 +62,8 @@ struct VirtualFlag {
 // Allocator for virtual flag registers.
 class VirtualFlagAllocator {
 public:
-    VirtualFlagAllocator(ngen::HW hw_) : hw(hw_), free(~uint64_t(0)) {
-        nflag = ngen::FlagRegister::subcount(hw_);
-    }
+    VirtualFlagAllocator(ngen::HW hw_)
+        : hw(hw_), free(~uint64_t(0)), nflag(ngen::FlagRegister::subcount(hw_)) {}
 
     VirtualFlag allocVirtual(int n = 1);
     ngen::FlagRegister alloc(int n = 1);
@@ -82,8 +79,8 @@ public:
     bool isFree(VirtualFlag vflag)            const { return !(~free & mask(vflag)); }
     bool isFree(const ngen::FlagRegister &reg) const { return isFree(VirtualFlag(reg, hw)); }
 
-    bool isVirtual(VirtualFlag vflag)               { return (vflag.idx >= nflag); }
-    bool isVirtual(const ngen::FlagRegister &reg)   { return isVirtual(VirtualFlag(reg, hw)); }
+    bool isVirtual(VirtualFlag vflag)         const { return (vflag.idx >= nflag); }
+    bool isVirtual(const ngen::FlagRegister &reg) const { return isVirtual(VirtualFlag(reg, hw)); }
 
     bool lock(VirtualFlag vflag, bool allowAlreadyLocked = false);
     bool lock(const ngen::FlagRegister &reg, bool allowAlreadyLocked = false) { return lock(VirtualFlag(reg, hw), allowAlreadyLocked); }

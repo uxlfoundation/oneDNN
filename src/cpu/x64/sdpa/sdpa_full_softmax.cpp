@@ -51,6 +51,8 @@ namespace x64 {
 
 namespace {
 
+using mm2_output_t = sdpa_mm2_output_t;
+
 inline size_t align64(size_t n) {
     return (n + 63) & ~static_cast<size_t>(63);
 }
@@ -420,12 +422,13 @@ status_t build_mm2_brgemm_desc(brgemm_desc_t &brg, const sdpa_pd_t &pd,
     CHECK(init_brgemm_desc(brg, mm_data_type(pd), beta, M, N, K, conf.ld_prob,
             conf.ldv, conf.mm2_ldc));
 
-    if (conf.mm2_postops) {
+    if (conf.mm2_output == mm2_output_t::convert_on_last_k_block) {
         memory_desc_t dst_md;
         dims_t dst_dims = {M, N};
         dims_t dst_strides = {conf.out_ld, 1};
         CHECK(memory_desc_init_by_strides(
                 dst_md, 2, dst_dims, pd.dst_md()->data_type, dst_strides));
+        // Configure destination conversion through the post-ops API.
         CHECK(brgemm_desc_set_postops(&brg, nullptr, &dst_md, conf.out_ld));
     }
 
@@ -1069,17 +1072,22 @@ void resolve_brgemm_layout(const sdpa_pd_t &pd, bool allow_stack_heads,
     const auto &desc = *pd.desc();
     const memory_desc_wrapper out_mdw(pd.dst_md());
     const auto &out_strides = out_mdw.strides();
-    const bool mm2_has_single_chunk
-            = conf.schedule != sdpa_full_softmax_schedule_t::split_kv
-            || conf.split_kv.mm2_chunks == 1;
+    const bool mm2_needs_merge
+            = conf.schedule == sdpa_full_softmax_schedule_t::split_kv
+            && conf.split_kv.mm2_chunks > 1;
+    const auto out_dt = out_mdw.data_type();
     // Direct f32 stores and final-block conversion require unit stride along
     // the value axis and no partial-result merge.
-    const bool mm2_can_store
-            = mm2_has_single_chunk && out_strides[ndims - 1] == 1;
-    conf.mm2_direct = mm2_can_store && out_mdw.data_type() == data_type::f32;
-    conf.mm2_postops = mm2_can_store
-            && utils::one_of(
-                    out_mdw.data_type(), data_type::bf16, data_type::f16);
+    if (mm2_needs_merge) {
+        conf.mm2_output = mm2_output_t::merge_partials;
+    } else if (out_strides[ndims - 1] == 1 && out_dt == data_type::f32) {
+        conf.mm2_output = mm2_output_t::direct_f32;
+    } else if (out_strides[ndims - 1] == 1
+            && utils::one_of(out_dt, data_type::bf16, data_type::f16)) {
+        conf.mm2_output = mm2_output_t::convert_on_last_k_block;
+    } else {
+        conf.mm2_output = mm2_output_t::scratch_then_store;
+    }
     const dim_t hs_v = desc.values();
     conf.ld_pv = scratch_row_ld(hs_v, sizeof(float), /*allow_padding=*/true);
 
@@ -1092,7 +1100,8 @@ void resolve_brgemm_layout(const sdpa_pd_t &pd, bool allow_stack_heads,
     conf.m_block = conf.stack_heads ? conf.query_heads_per_item : conf.q_block;
     conf.mm1_lda = memory_desc_wrapper(desc.qry_md()).strides()[m_axis];
     conf.out_ld = out_strides[m_axis];
-    conf.mm2_ldc = conf.mm2_direct ? conf.out_ld : conf.ld_pv;
+    conf.mm2_ldc = conf.mm2_output == mm2_output_t::direct_f32 ? conf.out_ld
+                                                               : conf.ld_pv;
 
     // Packed B operands use a panel's leading dimension. In-place operands
     // use the physical row stride from the tensor descriptor.
@@ -1144,7 +1153,7 @@ void layout_scratch(const sdpa_desc_t &desc, data_type_t mm_dt,
     conf.brg_wsp_bytes = align64(max_brg_wsp);
     const size_t scores_bytes
             = align64(item_q_rows * conf.ld_scores * sizeof(float));
-    const size_t pv_bytes = conf.mm2_direct
+    const size_t pv_bytes = conf.mm2_output == mm2_output_t::direct_f32
             ? 0
             : align64(item_q_rows * conf.ld_pv * sizeof(float));
     const size_t prob_bytes = ts.has_prob
@@ -1200,7 +1209,7 @@ void layout_scratch(const sdpa_desc_t &desc, data_type_t mm_dt,
                 ? add_shared_buffer(
                           rows * conf.ld_prob * mm_dt_size, shared_offset)
                 : sk.scores;
-        if (!conf.mm2_direct)
+        if (conf.mm2_output != mm2_output_t::direct_f32)
             sk.partials = add_shared_buffer(
                     sk.mm2_chunks * rows * conf.ld_pv * sizeof(float),
                     shared_offset);
@@ -1379,8 +1388,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
         CHECK(init_packers(kernels.v_packers, rows, cols, v_strides[row_dim],
                 v_strides[ndims - 1]));
     }
-    if (conf.schedule == sdpa_full_softmax_schedule_t::split_kv
-            && conf.split_kv.mm2_chunks > 1) {
+    if (conf.mm2_output == mm2_output_t::merge_partials) {
         kernels.split_kv_acc.reset(new cpu_accumulator_1d_t<data_type::f32>());
         CHECK(kernels.split_kv_acc->create_kernel());
     }
@@ -1833,7 +1841,9 @@ public:
             const bool use_beta0_kernel
                     = conf_.mm2_beta != 0.0f && kv0 == kv_begin;
             const bool last_k_block = kv0 + conf_.mm2_k_block >= kv_end;
-            const bool apply_postops = conf_.mm2_postops && last_k_block;
+            const bool apply_postops
+                    = conf_.mm2_output == mm2_output_t::convert_on_last_k_block
+                    && last_k_block;
             assert(!(use_beta0_kernel && k_tail));
             for_each_block(0, st_.desc.values(), conf_.v_block,
                     [&](dim_t v0, bool v_tail) {
@@ -1901,6 +1911,7 @@ private:
 // block in the thread's score, P and pv tiles.
 void execute_fused(const exec_state_t &st, int nthr) {
     const auto &conf = st.conf;
+    assert(conf.mm2_output != mm2_output_t::merge_partials);
     const sdpa_desc_t &desc = st.desc;
     const auto &scratch_layout = conf.thread_scratch;
     const size_t q_block = static_cast<size_t>(conf.q_block);
@@ -1919,13 +1930,14 @@ void execute_fused(const exec_state_t &st, int nthr) {
                 st, thread_state, batch_idx, item_head_idx, q_block_idx);
         item.mm1(0, desc.keys(), scores);
         item.softmax(scores, prob);
-        if (conf.mm2_direct) {
+        if (conf.mm2_output == mm2_output_t::direct_f32) {
             item.mm2(0, desc.keys(), prob, item.output_tiles());
         } else {
             const item_tiles_t pv = {thread_state.scratch + scratch_layout.pv,
                     q_block * conf.ld_pv * sizeof(float)};
             item.mm2(0, desc.keys(), prob, pv);
-            if (!conf.mm2_postops) item.store(pv);
+            if (conf.mm2_output == mm2_output_t::scratch_then_store)
+                item.store(pv);
         }
     };
     const dim_t work = desc.batch() * n_items * n_qblk;
@@ -2026,7 +2038,7 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                     st, thread_state, batch_idx, item_head_idx, q_block_idx);
             const auto kv = split_kv_partition::key_range(
                     c, sk.mm2_chunks, conf.mm2_k_block, desc.keys());
-            const auto c_tile = conf.mm2_direct
+            const auto c_tile = conf.mm2_output == mm2_output_t::direct_f32
                     ? item.output_tiles()
                     : item_tiles(sk.partials + c * partial_bytes, pv_row_bytes,
                               batch_idx, item_head_idx, q_block_idx);
@@ -2034,11 +2046,11 @@ void execute_split_kv(const exec_state_t &st, int nthr) {
                     item_tiles(sk.prob, prob_row_bytes, batch_idx,
                             item_head_idx, q_block_idx),
                     c_tile);
-            if (sk.mm2_chunks == 1 && !conf.mm2_direct && !conf.mm2_postops)
+            if (conf.mm2_output == mm2_output_t::scratch_then_store)
                 item.store(c_tile);
         });
     });
-    if (sk.mm2_chunks == 1) return;
+    if (conf.mm2_output != mm2_output_t::merge_partials) return;
 
     const dim_t out_row_stride = st.out_d.strides()[sdpa_pd_t::ndims - 2];
     const dim_t out_col_stride = st.out_d.strides()[sdpa_pd_t::ndims - 1];

@@ -96,7 +96,7 @@ status_t configure(const sdpa_pd_t &pd, sdpa_online_softmax_conf_t &conf) {
     const dim_t granule
             = kv_block_width >= 64 ? 64 : (kv_block_width >= 32 ? 32 : 16);
     kv_block_width = nstl::max<dim_t>(
-            utils::rnd_dn(kv_block_width, granule), (dim_t)16);
+            utils::rnd_dn(kv_block_width, granule), static_cast<dim_t>(16));
     conf.kv_blk = nstl::min<dim_t>(seq_kv, kv_block_width);
 
     // Query block. Per KV tile mm1 re-reads the Q slice [q_blk x hs_qk] and the
@@ -112,7 +112,7 @@ status_t configure(const sdpa_pd_t &pd, sdpa_online_softmax_conf_t &conf) {
     // is allowed to overcommit the remainder. Clamp to [1, seq_q].
     const dim_t per_row_bytes = static_cast<dim_t>(
             (hs_qk + 2 * hs_v + conf.kv_blk) * sizeof(float));
-    conf.q_blk = utils::saturate((dim_t)1, seq_q,
+    conf.q_blk = utils::saturate(static_cast<dim_t>(1), seq_q,
             static_cast<dim_t>(l2_budget_bytes / per_row_bytes));
     conf.q_tail = seq_q % conf.q_blk;
 

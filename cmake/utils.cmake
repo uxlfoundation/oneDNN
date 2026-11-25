@@ -170,3 +170,12 @@ function(find_libm var)
         find_library(${var} m REQUIRED)
     endif()
 endfunction()
+
+# Same as check_cxx_source_compiles but skips linking, so toolchain link issues
+# unrelated to the checked feature don't produce false negatives
+function(check_cxx_source_compiles_no_link source var)
+    include(CheckCXXSourceCompiles)
+    # Function scope: the original value is restored on return
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+    check_cxx_source_compiles("${source}" ${var})
+endfunction()

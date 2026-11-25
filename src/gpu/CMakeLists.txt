@@ -64,9 +64,8 @@ set(COMPILER_ALLOWS_ALIAS_ATTRIBUTES_SOURCE
     using status_t __attribute__((warn_unused_result)) = dnnl_status_t;
     int main() { return 0; }
 ")
-include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_FLAGS "-Werror")
-check_cxx_source_compiles("${COMPILER_ALLOWS_ALIAS_ATTRIBUTES_SOURCE}" COMPILER_ALLOWS_ALIAS_ATTRIBUTES)
+check_cxx_source_compiles_no_link("${COMPILER_ALLOWS_ALIAS_ATTRIBUTES_SOURCE}" COMPILER_ALLOWS_ALIAS_ATTRIBUTES)
 unset(CMAKE_REQUIRED_FLAGS)
 
 if(${COMPILER_ALLOWS_ALIAS_ATTRIBUTES})

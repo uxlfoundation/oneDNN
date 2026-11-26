@@ -1346,7 +1346,11 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                 "d_qk=%lld d_v=%lld dt_bytes=%lld q_block=%lld "
                 "mm1_block=%lld mm2_block=%lld nthr=%d schedule=%d "
                 "mm1_chunks=%lld mm2_chunks=%lld l2_per_core=%u "
-                "l3_per_core=%u interleave=%d fold_select=%d\n",
+                "l3_per_core=%u interleave=%d fold_select=%d "
+                "batch=%lld heads_per_item=%lld stack_heads=%d "
+                "m_block=%lld q_tail=%lld mm1_tail=%lld mm2_tail=%lld "
+                "requested_chunks=%lld kv_packing=%d pack_k=%d pack_v=%d "
+                "mm2_output=%d scratch_per_thread=%zu shared_scratch=%zu\n",
                 static_cast<long long>(seq_q), static_cast<long long>(seq_kv),
                 static_cast<long long>(desc.num_q_heads()),
                 static_cast<long long>(desc.num_kv_heads()),
@@ -1360,7 +1364,19 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                 static_cast<long long>(conf.split_kv.mm1_chunks),
                 static_cast<long long>(conf.split_kv.mm2_chunks), hw.l2_bytes,
                 hw.l3_bytes, static_cast<int>(conf.interleave_items),
-                static_cast<int>(conf.mm1_select_postop));
+                static_cast<int>(conf.mm1_select_postop),
+                static_cast<long long>(desc.batch()),
+                static_cast<long long>(conf.query_heads_per_item),
+                static_cast<int>(conf.stack_heads),
+                static_cast<long long>(conf.m_block),
+                static_cast<long long>(conf.q_tail),
+                static_cast<long long>(conf.mm1_n_tail),
+                static_cast<long long>(conf.mm2_k_tail),
+                static_cast<long long>(knobs.split_kv_chunks),
+                static_cast<int>(conf.kv_packing),
+                static_cast<int>(conf.pack_k), static_cast<int>(conf.pack_v),
+                static_cast<int>(conf.mm2_output), conf.scratch_per_thread,
+                conf.shared_scratch_bytes);
     }
 
     return status::success;

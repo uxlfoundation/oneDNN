@@ -455,7 +455,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = v_prim[0];
     const auto &prim_ref = v_prim[1];
 
-    dnn_mem_map_t mem_map, ref_mem_map;
+    dnn_mem_map_t mem_map(res), ref_mem_map(res);
     SAFE(init_memory_args(mem_map, prb, prim, res), WARN);
     TIME_FILL(SAFE(init_ref_memory_args(
                            ref_mem_map, mem_map, prim, prb, res, prim_ref),

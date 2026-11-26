@@ -44,6 +44,8 @@
 #define TIME_COMPARE(func) TIME_FUNC(func, res, timer::names::compare_timer)
 // Designated timer to calculate time spent on filling
 #define TIME_FILL(func) TIME_FUNC(func, res, timer::names::fill_timer)
+// Designated timer to calculate time spent on memory allocation and release
+#define TIME_MEMORY(func) TIME_FUNC(func, res, timer::names::memory_timer)
 // Designated timer to calculate time spent on execute
 #define TIME_EXECUTE(func) TIME_FUNC(func, res, timer::names::execute_timer)
 
@@ -129,6 +131,8 @@ const std::string cp_timer = "create_prim_timer";
 const std::string compare_timer = "compare_timer";
 // Driver's memory filling.
 const std::string fill_timer = "fill_timer";
+// Library memory objects allocation and release.
+const std::string memory_timer = "memory_timer";
 // Test case timer from the create function till dumping the output.
 const std::string test_case_timer = "test_case_timer";
 // Driver's execute.

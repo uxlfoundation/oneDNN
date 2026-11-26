@@ -398,7 +398,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     const auto &prim = prb->dir & FLAG_FWD ? v_prim[0] : v_prim[1];
 
-    dnn_mem_map_t mem_map, ref_mem_map;
+    dnn_mem_map_t mem_map(res), ref_mem_map(res);
     SAFE(init_memory_args(
                  mem_map, prb, v_prim[0], res, /*override_dir_with_fwd=*/true),
             WARN);

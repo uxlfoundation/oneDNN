@@ -276,7 +276,19 @@ private:
     int cleanup();
 };
 
-using dnn_mem_map_t = std::unordered_map<int, dnn_mem_t>;
+// A map that accounts its memory objects release in `res` timers, as large
+// buffers take noticeable time to give back to the system.
+struct dnn_mem_map_t : public std::unordered_map<int, dnn_mem_t> {
+    dnn_mem_map_t() = default;
+    explicit dnn_mem_map_t(res_t *res) : res_(res) {}
+    dnn_mem_map_t(dnn_mem_map_t &&) = default;
+    dnn_mem_map_t &operator=(dnn_mem_map_t &&) = default;
+
+    ~dnn_mem_map_t() { TIME_FUNC(clear(), res_, timer::names::memory_timer); }
+
+private:
+    res_t *res_ = nullptr;
+};
 
 bool has_sparse_md(const dnn_mem_map_t &dnn_mem_map);
 

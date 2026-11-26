@@ -2313,7 +2313,8 @@ void check_correctness(const base_prb_t *base_prb,
     }
 }
 
-int init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
+namespace {
+int init_memory_args_impl(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
         dnnl_primitive_t prim, res_t *res, bool override_dir_with_fwd,
         const engine_t &test_engine) {
     const std::vector<int> supported_exec_args
@@ -2796,6 +2797,16 @@ int init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
     }
 
     return OK;
+}
+} // namespace
+
+int init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
+        dnnl_primitive_t prim, res_t *res, bool override_dir_with_fwd,
+        const engine_t &test_engine) {
+    int status = OK;
+    TIME_MEMORY(status = init_memory_args_impl(mem_map, base_prb, prim, res,
+                        override_dir_with_fwd, test_engine));
+    return status;
 }
 
 int init_prim_ref_common(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,

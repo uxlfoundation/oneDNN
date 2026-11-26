@@ -250,6 +250,8 @@ const std::vector<service_timers_entry_t> &get_global_service_timers() {
             service_timers_entry_t {
                     "create_prim", mode_bit_t::init, timer::names::cp_timer},
             service_timers_entry_t {
+                    "memory", mode_bit_t::exec, timer::names::memory_timer},
+            service_timers_entry_t {
                     "fill", mode_bit_t::exec, timer::names::fill_timer},
             service_timers_entry_t {
                     "execute", mode_bit_t::exec, timer::names::execute_timer},

@@ -1170,8 +1170,8 @@ int doit(const prb_t *prb, res_t *res) {
     auto transform = make_benchdnn_dnnl_wrapper(kernel_args.transform_);
 #endif
 
-    dnn_mem_map_t mem_map, ref_mem_map;
-    SAFE(init_memory_args(mem_map, prb, kernel_args), WARN);
+    dnn_mem_map_t mem_map(res), ref_mem_map(res);
+    TIME_MEMORY(SAFE(init_memory_args(mem_map, prb, kernel_args), WARN));
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, prb, kernel_args, res),
             WARN));

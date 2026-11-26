@@ -25,11 +25,21 @@ if(NOT DNNL_X64_USE_ZEN)
     return()
 endif()
 
-# ZenDNN does not support Windows builds.
-if(WIN32)
+# ZenDNN supports only Linux and Windows builds.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT WIN32)
     message(FATAL_ERROR
-        "ONEDNN_X64_USE_ZEN=ON is not supported on Windows. "
-        "Build on Linux, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
+        "ONEDNN_X64_USE_ZEN=ON requires Linux or Windows. "
+        "Current system: ${CMAKE_SYSTEM_NAME}. "
+        "Build on Linux or Windows, or configure with "
+        "-DONEDNN_X64_USE_ZEN=OFF.")
+endif()
+
+# ZenDNN supports only x86_64 targets.
+if(NOT DNNL_TARGET_ARCH STREQUAL "X64")
+    message(FATAL_ERROR
+        "ONEDNN_X64_USE_ZEN=ON requires DNNL_TARGET_ARCH=X64. "
+        "Current DNNL_TARGET_ARCH: ${DNNL_TARGET_ARCH}. "
+        "Build for x86_64, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
 endif()
 
 # ZenDNN requires CMake >= 3.26.
@@ -50,7 +60,18 @@ if(NOT DNNL_CPU_RUNTIME STREQUAL "OMP")
         "configure with -DONEDNN_X64_USE_ZEN=OFF.")
 endif()
 
-# Require GCC >= 11.2 or Clang >= 14; ZenDNN builds only with GCC/Clang.
+# On Windows, ZenDNN builds only with MSVC (cl).
+if(WIN32 AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    message(FATAL_ERROR
+        "ONEDNN_X64_USE_ZEN=ON on Windows requires MSVC >= 19.43 (Visual "
+        "Studio 2022 17.13); ZenDNN does not support other Windows "
+        "compilers, such as MinGW or clang-cl. Current C++ compiler: "
+        "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}. "
+        "Build with MSVC, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
+endif()
+
+# Require GCC >= 11.2, Clang >= 14 or MSVC >= 19.43; ZenDNN builds only with
+# these compilers.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11.2")
         message(FATAL_ERROR
@@ -67,12 +88,21 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
             "${CMAKE_CXX_COMPILER_VERSION}. "
             "Upgrade Clang, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
     endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "19.43")
+        message(FATAL_ERROR
+            "ONEDNN_X64_USE_ZEN=ON requires MSVC >= 19.43 (Visual Studio 2022 "
+            "17.13). Current C++ compiler: ${CMAKE_CXX_COMPILER_ID} "
+            "${CMAKE_CXX_COMPILER_VERSION}. "
+            "Upgrade MSVC, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
+    endif()
 else()
     message(FATAL_ERROR
-        "ONEDNN_X64_USE_ZEN=ON requires GCC >= 11.2 or Clang >= 14; ZenDNN does "
-        "not support other compilers. Current C++ compiler: "
+        "ONEDNN_X64_USE_ZEN=ON requires GCC >= 11.2, Clang >= 14 or MSVC >= "
+        "19.43; ZenDNN does not support other compilers. Current C++ compiler: "
         "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}. "
-        "Build with GCC or Clang, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
+        "Build with GCC, Clang or MSVC, or configure with "
+        "-DONEDNN_X64_USE_ZEN=OFF.")
 endif()
 
 if(NOT ZENDNNROOT AND DEFINED ENV{ZENDNNROOT})
@@ -89,7 +119,7 @@ if(ZENDNNROOT)
 endif()
 
 # Minimum supported ZenDNN version. A missing or too-old ZenDNN fails configure.
-set(ZENDNN_MIN_VERSION "6.1.2")
+set(ZENDNN_MIN_VERSION "6.1.4")
 # find_package replaces a zendnnl_DIR without a package by
 # zendnnl_DIR-NOTFOUND, so keep the requested path for the error below.
 set(_zendnn_requested_dir "${zendnnl_DIR}")
@@ -240,13 +270,16 @@ function(target_link_zendnnl target visibility)
 
     # Keep ZenDNN and AOCL symbols out of the dynamic symbol table. A static
     # oneDNN passes the option on to the library that links it.
-    set(_zendnn_exclude_libs
-        "LINKER:--exclude-libs,libzendnnl_archive.a:libaocl-dlp.a:libaoclutils.a:libau_cpuid.a")
-    get_target_property(_target_type ${target} TYPE)
-    if(_target_type STREQUAL "SHARED_LIBRARY")
-        target_link_options(${target} PRIVATE ${_zendnn_exclude_libs})
-    elseif(_target_type STREQUAL "STATIC_LIBRARY")
-        target_link_options(${target} INTERFACE ${_zendnn_exclude_libs})
+    # --exclude-libs is an ELF linker option; link.exe and lld-link lack it.
+    if(NOT WIN32)
+        set(_zendnn_exclude_libs
+            "LINKER:--exclude-libs,libzendnnl_archive.a:libaocl-dlp.a:libaoclutils.a:libau_cpuid.a")
+        get_target_property(_target_type ${target} TYPE)
+        if(_target_type STREQUAL "SHARED_LIBRARY")
+            target_link_options(${target} PRIVATE ${_zendnn_exclude_libs})
+        elseif(_target_type STREQUAL "STATIC_LIBRARY")
+            target_link_options(${target} INTERFACE ${_zendnn_exclude_libs})
+        endif()
     endif()
 
     # Ensure target waits for ZenDNN ExternalProject to complete

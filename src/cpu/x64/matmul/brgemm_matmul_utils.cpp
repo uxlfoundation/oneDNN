@@ -317,6 +317,11 @@ status_t check_isa_with_datatype(
                     one_of(isa, avx10_2_amx_2, avx512_core_amx_fp16, avx10_2))
             && IMPLICATION(
                     bm_conf_utils.is_f32_with_f4_wei(), isa == avx512_core)
+            && IMPLICATION(bm_conf_utils.is_xf16_with_f4_wei(),
+                    one_of(isa, avx10_2,
+                            bm_conf_utils.is_bf16_with_f4_wei()
+                                    ? avx512_core_bf16
+                                    : avx512_core_fp16))
             && IMPLICATION(bm_conf_utils.is_f8(),
                     is_superset(isa, avx512_core_amx_fp16)
                             || is_superset(isa, avx10_2))
@@ -361,10 +366,12 @@ status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
                       bm_conf_utils.is_f16_with_int_wei(),
                       bm_conf_utils.is_f32_with_int_wei(),
                       bm_conf_utils.with_int8_grouped_quantization(),
-                      bm_conf_utils.is_f32_with_f4_wei())
+                      bm_conf_utils.is_f32_with_f4_wei(),
+                      bm_conf_utils.is_xf16_with_f4_wei())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
                             || bm_conf_utils.is_f16_with_int_wei()
-                            || bm_conf_utils.is_f32_with_f4_wei(),
+                            || bm_conf_utils.is_f32_with_f4_wei()
+                            || bm_conf_utils.is_xf16_with_f4_wei(),
                     bm_conf_utils.with_weights_decompression());
     return ok ? status::success : status::unimplemented;
 }
@@ -379,7 +386,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, bf16, f32))
     , f16_dt(utils::everyone_is(f16, bgmmc.src_dt, bgmmc.wei_dt)
               && one_of(bgmmc.dst_dt, f16, f32))
-    , f4_via_convert_dt(bgmmc.wei_dt == f4_e2m1 && isa == avx10_1_512)
+    , f4_via_convert_dt(bgmmc.wei_dt == f4_e2m1 && isa == avx10_1_512
+              && !one_of(bgmmc.src_dt, bf16, f16))
     , f8_dt(one_of(bgmmc.src_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
@@ -392,7 +400,10 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && isa == avx512_core_amx)
     , f32_with_f4_wei_dt(everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
               && bgmmc.wei_dt == data_type::f4_e2m1)
-    , weights_decompression_support(f32_with_f4_wei_dt
+    , xf16_with_f4_wei_dt(one_of(bgmmc.src_dt, bf16, f16)
+              && one_of(bgmmc.dst_dt, bgmmc.src_dt, f32)
+              && bgmmc.wei_dt == data_type::f4_e2m1)
+    , weights_decompression_support(f32_with_f4_wei_dt || xf16_with_f4_wei_dt
               || (one_of(bgmmc.wei_dt, u8, s8, u4, s4)
                       && one_of(attr.fpmath_.mode_, fpmath_mode::bf16,
                               fpmath_mode::f16, fpmath_mode::strict,
@@ -822,7 +833,8 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                     || this->is_f32_bf16() || this->is_bf16_with_int_wei()
                     || this->is_f16_with_int_wei()
                     || this->is_f32_with_int_wei() || this->is_bf16_fp8()
-                    || this->is_f16_fp8() || this->is_f32_with_f4_wei();
+                    || this->is_f16_fp8() || this->is_f32_with_f4_wei()
+                    || this->is_xf16_with_f4_wei();
             bgmmc.src_tag = is_adbc_allowed
                     ? memory_desc_matches_one_of_tag(A_md,
                               plain_tensor_layout_tag,
@@ -950,7 +962,9 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             || is_f32_bf16() || is_f16_with_int_wei() || is_f32_with_int_wei();
 
     if ((prefer_amx_or_avx2_vnni_2 && is_amx_or_avx2_vnni_2) || is_bf16()
-            || is_bf16_with_int_wei() || (is_f8() && bgmmc.isa == avx10_2)) {
+            || is_bf16_with_int_wei() || is_bf16_with_f4_wei()
+            || (is_xf16_with_f4_wei() && bgmmc.isa == avx10_2)
+            || (is_f8() && bgmmc.isa == avx10_2)) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c2b : BA16a64b2a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c2b : BA16a48b2a;
@@ -963,7 +977,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     // Note: bf32 assumes f32 blocking
     if (is_f32() || is_bf32() || is_f16() || is_f32_f16() || is_f32_bf16()
             || is_f16_with_int_wei() || is_f32_with_int_wei()
-            || is_f32_with_f4_wei()) {
+            || is_f32_with_f4_wei() || is_xf16_with_f4_wei()) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c : BA16a64b;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c : BA16a48b;
@@ -1054,12 +1068,15 @@ struct matmul_avx512_blocking_params_t {
         return static_cast<float>(scalar) / thread_block;
     }
 
-    float get_imbalance() const {
+    float get_imbalance(bool amortize_decompression = false) const {
         const size_t cur_nthr = nthr / nthr_k;
 
         size_t parallel_work = get_parallel_work();
-        const float parallel_work_disb
-                = calculate_spatial_disbalance(parallel_work, cur_nthr);
+        const size_t scheduled_work = rnd_up(parallel_work, cur_nthr);
+        const float parallel_work_disb = amortize_decompression
+                ? static_cast<float>(scheduled_work - parallel_work)
+                        / scheduled_work
+                : calculate_spatial_disbalance(parallel_work, cur_nthr);
 
         const auto m_work = (m_blk * div_up(mp.M, m_blk)) % mp.M;
         const float m_blk_disbalance = static_cast<float>(m_work) / mp.M;
@@ -1078,9 +1095,14 @@ struct matmul_avx512_blocking_params_t {
                 ? (static_cast<float>(nthr) - cur_nthr * nthr_k) / nthr
                 : 0;
 
+        // Packed FP4 decoding takes about eight vector operations for each
+        // BF16 dot-product's worth of B. Reusing the panel amortizes this cost.
+        const float copy_overhead
+                = amortize_decompression ? 8.f / (8.f + m_blk * m_chunks) : 0.f;
         const float score
                 = (parallel_work_disb + m_blk_disbalance + n_chunk_disbalance
-                          + thread_allocation_disb + disbalance_nthr_k)
+                          + thread_allocation_disb + disbalance_nthr_k
+                          + copy_overhead)
                 / 5;
 
         return score;
@@ -1412,10 +1434,13 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
     if (use_large_m_blk) min_m_blk = max_m_blk;
 
     // Amortize f4 decompression over M without evicting the reused panels.
+    // Keep regular M/N chunking for copied xf16 A to preserve its locality.
     // On AVX10.2 hybrid CPUs, large M chunks hurt cache/TLB locality more
     // than they save in decompression. Keep the regular blocking there.
-    const bool tune_f4_m_chunk = bgmmc.is_f32_with_f4_wei && bgmmc.use_buffer_b
-            && !bgmmc.is_runtime_M
+    const bool tune_f4_m_chunk
+            = (bgmmc.is_f32_with_f4_wei
+                      || (bgmmc.is_xf16_with_f4_wei && !bgmmc.use_buffer_a))
+            && bgmmc.use_buffer_b && !bgmmc.is_runtime_M
             && !(mayiuse(avx10_2) && x64::platform::is_hybrid());
     if (tune_f4_m_chunk) {
         matmul_avx512_blocking_params_t cur_params(matmul, nthr);
@@ -1485,7 +1510,8 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
                             && work_amount % nthr_bmn != 0 && start_nthr_k == 1;
                     if (skip_config) continue;
 
-                    const float cur_imbalance = cur_params.get_imbalance();
+                    const float cur_imbalance = cur_params.get_imbalance(
+                            bgmmc.is_xf16_with_f4_wei);
                     const dim_t reused_m = (dim_t)m_blk * m_chunk_size;
                     const dim_t best_reused_m = (dim_t)best_blocking.m_blk
                             * best_blocking.m_chunks;
@@ -1507,7 +1533,8 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
                 cur_params.update_params(
                         1, min_m_blk, 1, n_blk, brgemm_bs, k_blk, nthr_k);
 
-                const float cur_imbalance = cur_params.get_imbalance();
+                const float cur_imbalance
+                        = cur_params.get_imbalance(bgmmc.is_xf16_with_f4_wei);
                 if (cur_imbalance < best_imbalance) {
                     best_imbalance = cur_imbalance;
                     best_blocking = cur_params;
@@ -1827,6 +1854,7 @@ bool prefer_copy_a_heuristic(const brgemm_matmul_conf_t &bgmmc,
     const bool dt_prefers_copy_a = one_of(true,
             bm_conf_utils.is_f32() && bgmmc.isa == avx2,
             bm_conf_utils.is_bf16(), bm_conf_utils.is_bf16_with_int_wei(),
+            bm_conf_utils.is_bf16_with_f4_wei(),
             (bgmmc.is_amx
                     && (bm_conf_utils.is_f16()
                             || bm_conf_utils.is_f16_with_int_wei()
@@ -2215,6 +2243,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_f16_with_int_wei = bm_conf_utils.is_f16_with_int_wei();
     bgmmc.is_f32_with_int_wei = bm_conf_utils.is_f32_with_int_wei();
     bgmmc.is_f32_with_f4_wei = bm_conf_utils.is_f32_with_f4_wei();
+    bgmmc.is_xf16_with_f4_wei = bm_conf_utils.is_xf16_with_f4_wei();
     bgmmc.is_f32_f16 = bm_conf_utils.is_f32_f16();
     bgmmc.is_f32_bf16 = bm_conf_utils.is_f32_bf16();
     bgmmc.is_xf16_fp8
@@ -2234,12 +2263,14 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // Make BRGeMM compute MatMul as if it were in bfloat16, while down-convert
     // happens during copy-buffer computations
-    if (bgmmc.is_bf32 || bgmmc.is_bf16_with_int_wei) {
+    if (bgmmc.is_bf32 || bgmmc.is_bf16_with_int_wei
+            || bm_conf_utils.is_bf16_with_f4_wei()) {
         bgmmc.src_dt = bf16;
         bgmmc.wei_dt = bf16;
         bgmmc.tr_a_dt_sz = types::data_type_size(bf16);
         bgmmc.tr_b_dt_sz = types::data_type_size(bf16);
-    } else if ((bm_conf_utils.is_f16() || bgmmc.is_f16_with_int_wei)
+    } else if ((bm_conf_utils.is_f16() || bgmmc.is_f16_with_int_wei
+                       || bgmmc.is_xf16_with_f4_wei)
             && bgmmc.isa == avx512_core_fp16) {
         // Similar to bf32, convert input data before compute
         bgmmc.src_dt = f32;
@@ -2264,6 +2295,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         // set later in the code due to its dependencies, the update of data
         // types to f32 happens below in ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`.
     } else if ((bgmmc.is_f16_with_int_wei && bgmmc.isa != avx512_core_fp16)
+            || (bgmmc.is_xf16_with_f4_wei && bgmmc.isa == avx10_2)
             || (bgmmc.is_f8 && bgmmc.isa == avx10_2)) {
         bgmmc.src_dt = f16;
         bgmmc.wei_dt = f16;
@@ -2768,7 +2800,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     const bool is_copy_a_required = !bgmmc.is_gemv
             && ((bgmmc.is_amx && bm_conf_utils.is_bf32())
                     || ((bm_conf_utils.is_f16()
-                                || bm_conf_utils.is_f16_with_int_wei())
+                                || bm_conf_utils.is_f16_with_int_wei()
+                                || (bgmmc.is_xf16_with_f4_wei
+                                        && bgmmc.orig_src_dt == f16))
                             && isa == avx512_core_fp16)
                     || (bm_conf_utils.is_f8() && isa == avx10_2)
                     // Copy A computes the wei zp compensation, grouped int8

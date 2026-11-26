@@ -4241,7 +4241,9 @@ struct jit_brgemm_matmul_copy_b_bf16_t
         , req_cvtf82f16(one_of(conf->orig_wei_dt, data_type::f8_e4m3,
                                 data_type::f8_e5m2)
                   && conf->wei_dt == data_type::f16 && conf->isa == avx10_2)
-        , req_cvtps2bf16(conf->is_bf32 || conf->is_bf16_with_int_wei)
+        , req_cvtps2bf16(conf->is_bf32
+                  || (conf->with_wei_decompression
+                          && conf->wei_dt == data_type::bf16))
         , req_zp_b_shift(conf->has_zero_point_b && conf->with_wei_decompression)
         , req_apply_wei_scales(conf->apply_scales_in_buffer_b)
         , is_wei_grouped_over_k(
@@ -4353,7 +4355,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
     const bool is_src_f4_ = conf_->orig_wei_dt == data_type::f4_e2m1;
     const bool is_src_int4_
             = one_of(conf_->orig_wei_dt, data_type::s4, data_type::u4);
-    const int reserved_regs = is_src_f4_ ? (req_apply_wei_scales ? 6 : 5)
+    const int reserved_regs = is_src_f4_ ? 6
             : req_apply_wei_scales       ? 5
             : is_src_int4_               ? 4
             : req_zp_b_shift             ? 3
@@ -4998,8 +5000,16 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::load_scales(int n, int ncolumns) {
 
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_f32_t<Vmm>::compute_k_loop(int ncolumns) {
+    const bool grouped_copy = conf_->use_xf16_f4_grouped_copy();
+    const reg64_t reg_group_iters = r12;
+    Label group_loop;
+    if (grouped_copy) {
+        mov(reg_group_iters, reg_K_iters);
+        L(group_loop);
+        mov(reg_K_iters, conf_->wei_scales_k_gsize);
+    }
     if (cached_wei_scales_regs_ > 0) {
-        // Each copy call stays within one K-group, so its scales are invariant.
+        // The scales are invariant within one K-group.
         kmovw(kTail, (1 << (ncolumns % simd_w_)) - 1);
         for (int n = 0; n < ncolumns; n += simd_w_)
             load_scales(n, ncolumns);
@@ -5025,6 +5035,11 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::compute_k_loop(int ncolumns) {
     constexpr int k_unroll = 16;
     compute_uni_k_loop(k_unroll);
     compute_uni_k_loop(1);
+    if (grouped_copy) {
+        safe_add(reg_wei_scales, conf_->N * conf_->wei_scales_dt_sz, reg_tmp);
+        sub(reg_group_iters, conf_->wei_scales_k_gsize);
+        jg(group_loop, T_NEAR);
+    }
 }
 
 template <typename Vmm>
@@ -5105,13 +5120,13 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , do_compute_compensation_(
                   conf_->has_zero_point_a || conf_->s8s8_compensation_required)
         , is_bf32_(conf->is_bf32)
-        , is_bf16_with_int_wei_(conf->is_bf16_with_int_wei)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , is_src_f4_(conf->orig_wei_dt == data_type::f4_e2m1)
         , is_src_4bit_(is_src_int4_ || is_src_f4_)
-        , req_cvtps2xf16_(conf->is_bf32 || conf->is_bf16_with_int_wei
-                  || (conf->is_f16_with_int_wei
-                          && conf->wei_dt == data_type::f16))
+        , req_cvtps2xf16_(conf->is_bf32
+                  || (conf->with_wei_decompression
+                          && one_of(conf->wei_dt, data_type::bf16,
+                                  data_type::f16)))
         , req_zp_comp_(conf_->has_zero_point_a)
         , req_s8s8_comp_(conf_->s8s8_compensation_required)
         , req_zp_b_shift_(
@@ -5186,7 +5201,6 @@ private:
     const bool is_wei_grouped_over_k_;
     const bool do_compute_compensation_;
     const bool is_bf32_;
-    const bool is_bf16_with_int_wei_;
     const bool is_src_int4_;
     const bool is_src_f4_;
     const bool is_src_4bit_;
@@ -5793,7 +5807,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         if (is_bf32_)
             vmovups(src_reg_masked, addr);
-        else if (is_bf16_with_int_wei_ || conf_->is_f16_with_int_wei) {
+        else if (conf_->with_wei_decompression) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             MAYBE_UNUSED(xmm_preload);
             const bool preloaded_4bit = preload_4bit(
@@ -5823,7 +5837,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             const auto next_addr = EVEX_compress_addr(reg_src, next_src_offset);
             if (is_bf32_)
                 vmovups(src_next_masked, next_addr);
-            else if (is_bf16_with_int_wei_ || conf_->is_f16_with_int_wei) {
+            else if (conf_->with_wei_decompression) {
                 const auto xmm_preload = Xmm(src_reg_next.getIdx());
                 MAYBE_UNUSED(xmm_preload);
                 const bool preloaded_4bit = preload_4bit(
@@ -5869,9 +5883,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         const auto src_offset = (i * src_stride_) / src_elems_per_byte_;
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
         auto src_masked_reg = maybe_mask(src_reg, is_tail);
-        if ((conf_->is_f16_with_int_wei || conf_->is_f32_with_int_wei
-                    || conf_->is_f32_with_f4_wei)
-                && conf_->wei_dt == data_type::f32) {
+        if (conf_->with_wei_decompression && conf_->wei_dt == data_type::f32) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
             MAYBE_UNUSED(xmm_preload);
             const bool preloaded_4bit = preload_4bit(
@@ -6635,7 +6647,8 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , is_src_int4_vnni4_(is_src_int4_ && conf->blocked_B
                   && get_vnni_granularity_from_tag(conf->wei_tag) == 4)
-        , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
+        , is_src_f4_(conf->orig_wei_dt == data_type::f4_e2m1)
+        , src_elems_per_byte_(is_src_int4_ || is_src_f4_ ? 2 : 1)
         , src_stride_(
                   (conf->LDB * k_blk_step * typesize_) / src_elems_per_byte_)
         , tr_src_stride_(conf_->LDB * k_blk_step * tr_typesize_)
@@ -6650,8 +6663,10 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , vmm_indices_([&]() {
             vmm_idx_t idx;
             int n = 0;
-            if (is_src_int4_ || req_zp_b_shift_ || req_apply_wei_scales_)
+            if (is_src_int4_ || is_src_f4_ || req_zp_b_shift_
+                    || req_apply_wei_scales_)
                 idx.permd = n++;
+            if (is_src_f4_) idx.f4_lookup = n++;
             if (req_zp_b_shift_) {
                 idx.zp_b_val0 = n++;
                 idx.zp_b_val1 = n++;
@@ -6662,6 +6677,8 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
             if (req_apply_wei_scales_) {
                 idx.wei_scales0 = n++;
                 idx.wei_scales1 = n++;
+                if (is_src_f4_ && conf_->is_wei_scale_per_n)
+                    n += 2 * (div_up(conf_->wei_n_blk, n_blk_step) - 1);
             }
             if (is_src_int4_vnni4_) {
                 idx.shl_k01 = n++;
@@ -6694,6 +6711,7 @@ private:
     const int typesize_, tr_typesize_, wei_scales_typesize_;
     const bool is_src_int4_;
     const bool is_src_int4_vnni4_;
+    const bool is_src_f4_;
     const int src_elems_per_byte_;
     const dim_t src_stride_, tr_src_stride_;
     const bool req_cvtf82f16_;
@@ -6703,6 +6721,7 @@ private:
 
     struct vmm_idx_t {
         int permd = -1;
+        int f4_lookup = -1;
         int zp_b_val0 = -1;
         int zp_b_val1 = -1;
         int tmp = -1;
@@ -6732,6 +6751,7 @@ private:
     reg64_t reg_k_start = r15;
 
     Vmm vmm_permd = Vmm(vmm_indices_.permd);
+    Vmm vmm_f4_lookup = Vmm(vmm_indices_.f4_lookup);
     Vmm vmm_zp_b_val0 = Vmm(vmm_indices_.zp_b_val0);
     Vmm vmm_zp_b_val1 = Vmm(vmm_indices_.zp_b_val1);
     Vmm vmm_tmp = Vmm(vmm_indices_.tmp);
@@ -6741,6 +6761,15 @@ private:
     // int4 column to the top: K rows (0, 1) and (2, 3) of a row group.
     Vmm vmm_shl_k01 = Vmm(vmm_indices_.shl_k01);
     Vmm vmm_shl_k23 = Vmm(vmm_indices_.shl_k23);
+
+    bool cache_wei_scales() const {
+        return is_src_f4_ && req_apply_wei_scales_ && conf_->is_wei_scale_per_n;
+    }
+
+    Vmm wei_scales(int n, int half) const {
+        return Vmm(vmm_indices_.wei_scales0 + half
+                + (cache_wei_scales() ? 2 * (n / n_blk_step) : 0));
+    }
 
     Vmm get_vmm(const int blk, const int idx) {
         // fp8->f16 path needs only 1 VMM per block
@@ -6760,6 +6789,7 @@ private:
             const int n, const bool is_n_tail, const bool is_k_tail);
     void get_zero_points(const int n, const bool is_tail, const bool is_k_tail);
     void copy_block(const int nrows, const int ncolumns, bool zeropad);
+    void copy_f4_bf16(int ncolumns, Label &fallback);
     void copy_block_int4_vnni4(const int nrows, const int ncolumns);
     void load_int4_vnni4(
             const Vmm &k01, const Vmm &k23, const Xbyak::Address &addr);
@@ -6835,6 +6865,13 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::init_masks() {
         mov(reg_tmp, reinterpret_cast<size_t>(shl_k23));
         vmovdqa32(vmm_shl_k23, ptr[reg_tmp]);
     }
+    if (is_src_f4_) {
+        alignas(64) static constexpr const float f4_e2m1_table[16]
+                = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
+                        -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
+        mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
+        vmovdqa32(vmm_f4_lookup, ptr[reg_tmp]);
+    }
 }
 
 /** Loads 8 columns x 4 K rows of int4 weights stored in a VNNI-4 blocked
@@ -6868,7 +6905,9 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_wei_scales(
 
     if (!req_apply_wei_scales_ || !conf_->is_wei_scale_per_n) return;
 
-    const auto zmm_wei_scales1 = maybe_mask(vmm_wei_scales1, is_n_tail);
+    const auto scales0 = wei_scales(n, 0);
+    const auto scales1 = wei_scales(n, 1);
+    const auto zmm_wei_scales1 = maybe_mask(scales1, is_n_tail);
     const auto zmm_tmp = maybe_mask(vmm_tmp, is_n_tail);
     const auto base_offset
             = [&](int n_idx) { return n_idx * wei_scales_typesize_; };
@@ -6878,13 +6917,13 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_wei_scales(
 
     load_scale_value(zmm_tmp, wei_scales_addr, conf_->wei_scales_dt, is_n_tail);
 
-    uni_vmovups(vmm_wei_scales1, vmm_tmp);
+    uni_vmovups(scales1, vmm_tmp);
 
-    vinsertf64x4(vmm_wei_scales0, vmm_tmp, Ymm(vmm_wei_scales1.getIdx()), 1);
+    vinsertf64x4(scales0, vmm_tmp, Ymm(scales1.getIdx()), 1);
     vextractf64x4(Ymm(vmm_tmp.getIdx()), vmm_tmp, 1);
-    vinsertf64x4(vmm_wei_scales1, zmm_wei_scales1, Ymm(vmm_tmp.getIdx()), 0);
-    vpermd(vmm_wei_scales0, vmm_permd, vmm_wei_scales0);
-    vpermd(vmm_wei_scales1, vmm_permd, vmm_wei_scales1);
+    vinsertf64x4(scales1, zmm_wei_scales1, Ymm(vmm_tmp.getIdx()), 0);
+    vpermd(scales0, vmm_permd, scales0);
+    vpermd(scales1, vmm_permd, scales1);
 }
 
 /** Loads zero points into 2 registers and permute it.
@@ -6967,13 +7006,15 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
             const dim_t stride = (n_blk_step * typesize_) / src_elems_per_byte_;
             auto load_addr1
                     = maybe_EVEX_compress_addr(reg_src, offset + stride);
-            load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt);
-            load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt);
+            load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt,
+                    false, vmm_f4_lookup);
+            load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt,
+                    false, vmm_f4_lookup);
 
-            get_wei_scales(n, is_n_tail, is_k_tail);
+            if (!cache_wei_scales()) get_wei_scales(n, is_n_tail, is_k_tail);
             get_zero_points(n, is_n_tail, is_k_tail);
             decompress_and_downcvt_2reg(src_vmm0, src_vmm1, vmm_zp_b_val0,
-                    vmm_zp_b_val1, vmm_wei_scales0, vmm_wei_scales1,
+                    vmm_zp_b_val1, wei_scales(n, 0), wei_scales(n, 1),
                     conf_->orig_wei_dt, conf_->wei_dt);
         }
     };
@@ -7077,6 +7118,96 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block_int4_vnni4(
 }
 
 template <typename Vmm>
+void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_f4_bf16(
+        int ncolumns, Label &fallback) {
+    const auto value = get_vmm(0, 0);
+    const auto perm = get_vmm(1, 0);
+    const auto lut = get_vmm(2, 0);
+    const auto mask = get_vmm(3, 0);
+    const auto abs_mask = get_vmm(4, 0);
+    const auto bias = get_vmm(5, 0);
+    const auto tmp = get_vmm(6, 0);
+    const auto nonzero = k1;
+
+    alignas(64) static constexpr uint16_t permute[32]
+            = {0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24, 9,
+                    25, 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31};
+    alignas(64) static constexpr uint16_t bf16_lut[32] = {0x0000, 0x3f00,
+            0x3f80, 0x3fc0, 0x4000, 0x4040, 0x4080, 0x40c0, 0x8000, 0xbf00,
+            0xbf80, 0xbfc0, 0xc000, 0xc040, 0xc080, 0xc0c0};
+    mov(reg_tmp, reinterpret_cast<size_t>(permute));
+    vmovdqa64(perm, ptr[reg_tmp]);
+    mov(regw_tmp, 2);
+    vpbroadcastd(mask, regw_tmp);
+    mov(regw_tmp, 250);
+    vpbroadcastd(abs_mask, regw_tmp);
+    mov(regw_tmp, 0x3f80);
+    vpbroadcastw(bias, reg_tmp.cvt16());
+    for (int n = 0; n < ncolumns; n += n_blk_step) {
+        vpmovzxbd(value, ptr[reg_wei_scales + n]);
+        // Scales 2..252 keep every nonzero FP4 value normal and finite in
+        // BF16. Preserve the floating-point path for underflow/overflow/NaN.
+        vpsubd(tmp, value, mask);
+        vpcmpud(nonzero, tmp, abs_mask, 6);
+        kortestw(nonzero, nonzero);
+        jnz(fallback, T_NEAR);
+        vpmovdw(Ymm(value.getIdx()), value);
+        vinserti64x4(value, value, Ymm(value.getIdx()), 1);
+        const auto scale = wei_scales(n, 0);
+        vpermw(scale, perm, value);
+        vpsllw(scale, scale, 7);
+        vpsubw(scale, scale, bias);
+    }
+    mov(reg_tmp, reinterpret_cast<size_t>(bf16_lut));
+    vmovdqa64(lut, ptr[reg_tmp]);
+    mov(regw_tmp, 0xf);
+    vpbroadcastw(mask, reg_tmp.cvt16());
+    mov(regw_tmp, 0x7fff);
+    vpbroadcastw(abs_mask, reg_tmp.cvt16());
+    mov(reg_src_back, reg_src);
+    mov(reg_tr_src_back, reg_tr_src);
+    if (conf_->use_xf16_f4_grouped_copy())
+        mov(reg_K_iters, conf_->wei_scales_k_gsize);
+    else
+        mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
+
+    auto copy_rows = [&](int rows) {
+        for_(int k = 0; k < rows; k += k_blk_step)
+        for (int n = 0; n < ncolumns; n += n_blk_step) {
+            vpmovzxbw(Ymm(value.getIdx()),
+                    ptr[reg_src + (k / k_blk_step) * src_stride_ + n]);
+            vinserti64x4(value, value, Ymm(value.getIdx()), 1);
+            vpermw(value, perm, value);
+            vpsrlw(value | kAAAA, value, 4);
+            vpandd(value, value, mask);
+            vpermw(value, value, lut);
+            vptestmw(nonzero, value, abs_mask);
+            vpaddw(value | nonzero, value, wei_scales(n, 0));
+            vmovups(ptr[reg_tr_src + (k / k_blk_step) * tr_src_stride_
+                            + n * k_blk_step * tr_typesize_],
+                    value);
+        }
+        add(reg_src, (rows / k_blk_step) * src_stride_);
+        add(reg_tr_src, (rows / k_blk_step) * tr_src_stride_);
+        sub(reg_K_iters, rows);
+    };
+    Label loop, tail, done;
+    L(loop);
+    cmp(reg_K_iters, 8);
+    jl(tail, T_NEAR);
+    copy_rows(8);
+    jmp(loop, T_NEAR);
+    L(tail);
+    cmp(reg_K_iters, k_blk_step);
+    jl(done, T_NEAR);
+    copy_rows(k_blk_step);
+    jmp(tail, T_NEAR);
+    L(done);
+    mov(reg_src, reg_src_back);
+    mov(reg_tr_src, reg_tr_src_back);
+}
+
+template <typename Vmm>
 void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
     assert(tr_typesize_ == sizeof(bfloat16_t));
     preamble();
@@ -7156,16 +7287,58 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
     };
 
     auto compute_K_loop = [&](const int ncolumns) {
+        const bool grouped_copy = conf_->use_xf16_f4_grouped_copy();
+        const reg64_t reg_group_iters = rdx;
+        Label group_loop;
+        if (grouped_copy) {
+            mov(reg_group_iters, ptr[param1 + GET_OFF(current_K_iters)]);
+            L(group_loop);
+        }
+        const bool direct_f4_bf16 = cache_wei_scales()
+                && conf_->wei_dt == data_type::bf16
+                && conf_->wei_scales_dt == data_type::e8m0
+                && conf_->wei_scales_k_gsize == 32 && conf_->K % 32 == 0
+                && ncolumns % n_blk_step == 0 && !conf_->has_zero_point_b;
+        Label fallback, done;
+        if (direct_f4_bf16) {
+            copy_f4_bf16(ncolumns, fallback);
+            jmp(done, T_NEAR);
+            L(fallback);
+        }
+        if (cache_wei_scales()) {
+            const int tail = ncolumns % n_blk_step;
+            if (tail) {
+                mov(regw_tmp, (1 << tail) - 1);
+                kmovw(kTail, regw_tmp);
+            }
+            for (int n = 0; n < ncolumns; n += n_blk_step)
+                get_wei_scales(n, ncolumns - n < n_blk_step, false);
+        }
         mov(reg_src_back, reg_src);
         mov(reg_tr_src_back, reg_tr_src);
 
-        mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
+        if (grouped_copy)
+            mov(reg_K_iters, conf_->wei_scales_k_gsize);
+        else
+            mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
         compute_K_loop_body(reg_K_iters, ncolumns, false);
-        mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_pad)]);
-        compute_K_loop_body(reg_K_iters, ncolumns, true);
+        if (!grouped_copy) {
+            mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_pad)]);
+            compute_K_loop_body(reg_K_iters, ncolumns, true);
+        }
 
         mov(reg_src, reg_src_back);
         mov(reg_tr_src, reg_tr_src_back);
+        L(done);
+        if (grouped_copy) {
+            const dim_t group = conf_->wei_scales_k_gsize;
+            add(reg_src, (group / k_blk_step) * src_stride_);
+            add(reg_tr_src, (group / k_blk_step) * tr_src_stride_);
+            safe_add(reg_wei_scales, conf_->N * conf_->wei_scales_dt_sz,
+                    reg_tmp);
+            sub(reg_group_iters, group);
+            jg(group_loop, T_NEAR);
+        }
     };
 
     Label done;
@@ -7534,6 +7707,7 @@ status_t create_brgemm_matmul_copy_b(
             CHECK(safe_ptr_assign(
                     copy_ker, new jit_brgemm_matmul_copy_b_int4_vnni_t(conf)));
         } else if ((conf->is_bf16_with_int_wei
+                           || (conf->is_xf16_with_f4_wei && (is_bf16 || is_f16))
                            || (conf->is_f16_with_int_wei
                                    && conf->isa != avx512_core_fp16)
                            || (conf->is_f8 && conf->isa == avx10_2))

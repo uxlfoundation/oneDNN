@@ -602,7 +602,7 @@ private:
     std::vector<uint8_t> expr_data_;
     std::vector<int64_t> term_list_;
     ir::object_eq_map_t<dsl::expr_t, uint8_t> expr_locations;
-    const term_registry_t *registry_;
+    const term_registry_t *registry_ = nullptr;
 };
 
 dsl::expr_t calculate_buffer_offset(const gws_bin_mapping_t &gws_map,

@@ -708,6 +708,7 @@ void block_send(const tensor_t &t, const global_tensor_t &g, send_op_t &op,
 
     auto operation_layout
             = is_prefetch ? prefetch_layout(g, w_idx) : t.layout();
+    const std::string header_name = "h";
     for (auto &coord : operation_layout.iter(tile)) {
         auto buffer = is_prefetch ? expr_t()
                                   : t.subvec(coord, into<int>(tile.elems()));
@@ -727,7 +728,7 @@ void block_send(const tensor_t &t, const global_tensor_t &g, send_op_t &op,
                     send_type, 1, true, true, hint.cache);
             auto &send = send_func.as<send_t>();
 
-            auto h = def("h", u8[send.header_size()]);
+            auto h = def(header_name, u8[send.header_size()]);
             store_t::make(h, 0,
                     g.offset(base + coord_local) * g.scalar_type().size());
             append(send.create_offset_store(h, buf_u64,
@@ -790,6 +791,7 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
 
     auto operation_layout
             = is_prefetch ? prefetch_layout(g, w_idx) : t.layout();
+    const std::string header_name = "h";
     for (auto &coord : operation_layout.iter(tile)) {
         auto buffer = is_prefetch ? expr_t()
                                   : t.subvec(coord, into<int>(tile.elems()));
@@ -818,7 +820,7 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
                 /*zero_out=*/true, hint.cache);
         auto &send = send_func.as<send_t>();
 
-        auto h = def("h", u8[send.header_size()]);
+        auto h = def(header_name, u8[send.header_size()]);
 
         auto write = [&](const expr_t &e, int off) {
             append(store_t::make(h, off, e));
@@ -964,10 +966,11 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B) {
     const int n_blk = simd();
     dsl_assert(is_blocked_by(A, m_dim, m_blk));
     dsl_assert(is_blocked_by(C, m_dim, m_blk));
+    const std::string b_vec_name = "b_vec";
     for (int64_t n = 0; n < N; n += n_blk) {
         for (int64_t k = 0; k < K; k++) {
             icoord_t b_coord {{{k_dim, k}, {n_dim, n}}};
-            auto b_vec = def("b_vec", f32[n_blk], B.subvec(b_coord, n_blk));
+            auto b_vec = def(b_vec_name, f32[n_blk], B.subvec(b_coord, n_blk));
             for (int n_inner = 0; n_inner < n_blk; n_inner++) {
                 auto b = b_vec[n_inner];
                 for (int64_t m = 0; m < M; m += m_blk) {

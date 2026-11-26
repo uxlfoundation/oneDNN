@@ -14,16 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <algorithm>
 #include <sstream>
 #include <CL/cl.h>
 
 #include "gpu/intel/ocl/engine.hpp"
 
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-
-#include "xpu/ocl/memory_storage.hpp"
 
 #include "gemmstone/dsl/runtime.hpp"
 #include "gemmstone/microkernel/fuser.hpp"
@@ -33,7 +29,6 @@
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 #include "gpu/intel/ocl/stream.hpp"
-#include "gpu/intel/ocl/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -158,13 +153,21 @@ void filter_build_log(std::vector<char> &buf) {
     };
 
     std::string sep;
+    std::string tail;
     std::string filtered;
     size_t lines_since_last_kernel_name = 0;
     auto append = [&](const std::vector<std::string> &lines) {
         if (lines_since_last_kernel_name <= 1) return;
         for (const auto &line : lines) {
-            filtered += sep;
-            filtered += line;
+            if (line.empty() || line[0] == '\0') {
+                tail += sep;
+                tail += line;
+            } else {
+                filtered += tail;
+                filtered += sep;
+                filtered += line;
+                tail.clear();
+            }
             sep = "\n";
         }
     };

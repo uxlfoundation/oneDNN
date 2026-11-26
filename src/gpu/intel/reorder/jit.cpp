@@ -43,6 +43,9 @@ status_t gen_t::pd_t::init(const impl::engine_t *engine,
     const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
     using namespace data_type;
+    memory_desc_wrapper dst_mdw {dst_md()};
+
+    if (dst_mdw.size() == 0) return status::success;
 
     auto post_ops_ok = [&]() {
         const auto &po = attr()->post_ops_;
@@ -99,7 +102,6 @@ status_t gen_t::pd_t::init(const impl::engine_t *engine,
     VDISPATCH_REORDER(zps_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
 
     memory_desc_wrapper src_mdw {src_md()};
-    memory_desc_wrapper dst_mdw {dst_md()};
     VDISPATCH_REORDER(!src_mdw.has_runtime_dims_or_strides(),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_REORDER(src_mdw.ndims() == dst_mdw.ndims(),
@@ -226,6 +228,9 @@ status_t gen_t::init(impl::engine_t *engine) {
 }
 
 status_t gen_t::execute(const exec_ctx_t &ctx) const {
+    memory_desc_wrapper dst_mdw(pd()->dst_md());
+    if (dst_mdw.size() == 0) return status::success;
+
     auto &info = *pd()->kernel_info;
 
     std::vector<memory_storage_wrapper_t> storage_list;

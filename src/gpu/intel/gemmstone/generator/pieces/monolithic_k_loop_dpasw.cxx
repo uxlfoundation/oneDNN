@@ -310,6 +310,7 @@ inline void sysgemmSetupCLayouts(HW hw, const GRFMultirange &C_regs, int accStri
             RegisterBlock block;
             block.hw = hw;
             block.colMajor = true;
+            block.byteGlue = false;
             block.nr = block.ld = 8;
             block.nc = 4;
             block.component = 0;

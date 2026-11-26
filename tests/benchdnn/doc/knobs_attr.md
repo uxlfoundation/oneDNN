@@ -9,7 +9,7 @@
     --attr-deterministic=BOOL
     --attr-dropout=PROBABILITY[:SEED[:TAG[:OFFSET[:HOST_SCALARS]]]]
     --attr-scales=ARG:MASK_INPUT[:SCALE[:DATA_TYPE]][+...]
-                  ARG:MASK_INPUT[:DATA_TYPE[:GROUPS][:QUANT_MODE]][+...]
+                  ARG:MASK_INPUT[:SCALE][:DATA_TYPE[:GROUPS][:QUANT_MODE]][+...]
     --attr-zero-points=ARG:MASK_INPUT[:ZEROPOINT[:DATA_TYPE]][+...]
                        ARG:MASK_INPUT[:DATA_TYPE[:GROUPS][:QUANT_MODE]][+...]
     --attr-precomputed-reductions=ARG:MASK_INPUT:DATA_TYPE:GROUPS[+...]
@@ -142,8 +142,10 @@ mask value but also a special mechanics behind. Such values are `host_scalar`,
 `mx`, and `dynamic_fp`.
 
 `SCALE` is required for the `common`, or `mask = 0`, value only, and specifies a
-floating-point value which is passed for execution at runtime. Specifying a
-value for any other policies will trigger an error.
+floating-point value which is passed for execution at runtime. For other
+policies, `SCALE` is optional; if specified, all scale factors are set to this
+positive value instead of random ones, e.g.,
+`--attr-scales=src:per_tensor:0x1p120:e8m0:1x32`.
 
 `DATA_TYPE` specifies data type for scale factors. Supported values are
 `f32` (the default), `f16`, `bf16`, `e8m0`, `f8_e5m2`, `f8_e4m3`.

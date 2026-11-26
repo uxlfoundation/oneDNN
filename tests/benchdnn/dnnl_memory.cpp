@@ -21,6 +21,7 @@
 #include <memory>
 #include <numeric>
 #include <string>
+#include <vector>
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -1417,22 +1418,132 @@ const dnnl_dims_t &dnn_mem_t::inner_idxs() const {
     return query_md_inner_idxs(md_);
 }
 
-// Returns physical offset by logical one. logical offset is represented by a
-// scalar l_offset. If is_pos_padded is true, l_offset represents logical
-// offset in already padded area.
-static dnnl_dim_t md_off_l(dnnl_dims_t _pos, const dnn_mem_t &mem,
-        dnnl_dim_t l_offset, bool is_pos_padded = false) {
-    dnnl_dims_t pos;
-    const auto &_dims = is_pos_padded ? mem.padded_dims() : mem.dims();
-    for (int rd = 0; rd < mem.ndims(); ++rd) {
-        const int d = mem.ndims() - 1 - rd;
-        const dnnl_dim_t cur_dim = _dims[d];
-        pos[d] = l_offset % cur_dim;
-        if (_pos) _pos[d] = pos[d];
-        l_offset /= cur_dim;
+namespace {
+// A loop of the traversal of a blocked memory in the physical order.
+struct phys_loop_t {
+    int dim; // Logical dimension the loop belongs to.
+    dnnl_dim_t size;
+    dnnl_dim_t stride;
+    dnnl_dim_t pos_stride; // Contribution to the logical position of `dim`.
+};
+
+// Returns the loops of a blocked memory from the outermost to the innermost.
+// Unit loops are dropped as they don't change positions or offsets.
+std::vector<phys_loop_t> get_phys_loops(const dnn_mem_t &mem) {
+    const int ndims = mem.ndims();
+    const int nblks = mem.inner_nblks();
+    const auto &pdims = mem.padded_dims();
+    const auto &blks = mem.inner_blks();
+    const auto &idxs = mem.inner_idxs();
+
+    dnnl_dims_t blk_size;
+    std::fill(blk_size, blk_size + ndims, 1);
+    for (int iblk = 0; iblk < nblks; ++iblk)
+        blk_size[idxs[iblk]] *= blks[iblk];
+
+    std::vector<phys_loop_t> outer;
+    for (int d = 0; d < ndims; ++d) {
+        const auto size = pdims[d] / blk_size[d];
+        if (size > 1) outer.push_back({d, size, mem.strides()[d], blk_size[d]});
     }
-    return md_off_v(mem, pos, is_pos_padded);
+    std::stable_sort(outer.begin(), outer.end(),
+            [](const phys_loop_t &a, const phys_loop_t &b) {
+        return a.stride > b.stride;
+    });
+
+    std::vector<phys_loop_t> inner;
+    dnnl_dims_t pos_stride;
+    std::fill(pos_stride, pos_stride + ndims, 1);
+    dnnl_dim_t stride = 1;
+    for (int iblk = nblks - 1; iblk >= 0; --iblk) {
+        const int d = static_cast<int>(idxs[iblk]);
+        if (blks[iblk] > 1)
+            inner.push_back({d, blks[iblk], stride, pos_stride[d]});
+        stride *= blks[iblk];
+        pos_stride[d] *= blks[iblk];
+    }
+
+    outer.insert(outer.end(), inner.rbegin(), inner.rend());
+    if (outer.empty()) outer.push_back({0, 1, 1, 1});
+    return outer;
 }
+
+// Returns whether all bits of `n` elements of type `T` located at `p` with
+// `stride` (in elements) are zero.
+template <typename T>
+bool is_strided_zero(const uint8_t *p, dnnl_dim_t stride, dnnl_dim_t n) {
+    T acc = 0;
+    for (dnnl_dim_t i = 0; i < n; ++i) {
+        T v;
+        std::memcpy(&v, p + i * stride * sizeof(T), sizeof(T));
+        acc |= v;
+    }
+    return acc == 0;
+}
+
+// Calls `f(offset, i_beg, pos)` for every run in `[run_beg, run_end)` of the
+// innermost loop that has padded elements. Those are the run elements
+// `i_beg <= i < last.size` located at `offset + i * last.stride`, where `last`
+// is the innermost loop; `pos` is the position of the run element 0. Handing
+// over whole runs lets the caller hoist per-element dispatch out of its loop.
+// Walking in the physical order keeps memory accesses sequential, and an
+// odometer over the outer loops keeps the index math away from the per-element
+// path.
+template <typename F>
+void for_each_padded_run(const std::vector<phys_loop_t> &loops,
+        const dnnl_dim_t *dims, dnnl_dim_t offset0, dnnl_dim_t run_beg,
+        dnnl_dim_t run_end, const F &f) {
+    const int nouter = static_cast<int>(loops.size()) - 1;
+    const auto &last = loops.back();
+
+    // Runs are as short as the innermost block (often 4 elements), so the
+    // position, offset, and the number of padded dims besides `last.dim` are
+    // updated incrementally rather than rebuilt from all loops for every run.
+    std::vector<dnnl_dim_t> idx(nouter);
+    dnnl_dims_t pos = {};
+    dnnl_dim_t off = offset0;
+    int n_padded_dims = 0;
+    const auto move = [&](const phys_loop_t &loop, dnnl_dim_t n) {
+        const int d = loop.dim;
+        const bool was_padded = d != last.dim && pos[d] >= dims[d];
+        pos[d] += n * loop.pos_stride;
+        off += n * loop.stride;
+        const bool is_padded = d != last.dim && pos[d] >= dims[d];
+        n_padded_dims += static_cast<int>(is_padded) - was_padded;
+    };
+
+    dnnl_dim_t rem = run_beg;
+    for (int j = nouter - 1; j >= 0; --j) {
+        idx[j] = rem % loops[j].size;
+        rem /= loops[j].size;
+        move(loops[j], idx[j]);
+    }
+
+    // A run is fully real when no other dim is padded and its last element
+    // along `last.dim` is real.
+    const dnnl_dim_t run_span = (last.size - 1) * last.pos_stride;
+    for (dnnl_dim_t run = run_beg; run < run_end; ++run) {
+        const dnnl_dim_t base = pos[last.dim];
+        const dnnl_dim_t n_real = dims[last.dim] - base;
+        if (n_padded_dims > 0 || n_real <= run_span) {
+            // Only the tail of a run may be padded when other dims are real.
+            const dnnl_dim_t i_beg = (n_padded_dims > 0 || n_real <= 0)
+                    ? 0
+                    : div_up(n_real, last.pos_stride);
+            f(off, i_beg, static_cast<const dnnl_dim_t *>(pos));
+        }
+
+        for (int j = nouter - 1; j >= 0; --j) {
+            if (++idx[j] < loops[j].size) {
+                move(loops[j], 1);
+                break;
+            }
+            move(loops[j], -(loops[j].size - 1));
+            idx[j] = 0;
+        }
+    }
+}
+} // namespace
 
 int check_zero_padding(
         const dnn_mem_t &mem, int arg, res_t *res, int *error_count) {
@@ -1440,50 +1551,94 @@ int check_zero_padding(
     const auto &dims = mem.dims();
     const auto &pdims = mem.padded_dims();
 
+    if (error_count != nullptr) *error_count = 0;
     if (ndims == 0) return OK;
     if (mem.format_kind() != dnnl_blocked) return OK;
+    if (std::equal(dims, dims + ndims, pdims)) return OK;
+    if (mem.nelems(/* with_padded_dims = */ true) == 0) return OK;
 
-    auto product = [](const dnnl_dim_t *beg, const dnnl_dim_t *end) {
-        return std::accumulate(
-                beg, end, (dnnl_dim_t)1, std::multiplies<dnnl_dim_t>());
+    BENCHDNN_PRINT(8, "[CHECK_ZERO_PAD]: Arg:%d\n", exec_arg2data_kind(arg));
+
+    const auto loops = get_phys_loops(mem);
+    const auto offset0 = mem.offset0();
+    const auto nruns
+            = mem.nelems(/* with_padded_dims = */ true) / loops.back().size;
+    const auto dt = mem.dt();
+    void *data = mem.get_mapped_pointer<void>();
+
+    // The library zero-pads with bit zeros, so comparing bits is both exact
+    // and cheaper than converting every element to f32. Sub-byte elements
+    // don't own whole bytes and keep the conversion.
+    const bool is_sub_byte = is_subbyte_type(dt);
+    const size_t dt_size = is_sub_byte ? 0 : dnnl_data_type_size(dt);
+    auto is_zero = [&](dnnl_dim_t off) -> bool {
+        if (is_sub_byte) return get_element(dt, off, data) == 0;
+        const auto *p = static_cast<const uint8_t *>(data) + off * dt_size;
+        switch (dt_size) {
+            case 1: return *p == 0;
+            case 2: {
+                uint16_t v;
+                std::memcpy(&v, p, sizeof(v));
+                return v == 0;
+            }
+            case 4: {
+                uint32_t v;
+                std::memcpy(&v, p, sizeof(v));
+                return v == 0;
+            }
+            case 8: {
+                uint64_t v;
+                std::memcpy(&v, p, sizeof(v));
+                return v == 0;
+            }
+            default: assert(!"unexpected data type size"); return false;
+        }
+    };
+
+    const auto &last = loops.back();
+    // A single check of the bits OR-ed over the run keeps the size dispatch out
+    // of the per-element loop.
+    auto is_run_zero = [&](dnnl_dim_t off, dnnl_dim_t i_beg) -> bool {
+        const auto *p = static_cast<const uint8_t *>(data) + off * dt_size;
+        const dnnl_dim_t n = last.size - i_beg;
+        p += i_beg * last.stride * dt_size;
+        switch (dt_size) {
+            case 1: return is_strided_zero<uint8_t>(p, last.stride, n);
+            case 2: return is_strided_zero<uint16_t>(p, last.stride, n);
+            case 4: return is_strided_zero<uint32_t>(p, last.stride, n);
+            case 8: return is_strided_zero<uint64_t>(p, last.stride, n);
+            default:
+                for (dnnl_dim_t i = i_beg; i < last.size; ++i)
+                    if (!is_zero(off + i * last.stride)) return false;
+                return true;
+        }
     };
 
     int errors = 0;
     std::atomic<int> ok(true);
 
-    for (int dim_m_idx = 0; dim_m_idx < ndims; ++dim_m_idx) {
-        if (dims[dim_m_idx] != pdims[dim_m_idx]) {
-            BENCHDNN_PRINT(
-                    8, "[CHECK_ZERO_PAD]: Arg:%d\n", exec_arg2data_kind(arg));
-            break;
-        }
-    }
-
-    for (int dim_m_idx = 0; dim_m_idx < ndims; ++dim_m_idx) {
-        if (dims[dim_m_idx] == pdims[dim_m_idx]) continue;
-
-        auto dim_l = product(pdims, pdims + dim_m_idx);
-        auto dim_r = product(pdims + dim_m_idx + 1, pdims + ndims);
-
-        benchdnn_parallel_nd(dim_l, dim_r, [&](dnnl_dim_t l, dnnl_dim_t r) {
-            for (dnnl_dim_t m = dims[dim_m_idx]; m < pdims[dim_m_idx]; ++m) {
-                auto l_idx = (l * pdims[dim_m_idx] + m) * dim_r + r;
-                auto idx = md_off_l(nullptr, mem, l_idx, true);
-                if (!(mem.get_elem(idx) == 0)) ok = false;
-            }
+    const int64_t nchunks = benchdnn_get_max_threads();
+    benchdnn_parallel_nd(nchunks, [&](int64_t ichunk) {
+        const auto run_beg = nruns * ichunk / nchunks;
+        const auto run_end = nruns * (ichunk + 1) / nchunks;
+        for_each_padded_run(loops, dims, offset0, run_beg, run_end,
+                [&](dnnl_dim_t off, dnnl_dim_t i_beg, const dnnl_dim_t *) {
+            if (!is_run_zero(off, i_beg)) ok = false;
         });
+    });
 
-        // Run the check one more time to report incorrect elements. This check
-        // is sequential.
-        if (!ok) {
-            for_(dnnl_dim_t l = 0; l < dim_l; ++l)
-            for_(dnnl_dim_t m = dims[dim_m_idx]; m < pdims[dim_m_idx]; ++m)
-            for (dnnl_dim_t r = 0; r < dim_r; ++r) {
-                auto l_idx = (l * pdims[dim_m_idx] + m) * dim_r + r;
-                dnnl_dims_t pos = {};
-                auto idx = md_off_l(pos, mem, l_idx, true);
-
-                bool idx_ok = (mem.get_elem(idx) == 0);
+    // Run the check one more time to report incorrect elements. This check
+    // is sequential.
+    if (!ok) {
+        for_each_padded_run(loops, dims, offset0, 0, nruns,
+                [&](dnnl_dim_t off, dnnl_dim_t i_beg,
+                        const dnnl_dim_t *run_pos) {
+            dnnl_dims_t pos;
+            std::copy(run_pos, run_pos + DNNL_MAX_NDIMS, pos);
+            for (dnnl_dim_t i = i_beg; i < last.size; ++i) {
+                const dnnl_dim_t idx = off + i * last.stride;
+                pos[last.dim] = run_pos[last.dim] + i * last.pos_stride;
+                bool idx_ok = is_zero(idx);
                 if (!idx_ok) errors++;
 
                 const bool dump = (!idx_ok && (errors < 10 || verbose >= 10))
@@ -1497,7 +1652,7 @@ int check_zero_padding(
                             pos[4], pos[5], mem.get_elem(idx));
                 }
             }
-        }
+        });
     }
 
     if (!ok) {

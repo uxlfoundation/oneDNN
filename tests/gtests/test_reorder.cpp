@@ -415,4 +415,32 @@ GPU_INSTANTIATE_TEST_SUITE_P(PaddedWeights, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::oihw, fmt::IOhw16i16o, {17, 23, 2, 1}},
                 cfg_f32 {fmt::goihw, fmt::gOIhw16o16i, {2, 17, 23, 1, 2}}));
 
+TEST(reorder_non_dense_blocked_test_t, TestSameMd) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "The test targets the CPU direct copy reorder.");
+
+    engine eng = get_test_engine();
+    const memory::desc wide_md({64, 96}, memory::data_type::f32, fmt::AB32a32b);
+    const memory::desc md = wide_md.submemory_desc({64, 64}, {0, 0});
+    const dnnl::impl::memory_desc_wrapper mdw(md.get());
+    ASSERT_FALSE(mdw.is_dense(true));
+
+    memory src(md, eng);
+    memory dst(md, eng);
+    {
+        auto src_data = map_memory<float>(src);
+        auto dst_data = map_memory<float>(dst);
+        for (int64_t i = 0; i < mdw.nelems(); i++) {
+            src_data[mdw.off_l(i, false)] = static_cast<float>(i);
+            dst_data[mdw.off_l(i, false)] = -1.f;
+        }
+    }
+
+    auto strm = make_stream(eng);
+    reorder(reorder::primitive_desc(eng, md, eng, md)).execute(strm, src, dst);
+    strm.wait();
+
+    check_reorder<float, float>(md, md, src, dst);
+}
+
 } // namespace dnnl

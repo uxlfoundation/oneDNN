@@ -100,15 +100,17 @@ void Generator<hw>::emov(const ngen::InstructionModifier &mod, ngen::RegData dst
         shl(mod, dst, src0, 16, loc);
     } else if (!strategy.systolicAvailable && dst.getType() == DataType::bf && src0.getType() == DataType::f) {
         // Emulated f32->bf16 RTNE conversion.
-        auto flag = state.emulate.flag;
-        if (!flag.isValid()) stub();
+        auto tempRange = state.ra.alloc_range(
+                div_up(mod.getExecSize(), elementsPerGRF<uint32_t>(hw)));
+        auto temp = tempRange[0].ud();
         dst.setType(DataType::uw);
         src0.setType(DataType::ud);
-        add(mod, src0, src0, -0x8000, loc);
-        and_(mod | nz | flag, null.ud(), src0, 0x1FFFF, loc);
+        shr(mod, temp, src0, 16, loc);
+        and_(mod, temp, temp, 1, loc);
+        add(mod, src0, src0, 0x7FFF, loc);
+        add(mod, src0, src0, temp, loc);
         mov(mod, dst, EmulationImplementation::highWord(src0), loc);
-        // add(mod, src0, src0, 0x8000);       // Preserve src0 -- if nondestructive mov -- not needed
-        add(mod | flag, dst, dst, 1, loc);
+        state.ra.safeRelease(tempRange);
     } else
         EmulationImplementation::emov(*this, mod, dst, src0, strategy.emulate, loc);
 }

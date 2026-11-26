@@ -188,6 +188,9 @@ struct zen_packed_desc_t {
     // only tells zen_reorder how to read the source; stored explicitly since the
     // opaque format has no strides.
     bool weights_transposed;
+    // K group size of a symmetric-quant prepack; must match the K group of the
+    // matmul weight scales. 0 selects the default static-quant layout.
+    int sym_group_size;
 };
 
 struct sparse_desc_t {

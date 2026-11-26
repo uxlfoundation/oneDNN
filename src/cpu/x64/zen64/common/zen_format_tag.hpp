@@ -86,8 +86,9 @@ inline zendnnl::common::data_type_t to_zen_dt(data_type_t dt) {
 // matches what the packer (zen_reorder_t) actually writes. The size is
 // layout-invariant w.r.t. ldb/transpose, so the query uses the canonical
 // row-major, untransposed form (ldb = N, transposed = false).
-inline dim_t zen_prepack_size(
-        data_type_t wei_dt, data_type_t src_dt, dim_t K, dim_t N) {
+// sym_group_size > 0 selects the sym_quant prepack (see zen_packed_desc_t).
+inline dim_t zen_prepack_size(data_type_t wei_dt, data_type_t src_dt, dim_t K,
+        dim_t N, int sym_group_size = 0) {
     using zd = zendnnl::common::data_type_t;
     const zd zwei = to_zen_dt(wei_dt);
     const zd zsrc = to_zen_dt(src_dt);
@@ -95,14 +96,13 @@ inline dim_t zen_prepack_size(
 
     zendnnl::lowoha::reorder::reorder_params_t rp;
     rp.is_prepack = true;
-    rp.prepack.algo = zendnnl::ops::matmul_algo_t::aocl_dlp_blocked;
     rp.prepack.wei_dtype = zwei;
     rp.prepack.src_dtype = zsrc;
     rp.prepack.K = K;
     rp.prepack.N = N;
     rp.prepack.ldb = N;
     rp.prepack.transposed = false;
-    rp.prepack.sym_group_size = 0;
+    rp.prepack.sym_group_size = sym_group_size;
     return static_cast<dim_t>(
             zendnnl::lowoha::reorder::weight_prepack_size(rp));
 }
@@ -127,20 +127,23 @@ inline bool is_zen_packed(const memory_desc_t &md) {
 // packed buffer (the AOCL-DLP blocked layout can depend on the source dtype)
 // and recorded so packed descriptors for different GEMM source types stay
 // distinct in the primitive cache.
+// sym_group_size > 0 selects the sym-quant prepack and must match the K group
+// of the matmul weight scales; 0 keeps the static-quant layout.
 // K and N are the GEMM dimensions (contraction, output). weights_transposed
 // tells how the md's dims map to them: false => [K, N] (matmul); true =>
 // [N, K] = [OC, IC] (inner product). It only affects how zen_reorder reads the
 // source -- packed bytes are normalized either way. Default false = matmul.
 inline status_t init_zen_packed_md(memory_desc_t &weights_md,
         data_type_t gemm_src_dt, dim_t K, dim_t N, dim_t batch = 1,
-        bool weights_transposed = false) {
+        bool weights_transposed = false, int sym_group_size = 0) {
 #if DNNL_X64_USE_ZEN
-    const dim_t per_slice
-            = zen_prepack_size(weights_md.data_type, gemm_src_dt, K, N);
+    const dim_t per_slice = zen_prepack_size(
+            weights_md.data_type, gemm_src_dt, K, N, sym_group_size);
 #else
     MAYBE_UNUSED(gemm_src_dt);
     MAYBE_UNUSED(K);
     MAYBE_UNUSED(N);
+    MAYBE_UNUSED(sym_group_size);
     const dim_t per_slice = 0;
 #endif
     if (per_slice <= 0) return status::unimplemented;
@@ -160,6 +163,7 @@ inline status_t init_zen_packed_md(memory_desc_t &weights_md,
     weights_md.format_desc.zen_packed_desc.gemm_src_dt = gemm_src_dt;
     weights_md.format_desc.zen_packed_desc.weights_transposed
             = weights_transposed;
+    weights_md.format_desc.zen_packed_desc.sym_group_size = sym_group_size;
     return status::success;
 }
 

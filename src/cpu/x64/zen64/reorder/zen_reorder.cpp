@@ -59,24 +59,24 @@ using namespace dnnl::impl::status;
 namespace {
 
 using zd = zendnnl::common::data_type_t;
-using zendnnl::ops::matmul_algo_t;
 
 // One (K, N) slice through reorder_direct. `unpack` selects unreorder;
 // otherwise this is the prepack. src_dt is the matmul source dtype: it equals
 // wei_dt for f32/bf16/f16, and may differ for int8 (u8 source, s8 weights).
+// sym_group_size > 0 selects the sym_quant prepack; 0 keeps the default.
 status_t zen_weight_reorder(const void *src, void *dst, zd wei_dt, zd src_dt,
-        int64_t K, int64_t N, int64_t ldb, bool transposed,
-        bool unpack = false) {
+        int64_t K, int64_t N, int64_t ldb, bool transposed, bool unpack = false,
+        int sym_group_size = 0) {
     zendnnl::lowoha::reorder::reorder_params_t rp;
     rp.is_prepack = !unpack;
     rp.is_unreorder = unpack;
-    rp.prepack.algo = matmul_algo_t::aocl_dlp_blocked;
     rp.prepack.wei_dtype = wei_dt;
     rp.prepack.src_dtype = src_dt;
     rp.prepack.K = K;
     rp.prepack.N = N;
     rp.prepack.ldb = ldb;
     rp.prepack.transposed = transposed;
+    rp.prepack.sym_group_size = sym_group_size;
 
     return to_dnnl_status(
             zendnnl::lowoha::reorder::reorder_direct(src, dst, rp));
@@ -282,10 +282,12 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     //                   (same two-step pattern as f32->bf16)
     //   bf16 -> f32   : widen to plain f32, then f32 prepack
     //   f16  -> f32   : widen to plain f32, then f32 prepack
-    //   s8   -> s8    : int8 static-quant weight prepack (Zen blocked algo)
+    //   s8   -> s8    : int8 weight prepack (static-quant, or sym_quant when
+    //                   the dst zen_packed desc records sym_group_size > 0)
     //   f32  -> s8    : f32->s8 plain cast, then s8 prepack (for callers that
     //                   keep integer-valued weights in f32, e.g. benchdnn)
-    //   s4   -> s4    : WOQ 4-bit weight prepack (bf16 gemm source)
+    //   s4   -> s4    : 4-bit weight prepack: WOQ (bf16 gemm source) or W4A8
+    //                   (s8 gemm source, sym_group_size > 0)
     //   u4   -> u4    : WOQ 4-bit weight prepack (bf16 gemm source)
     //   f32  -> s4/u4 : f32->4-bit plain cast, then WOQ prepack (for callers
     //                   that keep integer-valued 4-bit codes in f32, e.g.
@@ -361,6 +363,11 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
                     || static_cast<size_t>(src_strides[0]) % src_elems_per_byte
                             == 0,
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    // execute() adds offset0 (a submemory view) to the src base. For a
+    // sub-byte source the view must also start on a byte boundary.
+    VDISPATCH_REORDER(
+            static_cast<size_t>(id.offset0()) % src_elems_per_byte == 0,
+            VERBOSE_UNSUPPORTED_TAG_S, "src");
 
     // src and dst logical dims must agree (oneDNN reorder API contract).
     for (int i = 0; i < ndims; i++)
@@ -398,8 +405,9 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     // The per-slice packed size can depend on the matmul source dtype (recorded
     // in the packed descriptor as gemm_src_dt), so query with
     // (wei=type_o, src=gemm_src_dt) -- for f32/bf16/f16 gemm_src_dt == type_o.
-    const dim_t expected_per_slice
-            = zen_prepack_size(type_o, zpd.gemm_src_dt, K, N);
+    // sym_group_size > 0 selects the larger s8 sym-quant packed layout.
+    const dim_t expected_per_slice = zen_prepack_size(
+            type_o, zpd.gemm_src_dt, K, N, zpd.sym_group_size);
     VDISPATCH_REORDER(expected_per_slice > 0
                     && zpd.per_slice_size
                             == static_cast<size_t>(expected_per_slice),
@@ -504,12 +512,15 @@ status_t zen_reorder_t::pd_t::init_unpack(const engine_t *engine) {
             VERBOSE_UNSUPPORTED_FEATURE,
             "dimension > INT_MAX is not supported");
 
-    const dim_t expected_per_slice
-            = zen_prepack_size(type_i, zpd.gemm_src_dt, K, N);
+    const dim_t expected_per_slice = zen_prepack_size(
+            type_i, zpd.gemm_src_dt, K, N, zpd.sym_group_size);
     VDISPATCH_REORDER(expected_per_slice > 0
                     && zpd.per_slice_size
                             == static_cast<size_t>(expected_per_slice),
             VERBOSE_INCONSISTENT_MDS, "src", "packed-slice-size");
+    // ZenDNN cannot unpack sym-quant packed weights (sym_group_size > 0).
+    VDISPATCH_REORDER(zpd.sym_group_size <= 0, VERBOSE_UNSUPPORTED_FEATURE,
+            "sym-quant packed weights have no unreorder");
     const size_t batch_sz = static_cast<size_t>(batch);
     VDISPATCH_REORDER(zpd.per_slice_size <= SIZE_MAX / batch_sz,
             VERBOSE_INCONSISTENT_MDS, "src", "packed-size-overflow");
@@ -603,7 +614,9 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
             : 0;
     const size_t dst_slice_bytes = dst_d.zen_packed_desc().per_slice_size;
 
-    const auto *src_base = CTX_IN_MEM(const uint8_t *, DNNL_ARG_FROM);
+    const auto *src_base = CTX_IN_MEM(const uint8_t *, DNNL_ARG_FROM)
+            + types::elements_to_bytes(
+                    src_dt, static_cast<size_t>(src_d.offset0()));
     auto *dst_base = CTX_OUT_MEM(uint8_t *, DNNL_ARG_TO);
 
     // f32 -> {bf16, f16, s8, s4, u4} and {bf16, f16} -> f32 prepack need a
@@ -616,10 +629,12 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
         if (convert_buf == nullptr) return status::out_of_memory;
     }
 
-    // The matmul source dtype (u8/s8 for int8; f32/bf16/f16 otherwise) is recorded
-    // in the packed descriptor; the AOCL-DLP blocked layout can depend on it,
-    // so forward it explicitly to the packer.
+    // The matmul source dtype (u8/s8 for int8; f32/bf16/f16 otherwise) is
+    // recorded in the packed descriptor; the AOCL-DLP blocked layout can
+    // depend on it, so forward it explicitly to the packer. sym_group_size
+    // selects the sym_quant prepack kernel when > 0.
     const zd gemm_src = to_zen_dt(dst_d.zen_packed_desc().gemm_src_dt);
+    const int sym_group_size = dst_d.zen_packed_desc().sym_group_size;
 
     // Pack one (K, N) slice from `src` into `dst`.
     auto prepack_slice = [&](const void *src, void *dst) -> status_t {
@@ -636,16 +651,18 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
                     src, dst, zd::f32, zd::f32, K, N, ldb, transposed);
 
         if (src_dt == data_type::s8 && dst_dt == data_type::s8)
-            // int8 static-quant weight prepack.
-            return zen_weight_reorder(
-                    src, dst, zd::s8, gemm_src, K, N, ldb, transposed);
+            // int8 weight prepack: static-quant when sym_group_size == 0,
+            // sym_quant when the packed descriptor records a group size.
+            return zen_weight_reorder(src, dst, zd::s8, gemm_src, K, N, ldb,
+                    transposed, /*unpack=*/false, sym_group_size);
 
         if ((src_dt == data_type::s4 && dst_dt == data_type::s4)
                 || (src_dt == data_type::u4 && dst_dt == data_type::u4))
-            // WOQ 4-bit weight prepack; the gemm source (bf16) is recorded in
-            // the packed descriptor and forwarded to the packer.
+            // 4-bit weight prepack: WOQ with a bf16 gemm source
+            // (sym_group_size == 0), W4A8 with an s8 gemm source
+            // (sym_group_size > 0).
             return zen_weight_reorder(src, dst, to_zen_dt(src_dt), gemm_src, K,
-                    N, ldb, transposed);
+                    N, ldb, transposed, /*unpack=*/false, sym_group_size);
 
         if (src_dt == data_type::f32 && dst_dt == data_type::bf16) {
             // Convert f32 -> plain bf16 (contiguous `ab`), then prepack that
@@ -691,7 +708,8 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
                     = f32_to_s8_plain(src, convert_buf, K, N, ldb, src_is_ab);
             if (st == success)
                 st = zen_weight_reorder(convert_buf, dst, zd::s8, gemm_src, K,
-                        N, /*ldb=*/N, /*transposed=*/false);
+                        N, /*ldb=*/N, /*transposed=*/false, /*unpack=*/false,
+                        sym_group_size);
             return st;
         }
 
@@ -703,7 +721,8 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
                     src, convert_buf, K, N, ldb, src_is_ab, dst_dt);
             if (st == success)
                 st = zen_weight_reorder(convert_buf, dst, to_zen_dt(dst_dt),
-                        gemm_src, K, N, /*ldb=*/N, /*transposed=*/false);
+                        gemm_src, K, N, /*ldb=*/N, /*transposed=*/false,
+                        /*unpack=*/false, sym_group_size);
             return st;
         }
 

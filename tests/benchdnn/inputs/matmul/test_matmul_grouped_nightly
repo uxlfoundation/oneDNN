@@ -2,3 +2,10 @@
 --batch=harness_grouped_matmul_generated_ci
 --batch=harness_matmul_grouped_moe
 --batch=harness_matmul_grouped_decompression_u3
+
+# TODO: fuzzdnn's --profile general never emits a symmetric static int8
+# case (s8/s4 weights, no zero-points, matching src/wei scale dtypes),
+# so zen:grouped_matmul:lowp has zero coverage from the generated batch.
+# harness_matmul_grouped_int8 below covers it by hand until fuzzdnn can
+# generate that contract directly.
+--batch=harness_matmul_grouped_int8

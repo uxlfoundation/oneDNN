@@ -16,6 +16,7 @@
 
 #include "cpu/reorder/simple_reorder.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -101,6 +102,9 @@ status_t simple_reorder_t::pd_t::init(const engine_t *engine,
     else if (is_plain_to_blocked(engine, input_d, output_d, attr())
             == status::success)
         kernel_kind_ = kernel_kind_t::plain_to_blocked;
+    else if (is_plain_to_plain(engine, input_d, output_d, attr())
+            == status::success)
+        kernel_kind_ = kernel_kind_t::plain_to_plain;
     else if (is_blocked_to_blocked(engine, input_d, output_d, attr())
             == status::success)
         kernel_kind_ = kernel_kind_t::blocked_to_blocked;
@@ -268,6 +272,50 @@ status_t simple_reorder_t::pd_t::is_plain_to_blocked(const engine_t *engine,
     return status::success;
 }
 
+status_t simple_reorder_t::pd_t::is_plain_to_plain(const engine_t *engine,
+        const memory_desc_wrapper &input_d, const memory_desc_wrapper &output_d,
+        const primitive_attr_t *attr) {
+    VDISPATCH_REORDER(!input_d.has_runtime_dims_or_strides(),
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VDISPATCH_REORDER(!output_d.has_runtime_dims_or_strides(),
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
+    // Only per-tensor (mask 0), default data type and default groups scales,
+    // plus an optional sum post-op, are supported; zero points are not. The
+    // skip mask implicitly rejects non-default zero points.
+    using skip_mask_t = primitive_attr_t::skip_mask_t;
+    VDISPATCH_REORDER(attr->has_default_values(
+                              skip_mask_t::scales | skip_mask_t::post_ops),
+            VERBOSE_UNSUPPORTED_ATTR);
+
+    const auto &post_ops = attr->post_ops_;
+    VDISPATCH_REORDER(
+            IMPLICATION(post_ops.len() != 0,
+                    post_ops.len() == 1 && post_ops.entry_[0].is_sum(false)),
+            VERBOSE_UNSUPPORTED_POSTOP);
+
+    for (int arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
+        VDISPATCH_REORDER(attr->scales_.has_default_data_type(arg),
+                VERBOSE_UNSUPPORTED_ATTR);
+        VDISPATCH_REORDER(attr->scales_.has_default_groups(arg),
+                VERBOSE_UNSUPPORTED_ATTR);
+        if (!attr->scales_.has_default_values(arg))
+            VDISPATCH_REORDER(
+                    attr->scales_.get_mask(arg) == 0, VERBOSE_UNSUPPORTED_ATTR);
+    }
+
+    VDISPATCH_REORDER(
+            input_d.is_plain(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+    VDISPATCH_REORDER(
+            output_d.is_plain(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+
+    // Compensation buffers are handled by `plain_to_dense_comp` only.
+    VDISPATCH_REORDER(!output_d.is_additional_buffer(),
+            VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+
+    return status::success;
+}
+
 // TODO: remove this kernel kind, along with its `execute_*` counterpart and the
 // dispatch wiring in `init`/`execute`, once blocked activation layouts are
 // dropped from the library.
@@ -407,6 +455,8 @@ status_t simple_reorder_t::execute(const exec_ctx_t &ctx) const {
         case pd_t::kernel_kind_t::direct_copy: return execute_direct_copy(ctx);
         case pd_t::kernel_kind_t::plain_to_blocked:
             return execute_plain_to_blocked(ctx);
+        case pd_t::kernel_kind_t::plain_to_plain:
+            return execute_plain_to_plain(ctx);
         case pd_t::kernel_kind_t::blocked_to_blocked:
             return execute_blocked_to_blocked(ctx);
         case pd_t::kernel_kind_t::plain_to_dense_comp:
@@ -713,6 +763,143 @@ status_t simple_reorder_t::execute_plain_to_blocked(
                         convert(blkd_off, flat_off);
                 }
             }
+        }
+    });
+    return status::success;
+}
+
+status_t simple_reorder_t::execute_plain_to_plain(const exec_ctx_t &ctx) const {
+    auto input = CTX_IN_MEM(const char *, DNNL_ARG_FROM);
+    auto output = CTX_OUT_MEM(char *, DNNL_ARG_TO);
+    const auto input_d = ctx.memory_mdw(DNNL_ARG_FROM, pd()->src_md());
+    const auto output_d = ctx.memory_mdw(DNNL_ARG_TO, pd()->dst_md());
+    const auto src_dt = input_d.data_type();
+    const auto dst_dt = output_d.data_type();
+
+    // A plain dst may still carry user-defined padded dims.
+    ctx.zero_pad_output(DNNL_ARG_TO);
+
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_FROM);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_TO);
+    const auto src_scales_dt
+            = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_FROM).data_type();
+    const auto dst_scales_dt
+            = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_TO).data_type();
+    const auto &scales = pd()->attr()->scales_;
+    const bool with_src_scales = !scales.has_default_values(DNNL_ARG_FROM);
+    const bool with_dst_scales = !scales.has_default_values(DNNL_ARG_TO);
+    const float beta = pd()->beta();
+
+    if (input_d.nelems() == 0) return status::success;
+
+    // Ordering dims by descending dst stride makes the innermost loop walk dst
+    // contiguously, keeping stores sequential. Unit dims don't affect
+    // addressing, and neighbors contiguous with each other on both sides are
+    // merged, so the per-row index decoding stays as shallow as the layouts
+    // allow.
+    const dims_t &dims = input_d.dims();
+    const dim_t *src_strides = input_d.blocking_desc().strides;
+    const dim_t *dst_strides = output_d.blocking_desc().strides;
+    int perm[DNNL_MAX_NDIMS] = {0};
+    int nperm = 0;
+    for (int d = 0; d < input_d.ndims(); ++d)
+        if (dims[d] != 1) perm[nperm++] = d;
+    std::stable_sort(perm, perm + nperm,
+            [&](int a, int b) { return dst_strides[a] > dst_strides[b]; });
+
+    dim_t ns[DNNL_MAX_NDIMS] = {1};
+    dim_t is[DNNL_MAX_NDIMS] = {0};
+    dim_t os[DNNL_MAX_NDIMS] = {0};
+    int nd = 0;
+    for (int i = 0; i < nperm; ++i) {
+        const int d = perm[i];
+        const bool mergeable = nd > 0 && is[nd - 1] == src_strides[d] * dims[d]
+                && os[nd - 1] == dst_strides[d] * dims[d];
+        if (!mergeable) ns[nd++] = 1;
+        ns[nd - 1] *= dims[d];
+        is[nd - 1] = src_strides[d];
+        os[nd - 1] = dst_strides[d];
+    }
+    // A single-element tensor leaves no non-unit dims to iterate.
+    if (nd == 0) nd = 1;
+
+    const int last = nd - 1;
+    const dim_t L = ns[last];
+    const dim_t l_is = is[last];
+    const dim_t l_os = os[last];
+    dim_t outer_work = 1;
+    for (int i = 0; i < last; ++i)
+        outer_work *= ns[i];
+    const dim_t work_amount = outer_work * L;
+
+    // `memcpy` avoids the per-element float load/convert/store when rows are
+    // contiguous and bitwise identical on both sides.
+    const bool pure_copy = src_dt == dst_dt && !with_src_scales
+            && !with_dst_scales && beta == 0.f && l_is == 1 && l_os == 1;
+    const dim_t dt_sz = input_d.data_type_size();
+
+    // Offsets below are computed from strides only, so each base is advanced to
+    // its own logical element 0 here.
+    input += input_d.offset0() * input_d.data_type_size();
+    output += output_d.offset0() * output_d.data_type_size();
+
+    parallel(0, [=](const int ithr, const int nthr) {
+        const float src_scale = with_src_scales
+                ? io::load_float_value(src_scales_dt, src_scales, 0)
+                : 1.f;
+        const float dst_scale = with_dst_scales
+                ? io::load_float_value(dst_scales_dt, dst_scales, 0)
+                : 1.f;
+        const float alpha = src_scale / dst_scale;
+        // Folding `1 / dst_scale` into `alpha` requires scaling the sum term
+        // the same way, since `(src_scale * src + beta * dst) / dst_scale !=
+        // alpha * src + beta * dst`.
+        const float beta_scaled = with_dst_scales ? beta / dst_scale : beta;
+
+        auto convert = [&](dim_t in_off, dim_t out_off) {
+            if (src_dt == data_type::e8m0) {
+                // A minimal e8m0 value gets flushed to 0 by any compiler if a
+                // floating-point operation or comparison is applied around it.
+                const float s = io::load_float_value(src_dt, input, in_off);
+                io::store_float_value(dst_dt, s, output, out_off);
+            } else {
+                float d = alpha * io::load_float_value(src_dt, input, in_off);
+                if (beta_scaled != 0.f)
+                    d += beta_scaled
+                            * io::load_float_value(dst_dt, output, out_off);
+                io::store_float_value(dst_dt, d, output, out_off);
+            }
+        };
+
+        dim_t start {0}, end {0};
+        balance211(work_amount, nthr, ithr, start, end);
+        dim_t w = start / L;
+        dim_t l_s = start % L;
+        while (start < end) {
+            const dim_t l_e = nstl::min(L, l_s + (end - start));
+
+            dim_t base_i = 0, base_o = 0;
+            dim_t rem = w;
+            for (int i = last - 1; i >= 0; --i) {
+                const dim_t c = rem % ns[i];
+                rem /= ns[i];
+                base_i += c * is[i];
+                base_o += c * os[i];
+            }
+
+            if (pure_copy) {
+                std::memcpy(output + (base_o + l_s) * dt_sz,
+                        input + (base_i + l_s) * dt_sz, (l_e - l_s) * dt_sz);
+            } else {
+                for (dim_t l = l_s; l < l_e; ++l)
+                    convert(base_i + l * l_is, base_o + l * l_os);
+            }
+
+            start += l_e - l_s;
+            l_s = 0;
+            ++w;
         }
     });
     return status::success;

@@ -41,6 +41,9 @@ struct simple_reorder_t : public primitive_t {
             // blocks cover one or two distinct logical dims (e.g. nchw <->
             // nChw16c, oihw <-> OIhw16i16o, goihw <-> gOIhw16i16o).
             plain_to_blocked,
+            // Copies between two plain layouts with arbitrary dimension orders
+            // and strides (e.g. abcd <-> acdb, padded or strided views).
+            plain_to_plain,
             // Re-blocks a single blocked logical dim (channels) between two
             // blocked layouts with different block sizes (e.g. nChw8c <->
             // nChw16c).
@@ -70,6 +73,10 @@ struct simple_reorder_t : public primitive_t {
                 const memory_desc_wrapper &input_d,
                 const memory_desc_wrapper &output_d,
                 const primitive_attr_t *attr);
+        status_t is_plain_to_plain(const engine_t *engine,
+                const memory_desc_wrapper &input_d,
+                const memory_desc_wrapper &output_d,
+                const primitive_attr_t *attr);
         status_t is_blocked_to_blocked(const engine_t *engine,
                 const memory_desc_wrapper &input_d,
                 const memory_desc_wrapper &output_d,
@@ -87,6 +94,7 @@ struct simple_reorder_t : public primitive_t {
 private:
     status_t execute_direct_copy(const exec_ctx_t &ctx) const;
     status_t execute_plain_to_blocked(const exec_ctx_t &ctx) const;
+    status_t execute_plain_to_plain(const exec_ctx_t &ctx) const;
     status_t execute_blocked_to_blocked(const exec_ctx_t &ctx) const;
     status_t execute_plain_to_dense_comp(const exec_ctx_t &ctx) const;
 

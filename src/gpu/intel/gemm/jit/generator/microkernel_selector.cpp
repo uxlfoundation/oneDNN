@@ -671,9 +671,8 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     bool slmDequantize2DA = (problem.aOffset2D() || problem.aScale2D()) && s.slmA;
     bool slmDequantize2DB = (problem.bOffset2D() || problem.bScale2D()) && s.slmB;
     if (slmDequantize2DA && slmDequantize2DB) {
-        // A and B quantization parameters share one SLM load schedule, so each
-        // thread's SLM copy must cover the same k range for both. A k split
-        // divides unrollKSLM by the workgroup size, so split both in m/n.
+        // Keep each thread's SLM copy on the same k range for A and B. A k
+        // split divides unrollKSLM by the workgroup size, so split both in m/n.
         if (s.unroll[LoopM] % s.wg[LoopN] || s.unroll[LoopN] % s.wg[LoopM])
             return false;
         s.ka_load = s.kb_load = std::min(64, std::max(s.ka_load, s.kb_load));

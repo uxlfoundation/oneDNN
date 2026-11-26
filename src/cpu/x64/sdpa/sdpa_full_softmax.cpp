@@ -606,6 +606,8 @@ bool should_interleave_for_kv_reuse(bool multiple_query_blocks_guaranteed,
 
 struct query_blocking_t {
     dim_t granule;
+    // Fewest rows per work item considered when more are possible.
+    dim_t min_item_rows;
     dim_t item_rows;
     double concurrent_kv_bytes;
     bool multiple_query_blocks_guaranteed;
@@ -619,6 +621,9 @@ query_blocking_t choose_query_blocking(const sdpa_desc_t &desc,
     // heuristics, not hardware limits. The target can exceed L2 and does
     // not guarantee cache residency.
     const dim_t q_granule = hw.is_amx ? 16 : 8; // AMX computes 16-row tiles
+    // The cost model has no per-item overhead. On GNR, 16- and 32-row AMX
+    // items were slower than larger ones despite better modeled balance.
+    const dim_t item_rows_min = hw.is_amx ? 3 * q_granule : q_granule;
     const dim_t q_block_max = hw.is_amx ? 96 : 192;
     const float score_tile_l2_ratio = hw.is_amx ? 0.75f : 1.5f;
     const dim_t head_sizes = desc.head_size() + desc.values();
@@ -659,21 +664,17 @@ query_blocking_t choose_query_blocking(const sdpa_desc_t &desc,
     dim_t item_rows = q_granule
             * std::lround(nstl::max(q_rows, q_rows_min) / q_granule);
     item_rows = utils::saturate(q_granule, q_block_max, item_rows);
-    return {q_granule, item_rows, concurrent_kv_bytes,
+    return {q_granule, item_rows_min, item_rows, concurrent_kv_bytes,
             multiple_query_blocks_guaranteed, interleave_items};
 }
 
-dim_t choose_q_block(const sdpa_desc_t &desc, const query_blocking_t &blocking,
-        int nthr, dim_t heads_per_item) {
+// Return the largest query block allowed by the row target of a work item.
+dim_t max_q_block(const sdpa_desc_t &desc, const query_blocking_t &blocking,
+        dim_t heads_per_item) {
     const dim_t seq_q = desc.queries();
     const dim_t granule = blocking.granule;
     dim_t qb = blocking.item_rows / heads_per_item;
     if (qb < seq_q) qb = nstl::max(granule, utils::rnd_dn(qb, granule));
-    qb = nstl::min(qb, seq_q);
-    const dim_t head_items = desc.batch() * desc.num_q_heads() / heads_per_item;
-    // Shrink the block if there are too few work items to occupy the threads.
-    while (qb > granule && head_items * utils::div_up(seq_q, qb) < nthr)
-        qb = utils::rnd_dn(qb - 1, granule);
     return utils::saturate(static_cast<dim_t>(1), seq_q, qb);
 }
 
@@ -931,6 +932,32 @@ double schedule_cost(const schedule_cost_inputs_t &inputs,
     return t;
 }
 
+// Pick the query block with the lowest modeled cost among granule multiples
+// from the minimum item rows up to the row target. Smaller blocks can balance
+// threads better, e.g. 197 rows as 96 + 96 + 5 leave some threads with twice
+// the average work, but they re-read K/V more often. The model has no per-item
+// overhead, so a smaller block must be estimated at least 2% faster.
+dim_t choose_q_block(const schedule_cost_inputs_t &inputs,
+        const cost_coefs_t &coefs, const query_blocking_t &blocking,
+        dim_t heads_per_item) {
+    const dim_t granule = blocking.granule;
+    const dim_t qb_max = max_q_block(inputs.desc, blocking, heads_per_item);
+    const dim_t qb_min = nstl::max(
+            granule, utils::div_up(blocking.min_item_rows, heads_per_item));
+    constexpr double min_gain = 1.02;
+    dim_t best_qb = qb_max;
+    double best_t = schedule_cost(inputs, coefs, heads_per_item, qb_max, 1);
+    for (dim_t qb = utils::rnd_dn(qb_max - 1, granule); qb >= qb_min;
+            qb -= granule) {
+        const double t = schedule_cost(inputs, coefs, heads_per_item, qb, 1);
+        if (t * min_gain < best_t) {
+            best_t = t;
+            best_qb = qb;
+        }
+    }
+    return best_qb;
+}
+
 struct schedule_choice_t {
     schedule_t schedule;
     dim_t heads_per_item;
@@ -965,7 +992,7 @@ schedule_choice_t choose_schedule(const sdpa_desc_t &desc,
     // Cap automatic chunk candidates by thread count and full mm2 blocks.
     // mm1 may use fewer chunks if its block is longer than mm2's.
     const dim_t group_q_block
-            = choose_q_block(desc, query_blocking, nthr, group_head);
+            = choose_q_block(cost_inputs, coefs, query_blocking, group_head);
     const dim_t group_items
             = kv_heads_total * utils::div_up(seq_q, group_q_block);
     dim_t split_chunks = knobs.split_kv_chunks;
@@ -989,7 +1016,7 @@ schedule_choice_t choose_schedule(const sdpa_desc_t &desc,
     if (schedule == schedule_t::any) {
         schedule = schedule_t::per_head;
         double best = schedule_cost(cost_inputs, coefs, 1,
-                choose_q_block(desc, query_blocking, nthr, 1), 1);
+                choose_q_block(cost_inputs, coefs, query_blocking, 1), 1);
         if (group_head > 1) {
             const double t = schedule_cost(
                     cost_inputs, coefs, group_head, group_q_block, 1);
@@ -1008,8 +1035,8 @@ schedule_choice_t choose_schedule(const sdpa_desc_t &desc,
 
     const dim_t heads_per_item
             = schedule == schedule_t::per_head ? 1 : group_head;
-    const dim_t q_block
-            = choose_q_block(desc, query_blocking, nthr, heads_per_item);
+    const dim_t q_block = choose_q_block(
+            cost_inputs, coefs, query_blocking, heads_per_item);
     schedule_choice_t choice {schedule, heads_per_item, q_block, 0, 0,
             query_blocking.interleave_items};
     if (schedule == schedule_t::split_kv) {

@@ -16,6 +16,6 @@
 
 kernel void cache_fill_kernel(global uint *buf)
 {
-    uint id = get_global_id(0);
+    uint id = (uint)get_global_id(0);
     buf[id] = id * 0x978B1FE3;
 }

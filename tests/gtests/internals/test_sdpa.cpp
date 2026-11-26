@@ -1066,6 +1066,10 @@ dnnl::engine get_sdpa_test_engine() {
 }
 
 memory as(dnnl::stream &strm, memory &mem, memory::data_type dt) {
+    // Absent tensors (e.g. no_mask) have an empty desc and can't be reordered.
+    if (mem.get_desc().get_data_type() == memory::data_type::undef)
+        return memory();
+
     const memory::dims sz = mem.get_desc().get_dims();
 
     auto md = memory::desc(sz, dt, mem.get_desc().get_strides());

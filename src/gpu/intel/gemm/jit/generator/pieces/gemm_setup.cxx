@@ -1814,10 +1814,19 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     auto &A_cmasks = (state.effCoopA == CoopSplit::K) ? masks : masksCoop;
     auto &B_cmasks = (state.effCoopB == CoopSplit::K) ? masks : masksCoop;
 
+    // When A/B are copied through SLM and 2D quantization data is applied during the copy,
+    // each thread loads only its own m/n slice of the offsets/scales (see gemmMake2DQuantizationLayouts),
+    // so those loads must be masked with the per-thread (cooperative) remainders, not the full tile remainders.
+    // Late offsets/scales (applied after compute) still cover the whole tile.
+    auto &AO_masks = (slmA && !bg2D)                ? A_cmasks : masks;
+    auto &AS_masks = (slmA && !state.lateScale2DA)  ? A_cmasks : masks;
+    auto &BO_masks = (slmB && !ag2D)                ? B_cmasks : masks;
+    auto &BS_masks = (slmB && !state.lateScale2DB)  ? B_cmasks : masks;
+
     auto assignAllMasks = [&]() {
         return assignMasks(state.A_layout,       LoopM,    LoopK,       masks, strategy, state)
-            && assignMasks(state.A_offsetLayout, LoopM,    LoopK,       masks, strategy, state)
-            && assignMasks(state.A_scaleLayout,  LoopM,    LoopK,       masks, strategy, state)
+            && assignMasks(state.A_offsetLayout, LoopM,    LoopK,    AO_masks, strategy, state)
+            && assignMasks(state.A_scaleLayout,  LoopM,    LoopK,    AS_masks, strategy, state)
             && assignMasks(state.Ag_layout,      LoopM,    LoopK,       masks, strategy, state)
             && assignMasks(state.Ap_layout,      LoopM,    LoopK,    A_cmasks, strategy, state)
             && assignMasks(state.Ap_offsetLayout,LoopM,    LoopK,    A_cmasks, strategy, state)
@@ -1825,8 +1834,8 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             && assignMasks(state.Agp_layout,     LoopM,    LoopK,    A_cmasks, strategy, state)
             && assignMasks(state.Ai_layout,      LoopM,    LoopNone, A_cmasks, strategy, state)
             && assignMasks(state.B_layout,       LoopK,    LoopN,       masks, strategy, state)
-            && assignMasks(state.B_offsetLayout, LoopK,    LoopN,       masks, strategy, state)
-            && assignMasks(state.B_scaleLayout,  LoopK,    LoopN,       masks, strategy, state)
+            && assignMasks(state.B_offsetLayout, LoopK,    LoopN,    BO_masks, strategy, state)
+            && assignMasks(state.B_scaleLayout,  LoopK,    LoopN,    BS_masks, strategy, state)
             && assignMasks(state.Bg_layout,      LoopK,    LoopN,       masks, strategy, state)
             && assignMasks(state.Bp_layout,      LoopK,    LoopN,    B_cmasks, strategy, state)
             && assignMasks(state.Bp_offsetLayout,LoopK,    LoopN,    B_cmasks, strategy, state)

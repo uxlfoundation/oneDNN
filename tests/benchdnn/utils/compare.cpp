@@ -162,13 +162,12 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     dnn_mem_t got_f32(got_mem, dnnl_f32, tag::abx, get_cpu_engine());
     const auto dt = got_mem.dt();
 
-    // Idea is to pad nelems to mimic uniform load between available threads.
-    // It allows to make a clear assumption when the last element is processed
-    // and do a sync with global diff_norm object.
+    // Elements are split into one contiguous chunk per thread. It allows to make
+    // a clear assumption when the last element of a chunk is processed and do
+    // a sync with global diff_norm object.
     // The better alternative is to expose `parallel` interface.
     const auto nthreads = benchdnn_get_max_threads();
     const auto nelems_per_thread = div_up(nelems, nthreads);
-    const auto nelems_pad = nelems_per_thread * nthreads;
 
     diff_norm_t diff_norm;
     const bool need_dump = verbose >= 99;
@@ -205,8 +204,14 @@ int compare_t::compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         }
     };
 
-    // Parallel norm computation to speed up the process.
-    benchdnn_parallel_nd(nelems_pad, compare_norm_values);
+    // Each thread walks a contiguous chunk so the per-element computation is
+    // inlined instead of going through a `std::function` call per element.
+    benchdnn_parallel_nd(nthreads, [&](int64_t ithr) {
+        const int64_t beg = ithr * nelems_per_thread;
+        const int64_t end = std::min(beg + nelems_per_thread, nelems);
+        for (int64_t i = beg; i < end; ++i)
+            compare_norm_values(i);
+    });
 
     diff_norm.done();
 
@@ -280,13 +285,12 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     const auto &dst_scale = attr.scales.get(DNNL_ARG_DST);
     const bool has_dst_scale = !dst_scale.is_def();
 
-    // Idea is to pad nelems to mimic uniform load between available threads.
-    // It allows to make a clear assumption when the last element is processed
-    // and do a sync with global diff_norm object.
+    // Elements are split into one contiguous chunk per thread. It allows to make
+    // a clear assumption when the last element of a chunk is processed and do
+    // a sync with global diff_norm object.
     // The better alternative is to expose `parallel` interface.
     const auto nthreads = benchdnn_get_max_threads();
     const auto nelems_per_thread = div_up(nelems, nthreads);
-    const auto nelems_pad = nelems_per_thread * nthreads;
 
     // These global metrics are updated at the synchronization point.
     int64_t zeros = 0;
@@ -572,11 +576,17 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         }
     };
 
-    // parallel comparison to speed up the process
+    // Each thread walks a contiguous chunk so the per-element check is inlined
+    // instead of going through a `std::function` call per element.
     // TODO: to speed up the dump process, each thread should prepare its dump
     // piece in a string object, then the master thread prints them in order.
     // With this logic, the block of code below won't be needed.
-    benchdnn_parallel_nd(nelems_pad, compare_point_values);
+    benchdnn_parallel_nd(nthreads, [&](int64_t ithr) {
+        const int64_t beg = ithr * nelems_per_thread;
+        const int64_t end = std::min(beg + nelems_per_thread, nelems);
+        for (int64_t i = beg; i < end; ++i)
+            compare_point_values(i);
+    });
 
     int64_t n_errors = 0;
     for (auto &d : thread_data.data) {

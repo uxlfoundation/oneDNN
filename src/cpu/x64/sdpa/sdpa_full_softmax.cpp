@@ -375,18 +375,22 @@ status_t init_brgemm_desc(brgemm_desc_t &brg, data_type_t dt, float beta,
             /*alpha=*/1.0f, beta, lda, ldb, ldc, M, N, K, /*strides=*/nullptr);
 }
 
-status_t finalize_brgemm_desc(brgemm_desc_t &brg, bool b_is_vnni) {
-    const bool amx_vnni_k_tail = (brg.is_bf16_tmm || brg.is_f16_tmm)
-            && brg.reduce_dim % data_type_vnni_granularity(brg.dt_a) != 0;
+status_t finalize_brgemm_desc(
+        brgemm_desc_t &brg, bool b_is_vnni, bool b_has_amx_padding = false) {
+    const auto k = brg.reduce_dim;
+    const auto tile_k = brg.max_rd_block();
+    const bool amx_extend_k = (brg.is_bf16_tmm || brg.is_f16_tmm)
+            && (k % data_type_vnni_granularity(brg.dt_a) != 0
+                    || (b_has_amx_padding && k > tile_k && k % tile_k != 0));
     // AMX follows the BRGEMM matmul kernel policy: SDPA always executes a
     // single batch element, which lets it use the AMX microkernel with
     // interleaved tile stores instead of the generic tile kernel.
     const bool use_amx_uker = brg.is_tmm;
-    if (amx_vnni_k_tail || b_is_vnni || use_amx_uker) {
+    if (amx_extend_k || b_is_vnni || use_amx_uker) {
         brgemm_attr_t brgattr;
         brgattr.b_is_vnni = b_is_vnni;
-        brgattr.extendable_k = amx_vnni_k_tail;
-        brgattr.wary_A_k_tail_read = amx_vnni_k_tail;
+        brgattr.extendable_k = amx_extend_k;
+        brgattr.wary_A_k_tail_read = amx_extend_k;
         if (use_amx_uker) {
             brgattr.max_bs = 1;
             brgattr.use_uker = true;
@@ -431,7 +435,10 @@ status_t build_mm2_brgemm_desc(brgemm_desc_t &brg, const sdpa_pd_t &pd,
         CHECK(brgemm_desc_set_postops(&brg, nullptr, &dst_md, conf.out_ld));
     }
 
-    return finalize_brgemm_desc(brg, conf.mm2_needs_vnni_b);
+    // Both V packing modes zero-pad K to a tile boundary. P still has a
+    // logical tail, so BRGEMM must use its guarded A-tail load.
+    return finalize_brgemm_desc(
+            brg, conf.mm2_needs_vnni_b, conf.pack_v && conf.mm2_needs_vnni_b);
 }
 
 status_t insert_brgemm_desc(brgemm_containers::brgemm_desc_container_t &descs,

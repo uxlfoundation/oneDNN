@@ -256,14 +256,19 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
             // Keep an odd variant count for `is_exp` (17) so special values
             // naturally hit all power-of-two SIMD lanes (e.g., 16 f32 lanes on
-            // AVX-512), and offset by `kind` so `SRC` and `DIFF_DST` don't pair
-            // `NaN` at the same index on backward.
+            // AVX-512). Keep `SRC` and `DIFF_DST` (`kind == DST`) on the same
+            // variant index to avoid `f64` vs `f32`-ref mismatch when
+            // `SRC > logf(FLT_MAX)` overflows in `f32` (`0 * inf = NaN`) but
+            // stays finite in `f64` (`0 * finite = 0`). In cases 13-16,
+            // give `DIFF_DST` (`kind != SRC`) finite non-zero values instead of
+            // `NaN`/`+-inf`: on backward (`diff_src = diff_dst * exp(src)`),
+            // `DIFF_DST = NaN` would produce `NaN * anything = NaN` and mask a
+            // broken `exp(NaN)` (e.g., `exp(NaN) -> +inf`) at the same index.
             const int64_t num_of_generation_variants = 13
                     + (2 * static_cast<int64_t>(is_log || is_exp))
                     + (2 * static_cast<int64_t>(is_exp));
-            const int64_t gen_idx = is_exp ? (idx + kind) : idx;
             float value = FLT_MAX;
-            switch (gen_idx % num_of_generation_variants) {
+            switch (idx % num_of_generation_variants) {
                 case 0: value = (float)igen(msr); break; // [0-10] pos
                 case 1: value = -(float)igen(msr); break; // [0-10] neg
                 case 2: value = fgen(msr); break; // [0.-0.1) pos
@@ -284,13 +289,17 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
                 case 11: value = prb->alpha; break; // `x = alpha` corner cases
                 case 12: value = prb->beta; break; // `x = beta` corner cases
                 case 13:
-                    value = INFINITY;
+                    value = (is_exp && kind != SRC) ? 1.f : INFINITY;
                     break; // used in LOG and EXP algs only
                 case 14:
-                    value = -INFINITY;
+                    value = (is_exp && kind != SRC) ? 1.f : -INFINITY;
                     break; // used in LOG and EXP algs only
-                case 15: value = NAN; break; // used in EXP algs only
-                case 16: value = -NAN; break; // used in EXP algs only
+                case 15:
+                    value = kind == SRC ? NAN : 1.f;
+                    break; // used in EXP algs only
+                case 16:
+                    value = kind == SRC ? -NAN : -1.f;
+                    break; // used in EXP algs only
             }
             value = round_to_nearest_representable(prb->dt, value);
 

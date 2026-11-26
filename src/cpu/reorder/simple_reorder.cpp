@@ -617,9 +617,17 @@ status_t simple_reorder_t::execute_plain_to_blocked(
             bs1 *= blk.inner_blks[i];
     }
 
-    // The blocked dst holds zero padding in the inner block tail; let the common
-    // infrastructure handle it generically.
-    ctx.zero_pad_output(DNNL_ARG_TO);
+    // Plain->blocked visits every padded block, so the kernel zeroes block tails
+    // while their cache lines are hot. The generic zero-padding routine resolves
+    // each padded element's offset individually, which is far slower for
+    // multi-block layouts. Padding on non-blocked dims isn't visited by the
+    // kernel and is left to the generic routine.
+    bool kernel_zero_pads = to_blocked;
+    for (int d = 0; d < ndims; ++d)
+        if (d != d0 && d != d1
+                && blocked_d.padded_dims()[d] != blocked_d.dims()[d])
+            kernel_zero_pads = false;
+    if (!kernel_zero_pads) ctx.zero_pad_output(DNNL_ARG_TO);
 
     const void *src_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_FROM);
@@ -639,20 +647,35 @@ status_t simple_reorder_t::execute_plain_to_blocked(
     const dim_t *flat_strides = flat_d.blocking_desc().strides;
     const dim_t *blkd_strides = blk.strides;
 
-    // The innermost logical dim is non-blocked and iterated as the contiguous
-    // inner loop; the block positions are iterated inside it.
-    const dim_t L = dims[last];
-    const dim_t l_flat_stride = flat_strides[last];
-    const dim_t l_blk_stride = blkd_strides[last];
+    // The `l` loop runs over the non-blocked, non-unit dim with the smallest
+    // plain-side stride so the plain side is walked along its most contiguous
+    // dim. The `ndims` checks in `is_plain_to_blocked` guarantee the last dim
+    // is non-blocked, so it serves as the fallback.
+    int ldim = last;
+    for (int d = 0; d < ndims; ++d) {
+        if (d == d0 || d == d1 || dims[d] == 1) continue;
+        if (dims[ldim] == 1 || flat_strides[d] < flat_strides[ldim]) ldim = d;
+    }
+    const dim_t L = dims[ldim];
+    const dim_t l_flat_stride = flat_strides[ldim];
+    const dim_t l_blk_stride = blkd_strides[ldim];
     const dim_t d0_flat_stride = flat_strides[d0];
     const dim_t d1_flat_stride = d1 >= 0 ? flat_strides[d1] : 0;
+    const dim_t dst_dt_sz = output_d.data_type_size();
+    // Without scales, a sum, or a data type change, element bits transfer
+    // unchanged, so a bitwise element copy avoids the float load/convert/store
+    // round trip, which is costly for software-converted types like f8.
+    const bool pure_copy = src_dt == dst_dt && !with_src_scales
+            && !with_dst_scales && beta == 0.f;
 
-    // Outer iteration space: every dim but the innermost one. Blocked dims
-    // iterate over their outer blocks; the rest over their full extent.
+    // Outer iteration space: every dim but `ldim`. Blocked dims iterate over
+    // their outer blocks; the rest over their full extent.
     dims_t outer_dims = {0};
     dim_t outer_work = 1;
-    for (int d = 0; d < last; ++d) {
-        if (d == d0)
+    for (int d = 0; d < ndims; ++d) {
+        if (d == ldim)
+            outer_dims[d] = 1;
+        else if (d == d0)
             outer_dims[d] = pdims[d] / bs0;
         else if (d == d1)
             outer_dims[d] = pdims[d] / bs1;
@@ -681,11 +704,48 @@ status_t simple_reorder_t::execute_plain_to_blocked(
         const float beta_scaled = with_dst_scales ? beta / dst_scale : beta;
 
         auto convert = [&](dim_t in_off, dim_t out_off) {
+            if (pure_copy) {
+                switch (dst_dt_sz) {
+                    case 1:
+                        reinterpret_cast<uint8_t *>(output)[out_off]
+                                = reinterpret_cast<const uint8_t *>(
+                                        input)[in_off];
+                        break;
+                    case 2:
+                        reinterpret_cast<uint16_t *>(output)[out_off]
+                                = reinterpret_cast<const uint16_t *>(
+                                        input)[in_off];
+                        break;
+                    case 4:
+                        reinterpret_cast<uint32_t *>(output)[out_off]
+                                = reinterpret_cast<const uint32_t *>(
+                                        input)[in_off];
+                        break;
+                    default: assert(!"unexpected data type size");
+                }
+                return;
+            }
             float d = alpha * io::load_float_value(src_dt, input, in_off);
             if (beta_scaled != 0.f)
                 d += beta_scaled
                         * io::load_float_value(dst_dt, output, out_off);
             io::store_float_value(dst_dt, d, output, out_off);
+        };
+
+        // Padding is a large share of the output for big unequal blocks, and a
+        // size-dispatched store avoids a `memset` call per padded element.
+        auto zero = [&](dim_t out_off) {
+            switch (dst_dt_sz) {
+                case 1: reinterpret_cast<uint8_t *>(output)[out_off] = 0; break;
+                case 2:
+                    reinterpret_cast<uint16_t *>(output)[out_off] = 0;
+                    break;
+                case 4:
+                    reinterpret_cast<uint32_t *>(output)[out_off] = 0;
+                    break;
+                default:
+                    std::memset(output + out_off * dst_dt_sz, 0, dst_dt_sz);
+            }
         };
 
         // With two blocked dims the within-block offset is a nested function of
@@ -723,13 +783,13 @@ status_t simple_reorder_t::execute_plain_to_blocked(
             // Decode the flat outer index into per-dimension coordinates.
             dims_t cur = {0};
             dim_t rem = w;
-            for (int d = last - 1; d >= 0; --d) {
+            for (int d = ndims - 1; d >= 0; --d) {
                 cur[d] = rem % outer_dims[d];
                 rem /= outer_dims[d];
             }
 
             dim_t base_flat = 0, base_blk = 0;
-            for (int d = 0; d < last; ++d) {
+            for (int d = 0; d < ndims; ++d) {
                 dim_t flat_coord;
                 if (d == d0)
                     flat_coord = cur[d] * bs0;
@@ -747,20 +807,30 @@ status_t simple_reorder_t::execute_plain_to_blocked(
                     ? nstl::min<dim_t>(bs1, dims[d1] - cur[d1] * bs1)
                     : 1;
 
-            for (dim_t l = 0; l < L; ++l) {
-                const dim_t flat_l = base_flat + l * l_flat_stride;
-                const dim_t blk_l = base_blk + l * l_blk_stride;
-                for_(dim_t p0 = 0; p0 < block0; ++p0)
-                for (dim_t p1 = 0; p1 < block1; ++p1) {
-                    const dim_t flat_off = flat_l + p0 * d0_flat_stride
-                            + p1 * d1_flat_stride;
-                    const dim_t blkd_off = blk_l
-                            + (d1 >= 0 ? within_tbl[(size_t)p0 * bs1 + p1]
-                                       : p0);
-                    if (to_blocked)
-                        convert(flat_off, blkd_off);
-                    else
-                        convert(blkd_off, flat_off);
+            // `l` runs innermost in both directions so each plain-side
+            // position is touched as a contiguous run along its smallest-stride
+            // dim. Block positions innermost would make every access jump by a
+            // blocked dim's plain stride, touching a new page per element.
+            for_(dim_t p0 = 0; p0 < bs0; ++p0)
+            for (dim_t p1 = 0; p1 < bs1; ++p1) {
+                const dim_t blkd_p = base_blk
+                        + (d1 >= 0 ? within_tbl[(size_t)p0 * bs1 + p1] : p0);
+                if (p0 >= block0 || p1 >= block1) {
+                    if (!to_blocked) continue;
+                    for (dim_t l = 0; l < L; ++l)
+                        zero(blkd_p + l * l_blk_stride);
+                    continue;
+                }
+                const dim_t flat_p
+                        = base_flat + p0 * d0_flat_stride + p1 * d1_flat_stride;
+                if (to_blocked) {
+                    for (dim_t l = 0; l < L; ++l)
+                        convert(flat_p + l * l_flat_stride,
+                                blkd_p + l * l_blk_stride);
+                } else {
+                    for (dim_t l = 0; l < L; ++l)
+                        convert(blkd_p + l * l_blk_stride,
+                                flat_p + l * l_flat_stride);
                 }
             }
         }

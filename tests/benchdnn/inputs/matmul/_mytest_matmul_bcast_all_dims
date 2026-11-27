@@ -1,0 +1,144 @@
+# ==============================================================================
+# Comprehensive Binary Post-Op Broadcast Test Suite (2D - 6D) (MFDNN-12303)
+# Run with:
+# ./tests/benchdnn/benchdnn --matmul --batch=../tests/benchdnn/inputs/matmul/_mytest_matmul_bcast_all_dims
+# ==============================================================================
+
+# 2D MatMul: All 4 Broadcast Masks (0..3)
+#    Covers:
+#    - 64x64 (Multiple M/N blocks, full ZMM vectors, page boundary check)
+#    - 33x23 (Multi-block + N-tail + M-tail)
+#    - 64x1  (GEMV n1 path where vectorization axis can flip to M)
+#    - 1x64  (GEMV m1 path)
+--reset
+--skip-impl=ref
+--dt=f32,bf16,s8:s8:s32
+--stag=ab,ba
+--wtag=ab,ba
+--dtag=ab
+--attr-post-ops=add:f32:0,add:f32:1,add:f32:2,add:f32:3,mul:bf16:1,add:s8:2
+64x64:64x64_n"2d_full_tile"
+33x19:19x23_n"2d_tails"
+64x32:32x1_n"2d_gemv_n1"
+1x32:32x64_n"2d_gemv_m1"
+
+# 3D MatMul: All 8 Broadcast Masks (0..7)
+# Covers standard abc and transposed batch/row acb
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16,s8:s8:s32
+--stag=abc,acb
+--wtag=abc
+--dtag=abc,acb
+--attr-post-ops=add:f32:0,add:f32:1,add:f32:2,add:f32:3,add:f32:4,add:f32:5,add:f32:6,add:f32:7
+3x4x8:3x8x6_n"3d_small_tail"
+4x64x32:4x32x64_n"3d_full_tile"
+3x33x17:3x17x23_n"3d_multi_tile_tail"
+3x32x16:3x16x1_n"3d_gemv_n1"
+
+# 4D MatMul: All 16 Broadcast Masks (0..15)
+#    Covers standard abcd, transposed batch acbd, and batch broadcast in src/wei
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16,s8:s8:s32
+--stag=abcd,abdc
+--wtag=abcd
+--dtag=abcd,acbd
+--attr-post-ops=add:f32:0,add:f32:1,add:f32:2,add:f32:3,add:f32:4,add:f32:5,add:f32:6,add:f32:7,add:f32:8,add:f32:9,add:f32:10,add:f32:11,add:f32:12,add:f32:13,add:f32:14,add:f32:15
+3x2x4x8:3x2x8x6_n"4d_small_tail"
+2x3x64x32:2x3x32x64_n"4d_full_tile"
+2x3x35x16:2x3x16x37_n"4d_multi_tile_tail"
+2x3x32x16:2x3x16x1_n"4d_gemv_n1"
+
+
+# 5D MatMul: All 32 Broadcast Masks (0..31)
+# Covers small tail, full multi-block AVX512/AMX tiles, and GEMV N=1
+
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16,s8:s8:s32
+--stag=abcde,abced
+--wtag=abcde
+--dtag=abcde,acbde
+--attr-post-ops=add:f32:0,add:f32:1,add:f32:2,add:f32:3,add:f32:4,add:f32:5,add:f32:6,add:f32:7,add:f32:8,add:f32:9,add:f32:10,add:f32:11,add:f32:12,add:f32:13,add:f32:14,add:f32:15,add:f32:16,add:f32:17,add:f32:18,add:f32:19,add:f32:20,add:f32:21,add:f32:22,add:f32:23,add:f32:24,add:f32:25,add:f32:26,add:f32:27,add:f32:28,add:f32:29,add:f32:30,add:f32:31
+3x2x5x4x8:3x2x5x8x6_n"5d_small_tail"
+2x2x3x64x32:2x2x3x32x64_n"5d_full_tile"
+2x2x3x33x16:2x2x3x16x35_n"5d_multi_tile_tail"
+2x2x3x32x16:2x2x3x16x1_n"5d_gemv_n1"
+
+# 6D MatMul: Representative Broadcast Masks (0..63 subset)
+# Tests ndims > 5 fallback to shared_axes
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16
+--stag=abcdef
+--wtag=abcdef
+--dtag=abcdef
+--attr-post-ops=add:f32:0,add:f32:1,add:f32:2,add:f32:14,add:f32:31,add:f32:32,add:f32:33,add:f32:45,add:f32:62,add:f32:63
+2x2x2x3x16x8:2x2x2x3x8x16_n"6d_shared_axes"
+
+# Non-f32 RHS Data Types & Chained Post-Ops on shared_axes
+# Tests bf16/s8/u8 scalar-broadcast & vector-load paths, plus register
+# caching/preservation across consecutive shared_axes binary post-ops
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16,s8:s8:s32
+--stag=abcd
+--wtag=abcd
+--dtag=abcd,acbd,bcad
+--attr-post-ops=add:bf16:5,add:bf16:6,add:s8:5,add:s8:6,mul:u8:5,add:f32:5+mul:bf16:6,add:s8:5+add:f32:9
+2x3x35x16:2x3x16x37_n"4d_rhs_dt_and_chained"
+2x3x32x16:2x3x16x1_n"4d_rhs_dt_gemv_n1"
+
+
+# Permuted RHS Post-Op Tags & Degenerate Batch Dimensions (dim == 1)
+# Tests non-standard rhs_strides[d] and equal-stride tie-breaking in
+# calculate_shared_axes_base / rhs_offset_shared_axes
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16
+--stag=abcd
+--wtag=abcd
+--dtag=abcd,acbd,bcad
+--attr-post-ops=add:f32:5:acbd,add:f32:6:acbd,add:f32:9:bcad,add:f32:10:bcad,add:bf16:5:acbd
+2x3x33x16:2x3x16x35_n"4d_permuted_rhs_tag"
+1x3x33x16:1x3x16x35_n"4d_degen_batch0"
+3x1x33x16:3x1x16x35_n"4d_degen_batch1"
+1x1x33x16:1x1x16x35_n"4d_degen_batch01"
+
+# ==============================================================================
+# Additional Edge Cases:
+# 1. 5D GQA batch broadcasting in src/wei (real MFDNN-12303 pattern)
+# 2. 4D/5D M=1 GEMV (degenerate M dimension: dst_dims[ndims-2] == 1)
+# 3. Transposed stag=abdc + permuted dtag=bcad together on N=1 GEMV
+# 4. Chained `sum` + `shared_axes` binary post-op (tests load_acc_as_f32 reg reuse)
+# 5. Compare ops (gt, eq) on shared_axes (tests execute_cmp_binary path)
+# ==============================================================================
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16,s8:s8:s32
+--stag=abcd,abdc
+--wtag=abcd
+--dtag=abcd,acbd,bcad
+--attr-post-ops=add:f32:5,add:f32:6,add:f32:14,sum+add:f32:6,gt:f32:5,eq:s8:6
+2x3x1x16:2x3x16x35_n"4d_gemv_m1"
+2x3x32x16:2x3x16x1_n"4d_gemv_n1_abdc_bcad"
+2x3x33x16:1x3x16x35_n"4d_wei_batch_bcast"
+
+--reset
+--skip-impl=ref
+--allow-enum-tags-only=false
+--dt=f32,bf16,s8:s8:s32
+--stag=abcde,abced
+--wtag=abcde
+--dtag=abcde,acbde
+--attr-post-ops=add:f32:14,add:f32:17,add:f32:29,sum+add:f32:14,gt:f32:14
+2x4x2x33x16:2x4x1x16x35_n"5d_gqa_wei_bcast"
+2x2x3x1x16:2x2x3x16x35_n"5d_gemv_m1"

@@ -263,11 +263,9 @@ bool binary_doable(
     return true;
 }
 
-// TODO: ekind can be removed once CPU optimized 5d tensor MatMul with
-// broadcasted post op
 static bool post_binary_fusible_impl(const op_t *base_op,
         const std::vector<dim_t> &fused_shape,
-        const std::vector<dim_t> &other_shape, engine_kind_t ekind) {
+        const std::vector<dim_t> &other_shape) {
     VCHECK_UTILS(fused_shape.size() == other_shape.size(), false,
             "binary fusible ops must have same ndims, "
             "fused_shape size is %zu, other_shape size is %zu."
@@ -280,10 +278,7 @@ static bool post_binary_fusible_impl(const op_t *base_op,
         return true;
 
     int32_t output_ndims = static_cast<int32_t>(fused_shape.size());
-    // 5d tensor MatMul with broadcasted post was not optimized on CPU
-    if (ekind == dnnl_cpu && base_op->get_kind() == op_kind::_matmul
-            && output_ndims == 5)
-        return false;
+
     // any broadcasted for 4d or 5d tensor MatMul
     if (base_op->get_kind() == op_kind::_matmul
             && (output_ndims == 4 || output_ndims == 5)) {
@@ -427,7 +422,7 @@ bool post_binary_fusible(
     }
 
     return post_binary_fusible_impl(
-            base_op, ltw(fused_in).vdims(), ltw(other_in).vdims(), ekind);
+            base_op, ltw(fused_in).vdims(), ltw(other_in).vdims());
 }
 
 bool post_eltwise_fusible(

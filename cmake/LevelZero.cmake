@@ -42,12 +42,11 @@ message(STATUS "Found Level Zero headers: ${DNNL_ZE_INCLUDE_DIR}")
 set(ONEDNN_ZE_MIN_API_VERSION_MAJOR 1)
 set(ONEDNN_ZE_MIN_API_VERSION_MINOR 11)
 
-include(CheckCXXSourceCompiles)
 include(CMakePushCheckState)
 cmake_push_check_state()
 set(CMAKE_REQUIRED_INCLUDES "${DNNL_ZE_INCLUDE_DIR}")
 set(CMAKE_REQUIRED_QUIET TRUE)
-check_cxx_source_compiles("
+check_cxx_source_compiles_no_link("
     #include <level_zero/ze_api.h>
     #if ZE_API_VERSION_CURRENT_M < ZE_MAKE_VERSION(${ONEDNN_ZE_MIN_API_VERSION_MAJOR}, ${ONEDNN_ZE_MIN_API_VERSION_MINOR})
     #error \"Level Zero API version is too old\"

@@ -73,8 +73,7 @@ if(DNNL_WERROR)
 
         int main() { return 0; }
     ")
-    include(CheckCXXSourceCompiles)
-    check_cxx_source_compiles("${COMPILER_ALLOWS_ALIAS_ATTRIBUTES_SOURCE}" COMPILER_ALLOWS_ALIAS_ATTRIBUTES)
+    check_cxx_source_compiles_no_link("${COMPILER_ALLOWS_ALIAS_ATTRIBUTES_SOURCE}" COMPILER_ALLOWS_ALIAS_ATTRIBUTES)
 
     if(${COMPILER_ALLOWS_ALIAS_ATTRIBUTES})
         file(GLOB FILES_WITH_STATUS_NODISCARD

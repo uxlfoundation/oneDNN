@@ -59,6 +59,7 @@ struct tmul_compute_path_t : public compute_path_t {
 
     bool loads_accumulators() const override { return true; }
     bool stores_accumulators() const override { return true; }
+    bool passes_block_in_parts() const override { return true; }
 
     // Average code size over `n_ops()` of built unrolled TMUL kernels.
     double code_bytes_per_op() const override { return 7.5; }

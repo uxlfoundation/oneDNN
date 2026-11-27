@@ -1019,8 +1019,8 @@ public:
         /// Specifies an auto_broadcast attribute to an op. The value can be
         /// "none" or "numpy".
         auto_broadcast = dnnl_graph_op_attr_auto_broadcast,
-        /// Specifies an auto_pad attribute to an op. The value can be "none",
-        /// "same_upper", "same_lower", or "valid".
+        /// Specifies an auto_pad attribute to an op. The value can be "None",
+        /// "SAME_UPPER", "SAME_LOWER", or "VALID".
         auto_pad = dnnl_graph_op_attr_auto_pad,
         /// Specifies an coordinate_transformation_mode attribute to an op. The
         /// value can be "half_pixel" or "align_corners". The attribute is

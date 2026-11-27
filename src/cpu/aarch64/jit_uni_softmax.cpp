@@ -105,7 +105,7 @@ struct jit_softmax_base_t : public jit_generator_t {
             = !pd_->attr()->scales_.has_default_values(DNNL_ARG_SRC);
     bool need_dst_scale_
             = !pd_->attr()->scales_.has_default_values(DNNL_ARG_DST);
-    bool axis_is_blocked_;
+    bool axis_has_padding_;
     bool need_scratchpad_;
 
     size_t vlen_ = 0;
@@ -156,7 +156,7 @@ void jit_softmax_base_t::compute_predefined_variables() {
     dst_axis_stride_ = compute_axis_stride(dst_d_);
     if (!pd_->is_fwd())
         diff_dst_axis_stride_ = compute_axis_stride(diff_dst_d_);
-    axis_is_blocked_ = pd_->axis_size(true) != pd_->axis_size();
+    axis_has_padding_ = pd_->axis_size(true) != pd_->axis_size();
 }
 
 size_t jit_softmax_base_t::compute_process_n_elems(
@@ -380,65 +380,46 @@ XReg jit_softmax_sve_t::diff_dst_ptr(size_t offt) {
 
 void jit_softmax_sve_t::store(
         const XReg &addr, const ZReg &vmm, data_type_t dt, bool tail) {
-    PReg opmask = P_ALL_ONE;
-    bool tail_mask_valid = false;
-    auto effective_addr = addr;
     ZReg src_vmm = vmm;
+    const PReg opmask = tail && !axis_has_padding_ ? tail_opmask : P_ALL_ONE;
 
-    if (tail) {
-        if (utils::one_of(
-                    dt, data_type::f32, data_type::bf16, data_type::f16)) {
-            if (axis_is_blocked_) {
-                src_vmm = vzero;
-                eor(vzero.d, vzero.d, vzero.d);
-                mov(src_vmm.s, tail_opmask / T_m, vmm.s);
-                effective_addr = addr;
-            } else {
-                effective_addr = addr;
-                tail_mask_valid = true;
-            }
-        } else { // int8 store instructions assume mask on register
-            tail_mask_valid = true;
-        }
+    if (tail && axis_has_padding_) {
+        // Store the full block with zeros in the padded lanes.
+        src_vmm = v_tmp0;
+        uni_clear(src_vmm);
+        mov(src_vmm.s, tail_opmask / T_m, vmm.s);
+    } else if (is_logsoftmax_ && dt != data_type::f32) {
+        // Need to keep the original data in fp32 since we apply exp after
+        // storing and data should be fp32.
+        src_vmm = v_tmp0;
+        mov(src_vmm.d, vmm.d);
     }
 
-    if (tail_mask_valid) opmask = tail_opmask;
-
     switch (dt) {
-        case data_type::f32:
-            st1w(src_vmm.s, opmask, ptr(effective_addr));
-            break;
+        case data_type::f32: st1w(src_vmm.s, opmask, ptr(addr)); break;
         case data_type::bf16:
             bfcvt(src_vmm.h, P_ALL_ONE / T_m, src_vmm.s);
-            st1h(src_vmm.s, opmask, ptr(effective_addr));
+            st1h(src_vmm.s, opmask, ptr(addr));
             break;
         case data_type::f16:
             fcvt(src_vmm.h, P_ALL_ONE / T_m, src_vmm.s);
-            st1h(src_vmm.s, opmask, ptr(effective_addr));
+            st1h(src_vmm.s, opmask, ptr(addr));
             break;
         case data_type::u8:
-            eor(vzero.d, vzero.d, vzero.d); // since vzero might be spoiled
-            saturate_f32(
-                    vmm, vzero, vsaturation_ubound, data_type::u8, P_ALL_ONE);
-            frinti(vmm.s, P_ALL_ONE / T_m, vmm.s);
-            fcvtzu(vmm.s, P_ALL_ONE / T_m, vmm.s);
-            smin(vmm.s, 127);
-            st1b(vmm.s, opmask, ptr(effective_addr));
-            // Need to restore data back to fp32 since we apply exp after
-            // storing and data should be fp32.
-            if (is_logsoftmax_) scvtf(vmm.s, opmask / T_m, vmm.s);
+            uni_clear(vzero); // since vzero might be spoiled
+            saturate_f32(src_vmm, vzero, vsaturation_ubound, data_type::u8,
+                    P_ALL_ONE);
+            frinti(src_vmm.s, P_ALL_ONE / T_m, src_vmm.s);
+            fcvtzu(src_vmm.s, P_ALL_ONE / T_m, src_vmm.s);
+            st1b(src_vmm.s, opmask, ptr(addr));
             break;
         case data_type::s8:
-            saturate_f32(
-                    vmm, vzero, vsaturation_ubound, data_type::s8, P_ALL_ONE);
-            frinti(vmm.s, opmask / T_m, vmm.s);
-            fcvtzs(vmm.s, opmask / T_m, vmm.s);
-            smin(vmm.s, 127);
-            smax(vmm.s, -128);
-            st1b(vmm.s, opmask, ptr(effective_addr));
-            // Need to restore data back to fp32 since we apply exp after
-            // storing and data should be fp32.
-            if (is_logsoftmax_) scvtf(vmm.s, opmask / T_m, vmm.s);
+            saturate_f32(src_vmm, vzero, vsaturation_ubound, data_type::s8,
+                    P_ALL_ONE);
+            frinti(src_vmm.s, opmask / T_m, src_vmm.s);
+            fcvtzs(src_vmm.s, opmask / T_m, src_vmm.s);
+            smax(src_vmm.s, -128);
+            st1b(src_vmm.s, opmask, ptr(addr));
             break;
         default: assert(!"unsupported"); break;
     }
@@ -797,7 +778,7 @@ void jit_softmax_asimd_t::clear_unused_tail_lanes(const VReg &vmm) {
 
 void jit_softmax_asimd_t::store(
         const XReg &addr, const VReg &vmm, const data_type_t dt, bool tail) {
-    if (!tail || axis_is_blocked_) {
+    if (!tail || axis_has_padding_) {
         switch (dt) {
             case data_type::f32: str(QReg(vmm.getIdx()), ptr(addr)); break;
             case data_type::f16:
@@ -929,7 +910,7 @@ void jit_softmax_asimd_t::compute_dst() {
             if (is_softmax_) { fmul(vreg_tmp_src.s, vreg_tmp_src.s, vsum.s); }
             if (is_logsoftmax_) {
                 fsub(vreg_tmp_src.s, vreg_tmp_src.s, vsum.s);
-                if (tail && axis_is_blocked_) {
+                if (tail && axis_has_padding_) {
                     clear_unused_tail_lanes(vreg_tmp_src);
                 }
             }

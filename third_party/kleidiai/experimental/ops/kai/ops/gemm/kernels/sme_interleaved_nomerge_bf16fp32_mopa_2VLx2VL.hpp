@@ -7,58 +7,63 @@
 // clang-format off
 #pragma once
 
-#include "kai/ops/bfloat.hpp"
+#include "common_internal/kernel_args.hpp"
 #include "../std_transforms_sme.hpp"
 
 namespace kai {
 namespace ops {
 
 // Implementations
-void sme_interleaved_nomerge_bf16fp32_mopa_2VLx2VL(const bfloat16 *const A, const bfloat16 *const B, float *const C, int ldc, const int M, const int N, const int K, const float *const bias, const Activation act, bool accumulate, float *const accumulator_buffer);
+extern "C" void kai_ops_sme_interleaved_nomerge_bf16fp32_mopa_2VLx2VL(const KernelArgs *);
 
 class cls_sme_interleaved_nomerge_bf16fp32_mopa_2VLx2VL
 {
 public:
-  typedef bfloat16 lhs_operand_type;
-  typedef bfloat16 rhs_operand_type;
-  typedef float result_type;
+    typedef bfloat16 lhs_operand_type;
+    typedef bfloat16 rhs_operand_type;
+    typedef float result_type;
 
-  typedef void (*kern_type)(const bfloat16 *const A, const bfloat16 *const B, float *const C, int ldc, const int M, const int N, const int K, const float *const bias, const Activation act, bool accumulate, float *const accumulator_buffer);
+    typedef void (*kern_type)(const KernelArgs *);
 
-  /* Kernel blocking parameters */
-  static unsigned int out_height()
-  {
-    return sme::get_vector_length<float>() * 2;
-  }
+    /* Kernel blocking parameters */
+    static unsigned int out_height()
+    {
+        return sme::get_vector_length<float>() * 2;
+    }
 
-  static unsigned int out_width()
-  {
-    return sme::get_vector_length<float>() * 2;
-  }
+    static unsigned int out_width()
+    {
+        return sme::get_vector_length<float>() * 2;
+    }
 
-  static constexpr unsigned int k_unroll()
-  {
-    return 2;
-  }
+    static constexpr unsigned int k_unroll()
+    {
+        return 2;
+    }
 
-  static constexpr bool supports_bias()
-  {
-    return true;
-  }
+    static constexpr bool supports_bias()
+    {
+        return true;
+    }
 
-  static constexpr bool is_sme()
-  {
-    return true;
-  }
+    static constexpr bool is_sme()
+    {
+        return true;
+    }
 
-  // Default to the generic kernel
-  kern_type kernel = sme_interleaved_nomerge_bf16fp32_mopa_2VLx2VL;
+    static constexpr size_t accumulation_buffer_element_size()
+    {
+        return sizeof(float);
+    }
 
-  StdTransformsSME<lhs_operand_type, result_type, 2, 2, 2> transforms = {};
+    // Default to the generic kernel
+    kern_type kernel = kai_ops_sme_interleaved_nomerge_bf16fp32_mopa_2VLx2VL;
 
-  cls_sme_interleaved_nomerge_bf16fp32_mopa_2VLx2VL(const CPUInfo *)
-  {
-  }
+    StdTransformsSME<lhs_operand_type, result_type, 2, 2, 2> transforms = {};
+
+    cls_sme_interleaved_nomerge_bf16fp32_mopa_2VLx2VL(const CPUInfo *)
+    {
+    }
 };
 
 } // namespace ops

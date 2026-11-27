@@ -7,18 +7,13 @@
 // clang-format off
 #pragma once
 #include "../std_transforms_fixed.hpp"
-#include "kai/ops/bfloat.hpp"
 #include "../performance_parameters.hpp"
-
-#define ARGLIST  \
-    const bfloat16 *, const bfloat16 *, \
-    float *, int, int, int
 
 namespace kai {
 namespace ops {
 
 // Actual kernel implementations
-void a64_interleaved_bf16fp32_dot_8x12( ARGLIST );
+extern "C" void kai_ops_a64_interleaved_bf16fp32_dot_8x12( const KernelArgs * );
 
 class cls_a64_interleaved_bf16fp32_dot_8x12
 {
@@ -27,7 +22,7 @@ public:
     typedef bfloat16 rhs_operand_type;
     typedef float result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     /* Kernel blocking parameters */
     static constexpr unsigned int out_height()
@@ -45,9 +40,14 @@ public:
         return 2;
     }
 
+    static constexpr size_t accumulation_buffer_element_size()
+    {
+        return 0;
+    }
 
-    StdTransformsFixed<lhs_operand_type, rhs_operand_type, result_type, 8, 12, 2> transforms = {};
-    StdTransformsFixed<lhs_operand_type, rhs_operand_type, result_type, 8, 12, 2, true> transforms_quantized = {};
+
+    StdTransformsFixed<lhs_operand_type, rhs_operand_type, result_type, 8, 12, 12, 2> transforms = {};
+    StdTransformsFixed<lhs_operand_type, rhs_operand_type, result_type, 8, 12, 12, 2, true> transforms_quantized = {};
     template<typename T>
     static inline PerformanceParameters get_performance_parameters(const CPUInfo *ci)
     {
@@ -67,7 +67,7 @@ public:
     }
 
     // Default to the generic kernel
-    kern_type kernel=a64_interleaved_bf16fp32_dot_8x12;
+    kern_type kernel=kai_ops_a64_interleaved_bf16fp32_dot_8x12;
     cls_a64_interleaved_bf16fp32_dot_8x12(const CPUInfo *)
     {
     }

@@ -6,23 +6,17 @@
 
 // clang-format off
 #pragma once
+
+#include "common_internal/kernel_args.hpp"
 #include "../performance_parameters.hpp"
 #include "../std_transforms_fixed.hpp"
-
-#define ARGLIST  \
-    unsigned int, const unsigned int *, \
-    IndirectInputArg<float>, \
-    size_t, size_t, \
-    const float *, \
-    OutputArg<float>, \
-    const float *, Activation, bool
 
 namespace kai {
 namespace ops {
 
 // Actual kernel implementations
-void a64_hybrid_fp32_mla_4x24( ARGLIST );
-void a64_hybrid_fp32_mla_4x24_a55( ARGLIST );
+extern "C" void kai_ops_a64_hybrid_fp32_mla_4x24( const KernelArgs * );
+extern "C" void kai_ops_a64_hybrid_fp32_mla_4x24_a55( const KernelArgs * );
 
 class cls_a64_hybrid_fp32_mla_4x24
 {
@@ -31,7 +25,7 @@ public:
     typedef float rhs_operand_type;
     typedef float result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     /* Kernel blocking parameters */
     static constexpr unsigned int out_height()
@@ -54,7 +48,7 @@ public:
         return true;
     }
 
-    StdTransformsFixed<lhs_operand_type, rhs_operand_type, result_type, 4, 24, 1> transforms = {};
+    StdTransformsFixed<lhs_operand_type, rhs_operand_type, result_type, 4, 24, 24, 1> transforms = {};
     template<typename T>
     static inline PerformanceParameters get_performance_parameters(const CPUInfo *ci)
     {
@@ -79,7 +73,7 @@ public:
     }
 
     // Default to the generic kernel
-    kern_type kernel=a64_hybrid_fp32_mla_4x24;
+    kern_type kernel=kai_ops_a64_hybrid_fp32_mla_4x24;
     cls_a64_hybrid_fp32_mla_4x24(const CPUInfo *ci)
     {
         switch(ci->get_cpu_model()) {
@@ -87,7 +81,7 @@ public:
                 break;
             case CPUModel::A55r1:
             case CPUModel::A53:
-                kernel=a64_hybrid_fp32_mla_4x24_a55;
+                kernel=kai_ops_a64_hybrid_fp32_mla_4x24_a55;
                 break;
         }
     }
@@ -95,5 +89,3 @@ public:
 
 } // namespace ops
 } // namespace kai
-
-#undef ARGLIST

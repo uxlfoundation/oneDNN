@@ -43,11 +43,9 @@ WeightFormat get_weight_format(const KernelWeightFormat kwf, size_t element_size
     // override with SVE if it is an SVE format (AArch64 only).
     vector_bytes = vector_count * 16;
 
-#ifdef __aarch64__
     if (kwf_i & 0x1) {
         vector_bytes = vector_count * get_vector_length<uint8_t>();
     }
-#endif
 
     auto input_blocking = block_bytes / element_size;
     auto output_blocking = vector_bytes / block_bytes;

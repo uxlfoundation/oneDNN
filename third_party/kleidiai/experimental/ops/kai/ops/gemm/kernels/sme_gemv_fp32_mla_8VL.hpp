@@ -6,17 +6,14 @@
 
 // clang-format off
 #pragma once
-#include "../std_transforms_sme.hpp"
 
-#define ARGLIST  \
-    const float *, const float *, \
-    float *, size_t, size_t, \
-    const float *, Activation, bool
+#include "common_internal/kernel_args.hpp"
+#include "../std_transforms_sme.hpp"
 
 namespace kai {
 namespace ops {
 
-void sme_gemv_fp32_mla_8VL( ARGLIST );
+extern "C" void kai_ops_sme_gemv_fp32_mla_8VL( const KernelArgs * );
 
 class cls_sme_gemv_fp32_mla_8VL
 {
@@ -24,7 +21,7 @@ public:
     typedef float operand_type;
     typedef float result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     static unsigned int out_width()
     {
@@ -56,7 +53,7 @@ public:
 
 
     // Default to the generic kernel
-    kern_type kernel=sme_gemv_fp32_mla_8VL;
+    kern_type kernel=kai_ops_sme_gemv_fp32_mla_8VL;
     cls_sme_gemv_fp32_mla_8VL(const CPUInfo *)
     {
     }

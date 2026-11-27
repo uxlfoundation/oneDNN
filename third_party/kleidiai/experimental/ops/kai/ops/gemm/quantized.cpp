@@ -3,7 +3,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-#ifdef __aarch64__
 
 #include "kai/ops/gemm/kai_ops.hpp"
 #include "common_internal/utils.hpp"
@@ -630,7 +629,7 @@ template void requantize_block_32(const Requantize32 &qp, unsigned int width, un
  * helper functions below.
  *
  * The general strategy used is to load vectors of 16 bytes and accumulate
- * (using uadalp/sadalp or AArch32 equivalents) into 8x16-bit accumulators.
+ * (using uadalp/sadalp) into 8x16-bit accumulators.
  * These are then reduced (using uadalp/sadalp again) into 4x32-bit
  * accumulators.  The 4 accumulators for up to 4 rows being processed are
  * then added together into a single output vector using pairwise adds.
@@ -895,66 +894,58 @@ inline void add_block(const int8_t *input, unsigned int in_stride, int32_t *outp
  * in cases where we are not computing the first columns of the output (i.e.
  * in multithreaded cases where we divide columns across threads) */
 template<typename T>
-void compute_col_sums(const Requantize32 &qp, unsigned int width, unsigned int height, const T *input, unsigned int in_stride, int32_t *col_bias, unsigned int depth, unsigned int multi, unsigned int first_col) {
-    /* Only actually add up the columns if a_offset is non-zero. */
-    if (qp.a_offset != 0) {
-        memset(reinterpret_cast<void *>(col_bias), 0, width * sizeof(int32_t));
+void compute_col_sums(const KernelArgs *ka, int32_t *col_bias, int32_t offset) {
+    const unsigned int width = ka->N, height = ka->K;
+    const T *input = static_cast<const T *>(ka->rhs);
+    const size_t in_stride = ka->rhs_stride / sizeof(T);
+    memset(col_bias, 0, width * sizeof(int32_t));
 
-        for (unsigned int row=0; row<height; row+=4) {
-            unsigned int numrows=std::min(height-row, 4u);
+    for (unsigned int row=0; row<height; row+=4) {
+        unsigned int numrows=std::min(height-row, 4u);
 
-            for (unsigned int col=0; col<width; col+=16) {
-                unsigned int numcols=std::min(width-col, 16u);
+        for (unsigned int col=0; col<width; col+=16) {
+            unsigned int numcols=std::min(width-col, 16u);
 
-                if (numcols==16) {
-                    switch(numrows) {
-                        case 1:
-                            add_block<1>(input + row * in_stride + col, in_stride, col_bias + col);
-                            break;
+            if (numcols==16) {
+                switch(numrows) {
+                    case 1:
+                        add_block<1>(input + row * in_stride + col, in_stride, col_bias + col);
+                        break;
 
-                        case 2:
-                            add_block<2>(input + row * in_stride + col, in_stride, col_bias + col);
-                            break;
+                    case 2:
+                        add_block<2>(input + row * in_stride + col, in_stride, col_bias + col);
+                        break;
 
-                        case 3:
-                            add_block<3>(input + row * in_stride + col, in_stride, col_bias + col);
-                            break;
+                    case 3:
+                        add_block<3>(input + row * in_stride + col, in_stride, col_bias + col);
+                        break;
 
-                        case 4:
-                            add_block<4>(input + row * in_stride + col, in_stride, col_bias + col);
-                            break;
+                    case 4:
+                        add_block<4>(input + row * in_stride + col, in_stride, col_bias + col);
+                        break;
 
-                        default:
-                            UNREACHABLE("Impossible.");
+                    default:
+                        UNREACHABLE("Impossible.");
+                }
+            } else {
+                for (; col<width; col++) {
+                    int32_t sum=0;
+                    for (unsigned int r=0; r<numrows; r++) {
+                        sum += input[(row + r)*in_stride + col];
                     }
-                } else {
-                    for (; col<width; col++) {
-                        int32_t sum=0;
-                        for (unsigned int r=0; r<numrows; r++) {
-                            sum += input[(row + r)*in_stride + col];
-                        }
-                        col_bias[col] += sum;
-                    }
+                    col_bias[col] += sum;
                 }
             }
         }
     }
 
     for (unsigned int col=0; col<width; col++) {
-        int32_t result = col_bias[col];
-
-        result = (qp.a_offset * qp.b_offset * depth) - (result * qp.a_offset);
-
-        if (qp.bias != nullptr) {
-            result += qp.bias[multi * qp.bias_multi_stride + col + first_col];
-        }
-
-        col_bias[col] = result;
+        col_bias[col] *= -offset;
     }
 }
 
-template void compute_col_sums(const Requantize32 &qp, unsigned int width, unsigned int height, const int8_t *input, unsigned int in_stride, int32_t *col_bias, unsigned int depth, unsigned int multi, unsigned int first_col);
-template void compute_col_sums(const Requantize32 &qp, unsigned int width, unsigned int height, const uint8_t *input, unsigned int in_stride, int32_t *col_bias, unsigned int depth, unsigned int multi, unsigned int first_col);
+template void compute_col_sums<int8_t>(const KernelArgs *, int32_t *, int32_t);
+template void compute_col_sums<uint8_t>(const KernelArgs *, int32_t *, int32_t);
 
 template<>
 void dequantize_block_32<float>(const DequantizeFloat &qp, unsigned int width, unsigned int height,
@@ -1018,4 +1009,3 @@ void dequantize_block_32<float>(const DequantizeFloat &qp, unsigned int width, u
 }  // namespace ops
 }  // namespace kai
 
-#endif // __aarch64__

@@ -11,7 +11,11 @@
 #include <cstddef>
 
 // Macro for unreachable code (e.g. impossible default cases on switch)
-#define UNREACHABLE(why)  __builtin_unreachable()
+#if defined(_MSC_VER)
+#define UNREACHABLE(why) __assume(0)
+#else
+#define UNREACHABLE(why) __builtin_unreachable()
+#endif
 
 // Paranoid option for the above with assert
 // #define UNREACHABLE(why)   assert(0 && why)
@@ -135,7 +139,11 @@ struct IndirectInputArg {
 
 namespace utils {
 
-#ifdef __aarch64__
+
+/// Returns the current SVE vector length in bytes.
+/// Requires SVE support at runtime.
+extern "C" uint64_t kai_ops_get_sve_vector_length_u8();
+
 // get_vector_length(): Returns SVE vector length for type "T".
 //
 // It is required that this can be compiled by a compiler in non-SVE mode, but it must be prevented from running (at
@@ -143,38 +151,21 @@ namespace utils {
 // which then calls SVE kernels (compiled accordingly) iff SVE is detected at runtime.
 template <typename T>
 inline unsigned long get_vector_length() {
-    uint64_t vl;
-
-    __asm __volatile (
-        ".inst 0x0420e3e0\n" // CNTB X0, ALL, MUL #1
-        "mov %0, X0\n"
-        : "=r" (vl)
-        :
-        : "x0"
-    );
-
-    return vl / sizeof(T);
+    return kai_ops_get_sve_vector_length_u8() / sizeof(T);
 }
 
 namespace sme {
 
+/// Returns the current SME vector length in bytes.
+/// Requires SME support at runtime.
+extern "C" uint64_t kai_ops_get_sme_vector_length_u8();
+
 template <typename T>
 inline unsigned long get_vector_length() {
-    uint64_t raw_vector_length;
-
-    __asm __volatile (
-        ".inst 0x04bf5821\n" // RDSVL X1, #1
-        "mov %0, X1\n"
-        : "=r" (raw_vector_length)
-        :
-        : "x1"
-    );
-
-    return raw_vector_length / sizeof(T);
+    return kai_ops_get_sme_vector_length_u8() / sizeof(T);
 }
 
 } // namespace sme
-#endif // __aarch64__
 
 // get_vector_length(VLType): Returns vector length for type "T".
 //
@@ -183,12 +174,10 @@ inline unsigned long get_vector_length() {
 template <typename T>
 inline unsigned long get_vector_length(VLType vl_type) {
   switch (vl_type) {
-#ifdef __aarch64__
     case VLType::SME:
       return sme::get_vector_length<T>();
     case VLType::SVE:
       return get_vector_length<T>();
-#endif // __aarch64__
     default:
       return 16 / sizeof(T);
   }

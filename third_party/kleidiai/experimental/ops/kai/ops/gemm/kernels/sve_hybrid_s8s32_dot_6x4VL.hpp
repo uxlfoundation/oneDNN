@@ -6,23 +6,17 @@
 
 // clang-format off
 #pragma once
+
+#include "common_internal/kernel_args.hpp"
 #include "../performance_parameters.hpp"
 #include "../std_transforms_sve.hpp"
-
-#define ARGLIST  \
-    unsigned int, const unsigned int *, \
-    IndirectInputArg<int8_t>, \
-    size_t, size_t, \
-    const int8_t *, \
-    OutputArg<int32_t>, \
-    const int32_t *, Activation, bool
 
 namespace kai {
 namespace ops {
 
 // Actual kernel implementations
-void sve_hybrid_s8s32_dot_6x4VL( ARGLIST );
-void sve_hybrid_s8s32_dot_6x4VL_a64fx( ARGLIST );
+extern "C" void kai_ops_sve_hybrid_s8s32_dot_6x4VL( const KernelArgs * );
+extern "C" void kai_ops_sve_hybrid_s8s32_dot_6x4VL_a64fx( const KernelArgs * );
 
 class cls_sve_hybrid_s8s32_dot_6x4VL
 {
@@ -31,7 +25,7 @@ public:
     typedef int8_t rhs_operand_type;
     typedef int32_t result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     /* Kernel blocking parameters */
     static constexpr unsigned int out_height()
@@ -54,7 +48,7 @@ public:
         return true;
     }
 
-    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 6, 4, 4> transforms = {};
+    StdTransformsSVE<lhs_operand_type, rhs_operand_type, result_type, 6, 4, 4, 4> transforms = {};
     template<typename T>
     static inline PerformanceParameters get_performance_parameters(const CPUInfo *ci)
     {
@@ -88,14 +82,14 @@ public:
     }
 
     // Default to the generic kernel
-    kern_type kernel=sve_hybrid_s8s32_dot_6x4VL;
+    kern_type kernel=kai_ops_sve_hybrid_s8s32_dot_6x4VL;
     cls_sve_hybrid_s8s32_dot_6x4VL(const CPUInfo *ci)
     {
         switch(ci->get_cpu_model()) {
             default:
                 break;
             case CPUModel::A64FX:
-                kernel=sve_hybrid_s8s32_dot_6x4VL_a64fx;
+                kernel=kai_ops_sve_hybrid_s8s32_dot_6x4VL_a64fx;
                 break;
         }
     }
@@ -103,5 +97,3 @@ public:
 
 } // namespace ops
 } // namespace kai
-
-#undef ARGLIST

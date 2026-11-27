@@ -6,18 +6,14 @@
 
 // clang-format off
 #pragma once
-#include "../std_transforms_sme.hpp"
-#include "kai/ops/bfloat.hpp"
 
-#define ARGLIST  \
-    const bfloat16 *, const bfloat16 *, \
-    float *, size_t, size_t, \
-    const float *, Activation, bool
+#include "common_internal/kernel_args.hpp"
+#include "../std_transforms_sme.hpp"
 
 namespace kai {
 namespace ops {
 
-void sme2_gemv_bf16fp32_dot_16VL( ARGLIST );
+extern "C" void kai_ops_sme2_gemv_bf16fp32_dot_16VL( const KernelArgs * );
 
 class cls_sme2_gemv_bf16fp32_dot_16VL
 {
@@ -25,7 +21,7 @@ public:
     typedef bfloat16 operand_type;
     typedef float result_type;
 
-    typedef void (*kern_type)( ARGLIST );
+    typedef void (*kern_type)( const KernelArgs * );
 
     static unsigned int out_width()
     {
@@ -57,7 +53,7 @@ public:
 
 
     // Default to the generic kernel
-    kern_type kernel=sme2_gemv_bf16fp32_dot_16VL;
+    kern_type kernel=kai_ops_sme2_gemv_bf16fp32_dot_16VL;
     cls_sme2_gemv_bf16fp32_dot_16VL(const CPUInfo *)
     {
     }

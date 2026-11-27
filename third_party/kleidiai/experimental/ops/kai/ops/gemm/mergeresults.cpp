@@ -7,19 +7,34 @@
 /* As some of the merges need these headers, but are all included in the
  * kai::ops namespace, put these headers here.  */
 #include <algorithm>
+#include <cstring>
+
+#include "mergeresults.hpp"
 
 #include <arm_neon.h>
 
 #include "kai/ops/gemm/kai_ops.hpp"
 #include "asmlib.hpp"
 #include "kai/ops/bfloat.hpp"
+#include "kai/ops/float16.hpp"
 #include "common_internal/utils.hpp"
 
 namespace kai {
 namespace ops {
 
-template<unsigned int twidth, unsigned int height, bool sve=false, typename Tin, typename Tout>
-void MergeResults(Tout * out, const Tin * in, int ldc, int y0, int ymax, int x0, int xmax, const Tout *bias, Activation act, bool append) {
+template<unsigned int twidth, unsigned int height, bool sve, typename Tin, typename Tout>
+void MergeResults(const KernelArgs *args) {
+    auto *out = static_cast<Tout *>(args->dst);
+    const auto *in = static_cast<const Tin *>(args->lhs);
+    const auto *bias = static_cast<const Tout *>(args->bias);
+    const int ldc = args->dst_stride / sizeof(Tout);
+    const int y0 = 0, ymax = args->M, x0 = 0, xmax = args->N;
+    const bool append = args->accumulate;
+    Tout output_min, output_max;
+    std::memcpy(&output_min, &args->clamp_min.data, sizeof(Tout));
+    std::memcpy(&output_max, &args->clamp_max.data, sizeof(Tout));
+    const Tin minval = static_cast<Tin>(output_min);
+    const Tin maxval = static_cast<Tin>(output_max);
     // NOTE: The following code is disabled to avoid calling get_vector_length(), so templated MergeResults will not
     // be correct for SVE cases.  This is OK as we have specialisations for all needed SVE cases anyway.
     //
@@ -59,19 +74,7 @@ void MergeResults(Tout * out, const Tin * in, int ldc, int y0, int ymax, int x0,
                         v += bias[xbase + col];
                     }
 
-                    switch(act.type) {
-                        default:
-                        case Activation::Type::None:
-                            break;
-
-                        case Activation::Type::ReLU:
-                            v = std::max(v, static_cast<Tin>(0));
-                            break;
-
-                        case Activation::Type::BoundedReLU:
-                            v = std::max(std::min(v, static_cast<Tin>(act.param1)), static_cast<Tin>(0));
-                            break;
-                    }
+                    v = std::max(minval, std::min(maxval, v));
 
                     r = v;
                 }
@@ -83,16 +86,6 @@ void MergeResults(Tout * out, const Tin * in, int ldc, int y0, int ymax, int x0,
 }
 
 #include "merges/list.hpp"
-
-/* Cortex-A53 8x6 SGEMM kernel uses a templated merge as the optimized merge
- * generator cannot cope with the width (6) not being a multiple of VL (4). */
-#ifdef __aarch64__
-template void MergeResults<6u, 8u, false, float, float>(float *, float const*, int, int, int, int, int, float const *, Activation, bool);
-#endif
-
-#if defined(__arm__)
-template void MergeResults<8u, 6u, false, float, bfloat16>(bfloat16*, float const*, int, int, int, int, int, bfloat16 const*, Activation, bool);
-#endif
 
 }  // namespace ops
 }  // namespace kai

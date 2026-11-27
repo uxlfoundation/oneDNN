@@ -976,3 +976,55 @@ TEST(APICompiledPartition, QueryImplInfo) {
     // Owned by the compiled partition, so the pointer is stable.
     ASSERT_EQ(cp.impl_info_str(), impl_info);
 }
+
+TEST(APICompiledPartition, ExecuteWrongTensorNum) {
+    using namespace dnnl::graph;
+    dnnl::engine::kind engine_kind
+            = static_cast<dnnl::engine::kind>(api_test_engine_kind);
+    dnnl::engine eng = cpp_api_test_dnnl_engine_create(engine_kind);
+    dnnl::stream strm(eng);
+
+    const std::vector<int64_t> dims {2, 3};
+    logical_tensor src0 {0, logical_tensor::data_type::f32, dims,
+            logical_tensor::layout_type::strided};
+    logical_tensor src1 {1, logical_tensor::data_type::f32, dims,
+            logical_tensor::layout_type::strided};
+    logical_tensor dst {2, logical_tensor::data_type::f32, dims,
+            logical_tensor::layout_type::strided};
+    logical_tensor extra {3, logical_tensor::data_type::f32, dims,
+            logical_tensor::layout_type::strided};
+
+    op add(0, op::kind::Add);
+    add.add_inputs({src0, src1});
+    add.add_output(dst);
+
+    graph g(engine_kind);
+    g.add_op(add);
+    g.finalize();
+
+    auto partitions = g.get_partitions();
+    ASSERT_EQ(partitions.size(), 1U);
+
+    tensor ts_src0(src0, eng);
+    tensor ts_src1(src1, eng);
+    tensor ts_dst(dst, eng);
+    tensor ts_extra(extra, eng);
+
+    auto cp = partitions[0].compile({src0, src1}, {dst}, eng);
+    // Fewer tensors than the partition binds must be rejected.
+    EXPECT_ANY_THROW(cp.execute(strm, {ts_src0}, {ts_dst}));
+    EXPECT_NO_THROW(cp.execute(strm, {ts_src0, ts_src1}, {ts_dst}));
+    EXPECT_NO_THROW(cp.execute(strm, {ts_src0, ts_src1, ts_extra}, {ts_dst}));
+    strm.wait();
+
+    // Tensors are bound by their positions in the lists given on compile.
+    auto cp_extra
+            = partitions[0].compile({extra, src0, src1}, {extra, dst}, eng);
+    EXPECT_ANY_THROW(
+            cp_extra.execute(strm, {ts_extra, ts_src0}, {ts_extra, ts_dst}));
+    EXPECT_ANY_THROW(
+            cp_extra.execute(strm, {ts_extra, ts_src0, ts_src1}, {ts_extra}));
+    EXPECT_NO_THROW(cp_extra.execute(
+            strm, {ts_extra, ts_src0, ts_src1}, {ts_extra, ts_dst}));
+    strm.wait();
+}

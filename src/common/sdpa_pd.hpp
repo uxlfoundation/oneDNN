@@ -43,6 +43,7 @@ struct sdpa_fwd_pd_t;
 struct sdpa_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::sdpa;
 
+    static constexpr int mask_h_index = 1;
     static constexpr int mask_q_index = 2;
     static constexpr int mask_k_index = 3;
     static constexpr int ndims = 4;
@@ -67,6 +68,14 @@ struct sdpa_pd_t : public primitive_desc_t {
 
     bool with_attn_mask() const {
         return (desc()->attn_mask_md()->data_type != data_type::undef);
+    }
+
+    bool with_buffer_mask() const {
+        return (desc()->mask_type == attn_mask_type::buffer);
+    }
+
+    bool with_select_mask() const {
+        return (desc()->mask_type == attn_mask_type::select);
     }
 
     /// Returns the accumulation data type of the KQ matmul
@@ -248,6 +257,9 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
                     DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
             return arg_usage_t::input;
 
+        if (arg == DNNL_ARG_ATTN_MASK_FILL && with_select_mask())
+            return arg_usage_t::input;
+
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
         if (arg == DNNL_ARG_WORKSPACE)
@@ -264,6 +276,8 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
             case DNNL_ARG_KEYS: return src_md(1);
             case DNNL_ARG_VALUES: return src_md(2);
             case DNNL_ARG_ATTN_MASK: return src_md(3);
+            case DNNL_ARG_ATTN_MASK_FILL: return desc()->fill_md();
+            case DNNL_ARG_SCALE: return desc()->scale_md();
             case DNNL_ARG_DST: return dst_md(0, user_input);
             default: return primitive_desc_t::arg_md(arg);
         }
@@ -289,7 +303,8 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
     }
 
     int n_inputs() const override {
-        return 3 + int(with_attn_mask()) + int(with_attn_scale());
+        const bool with_fill_input = with_select_mask();
+        return 3 + with_attn_mask() + with_attn_scale() + with_fill_input;
     }
     int n_outputs() const override {
         return 1 + (!types::is_zero_md(workspace_md()));

@@ -196,6 +196,7 @@ struct ref_grouped_t : public primitive_t {
         def_data_type(kernel_ctx,
                 pd()->attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS),
                 "WEI_ZP");
+        kernel_ctx.define_int("WITH_WEI_SBZP", pd()->wei_zp_after_scale());
 
         auto attr_info = attr_info_t::create(pd()->attr());
         CHECK(def_attr_info(kernel_ctx, attr_info, pd()->generic_po_,

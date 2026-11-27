@@ -534,16 +534,99 @@ TEST(iface_grouped_test_t, TestGroupedUnsupportedQuantMode) {
                 dnnl::error);
     }
 
-    // static_sbzp (WoQ weights) is not supported yet
+    // static_sbzp applies to weights only
     {
-        auto woq_src_md = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
+        primitive_attr attr;
+        attr.set_scales(DNNL_ARG_SRC, src_mask, {}, dt::f16, false, sbzp);
+        attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, {});
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+}
+
+// static_sbzp weights scales and zero points (w = q * scale - zp) follow the
+// matmul weights contract and are weight-only quantization (WOQ) only
+TEST(iface_grouped_test_t, TestGroupedWeiStaticSbzp) {
+    engine eng = get_test_engine();
+
+    const int ngroups = 2;
+    const int M = 4, K = 64, N = 16;
+    const memory::dims groups = {32, 1};
+    const int wei_mask = (1 << 0) | (1 << 1) | (1 << 2);
+    const auto sazp = quantization_mode::static_sazp;
+    const auto sbzp = quantization_mode::static_sbzp;
+
+    const auto src_md = [&](dt src_dt) {
+        return memory::desc::grouped({M, K}, src_dt, 0, ngroups);
+    };
+    const auto wei_md = [&](dt wei_dt) {
+        return memory::desc({ngroups, K, N}, wei_dt, memory::format_tag::abc);
+    };
+    const auto dst_md = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+
+    struct case_t {
+        const char *name;
+        dt src_dt, wei_dt;
+        bool with_scales;
+        quantization_mode sc_qmode;
+        dt sc_dt;
+        bool with_zps;
+        int zp_mask;
+        bool apply_to_int;
+        bool supported;
+    };
+    const case_t cases[] = {
+            {"f32 src, u4 wei, f16 scales and zps", dt::f32, dt::u4, true, sbzp,
+                    dt::f16, true, wei_mask, true, true},
+            {"bf16 src, u8 wei, bf16 scales and zps", dt::bf16, dt::u8, true,
+                    sbzp, dt::bf16, true, wei_mask, true, true},
+            {"scales without zps", dt::f32, dt::u4, true, sbzp, dt::f16, false,
+                    0, true, true},
+            {"zps without scales", dt::f32, dt::u4, false, sbzp, dt::f16, true,
+                    wei_mask, true, false},
+            {"zps with static_sazp scales", dt::f32, dt::u4, true, sazp,
+                    dt::f16, true, wei_mask, true, false},
+            {"f32 scales", dt::f32, dt::u4, true, sbzp, dt::f32, true, wei_mask,
+                    true, false},
+            {"no apply_to_int", dt::f32, dt::u4, true, sbzp, dt::f16, true,
+                    wei_mask, false, false},
+            {"integer src", dt::s8, dt::s8, true, sbzp, dt::f16, true, wei_mask,
+                    true, false},
+            {"f8 wei", dt::f16, dt::f8_e4m3, true, sbzp, dt::f16, true,
+                    wei_mask, true, false},
+            {"common zp for u3 wei", dt::f32, dt::u3, true, sbzp, dt::f16, true,
+                    0, true, false},
+    };
+
+    for (const auto &c : cases) {
+        SCOPED_TRACE(c.name);
+        if (unsupported_data_type(c.src_dt, eng)) continue;
+        primitive_attr attr;
+        attr.set_fpmath_mode(fpmath_mode::strict, c.apply_to_int);
+        if (c.with_scales)
+            attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, groups, c.sc_dt, false,
+                    c.sc_qmode);
+        if (c.with_zps)
+            attr.set_zero_points(DNNL_ARG_WEIGHTS, c.zp_mask,
+                    c.zp_mask ? groups : memory::dims {}, dt::f16, false, sbzp);
+        const auto create = [&]() {
+            matmul::primitive_desc(
+                    eng, src_md(c.src_dt), wei_md(c.wei_dt), dst_md, attr);
+        };
+        if (c.supported)
+            EXPECT_NO_THROW(create());
+        else
+            EXPECT_THROW(create(), dnnl::error);
+    }
+
+    // Dynamic quantization modes for weights scales
+    {
         primitive_attr attr;
         attr.set_fpmath_mode(fpmath_mode::strict, true);
-        attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, {}, dt::f16, false, sbzp);
-        attr.set_zero_points(
-                DNNL_ARG_WEIGHTS, wei_mask, {}, dt::f16, false, sbzp);
-        EXPECT_THROW(
-                matmul::primitive_desc(eng, woq_src_md, wei_md, dst_md, attr),
+        attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, groups, dt::e8m0, false,
+                quantization_mode::dynamic_mx);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md(dt::f32),
+                             wei_md(dt::u4), dst_md, attr),
                 dnnl::error);
     }
 }

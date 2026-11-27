@@ -40,6 +40,7 @@
 // For 2Dx3D only:
 //  u8/s8 src, u8/s8/s4/u4/f8/f4 wei (incl. WOQ)
 //  row/col-wise, K-grouped or KxN-grouped (wei) scales & zero-points
+//  static_sbzp wei scales & zero-points (WOQ)
 //  common wei zero-point (u3 wei), incl. host-side scalar
 //  bias [group_count, N] and post-ops
 __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
@@ -129,12 +130,24 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
                 m_abs * src_zp_stride_m
                         + k_group_start / src_zp_group_k * src_zp_stride_k);
 #endif
-        int wei_zp = 0;
+        FLT_ACC_DATA_T wei_scale = 1.f;
+#if WITH_WEI_SCALES
+        wei_scale = WEI_SCALES_TO_REF(wei_scales[group_id * wei_scale_stride_g
+                + k_group_start / wei_scale_group_k * wei_scale_stride_k
+                + n / wei_scale_group_n * wei_scale_stride_n]);
+#endif
 #if WITH_WEI_ZPOINTS
-        wei_zp = WEI_ZP_TO_REF(wei_zero_points,
-                group_id * wei_zp_stride_g
-                        + k_group_start / wei_zp_group_k * wei_zp_stride_k
-                        + n / wei_zp_group_n * wei_zp_stride_n);
+        const long wei_zp_idx = group_id * wei_zp_stride_g
+                + k_group_start / wei_zp_group_k * wei_zp_stride_k
+                + n / wei_zp_group_n * wei_zp_stride_n;
+#endif
+        int wei_zp = 0;
+#if WITH_WEI_SBZP
+        // static_sbzp applies the scale before the zero point
+        const FLT_ACC_DATA_T wei_zp_f
+                = WEI_ZP_TO_REF(wei_zero_points, wei_zp_idx);
+#elif WITH_WEI_ZPOINTS
+        wei_zp = WEI_ZP_TO_REF(wei_zero_points, wei_zp_idx);
 #endif
         ACC_DATA_T acc_g = (ACC_DATA_T)0;
         for (long k = k_group_start; k < k_group_start + k_group_size; k++) {
@@ -155,20 +168,21 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
 #else
             ACC_DATA_T w = TO_ACC(WEI_TO_REF(wei[wei_idx]) - wei_zp);
 #endif
+#if WITH_WEI_SBZP
+            w = TO_ACC(w * wei_scale - wei_zp_f);
+#endif
             acc_g += s * w;
         }
         FLT_ACC_DATA_T src_scale = 1.f;
-        FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
         src_scale = SRC_SCALES_TO_REF(src_scales[m_abs * src_scale_stride_m
                 + k_group_start / src_scale_group_k * src_scale_stride_k]);
 #endif
-#if WITH_WEI_SCALES
-        wei_scale = WEI_SCALES_TO_REF(wei_scales[group_id * wei_scale_stride_g
-                + k_group_start / wei_scale_group_k * wei_scale_stride_k
-                + n / wei_scale_group_n * wei_scale_stride_n]);
-#endif
+#if WITH_WEI_SBZP
+        acc += ACC_TO_REF(acc_g) * src_scale;
+#else
         acc += ACC_TO_REF(acc_g) * src_scale * wei_scale;
+#endif
     }
 
 #if WITH_BIAS

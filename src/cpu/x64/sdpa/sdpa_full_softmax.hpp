@@ -162,6 +162,17 @@ struct sdpa_full_softmax_brgemm_t {
     int mm2_beta0[2][2] = {{-1, -1}, {-1, -1}};
 };
 
+enum class sdpa_mm2_output_t {
+    // Accumulate in the f32 destination without a scratch tile.
+    direct_f32,
+    // Accumulate in f32 scratch; convert to bf16/f16 on the last K block.
+    convert_on_last_k_block,
+    // Accumulate in f32 scratch, then store to a strided destination.
+    scratch_then_store,
+    // Sum f32 partials from multiple KV chunks before storing.
+    merge_partials,
+};
+
 // Derived compute configuration: the JIT-free arithmetic (query/KV blocking,
 // per-thread + global scratch layout). Computed once by configure() from the
 // pd and owned by the primitive_desc, which also sizes its scratchpad from
@@ -206,11 +217,7 @@ struct sdpa_full_softmax_conf_t {
     // mm2 accumulates across its seq_kv blocks: beta = 0 for a single block,
     // else the first block uses a beta = 0 kernel and the rest beta = 1.
     float mm2_beta = 0.0f;
-    // mm2 writes its f32 result directly into the user output (no pv+scatter).
-    bool mm2_direct = false;
-    // The final mm2 K block converts to bf16/f16 and writes the user output.
-    // Multi-chunk split_kv and strided output columns keep pv+scatter.
-    bool mm2_postops = false;
+    sdpa_mm2_output_t mm2_output = sdpa_mm2_output_t::scratch_then_store;
     bool mm1_needs_vnni_b = false;
     bool mm2_needs_vnni_b = false;
     // K / V are packed for BRGEMM; kv_packing tells where.
@@ -239,8 +246,8 @@ struct sdpa_full_softmax_conf_t {
     // thread's scratch block, padded_k is that of a full (non-tail) tile.
     utils::optional_t<tensor_copy_desc_t> k_tile_desc, v_tile_desc;
 
-    size_t scratch_total(int n) const {
-        return scratch_per_thread * static_cast<size_t>(n)
+    size_t scratch_total() const {
+        return scratch_per_thread * static_cast<size_t>(nthr)
                 + shared_scratch_bytes;
     }
 };
@@ -297,7 +304,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
 
 status_t execute(const sdpa_pd_t &pd, const sdpa_full_softmax_conf_t &conf,
         const sdpa_full_softmax_kernels_t &kernels,
-        const sdpa_full_softmax_run_args_t &args, int nthr);
+        const sdpa_full_softmax_run_args_t &args);
 
 } // namespace sdpa_full_softmax
 

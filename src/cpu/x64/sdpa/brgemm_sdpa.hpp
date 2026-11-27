@@ -57,7 +57,6 @@ struct brgemm_sdpa_fwd_t : public primitive_t {
         const sdpa_online_softmax_conf_t &online_softmax_conf() const {
             return online_conf_;
         }
-        int nthr() const { return nthr_; }
 
     private:
         friend struct brgemm_sdpa_fwd_t;
@@ -66,7 +65,6 @@ struct brgemm_sdpa_fwd_t : public primitive_t {
         // Only the configuration matching kind_ is populated.
         sdpa_full_softmax_conf_t full_conf_;
         sdpa_online_softmax_conf_t online_conf_;
-        int nthr_ = 1;
     };
 
     brgemm_sdpa_fwd_t(const pd_t *apd) : primitive_t(apd) {}

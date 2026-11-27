@@ -96,7 +96,7 @@ status_t configure(const sdpa_pd_t &pd, sdpa_online_softmax_conf_t &conf) {
     const dim_t granule
             = kv_block_width >= 64 ? 64 : (kv_block_width >= 32 ? 32 : 16);
     kv_block_width = nstl::max<dim_t>(
-            utils::rnd_dn(kv_block_width, granule), (dim_t)16);
+            utils::rnd_dn(kv_block_width, granule), static_cast<dim_t>(16));
     conf.kv_blk = nstl::min<dim_t>(seq_kv, kv_block_width);
 
     // Query block. Per KV tile mm1 re-reads the Q slice [q_blk x hs_qk] and the
@@ -112,7 +112,7 @@ status_t configure(const sdpa_pd_t &pd, sdpa_online_softmax_conf_t &conf) {
     // is allowed to overcommit the remainder. Clamp to [1, seq_q].
     const dim_t per_row_bytes = static_cast<dim_t>(
             (hs_qk + 2 * hs_v + conf.kv_blk) * sizeof(float));
-    conf.q_blk = utils::saturate((dim_t)1, seq_q,
+    conf.q_blk = utils::saturate(static_cast<dim_t>(1), seq_q,
             static_cast<dim_t>(l2_budget_bytes / per_row_bytes));
     conf.q_tail = seq_q % conf.q_blk;
 
@@ -245,8 +245,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
 
 status_t execute(const sdpa_pd_t &pd, const sdpa_online_softmax_conf_t &conf,
         const sdpa_online_softmax_kernels_t &kernels,
-        const sdpa_online_softmax_run_args_t &args, void *scratch_base,
-        int nthr) {
+        const sdpa_online_softmax_run_args_t &args, void *scratch_base) {
     constexpr int ndims = sdpa_pd_t::ndims;
     constexpr int row_dim = ndims - 2;
 
@@ -300,7 +299,7 @@ status_t execute(const sdpa_pd_t &pd, const sdpa_online_softmax_conf_t &conf,
     const dim_t q_row = q_d.strides()[row_dim];
     const dim_t n_qblk = utils::div_up(seq_q, q_blk);
 
-    parallel_nd_ext(nthr, desc.batch(), desc.num_q_heads(), n_qblk,
+    parallel_nd_ext(conf.nthr, desc.batch(), desc.num_q_heads(), n_qblk,
             [&](int tid, int, dim_t bo, dim_t bi, dim_t qblk) {
         const dim_t kvh = bi / group;
         const dim_t q0 = qblk * q_blk;

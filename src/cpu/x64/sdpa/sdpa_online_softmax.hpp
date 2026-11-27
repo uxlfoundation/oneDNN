@@ -78,8 +78,8 @@ struct sdpa_online_softmax_conf_t {
            off_row_denom = 0, off_old_coef = 0;
     size_t scratch_per_thread = 0;
     int nthr = 0;
-    size_t scratch_total(int n) const {
-        return scratch_per_thread * static_cast<size_t>(n);
+    size_t scratch_total() const {
+        return scratch_per_thread * static_cast<size_t>(nthr);
     }
 };
 
@@ -128,8 +128,7 @@ status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
 
 status_t execute(const sdpa_pd_t &pd, const sdpa_online_softmax_conf_t &conf,
         const sdpa_online_softmax_kernels_t &kernels,
-        const sdpa_online_softmax_run_args_t &args, void *scratch_base,
-        int nthr);
+        const sdpa_online_softmax_run_args_t &args, void *scratch_base);
 
 } // namespace sdpa_online_softmax
 

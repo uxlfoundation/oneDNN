@@ -32,9 +32,9 @@ struct post_ops_fallback_t {
 
     post_ops_fallback_t() = default;
 
-    // init the post_ops_fallback_t. Note that this function modifies the passed in
-    // post ops by setting the preferred memory formats
-    status_t init(const engine_t *engine, post_ops_t &post_ops,
+    // Initialize fallback post ops. The caller must set their default memory
+    // formats using dst_md before calling init().
+    status_t init(const engine_t *engine, const post_ops_t &post_ops,
             const memory_desc_t &dst_md, int post_op_start_index = 0);
 
     status_t init_primitives(engine_t *engine);

@@ -138,34 +138,25 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_SDPA(
             sdpa_fwd_pd_t::set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
-    // The online-softmax strategy never materializes the full [seq_q x seq_kv]
-    // score matrix, but is f32-only and has no attention-mask post-op yet; the
-    // full-softmax strategy covers bf16/f16 and an additive mask. Pick
-    // online-softmax whenever the shapes/dtypes allow it, unless overridden for
-    // debugging/perf comparisons via ONEDNN_SDPA_IMPL={online_softmax,full_softmax,auto}
-    // (auto, the default, is the capability-based choice above).
-    // The online mm1 reads K in place (no transpose), so its keys axis must be
-    // unit-stride; full-softmax materialises a transpose for a strided keys
-    // axis, so route those cases to full rather than rejecting them.
-    const bool online_capable = dt == f32 && !with_buffer_mask()
-            && key_mdw.strides()[sdpa_pd_t::ndims - 1] == 1
-            && val_mdw.strides()[sdpa_pd_t::ndims - 1] == 1;
+    // ONEDNN_SDPA_IMPL={auto,full_softmax,online_softmax}: auto and unset
+    // use full softmax; online softmax must be explicitly requested.
     const std::string forced = getenv_string_user("SDPA_IMPL");
     VDISPATCH_SDPA(
             utils::one_of(forced, std::string(), std::string("auto"),
                     std::string("full_softmax"), std::string("online_softmax")),
             "unknown ONEDNN_SDPA_IMPL value '%s'", forced.c_str());
     if (forced == "online_softmax") {
+        // Online reads K and V in place, so their last axes must be contiguous.
+        const bool online_capable = dt == f32 && !with_buffer_mask()
+                && key_mdw.strides()[sdpa_pd_t::ndims - 1] == 1
+                && val_mdw.strides()[sdpa_pd_t::ndims - 1] == 1;
         VDISPATCH_SDPA(online_capable,
                 "the online-softmax SDPA strategy was forced via "
                 "ONEDNN_SDPA_IMPL but "
-                "does not support this data type or attention mask");
+                "does not support this data type, attention mask or layout");
         kind_ = sdpa_impl_kind_t::online_softmax;
-    } else if (forced == "full_softmax") {
-        kind_ = sdpa_impl_kind_t::full_softmax;
     } else {
-        kind_ = online_capable ? sdpa_impl_kind_t::online_softmax
-                               : sdpa_impl_kind_t::full_softmax;
+        kind_ = sdpa_impl_kind_t::full_softmax;
     }
 
     auto scratchpad = scratchpad_registry().registrar();
@@ -183,8 +174,10 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     // ONEDNN_SDPA_SCHEDULE={per_head,kv_head_group,split_kv,auto},
     // ONEDNN_SDPA_SPLIT_KV_CHUNKS=<n> (seq_kv chunks per split_kv work item;
     // 0 or unset lets the cost model choose),
-    // ONEDNN_SDPA_KV_PACKING={ahead,per_tile,auto} and
-    // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking).
+    // ONEDNN_SDPA_KV_PACKING={ahead,per_tile,auto},
+    // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking) and
+    // ONEDNN_SDPA_FOLD_SELECT={0,1} (1 folds a non-inverted s8 select into
+    // mm1; default 0 applies every select in the pre-pass).
     sdpa_full_softmax_knobs_t knobs;
     const std::string schedule = getenv_string_user("SDPA_SCHEDULE");
     if (schedule == "per_head")
@@ -216,6 +209,11 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
                            std::string("1"), std::string("auto")),
             "unknown ONEDNN_SDPA_STACK_HEADS value '%s'", stack_heads.c_str());
     knobs.allow_stack_heads = stack_heads != "0";
+    const std::string fold_select = getenv_string_user("SDPA_FOLD_SELECT");
+    VDISPATCH_SDPA(utils::one_of(fold_select, std::string(), std::string("0"),
+                           std::string("1")),
+            "unknown ONEDNN_SDPA_FOLD_SELECT value '%s'", fold_select.c_str());
+    knobs.fold_select = fold_select == "1";
 
     VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(*this, knobs, full_conf_),
             "sdpa_full_softmax configuration failed");

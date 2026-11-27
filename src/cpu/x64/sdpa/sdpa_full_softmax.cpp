@@ -351,7 +351,7 @@ status_t set_mm1_post_ops(brgemm_desc_t &brg, dim_t output_rows,
         memory_desc_t cond_md;
         dims_t cd_dims = {output_rows, full_output_width};
         CHECK(memory_desc_init_by_tag(
-                cond_md, 2, cd_dims, data_type::u8, format_tag::ab));
+                cond_md, 2, cd_dims, data_type::s8, format_tag::ab));
 
         CHECK(po.append_binary(alg_kind::binary_select, &fill_md, &cond_md));
     }
@@ -551,10 +551,13 @@ void init_mm1_post_ops(
     }
 }
 
-bool can_fold_select(const sdpa_pd_t &pd) {
-    if (!pd.with_select_mask()) return false;
+bool can_fold_select(
+        const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs) {
+    if (!knobs.fold_select || !pd.with_select_mask()) return false;
     const auto &desc = *pd.desc();
     const memory_desc_wrapper cond(desc.attn_mask_md());
+    // The select post-op accepts only an s8 condition.
+    if (cond.data_type() != data_type::s8) return false;
     // The PD guarantees a contiguous key axis. For multiple query rows,
     // folding requires one dense condition row per query (no broadcast).
     const bool dense_query_axis = desc.queries() == 1
@@ -563,9 +566,10 @@ bool can_fold_select(const sdpa_pd_t &pd) {
     return !desc.invert_select && dense_query_axis;
 }
 
-void init_score_and_prob_layout(
-        const sdpa_pd_t &pd, sdpa_full_softmax_conf_t &conf) {
-    conf.mm1_select_postop = can_fold_select(pd);
+void init_score_and_prob_layout(const sdpa_pd_t &pd,
+        const sdpa_full_softmax_knobs_t &knobs,
+        sdpa_full_softmax_conf_t &conf) {
+    conf.mm1_select_postop = can_fold_select(pd, knobs);
     // Keep score rows dense for tensor RHS and folded select: the injector
     // uses score-tile offsets to address these operands.
     bool dense_scores_required = conf.mm1_select_postop;
@@ -1249,7 +1253,7 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
     const blocking_hw_t hw {conf.nthr, l2_bytes,
             platform::get_per_core_cache_size(3), brgemm_props.is_amx};
 
-    init_score_and_prob_layout(pd, conf);
+    init_score_and_prob_layout(pd, knobs, conf);
     const size_t prob_row_bytes = has_separate_prob_buffer(mm_dt)
             ? static_cast<size_t>(conf.ld_prob) * types::data_type_size(mm_dt)
             : 0;
@@ -1310,7 +1314,7 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                 "d_qk=%lld d_v=%lld dt_bytes=%lld q_block=%lld "
                 "mm1_block=%lld mm2_block=%lld nthr=%d schedule=%d "
                 "mm1_chunks=%lld mm2_chunks=%lld l2_per_core=%u "
-                "l3_per_core=%u interleave=%d\n",
+                "l3_per_core=%u interleave=%d fold_select=%d\n",
                 static_cast<long long>(seq_q), static_cast<long long>(seq_kv),
                 static_cast<long long>(desc.num_q_heads()),
                 static_cast<long long>(desc.num_kv_heads()),
@@ -1323,7 +1327,8 @@ status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
                 static_cast<int>(conf.schedule),
                 static_cast<long long>(conf.split_kv.mm1_chunks),
                 static_cast<long long>(conf.split_kv.mm2_chunks), hw.l2_bytes,
-                hw.l3_bytes, static_cast<int>(conf.interleave_items));
+                hw.l3_bytes, static_cast<int>(conf.interleave_items),
+                static_cast<int>(conf.mm1_select_postop));
     }
 
     return status::success;

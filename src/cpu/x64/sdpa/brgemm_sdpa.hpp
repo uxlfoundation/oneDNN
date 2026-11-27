@@ -38,8 +38,8 @@ namespace x64 {
 // `full_softmax` (namespace sdpa_full_softmax -- each query tile covers all keys
 // before softmax; f32/f16/bf16) and `online_softmax` (namespace sdpa_online_softmax
 // -- streams over KV tiles; f32-only).
-// pd_t::init() picks one by shape/dtype capability, or a forced choice via
-// ONEDNN_SDPA_IMPL={online_softmax,full_softmax,auto}.
+// ONEDNN_SDPA_IMPL={auto,full_softmax,online_softmax}: pd_t::init() uses full
+// softmax for auto or when unset; online_softmax must be explicitly requested.
 enum class sdpa_impl_kind_t { full_softmax, online_softmax };
 
 struct brgemm_sdpa_fwd_t : public primitive_t {

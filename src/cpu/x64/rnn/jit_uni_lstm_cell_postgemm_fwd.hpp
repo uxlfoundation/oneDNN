@@ -26,16 +26,15 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
+template <cpu_isa_t isa>
 struct jit_uni_lstm_cell_postgemm_fwd_t
     : public jit_uni_rnn_postgemm_t,
       public jit_uni_lstm_cell_postgemm_t<isa> {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lstm_cell_postgemm_fwd_t)
 
-    jit_uni_lstm_cell_postgemm_fwd_t(
-            const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
-        : jit_uni_rnn_postgemm_t(rnn, pd, jit_name())
+    jit_uni_lstm_cell_postgemm_fwd_t(const rnn_utils::rnn_conf_t &rnn,
+            const rnn_pd_t *pd, data_type_t src_dt, data_type_t scratch_dt)
+        : jit_uni_rnn_postgemm_t(rnn, pd, src_dt, scratch_dt, jit_name())
         , jit_uni_lstm_cell_postgemm_t<isa>(this,
                   get_last_preserved_vmm_idx(1) + 1,
                   // usage of jit_uni_rnn_postgemm_t::bf16_emu_ to identify bf16
@@ -43,12 +42,11 @@ struct jit_uni_lstm_cell_postgemm_fwd_t
                   // jit_uni_rnn_postgemm_t::init(), not in constructor, so
                   // jit_uni_rnn_postgemm_t::bf16_emu_ = nullptr always on this
                   // stage
-                  src_data_t == data_type::bf16 && !mayiuse(avx512_core_bf16)) {
-    }
+                  src_dt_ == data_type::bf16 && !mayiuse(avx512_core_bf16)) {}
 
     ~jit_uni_lstm_cell_postgemm_fwd_t() override = default;
 
-    status_t init(data_type_t sdt) override;
+    status_t init() override;
 
 protected:
     using injector_t = typename jit_uni_lstm_cell_postgemm_t<isa>::injector_t;
@@ -62,18 +60,16 @@ protected:
     static constexpr int qscale_dt_size = sizeof(float);
     static constexpr int weights_peephole_dt_size_ = sizeof(float);
     const int vlen_dst_ = vlen_
-            / static_cast<int>(
-                    sizeof(float) / types::data_type_size(src_data_t));
+            / static_cast<int>(sizeof(float) / types::data_type_size(src_dt_));
     const int vlen_bias_
             = vlen_ / static_cast<int>(sizeof(float) / bias_dt_size_);
     const int vlen_c_states_
             = vlen_ / static_cast<int>(sizeof(float) / cstate_dt_size_);
     const int hstate_dt_size_
-            = static_cast<int>(types::data_type_size(src_data_t));
-    const int gate_dt_size_
-            = static_cast<int>(types::data_type_size(src_data_t));
+            = static_cast<int>(types::data_type_size(src_dt_));
+    const int gate_dt_size_ = static_cast<int>(types::data_type_size(src_dt_));
     const int scratch_dt_size_
-            = static_cast<int>(types::data_type_size(scratch_data_t));
+            = static_cast<int>(types::data_type_size(scratch_dt_));
     int get_vmm_idx(int unroll_idx, int type_shift) const {
         const int preserved_vmm_start_idx = 1;
         // G0, G1, G2, G3, c_states;

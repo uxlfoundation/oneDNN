@@ -20,6 +20,8 @@
 #include "common/dnnl_thread.hpp"
 #include "common/utils.hpp"
 
+#include <cstring>
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -27,28 +29,27 @@ namespace aarch64 {
 
 using namespace dnnl::impl::utils;
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
-        gemm_acc_t>::brgemm_dst_layer_iter_t(const ref_rnn_brgemm_t &rnn_brgemm,
-        const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position, const src_t *src_iter,
-        const src_t *src_layer, weights_t *w_iter, weights_t *w_layer,
-        scratch_t *scratch_gates, scratch_t *scratch_cell,
-        gemm_acc_t *gemm_acc_scratchpad,
+brgemm_dst_layer_iter_t::brgemm_dst_layer_iter_t(
+        const ref_rnn_brgemm_t &rnn_brgemm, const rnn_utils::rnn_conf_t &rnn,
+        rnn_utils::cell_position_t cell_position, const void *src_iter,
+        const void *src_layer, void *w_iter, void *w_layer, void *scratch_gates,
+        void *scratch_cell, void *gemm_acc_scratchpad,
         brgemm_batch_element_t *addr_batch_global,
         const postgemm_fused_t &fused_postgemm)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
+    , src_dt_size_(types::data_type_size(rnn.cell_dt))
+    , wei_dt_size_(types::data_type_size(rnn.weights_dt))
+    , scratch_dt_size_(types::data_type_size(rnn.scratch_dt))
     , need_gemm_layer_(rnn_.need_gemm_layer(cell_position))
     , layer_desc_idx_(rnn_.layer_brgemm_desc(cell_position))
     , iter_desc_idx_(rnn_.iter_brgemm_desc(cell_position))
-    , A_layer_(src_layer)
-    , A_iter_(src_iter)
-    , B_layer_(w_layer)
-    , B_iter_(w_iter)
-    , C_gates_(scratch_gates)
-    , C_cell_(scratch_cell)
+    , A_layer_(static_cast<const char *>(src_layer))
+    , A_iter_(static_cast<const char *>(src_iter))
+    , B_layer_(static_cast<const char *>(w_layer))
+    , B_iter_(static_cast<const char *>(w_iter))
+    , C_gates_(static_cast<char *>(scratch_gates))
+    , C_cell_(static_cast<char *>(scratch_cell))
     , LDA_layer_(rnn_.src_layer_ld(cell_position))
     , LDA_iter_(rnn_.src_iter_ld(cell_position))
     , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
@@ -85,17 +86,13 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
               rnn_brgemm_.kernel_layer_K1_tail_b1_[layer_desc_idx_].get())
     , brgemm_kernel_layer_nk_tail_(
               rnn_brgemm_.kernel_layer_NK1_tail_b1_[layer_desc_idx_].get())
-    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global)
     , fused_postgemm_(fused_postgemm)
     , is_fused_layer_iter_brgemm_(!rnn_.is_lbr && rnn_.sic == rnn_.slc
               && LDA_iter_ == LDA_layer_ && need_gemm_layer_)
     , max_nthr_(calculate_nthr()) {}
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute()
-        const {
+void brgemm_dst_layer_iter_t::execute() const {
     if (is_fused_layer_iter_brgemm_) {
         parallel(max_nthr_, [this](const int ithr, const int nthr) {
             this->kernel_fused_iter_layer(ithr, nthr);
@@ -107,10 +104,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute()
     }
 }
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-int brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
-        gemm_acc_t>::calculate_nthr() const {
+int brgemm_dst_layer_iter_t::calculate_nthr() const {
     // TODO(aarch64): the serial/parallel crossover for small problems
     // (M == 1, no layer GEMM, LSTM/LBR-GRU) has not been measured on
     // AArch64. The x64 path returned 1 below an ISA-specific K2 threshold
@@ -120,10 +114,7 @@ int brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     return nstl::min(dnnl_get_current_num_threads(), rnn_.nthr);
 }
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
-        const int ithr, const int nthr) const {
+void brgemm_dst_layer_iter_t::kernel(const int ithr, const int nthr) const {
 
     using namespace cpu::rnn_utils;
 
@@ -153,15 +144,18 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         const auto g_unfused
                 = (rnn_.unfused_post_gemm) ? nb_i % rnn_.n_gates : 0;
 
-        const auto *const A_layer_m = A_layer_ + m * LDA_layer_;
-        const auto *const A_iter_m = A_iter_ + m * LDA_iter_;
-        const auto *const B_layer_n = B_layer_ + nb * B_layer_n_offset_;
-        const auto *const B_iter_n = B_iter_ + nb * B_iter_n_offset_;
-        auto *const C_n = C_gates_ + m * rnn_.LDC + n;
+        const auto *const A_layer_m = A_layer_ + m * LDA_layer_ * src_dt_size_;
+        const auto *const A_iter_m = A_iter_ + m * LDA_iter_ * src_dt_size_;
+        const auto *const B_layer_n
+                = B_layer_ + nb * B_layer_n_offset_ * wei_dt_size_;
+        const auto *const B_iter_n
+                = B_iter_ + nb * B_iter_n_offset_ * wei_dt_size_;
+        auto *const C_n = C_gates_ + (m * rnn_.LDC + n) * scratch_dt_size_;
 
         const auto cell_stride = rnn_.LDC;
-        auto *const C_cell_i
-                = C_cell_ ? C_cell_ + m * cell_stride + n : C_cell_;
+        auto *const C_cell_i = C_cell_
+                ? C_cell_ + (m * cell_stride + n) * scratch_dt_size_
+                : C_cell_;
 
         assert(rnn_.LDC == rnn_.scratch_gates_ld);
 
@@ -182,23 +176,26 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
 
         if (rnn_.is_lbr) {
             for (dim_t i = 0; i < rnn_.m_block; ++i) {
-                auto *C_o = C_cell_i + i * cell_stride;
-                PRAGMA_OMP_SIMD()
-                for (dim_t j = 0; j < nstl::min(rnn_.n_block, cell_stride); ++j)
-                    C_o[j] = 0;
+                std::memset(C_cell_i + i * cell_stride * scratch_dt_size_, 0,
+                        nstl::min(rnn_.n_block, cell_stride)
+                                * scratch_dt_size_);
             }
         }
 
         for (int g = 0; g < n_gates_; g++) {
             const int lg = g + g_unfused;
-            const auto *const B_layer_g = B_layer_n + lg * B_layer_g_offset_;
-            const auto *const B_iter_g = B_iter_n + lg * B_iter_g_offset_;
-            auto *C_g = C_n + lg * rnn_.N;
+            const auto *const B_layer_g
+                    = B_layer_n + lg * B_layer_g_offset_ * wei_dt_size_;
+            const auto *const B_iter_g
+                    = B_iter_n + lg * B_iter_g_offset_ * wei_dt_size_;
+            auto *C_g = C_n + lg * rnn_.N * scratch_dt_size_;
 
             if (need_gemm_layer_) {
                 for (int i = 0; i < rnn_.KB1_blocks; i++) {
-                    addr_batch[i].ptr.A = A_layer_m + i * rnn_.k1_block;
-                    addr_batch[i].ptr.B = B_layer_g + i * B_layer_kb_offset_;
+                    addr_batch[i].ptr.A
+                            = A_layer_m + i * rnn_.k1_block * src_dt_size_;
+                    addr_batch[i].ptr.B
+                            = B_layer_g + i * B_layer_kb_offset_ * wei_dt_size_;
                 }
                 brgemm_kernel_execute(brgemm_kernel_layer_b0, rnn_.KB1_blocks,
                         addr_batch, reinterpret_cast<void *>(C_g), nullptr);
@@ -207,8 +204,10 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             if (rnn_.is_lbr && g == n_gates_ - 1) C_g = C_cell_i;
 
             for (int i = 0; i < rnn_.KB2_blocks; i++) {
-                addr_batch[i].ptr.A = A_iter_m + i * rnn_.k2_block;
-                addr_batch[i].ptr.B = B_iter_g + i * B_iter_kb_offset_;
+                addr_batch[i].ptr.A
+                        = A_iter_m + i * rnn_.k2_block * src_dt_size_;
+                addr_batch[i].ptr.B
+                        = B_iter_g + i * B_iter_kb_offset_ * wei_dt_size_;
             }
             brgemm_kernel_execute(brgemm_kernel_iter, rnn_.KB2_blocks,
                     addr_batch, reinterpret_cast<void *>(C_g), nullptr);
@@ -218,10 +217,12 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             for (int g = 0; g < n_gates_; g++) {
                 const int lg = g + g_unfused;
                 const auto *const B_layer_g
-                        = B_layer_n + lg * B_layer_g_offset_;
-                auto *const C_g = C_n + lg * rnn_.N;
-                addr_batch[0].ptr.A = A_layer_m + A_layer_k_tail_offset_;
-                addr_batch[0].ptr.B = B_layer_g + B_layer_k_tail_offset_;
+                        = B_layer_n + lg * B_layer_g_offset_ * wei_dt_size_;
+                auto *const C_g = C_n + lg * rnn_.N * scratch_dt_size_;
+                addr_batch[0].ptr.A
+                        = A_layer_m + A_layer_k_tail_offset_ * src_dt_size_;
+                addr_batch[0].ptr.B
+                        = B_layer_g + B_layer_k_tail_offset_ * wei_dt_size_;
                 brgemm_kernel_execute(brgemm_kernel_layer_k_tail, 1, addr_batch,
                         reinterpret_cast<void *>(C_g), nullptr);
             }
@@ -230,11 +231,14 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         if (rnn_.k2_tail) {
             for (int g = 0; g < n_gates_; g++) {
                 const int lg = g + g_unfused;
-                const auto *const B_iter_g = B_iter_n + lg * B_iter_g_offset_;
-                auto *C_g = C_n + lg * rnn_.N;
+                const auto *const B_iter_g
+                        = B_iter_n + lg * B_iter_g_offset_ * wei_dt_size_;
+                auto *C_g = C_n + lg * rnn_.N * scratch_dt_size_;
                 if (rnn_.is_lbr && g == n_gates_ - 1) C_g = C_cell_i;
-                addr_batch[0].ptr.A = A_iter_m + A_iter_k_tail_offset_;
-                addr_batch[0].ptr.B = B_iter_g + B_iter_k_tail_offset_;
+                addr_batch[0].ptr.A
+                        = A_iter_m + A_iter_k_tail_offset_ * src_dt_size_;
+                addr_batch[0].ptr.B
+                        = B_iter_g + B_iter_k_tail_offset_ * wei_dt_size_;
                 brgemm_kernel_execute(brgemm_kernel_iter_k_tail, 1, addr_batch,
                         reinterpret_cast<void *>(C_g), nullptr);
             }
@@ -242,7 +246,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
 
         if (!rnn_.unfused_post_gemm) {
             const int n_elems = do_n_tail ? rnn_.n_tail : rnn_.n_block;
-            const int block_step_bytes = n_elems * (int)sizeof(scratch_t);
+            const int block_step_bytes = n_elems * (int)scratch_dt_size_;
             fused_postgemm_(
                     m, n, nb_i, A_iter_m, C_n, C_cell_i, block_step_bytes);
         }
@@ -260,11 +264,8 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
     }
 }
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
-        gemm_acc_t>::kernel_fused_iter_layer(const int ithr,
-        const int nthr) const {
+void brgemm_dst_layer_iter_t::kernel_fused_iter_layer(
+        const int ithr, const int nthr) const {
 
     using namespace cpu::rnn_utils;
 
@@ -305,11 +306,11 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
         const auto g_unfused
                 = (rnn_.unfused_post_gemm) ? nb_i % rnn_.n_gates : 0;
 
-        const auto *const A_layer_m = A_layer_ + m * LDA;
-        const auto *const A_iter_m = A_iter_ + m * LDA;
-        const auto *const B_layer_n = B_layer_ + nb * B_n_offset;
-        const auto *const B_iter_n = B_iter_ + nb * B_n_offset;
-        auto *const C_n = C_gates_ + m * rnn_.LDC + n;
+        const auto *const A_layer_m = A_layer_ + m * LDA * src_dt_size_;
+        const auto *const A_iter_m = A_iter_ + m * LDA * src_dt_size_;
+        const auto *const B_layer_n = B_layer_ + nb * B_n_offset * wei_dt_size_;
+        const auto *const B_iter_n = B_iter_ + nb * B_n_offset * wei_dt_size_;
+        auto *const C_n = C_gates_ + (m * rnn_.LDC + n) * scratch_dt_size_;
 
         const bool do_n_tail = (n + rnn_.n_block) > rnn_.N;
 
@@ -322,25 +323,28 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
 
         for (int g = 0; g < n_gates_; g++) {
             const int lg = g + g_unfused;
-            const auto *const B_layer_g = B_layer_n + lg * B_g_offset;
-            const auto *const B_iter_g = B_iter_n + lg * B_g_offset;
-            auto *const C_g = C_n + lg * rnn_.N;
+            const auto *const B_layer_g
+                    = B_layer_n + lg * B_g_offset * wei_dt_size_;
+            const auto *const B_iter_g
+                    = B_iter_n + lg * B_g_offset * wei_dt_size_;
+            auto *const C_g = C_n + lg * rnn_.N * scratch_dt_size_;
 
             int batch_idx = 0;
             if (need_gemm_layer_) {
                 for (; batch_idx < rnn_.KB1_blocks; batch_idx++) {
-                    addr_batch[batch_idx].ptr.A
-                            = A_layer_m + batch_idx * rnn_.k1_block;
-                    addr_batch[batch_idx].ptr.B
-                            = B_layer_g + batch_idx * B_kb_offset;
+                    addr_batch[batch_idx].ptr.A = A_layer_m
+                            + batch_idx * rnn_.k1_block * src_dt_size_;
+                    addr_batch[batch_idx].ptr.B = B_layer_g
+                            + batch_idx * B_kb_offset * wei_dt_size_;
                 }
             }
 
             int iter_idx = 0;
             for (; batch_idx < KB_blocks; batch_idx++) {
                 addr_batch[batch_idx].ptr.A
-                        = A_iter_m + iter_idx * rnn_.k2_block;
-                addr_batch[batch_idx].ptr.B = B_iter_g + iter_idx * B_kb_offset;
+                        = A_iter_m + iter_idx * rnn_.k2_block * src_dt_size_;
+                addr_batch[batch_idx].ptr.B
+                        = B_iter_g + iter_idx * B_kb_offset * wei_dt_size_;
                 iter_idx++;
             }
 
@@ -351,18 +355,24 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
         if (rnn_.k2_tail) {
             for (int g = 0; g < n_gates_; g++) {
                 const int lg = g + g_unfused;
-                auto *const C_g = C_n + lg * rnn_.N;
+                auto *const C_g = C_n + lg * rnn_.N * scratch_dt_size_;
 
                 int batch_idx = 0;
                 if (need_gemm_layer_) {
-                    const auto *const B_layer_g = B_layer_n + lg * B_g_offset;
-                    addr_batch[batch_idx].ptr.A = A_layer_m + A_k_tail_offset;
-                    addr_batch[batch_idx].ptr.B = B_layer_g + B_k_tail_offset;
+                    const auto *const B_layer_g
+                            = B_layer_n + lg * B_g_offset * wei_dt_size_;
+                    addr_batch[batch_idx].ptr.A
+                            = A_layer_m + A_k_tail_offset * src_dt_size_;
+                    addr_batch[batch_idx].ptr.B
+                            = B_layer_g + B_k_tail_offset * wei_dt_size_;
                     batch_idx++;
                 }
-                const auto *const B_iter_g = B_iter_n + lg * B_g_offset;
-                addr_batch[batch_idx].ptr.A = A_iter_m + A_k_tail_offset;
-                addr_batch[batch_idx].ptr.B = B_iter_g + B_k_tail_offset;
+                const auto *const B_iter_g
+                        = B_iter_n + lg * B_g_offset * wei_dt_size_;
+                addr_batch[batch_idx].ptr.A
+                        = A_iter_m + A_k_tail_offset * src_dt_size_;
+                addr_batch[batch_idx].ptr.B
+                        = B_iter_g + B_k_tail_offset * wei_dt_size_;
 
                 brgemm_kernel_execute(brgemm_kernel_k_tail, KB_blocks_tail,
                         addr_batch, reinterpret_cast<void *>(C_g), nullptr);
@@ -371,7 +381,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
 
         if (!rnn_.unfused_post_gemm) {
             const auto block_step = (do_n_tail ? rnn_.n_tail : rnn_.n_block)
-                    * sizeof(scratch_t);
+                    * scratch_dt_size_;
             fused_postgemm_(m, n, nb_i, A_iter_m, C_n, C_cell_, block_step);
         }
 
@@ -388,45 +398,41 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     }
 }
 
-template <typename src_t, typename weights_t, typename gemm_acc_t>
-brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::brgemm_dst_proj_t(
-        const ref_rnn_brgemm_t &rnn_brgemm, const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position, const src_t *proj_ht,
-        const weights_t *w_projection, gemm_acc_t *output,
-        gemm_acc_t *gemm_acc_scratchpad,
+brgemm_dst_proj_t::brgemm_dst_proj_t(const ref_rnn_brgemm_t &rnn_brgemm,
+        const rnn_utils::rnn_conf_t &rnn,
+        rnn_utils::cell_position_t cell_position, const void *proj_ht,
+        const void *w_projection, void *output, void *gemm_acc_scratchpad,
         brgemm_batch_element_t *addr_batch_global,
         const postgemm_fused_t &fused_postgemm)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
+    , src_dt_size_(types::data_type_size(rnn.cell_dt))
+    , wei_dt_size_(types::data_type_size(rnn.weights_dt))
+    , acc_dt_size_(types::data_type_size(rnn.acc_dt))
     , proj_desc_idx_(rnn_.is_cell_dt_f32()
                       ? rnn_.dst_brgemm_desc(cell_position, true)
                       : 0)
-    , A_(proj_ht)
-    , B_(w_projection)
-    , C_(output)
+    , A_(static_cast<const char *>(proj_ht))
+    , B_(static_cast<const char *>(w_projection))
+    , C_(static_cast<char *>(output))
     , LDC_(rnn_.is_cell_dt_f32() ? rnn_.dst_layer_ld(cell_position, true)
                                  : rnn_.scratch_gates_ld)
     , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , work_amount_proj_(rnn_.Nproj_blocks * rnn_.M_blocks)
     , B_n_offset_(rnn_.Kprojpadded * rnn_.n_block)
-    , Bp_kb_offset_(rnn_.kproj_block * rnn_.n_block)
-    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global)
     , brgemm_kernel_main_(rnn_brgemm_.kernel_proj_b0_[proj_desc_idx_].get())
     , brgemm_kernel_n_tail_(
               rnn_brgemm_.kernel_proj_N_tail_b0_[proj_desc_idx_].get())
     , fused_postgemm_(fused_postgemm) {}
 
-template <typename src_t, typename weights_t, typename gemm_acc_t>
-void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::execute() const {
+void brgemm_dst_proj_t::execute() const {
     parallel(max_nthr_, [this](const int ithr, const int nthr) {
         this->kernel(ithr, nthr);
     });
 }
 
-template <typename src_t, typename weights_t, typename gemm_acc_t>
-void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::kernel(
-        const int ithr, const int nthr) const {
+void brgemm_dst_proj_t::kernel(const int ithr, const int nthr) const {
 
     using namespace cpu::rnn_utils;
 
@@ -450,12 +456,12 @@ void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::kernel(
         const int n = nb * rnn_.n_block;
         const int m = mb * rnn_.m_block;
         const bool do_n_tail = (n + rnn_.n_block) > rnn_.Nproj;
-        const int block_step = ((do_n_tail) ? rnn_.nproj_tail : rnn_.n_block)
-                * sizeof(src_t);
+        const int block_step
+                = ((do_n_tail) ? rnn_.nproj_tail : rnn_.n_block) * src_dt_size_;
 
-        const auto *const Ap_m = A_ + m * rnn_.LDAproj;
-        const auto *const Bp_n = B_ + nb * B_n_offset_;
-        auto *const Cp_n = C_ + m * LDC_ + n;
+        const auto *const Ap_m = A_ + m * rnn_.LDAproj * src_dt_size_;
+        const auto *const Bp_n = B_ + nb * B_n_offset_ * wei_dt_size_;
+        auto *const Cp_n = C_ + (m * LDC_ + n) * acc_dt_size_;
 
         const brgemm_kernel_t *const brgemm_kernel_proj_b0
                 = do_n_tail ? brgemm_kernel_n_tail_ : brgemm_kernel_main_;
@@ -482,31 +488,31 @@ void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::kernel(
     }
 }
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::brgemm_gru_t(
-        const ref_rnn_brgemm_t &rnn_brgemm, const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position, const src_t *src_iter,
-        const src_t *src_layer, weights_t *w_iter0, weights_t *w_iter1,
-        weights_t *w_layer, src_t *d_layer, scratch_t *scratch_gates,
-        scratch_t *scratch_cell, gemm_acc_t *gemm_acc_scratchpad,
-        brgemm_batch_element_t *addr_batch_global,
+brgemm_gru_t::brgemm_gru_t(const ref_rnn_brgemm_t &rnn_brgemm,
+        const rnn_utils::rnn_conf_t &rnn,
+        rnn_utils::cell_position_t cell_position, const void *src_iter,
+        const void *src_layer, void *w_iter0, void *w_iter1, void *w_layer,
+        void *d_layer, void *scratch_gates, void *scratch_cell,
+        void *gemm_acc_scratchpad, brgemm_batch_element_t *addr_batch_global,
         const postgemm_fused_t &fused_postgemm_part1,
         const postgemm_fused_t &fused_postgemm_part2)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
+    , src_dt_size_(types::data_type_size(rnn.cell_dt))
+    , wei_dt_size_(types::data_type_size(rnn.weights_dt))
+    , scratch_dt_size_(types::data_type_size(rnn.scratch_dt))
     , need_gemm_layer_(rnn_.need_gemm_layer(cell_position))
     , layer_desc_idx_(rnn_.layer_brgemm_desc(cell_position))
     , iter_desc_idx_(rnn_.iter_brgemm_desc(cell_position))
     , iter_part2_desc_idx_(rnn_.iter_part2_brgemm_desc(cell_position))
-    , A_layer_(src_layer)
-    , A_iter_(src_iter)
-    , B_layer_(w_layer)
-    , B_iter_(w_iter0)
-    , B_iter_part2_(w_iter1)
-    , C_gates_(scratch_gates)
-    , C_cell_(scratch_cell)
-    , D_layer_(d_layer)
+    , A_layer_(static_cast<const char *>(src_layer))
+    , A_iter_(static_cast<const char *>(src_iter))
+    , B_layer_(static_cast<const char *>(w_layer))
+    , B_iter_(static_cast<const char *>(w_iter0))
+    , B_iter_part2_(static_cast<const char *>(w_iter1))
+    , C_gates_(static_cast<char *>(scratch_gates))
+    , C_cell_(static_cast<char *>(scratch_cell))
+    , D_layer_(static_cast<char *>(d_layer))
     , LDA_layer_(rnn_.src_layer_ld(cell_position))
     , LDA_iter_part1_(rnn_.src_iter_ld(cell_position))
     , LDA_iter_part2_(rnn_.dst_iter_part2_ld(cell_position))
@@ -519,12 +525,8 @@ brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::brgemm_gru_t(
     , B_iter_n_offset_(rnn_.K2padded * rnn_.n_block)
     , B_layer_g_offset_(rnn_.N_blocks * B_layer_n_offset_)
     , B_iter_g_offset_(rnn_.N_blocks * B_iter_n_offset_)
-    , A_layer_k_tail_offset_(rnn_.KB1_blocks * rnn_.k1_block)
-    , A_iter_k_tail_offset_(rnn_.KB2_blocks * rnn_.k2_block)
     , B_layer_kb_offset_(rnn_.k1_block * rnn_.n_block)
     , B_iter_kb_offset_(rnn_.k2_block * rnn_.n_block)
-    , B_layer_k_tail_offset_(rnn_.KB1_blocks * rnn_.k1_block * rnn_.n_block)
-    , B_iter_k_tail_offset_(rnn_.KB2_blocks * rnn_.k2_block * rnn_.n_block)
     , n_gates_(rnn.unfused_post_gemm ? 1 : rnn.n_gates)
     , brgemm_kernel_iter_p0_main_(need_gemm_layer_
                       ? rnn_brgemm_.kernel_iter_b1_[iter_desc_idx_].get()
@@ -555,25 +557,17 @@ brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::brgemm_gru_t(
               rnn_brgemm_.kernel_layer_K1_tail_b1_[layer_desc_idx_].get())
     , brgemm_kernel_layer_nk_tail_(
               rnn_brgemm_.kernel_layer_NK1_tail_b1_[layer_desc_idx_].get())
-    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global)
     , fused_postgemm_part1_(fused_postgemm_part1)
-    , fused_postgemm_part2_(fused_postgemm_part2)
-    , is_fused_layer_iter_brgemm_(true) {}
+    , fused_postgemm_part2_(fused_postgemm_part2) {}
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute() const {
-    assert(is_fused_layer_iter_brgemm_);
+void brgemm_gru_t::execute() const {
     parallel(max_nthr_, [this](const int ithr, const int nthr) {
         this->kernel(ithr, nthr);
     });
 }
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
-        const int ithr, const int nthr) const {
+void brgemm_gru_t::kernel(const int ithr, const int nthr) const {
 
     int start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
@@ -587,18 +581,24 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         dim_t mb = start;
         const auto m = mb * rnn_.m_block;
 
-        const auto *const A_layer_m = A_layer_ + m * LDA_layer_;
-        const auto *const A_iter_m = A_iter_ + m * LDA_iter_part1_;
-        const auto *const A_iter_part2_m = D_layer_ + m * LDA_iter_part2_;
+        const auto *const A_layer_m = A_layer_ + m * LDA_layer_ * src_dt_size_;
+        const auto *const A_iter_m
+                = A_iter_ + m * LDA_iter_part1_ * src_dt_size_;
+        const auto *const A_iter_part2_m
+                = D_layer_ + m * LDA_iter_part2_ * src_dt_size_;
 
         for (dim_t nb_i = 0; nb_i < n_blocking_; nb_i++) {
             const auto nb
                     = (rnn_.unfused_post_gemm) ? nb_i / rnn_.n_gates : nb_i;
             const auto n = nb * rnn_.n_block;
-            const auto *const B_layer_n = B_layer_ + nb * B_layer_n_offset_;
-            const auto *const B_iter_n = B_iter_ + nb * B_iter_n_offset_;
-            auto *const C_gates_n = C_gates_ + m * rnn_.LDC + n;
-            auto *const C_cell_n = C_cell_ + m * rnn_.LDC + n;
+            const auto *const B_layer_n
+                    = B_layer_ + nb * B_layer_n_offset_ * wei_dt_size_;
+            const auto *const B_iter_n
+                    = B_iter_ + nb * B_iter_n_offset_ * wei_dt_size_;
+            auto *const C_gates_n
+                    = C_gates_ + (m * rnn_.LDC + n) * scratch_dt_size_;
+            auto *const C_cell_n
+                    = C_cell_ + (m * rnn_.LDC + n) * scratch_dt_size_;
 
             const bool do_n_tail = (n + rnn_.n_block) > rnn_.N;
 
@@ -618,14 +618,15 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             if (need_gemm_layer_) {
                 for (int g = 0; g < n_gates_; g++) {
                     const auto *const B_layer_g
-                            = B_layer_n + g * B_layer_g_offset_;
-                    auto *const C_gates_g = C_gates_n + g * rnn_.N;
+                            = B_layer_n + g * B_layer_g_offset_ * wei_dt_size_;
+                    auto *const C_gates_g
+                            = C_gates_n + g * rnn_.N * scratch_dt_size_;
                     for (int batch_idx = 0; batch_idx < rnn_.KB1_blocks;
                             batch_idx++) {
-                        addr_batch[batch_idx].ptr.A
-                                = A_layer_m + batch_idx * rnn_.k1_block;
-                        addr_batch[batch_idx].ptr.B
-                                = B_layer_g + batch_idx * B_layer_kb_offset_;
+                        addr_batch[batch_idx].ptr.A = A_layer_m
+                                + batch_idx * rnn_.k1_block * src_dt_size_;
+                        addr_batch[batch_idx].ptr.B = B_layer_g
+                                + batch_idx * B_layer_kb_offset_ * wei_dt_size_;
                     }
                     brgemm_kernel_execute(brgemm_kernel_layer, rnn_.KB1_blocks,
                             addr_batch, reinterpret_cast<void *>(C_gates_g),
@@ -636,12 +637,14 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             if (need_gemm_layer_ && rnn_.k1_tail > 0) {
                 for (int g = 0; g < n_gates_; g++) {
                     const auto *const B_layer_g
-                            = B_layer_n + g * B_layer_g_offset_;
-                    auto *const C_gates_g = C_gates_n + g * rnn_.N;
-                    addr_batch[0].ptr.A
-                            = A_layer_m + rnn_.KB1_blocks * rnn_.k1_block;
-                    addr_batch[0].ptr.B
-                            = B_layer_g + rnn_.KB1_blocks * B_layer_kb_offset_;
+                            = B_layer_n + g * B_layer_g_offset_ * wei_dt_size_;
+                    auto *const C_gates_g
+                            = C_gates_n + g * rnn_.N * scratch_dt_size_;
+                    addr_batch[0].ptr.A = A_layer_m
+                            + rnn_.KB1_blocks * rnn_.k1_block * src_dt_size_;
+                    addr_batch[0].ptr.B = B_layer_g
+                            + rnn_.KB1_blocks * B_layer_kb_offset_
+                                    * wei_dt_size_;
                     brgemm_kernel_execute(brgemm_kernel_layer_k_tail, 1,
                             addr_batch, reinterpret_cast<void *>(C_gates_g),
                             nullptr);
@@ -649,14 +652,16 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             }
 
             for (int g = 0; g < n_gates_ - 1; g++) {
-                const auto *const B_iter_g = B_iter_n + g * B_iter_g_offset_;
-                auto *const C_gates_g = C_gates_n + g * rnn_.N;
+                const auto *const B_iter_g
+                        = B_iter_n + g * B_iter_g_offset_ * wei_dt_size_;
+                auto *const C_gates_g
+                        = C_gates_n + g * rnn_.N * scratch_dt_size_;
                 for (int batch_idx = 0; batch_idx < rnn_.KB2_blocks;
                         batch_idx++) {
-                    addr_batch[batch_idx].ptr.A
-                            = A_iter_m + batch_idx * rnn_.k2_block;
-                    addr_batch[batch_idx].ptr.B
-                            = B_iter_g + batch_idx * B_iter_kb_offset_;
+                    addr_batch[batch_idx].ptr.A = A_iter_m
+                            + batch_idx * rnn_.k2_block * src_dt_size_;
+                    addr_batch[batch_idx].ptr.B = B_iter_g
+                            + batch_idx * B_iter_kb_offset_ * wei_dt_size_;
                 }
                 brgemm_kernel_execute(brgemm_kernel_iter_p0, rnn_.KB2_blocks,
                         addr_batch, reinterpret_cast<void *>(C_gates_g),
@@ -666,12 +671,14 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             if (rnn_.k2_tail > 0) {
                 for (int g = 0; g < n_gates_ - 1; g++) {
                     const auto *const B_iter_g
-                            = B_iter_n + g * B_iter_g_offset_;
-                    auto *const C_gates_g = C_gates_n + g * rnn_.N;
-                    addr_batch[0].ptr.A
-                            = A_iter_m + rnn_.KB2_blocks * rnn_.k2_block;
-                    addr_batch[0].ptr.B
-                            = B_iter_g + rnn_.KB2_blocks * B_iter_kb_offset_;
+                            = B_iter_n + g * B_iter_g_offset_ * wei_dt_size_;
+                    auto *const C_gates_g
+                            = C_gates_n + g * rnn_.N * scratch_dt_size_;
+                    addr_batch[0].ptr.A = A_iter_m
+                            + rnn_.KB2_blocks * rnn_.k2_block * src_dt_size_;
+                    addr_batch[0].ptr.B = B_iter_g
+                            + rnn_.KB2_blocks * B_iter_kb_offset_
+                                    * wei_dt_size_;
                     brgemm_kernel_execute(brgemm_kernel_iter_p0_k_tail, 1,
                             addr_batch, reinterpret_cast<void *>(C_gates_g),
                             nullptr);
@@ -680,7 +687,7 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
 
             if (!rnn_.unfused_post_gemm) {
                 const int n_elems = do_n_tail ? rnn_.n_tail : rnn_.n_block;
-                const int block_step_bytes = n_elems * (int)sizeof(scratch_t);
+                const int block_step_bytes = n_elems * (int)scratch_dt_size_;
                 fused_postgemm_part1_(m, n, nb_i, A_iter_m, C_gates_n, C_cell_n,
                         block_step_bytes);
             }
@@ -691,8 +698,9 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
                     = (rnn_.unfused_post_gemm) ? nb_i / rnn_.n_gates : nb_i;
             const auto n = nb * rnn_.n_block;
             const auto *const B_iter_part2_n
-                    = B_iter_part2_ + nb * B_iter_n_offset_;
-            auto *const C_gates_n = C_gates_ + m * rnn_.LDC + n;
+                    = B_iter_part2_ + nb * B_iter_n_offset_ * wei_dt_size_;
+            auto *const C_gates_n
+                    = C_gates_ + (m * rnn_.LDC + n) * scratch_dt_size_;
 
             const bool do_n_tail = (n + rnn_.n_block) > rnn_.N;
 
@@ -705,14 +713,15 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
 
             for (int g = 0; g < 1; g++) {
                 const auto *const B_iter_part2_g
-                        = B_iter_part2_n + g * B_iter_g_offset_;
-                auto *const C_gates_g = C_gates_n + (n_gates_ - 1) * rnn_.N;
+                        = B_iter_part2_n + g * B_iter_g_offset_ * wei_dt_size_;
+                auto *const C_gates_g = C_gates_n
+                        + (n_gates_ - 1) * rnn_.N * scratch_dt_size_;
                 for (int batch_idx = 0; batch_idx < rnn_.KB2_blocks;
                         batch_idx++) {
-                    addr_batch[batch_idx].ptr.A
-                            = A_iter_part2_m + batch_idx * rnn_.k2_block;
-                    addr_batch[batch_idx].ptr.B
-                            = B_iter_part2_g + batch_idx * B_iter_kb_offset_;
+                    addr_batch[batch_idx].ptr.A = A_iter_part2_m
+                            + batch_idx * rnn_.k2_block * src_dt_size_;
+                    addr_batch[batch_idx].ptr.B = B_iter_part2_g
+                            + batch_idx * B_iter_kb_offset_ * wei_dt_size_;
                 }
                 brgemm_kernel_execute(brgemm_kernel_iter_p1, rnn_.KB2_blocks,
                         addr_batch, reinterpret_cast<void *>(C_gates_g),
@@ -721,13 +730,15 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
 
             if (rnn_.k2_tail > 0) {
                 for (int g = 0; g < 1; g++) {
-                    const auto *const B_iter_part2_g
-                            = B_iter_part2_n + g * B_iter_g_offset_;
-                    auto *const C_gates_g = C_gates_n + (n_gates_ - 1) * rnn_.N;
-                    addr_batch[0].ptr.A
-                            = A_iter_part2_m + rnn_.KB2_blocks * rnn_.k2_block;
+                    const auto *const B_iter_part2_g = B_iter_part2_n
+                            + g * B_iter_g_offset_ * wei_dt_size_;
+                    auto *const C_gates_g = C_gates_n
+                            + (n_gates_ - 1) * rnn_.N * scratch_dt_size_;
+                    addr_batch[0].ptr.A = A_iter_part2_m
+                            + rnn_.KB2_blocks * rnn_.k2_block * src_dt_size_;
                     addr_batch[0].ptr.B = B_iter_part2_g
-                            + rnn_.KB2_blocks * B_iter_kb_offset_;
+                            + rnn_.KB2_blocks * B_iter_kb_offset_
+                                    * wei_dt_size_;
                     brgemm_kernel_execute(brgemm_kernel_iter_p1_k_tail, 1,
                             addr_batch, reinterpret_cast<void *>(C_gates_g),
                             nullptr);
@@ -736,8 +747,8 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
 
             if (!rnn_.unfused_post_gemm && nb_i == n_blocking_ - 1) {
                 fused_postgemm_part2_(m, 0, 0, A_iter_m,
-                        C_gates_ + m * rnn_.LDC, C_cell_ + m * rnn_.LDC,
-                        rnn_.N);
+                        C_gates_ + m * rnn_.LDC * scratch_dt_size_,
+                        C_cell_ + m * rnn_.LDC * scratch_dt_size_, rnn_.N);
             }
         }
 
@@ -745,21 +756,20 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
     }
 }
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-brgemm_merged_layer_t<src_t, weights_t, scratch_t,
-        gemm_acc_t>::brgemm_merged_layer_t(const ref_rnn_brgemm_t &rnn_brgemm,
+brgemm_merged_layer_t::brgemm_merged_layer_t(const ref_rnn_brgemm_t &rnn_brgemm,
         const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position, const src_t *src_layer,
-        weights_t *w_layer, scratch_t *scratch_gates,
-        gemm_acc_t *gemm_acc_scratchpad,
+        rnn_utils::cell_position_t cell_position, const void *src_layer,
+        void *w_layer, void *scratch_gates, void *gemm_acc_scratchpad,
         brgemm_batch_element_t *addr_batch_global)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
+    , src_dt_size_(types::data_type_size(rnn.cell_dt))
+    , wei_dt_size_(types::data_type_size(rnn.weights_dt))
+    , scratch_dt_size_(types::data_type_size(rnn.scratch_dt))
     , layer_desc_idx_(rnn_.layer_brgemm_desc(cell_position))
-    , A_layer_(src_layer)
-    , B_layer_(w_layer)
-    , C_(scratch_gates)
+    , A_layer_(static_cast<const char *>(src_layer))
+    , B_layer_(static_cast<const char *>(w_layer))
+    , C_(static_cast<char *>(scratch_gates))
     , LDA_layer_(rnn_.src_layer_ld(cell_position))
     , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , n_blocking_(rnn_.N_blocks * rnn_.n_gates)
@@ -779,22 +789,15 @@ brgemm_merged_layer_t<src_t, weights_t, scratch_t,
     , brgemm_kernel_layer_nk_tail_(
               rnn_brgemm_.kernel_layermerged_NK1_tail_b1_[layer_desc_idx_]
                       .get())
-    , gemm_acc_scratchpad_(gemm_acc_scratchpad)
     , addr_batch_global_(addr_batch_global) {}
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute()
-        const {
+void brgemm_merged_layer_t::execute() const {
     parallel(max_nthr_, [this](const int ithr, const int nthr) {
         this->kernel(ithr, nthr);
     });
 }
 
-template <typename src_t, typename weights_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
-        const int ithr, const int nthr) const {
+void brgemm_merged_layer_t::kernel(const int ithr, const int nthr) const {
 
     using namespace cpu::rnn_utils;
 
@@ -824,9 +827,10 @@ void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         const auto n = nb * rnn_.n_block;
         const auto g = nb_i % rnn_.n_gates;
 
-        const auto *const A_layer_m = A_layer_ + m * LDA_layer_;
-        const auto *const B_layer_n = B_layer_ + nb * B_layer_n_offset_;
-        auto *const C_n = C_ + m * rnn_.LDC + n;
+        const auto *const A_layer_m = A_layer_ + m * LDA_layer_ * src_dt_size_;
+        const auto *const B_layer_n
+                = B_layer_ + nb * B_layer_n_offset_ * wei_dt_size_;
+        auto *const C_n = C_ + (m * rnn_.LDC + n) * scratch_dt_size_;
 
         const bool do_n_tail = (n + rnn_.n_block) > rnn_.N;
 
@@ -837,22 +841,26 @@ void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
                 ? brgemm_kernel_layer_nk_tail_
                 : brgemm_kernel_layer_k_tail_;
 
-        const auto *const B_layer_g = B_layer_n + g * B_layer_g_offset_;
-        auto *const C_g = C_n + g * rnn_.N;
+        const auto *const B_layer_g
+                = B_layer_n + g * B_layer_g_offset_ * wei_dt_size_;
+        auto *const C_g = C_n + g * rnn_.N * scratch_dt_size_;
 
         for (int i = 0; i < rnn_.KB1_blocks; i++) {
-            addr_batch[i].ptr.A = A_layer_m + i * rnn_.k1_block;
-            addr_batch[i].ptr.B = B_layer_g + i * B_layer_kb_offset_;
+            addr_batch[i].ptr.A = A_layer_m + i * rnn_.k1_block * src_dt_size_;
+            addr_batch[i].ptr.B
+                    = B_layer_g + i * B_layer_kb_offset_ * wei_dt_size_;
         }
         brgemm_kernel_execute(brgemm_kernel_layer_b0, rnn_.KB1_blocks,
                 addr_batch, reinterpret_cast<void *>(C_g), nullptr);
 
         if (rnn_.k1_tail) {
             const auto *const B_layer_g_tail
-                    = B_layer_n + g * B_layer_g_offset_;
-            auto *const C_g_tail = C_n + g * rnn_.N;
-            addr_batch[0].ptr.A = A_layer_m + A_layer_k_tail_offset_;
-            addr_batch[0].ptr.B = B_layer_g_tail + B_layer_k_tail_offset_;
+                    = B_layer_n + g * B_layer_g_offset_ * wei_dt_size_;
+            auto *const C_g_tail = C_n + g * rnn_.N * scratch_dt_size_;
+            addr_batch[0].ptr.A
+                    = A_layer_m + A_layer_k_tail_offset_ * src_dt_size_;
+            addr_batch[0].ptr.B
+                    = B_layer_g_tail + B_layer_k_tail_offset_ * wei_dt_size_;
             brgemm_kernel_execute(brgemm_kernel_layer_k_tail, 1, addr_batch,
                     reinterpret_cast<void *>(C_g_tail), nullptr);
         }
@@ -869,30 +877,6 @@ void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         }
     }
 }
-
-template class brgemm_dst_layer_iter_t<uint8_t, int8_t, int32_t, int32_t>;
-template class brgemm_dst_layer_iter_t<int8_t, int8_t, int32_t, int32_t>;
-template class brgemm_dst_layer_iter_t<float, float, float, float>;
-template class brgemm_dst_layer_iter_t<bfloat16_t, bfloat16_t, float, float>;
-template class brgemm_dst_layer_iter_t<float16_t, float16_t, float, float>;
-
-template class brgemm_dst_proj_t<float, float, float>;
-template class brgemm_dst_proj_t<bfloat16_t, bfloat16_t, float>;
-template class brgemm_dst_proj_t<float16_t, float16_t, float>;
-template class brgemm_dst_proj_t<int8_t, int8_t, int32_t>;
-template class brgemm_dst_proj_t<uint8_t, int8_t, int32_t>;
-
-template class brgemm_gru_t<uint8_t, int8_t, int32_t, int32_t>;
-template class brgemm_gru_t<int8_t, int8_t, int32_t, int32_t>;
-template class brgemm_gru_t<float, float, float, float>;
-template class brgemm_gru_t<bfloat16_t, bfloat16_t, float, float>;
-template class brgemm_gru_t<float16_t, float16_t, float, float>;
-
-template class brgemm_merged_layer_t<uint8_t, int8_t, int32_t, int32_t>;
-template class brgemm_merged_layer_t<int8_t, int8_t, int32_t, int32_t>;
-template class brgemm_merged_layer_t<float, float, float, float>;
-template class brgemm_merged_layer_t<bfloat16_t, bfloat16_t, float, float>;
-template class brgemm_merged_layer_t<float16_t, float16_t, float, float>;
 
 } // namespace aarch64
 } // namespace cpu

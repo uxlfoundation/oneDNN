@@ -21,12 +21,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-status_t
-jit_uni_gru_lbr_cell_postgemm_fwd_t<isa, src_data_t, scratch_data_t>::init(
-        data_type_t sdt) {
-    CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
+template <cpu_isa_t isa>
+status_t jit_uni_gru_lbr_cell_postgemm_fwd_t<isa>::init() {
+    CHECK(jit_uni_rnn_postgemm_t::init());
     // we use rax for both constant tables and load correspondent label
     // into it when calling correspondent injector.
     sigmoid_injector_
@@ -38,10 +35,8 @@ jit_uni_gru_lbr_cell_postgemm_fwd_t<isa, src_data_t, scratch_data_t>::init(
     return create_kernel();
 }
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-void jit_uni_gru_lbr_cell_postgemm_fwd_t<isa, src_data_t,
-        scratch_data_t>::generate() {
+template <cpu_isa_t isa>
+void jit_uni_gru_lbr_cell_postgemm_fwd_t<isa>::generate() {
     using namespace Xbyak;
 
     const auto is_training
@@ -115,54 +110,53 @@ void jit_uni_gru_lbr_cell_postgemm_fwd_t<isa, src_data_t,
         Label loop_start_label, loop_inc_regs_or_finish;
         L(loop_start_label);
         {
-            load(G0, sg_addr(0), scratch_data_t, current_vlen);
+            load(G0, sg_addr(0), scratch_dt_, current_vlen);
             to_float(tmp1_vmm, B_addr(0), rnn_.bias_dt, current_vlen);
             compute_vaddps(G0, G0, tmp1_vmm, current_vlen);
             if (!rnn_.is_brgemm) {
-                load(tmp1_vmm, sc_addr(0), scratch_data_t, current_vlen);
+                load(tmp1_vmm, sc_addr(0), scratch_dt_, current_vlen);
                 compute_vaddps(G0, G0, tmp1_vmm, current_vlen);
             }
             sigmoid_injector_->load_table_addr();
             sigmoid_injector_->compute_vector(G0.getIdx());
             // if training we write back the gates
-            if (is_training) to_src(wg_addr(0), G0, src_data_t, current_vlen);
+            if (is_training) to_src(wg_addr(0), G0, src_dt_, current_vlen);
 
             // Compute gate 1
-            load(G1, sg_addr(1), scratch_data_t, current_vlen);
+            load(G1, sg_addr(1), scratch_dt_, current_vlen);
             to_float(tmp1_vmm, B_addr(1), rnn_.bias_dt, current_vlen);
             compute_vaddps(G1, G1, tmp1_vmm, current_vlen);
             if (!rnn_.is_brgemm) {
-                load(tmp1_vmm, sc_addr(1), scratch_data_t, current_vlen);
+                load(tmp1_vmm, sc_addr(1), scratch_dt_, current_vlen);
                 compute_vaddps(G1, G1, tmp1_vmm, current_vlen);
             }
             sigmoid_injector_->load_table_addr();
             sigmoid_injector_->compute_vector(G1.getIdx());
             // if training we write back the gates
-            if (is_training) to_src(wg_addr(1), G1, src_data_t, current_vlen);
+            if (is_training) to_src(wg_addr(1), G1, src_dt_, current_vlen);
 
             // compute last gate
             const auto wh_b_addr = sc_addr(rnn_.is_brgemm ? 0 : 2);
             const auto ws_h_addr = ptr[addr_ws_h_reg];
-            load(tmp1_vmm, wh_b_addr, scratch_data_t, current_vlen);
+            load(tmp1_vmm, wh_b_addr, scratch_dt_, current_vlen);
             to_float(tmp2_vmm, B_addr(3), rnn_.bias_dt, current_vlen);
             compute_vaddps(tmp1_vmm, tmp1_vmm, tmp2_vmm, current_vlen);
-            if (is_training)
-                to_src(ws_h_addr, tmp1_vmm, src_data_t, current_vlen);
-            load(G2, sg_addr(2), scratch_data_t, current_vlen);
+            if (is_training) to_src(ws_h_addr, tmp1_vmm, src_dt_, current_vlen);
+            load(G2, sg_addr(2), scratch_dt_, current_vlen);
             to_float(tmp2_vmm, B_addr(2), rnn_.bias_dt, current_vlen);
             compute_vaddps(G2, G2, tmp2_vmm, current_vlen);
             compute_vfmadd231ps(G2, G1, tmp1_vmm, current_vlen);
             tanh_injector_->load_table_addr();
             tanh_injector_->compute_vector(G2.getIdx());
             // if training we write back the gates
-            if (is_training) to_src(wg_addr(2), G2, src_data_t, current_vlen);
+            if (is_training) to_src(wg_addr(2), G2, src_dt_, current_vlen);
 
             if (is_augru) {
-                load(tmp1_vmm, one_addr, scratch_data_t, current_vlen);
+                load(tmp1_vmm, one_addr, scratch_dt_, current_vlen);
                 // for augru there is additional step G01 = (1 - a) * G0
                 // states_t_l = states_tm1_l * G01 + (1 - G01) * G2
                 const Xmm tmp2s_vmm(tmp2_vmm.getIdx());
-                to_float(tmp2s_vmm, ptr[addr_attn_reg], src_data_t,
+                to_float(tmp2s_vmm, ptr[addr_attn_reg], src_dt_,
                         scratch_dt_size);
                 uni_vbroadcastss(tmp2_vmm, tmp2s_vmm);
                 // G01 = (1 - a) * G0
@@ -174,21 +168,21 @@ void jit_uni_gru_lbr_cell_postgemm_fwd_t<isa, src_data_t,
                 // tmp1 = G2 * tmp1
                 compute_vmulps(tmp1_vmm, G2, tmp1_vmm, tmp3_vmm, current_vlen);
                 // states_t_l = G01 * states_tm1_l + tmp2
-                to_float(tmp2_vmm, ptr[addr_states_tm1_l_reg], src_data_t,
+                to_float(tmp2_vmm, ptr[addr_states_tm1_l_reg], src_dt_,
                         current_vlen);
                 compute_vfmadd213ps(G0, tmp2_vmm, tmp1_vmm, current_vlen);
             } else {
                 // states_t_l = states_tm1_l * G0 + (1 - G0) * G2
-                load(tmp1_vmm, one_addr, scratch_data_t, current_vlen);
+                load(tmp1_vmm, one_addr, scratch_dt_, current_vlen);
                 compute_vsubps(tmp1_vmm, tmp1_vmm, G0, current_vlen);
-                to_float(tmp2_vmm, ptr[addr_states_tm1_l_reg], src_data_t,
+                to_float(tmp2_vmm, ptr[addr_states_tm1_l_reg], src_dt_,
                         current_vlen);
                 compute_vmulps(G0, G0, tmp2_vmm, current_vlen);
                 compute_vfmadd231ps(G0, tmp1_vmm, G2, current_vlen);
             }
 
             // write back the result
-            to_src(ptr[addr_states_t_l_reg], G0, src_data_t, current_vlen);
+            to_src(ptr[addr_states_t_l_reg], G0, src_dt_, current_vlen);
             // if states_t_l_copy is a non null ptr, we write the output to
             // both tensors
             cmp(addr_states_t_l_copy_reg, rnn_.dhc * hstate_dt_size);
@@ -196,7 +190,7 @@ void jit_uni_gru_lbr_cell_postgemm_fwd_t<isa, src_data_t,
             // As to_src is called with write_only=true it's important for
             // xf16 src_dt to execute just after to_src method with
             // write_only=false for the same Vmm
-            to_src(ptr[addr_states_t_l_copy_reg], G0, src_data_t, current_vlen,
+            to_src(ptr[addr_states_t_l_copy_reg], G0, src_dt_, current_vlen,
                     true);
             // increment address pointers
             L(loop_inc_regs_or_finish);
@@ -269,26 +263,8 @@ void jit_uni_gru_lbr_cell_postgemm_fwd_t<isa, src_data_t,
     }
 }
 
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx512_core, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx512_core,
-        data_type::bf16, data_type::f32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx512_core, data_type::f16,
-        data_type::f32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx512_core, data_type::u8,
-        data_type::s32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx512_core, data_type::s8,
-        data_type::s32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx2, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx2, data_type::bf16,
-        data_type::f32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx2, data_type::f16,
-        data_type::f32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx2, data_type::u8,
-        data_type::s32>;
-template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx2, data_type::s8,
-        data_type::s32>;
+template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx512_core>;
+template struct jit_uni_gru_lbr_cell_postgemm_fwd_t<avx2>;
 
 } // namespace x64
 } // namespace cpu

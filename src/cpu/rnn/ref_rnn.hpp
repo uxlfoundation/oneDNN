@@ -22,6 +22,7 @@
 #include <tuple>
 
 #include "common/c_types_map.hpp"
+#include "common/dnnl_thread.hpp"
 #include "common/primitive.hpp"
 #include "common/reorder.hpp"
 #include "common/utils.hpp"
@@ -43,10 +44,10 @@ namespace impl {
 namespace cpu {
 
 namespace {
-template <typename gates_t, typename acc_t>
+template <typename gates_t>
 // The loop body needs to be put in a function as some versions of icc have
 // an issue with lambdas & macros inside omp simd loops
-inline void body_loop(int i, int k, const gates_t *ws_gates, acc_t *diff_bias,
+inline void body_loop(int i, int k, const gates_t *ws_gates, float *diff_bias,
         const rnn_utils::rnn_conf_t &rnn,
         rnn_utils::cell_position_t cell_position) {
     if (rnn.diff_weights_overwrite && (cell_position & rnn_utils::last_iter))
@@ -57,10 +58,10 @@ inline void body_loop(int i, int k, const gates_t *ws_gates, acc_t *diff_bias,
 }
 } // namespace
 
-template <typename gates_t, typename acc_t>
-void gates_reduction(const rnn_utils::rnn_conf_t &rnn,
+template <typename gates_t>
+void gates_reduction_body(const rnn_utils::rnn_conf_t &rnn,
         rnn_utils::cell_position_t cell_position, const gates_t *ws_gates_,
-        acc_t *diff_bias_) {
+        float *diff_bias_) {
 
     // @TODO: block k on simd-width to enable vectorization in
     // parallel_nd path
@@ -81,12 +82,27 @@ void gates_reduction(const rnn_utils::rnn_conf_t &rnn,
 #endif
 }
 
-template <impl::data_type_t src_type, impl::data_type_t weights_type,
-        impl::data_type_t acc_type>
-struct ref_rnn_fwd_t;
+inline void gates_reduction(const rnn_utils::rnn_conf_t &rnn,
+        rnn_utils::cell_position_t cell_position, const void *ws_gates_,
+        float *diff_bias_) {
+    switch (rnn.scratch_dt) {
+        case data_type::f32:
+            gates_reduction_body(rnn, cell_position,
+                    static_cast<const float *>(ws_gates_), diff_bias_);
+            break;
+        case data_type::bf16:
+            gates_reduction_body(rnn, cell_position,
+                    static_cast<const bfloat16_t *>(ws_gates_), diff_bias_);
+            break;
+        case data_type::f16:
+            gates_reduction_body(rnn, cell_position,
+                    static_cast<const float16_t *>(ws_gates_), diff_bias_);
+            break;
+        default: assert(!"unsupported data type");
+    }
+}
 
-template <impl::data_type_t src_type, impl::data_type_t weights_type,
-        impl::data_type_t acc_type>
+struct ref_rnn_fwd_t;
 struct ref_rnn_bwd_t;
 
 // Data type agnostic part of the RNN primitive descriptor. It is templated
@@ -130,10 +146,13 @@ struct ref_rnn_common_pd_t
 #endif
 
 protected:
-    status_t init(const engine_t *engine, data_type_t src_type,
-            data_type_t weights_type, data_type_t acc_type);
+    // Picks the first (src, weights, acc) data type triplet that the
+    // descriptor and the hardware support.
+    status_t init(const engine_t *engine);
 
 private:
+    status_t init(const engine_t *engine, data_type_t src_type,
+            data_type_t weights_type, data_type_t acc_type);
     status_t init_ref(const engine_t *engine, data_type_t src_type,
             data_type_t weights_type, data_type_t acc_type);
     status_t init_brgemm(const engine_t *engine, data_type_t src_type,
@@ -141,34 +160,14 @@ private:
     void init_scratchpad(size_t scratchpad_sz, data_type_t acc_type);
 };
 
-template <prop_kind_t aprop, impl::data_type_t src_type,
-        impl::data_type_t weights_type, impl::data_type_t acc_type>
+template <prop_kind_t aprop>
 struct ref_rnn_common_t : public primitive_t {
-    static constexpr impl::data_type_t scratch_type
-            = aprop == prop_kind::forward ? acc_type : src_type;
-
-    using fwd_t = ref_rnn_fwd_t<src_type, weights_type, acc_type>;
-    using bwd_t = ref_rnn_bwd_t<src_type, weights_type, acc_type>;
     using impl_t = typename utils::conditional<aprop == prop_kind::forward,
-            fwd_t, bwd_t>::type;
+            ref_rnn_fwd_t, ref_rnn_bwd_t>::type;
     using postgemm_t = typename utils::conditional<aprop == prop_kind::forward,
-            rnn_postgemm_fwd_t<src_type, scratch_type, acc_type>,
-            rnn_postgemm_bwd_t<src_type, scratch_type, acc_type>>::type;
+            rnn_postgemm_fwd_t, rnn_postgemm_bwd_t>::type;
 
-    /* These types are defined for each element in the cell execution */
-    using src_layer_t = typename prec_traits_t<src_type>::type;
-    using src_iter_t = typename prec_traits_t<src_type>::type;
-    using dst_layer_t = typename prec_traits_t<src_type>::type;
-    using dst_iter_t = typename prec_traits_t<src_type>::type;
-    using weights_t = typename prec_traits_t<weights_type>::type;
-    using gemm_data_t = typename prec_traits_t<src_type>::type;
-    using gemm_acc_t = typename prec_traits_t<acc_type>::type;
-    using scratch_t = typename prec_traits_t<scratch_type>::type;
-    using ht_t = typename prec_traits_t<src_type>::type;
-    using gates_t = typename prec_traits_t<src_type>::type;
-
-    using class_name
-            = ref_rnn_common_t<aprop, src_type, weights_type, acc_type>;
+    using class_name = ref_rnn_common_t<aprop>;
 #if DNNL_X64 || DNNL_AARCH64
     using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<aprop>;
 #endif
@@ -194,8 +193,7 @@ struct ref_rnn_common_t : public primitive_t {
         DECLARE_COMMON_PD_T(this->impl_name(), impl_t, USE_GLOBAL_SCRATCHPAD);
 
         status_t init(const engine_t *engine) {
-            return ref_rnn_common_pd_t<aprop>::init(
-                    engine, src_type, weights_type, acc_type);
+            return ref_rnn_common_pd_t<aprop>::init(engine);
         }
     };
 
@@ -215,33 +213,26 @@ protected:
     std::shared_ptr<primitive_t> bf32_wei_iter_reorder_;
 #endif
 
-    template <typename input_t>
     void copy_init_layer(const rnn_utils::rnn_conf_t &rnn,
-            src_layer_t *ws_states_layer_, gemm_acc_t *ws_diff_states_layer_,
-            const input_t *xt_, const gemm_acc_t *diff_dst_layer) const;
+            void *ws_states_layer_, float *ws_diff_states_layer_,
+            const void *xt_, const float *diff_dst_layer_) const;
 
-    template <typename input_t>
-    void copy_init_iter(const rnn_utils::rnn_conf_t &rnn,
-            src_iter_t *ws_states_iter_, void *ws_states_iter_c_,
-            gemm_acc_t *ws_diff_states_iter_,
-            gemm_acc_t *ws_diff_states_iter_c_, const input_t *src_iter_,
-            const void *src_iter_c_, const gemm_acc_t *diff_dst_iter_,
+    void copy_init_iter(const rnn_utils::rnn_conf_t &rnn, void *ws_states_iter_,
+            void *ws_states_iter_c_, float *ws_diff_states_iter_,
+            float *ws_diff_states_iter_c_, const void *src_iter_,
+            const void *src_iter_c_, const float *diff_dst_iter_,
             const float *diff_dst_iter_c_) const;
 
-    template <typename dst_layer_dt, typename dst_iter_dt>
-    void copy_res_layer(const rnn_utils::rnn_conf_t &rnn,
-            dst_layer_dt *dst_layer_, gemm_acc_t *diff_src_layer_,
-            const dst_iter_dt *dst_iter_, const src_layer_t *ws_states_layer_,
-            const gemm_acc_t *ws_diff_states_layer_) const;
+    void copy_res_layer(const rnn_utils::rnn_conf_t &rnn, void *dst_layer_,
+            float *diff_src_layer_, const void *dst_iter_,
+            const void *ws_states_layer_,
+            const float *ws_diff_states_layer_) const;
 
-    template <typename prim_dst_iter_t, typename prim_dst_layer_t>
-    void copy_res_iter(const rnn_utils::rnn_conf_t &rnn,
-            prim_dst_iter_t *dst_iter_, void *dst_iter_c_,
-            gemm_acc_t *diff_src_iter_, float *diff_src_iter_c_,
-            const prim_dst_layer_t *dst_layer_,
-            const src_iter_t *ws_states_iter_, const void *ws_states_iter_c,
-            const gemm_acc_t *ws_diff_states_iter_,
-            const gemm_acc_t *ws_diff_states_iter_c_) const;
+    void copy_res_iter(const rnn_utils::rnn_conf_t &rnn, void *dst_iter_,
+            void *dst_iter_c_, float *diff_src_iter_, float *diff_src_iter_c_,
+            const void *dst_layer_, const void *ws_states_iter_,
+            const void *ws_states_iter_c_, const float *ws_diff_states_iter_,
+            const float *ws_diff_states_iter_c_) const;
 
     rnn_grid_execution_sig(linear_execution);
     rnn_matmul_sig(execute_matmul);
@@ -251,8 +242,8 @@ protected:
     virtual rnn_merged_layer_execution_sig(merged_layer_brgemm) = 0;
     virtual rnn_cell_execution_sig(cell_execution_gru) = 0;
     virtual rnn_cell_execution_sig(cell_execution_gru_lbr) = 0;
-    virtual rnn_gemm_sig(gemm) = 0;
-    virtual rnn_gemm_sig(packed_gemm) = 0;
+    rnn_gemm_sig(gemm);
+    rnn_gemm_sig(packed_gemm);
     rnn_bias_prepare_sig(bias_prepare);
     rnn_bias_finalize_sig(bias_finalize);
     rnn_weights_assign_sig(assign_weights);
@@ -315,27 +306,11 @@ protected:
 };
 
 // TODO: move to a .cpp file once this implementation gets one.
-template <prop_kind_t aprop, impl::data_type_t src_type,
-        impl::data_type_t weights_type, impl::data_type_t acc_type>
-DEFINE_PD_CREATE(
-        ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t)
+template <prop_kind_t aprop>
+DEFINE_PD_CREATE(ref_rnn_common_t<aprop>::pd_t)
 
-template <impl::data_type_t src_type, impl::data_type_t weights_type,
-        impl::data_type_t acc_type>
-struct ref_rnn_fwd_t : public ref_rnn_common_t<prop_kind::forward, src_type,
-                               weights_type, acc_type> {
-    using base_t = ref_rnn_common_t<prop_kind::forward, src_type, weights_type,
-            acc_type>;
-    using src_layer_t = typename base_t::src_layer_t;
-    using src_iter_t = typename base_t::src_iter_t;
-    using dst_layer_t = typename base_t::dst_layer_t;
-    using dst_iter_t = typename base_t::dst_iter_t;
-    using weights_t = typename base_t::weights_t;
-    using gemm_data_t = typename base_t::gemm_data_t;
-    using gemm_acc_t = typename base_t::gemm_acc_t;
-    using scratch_t = typename base_t::scratch_t;
-    using ht_t = typename base_t::ht_t;
-    using gates_t = typename base_t::gates_t;
+struct ref_rnn_fwd_t : public ref_rnn_common_t<prop_kind::forward> {
+    using base_t = ref_rnn_common_t<prop_kind::forward>;
 
     using base_t::cell_func;
     using base_t::grid_computation;
@@ -354,8 +329,6 @@ struct ref_rnn_fwd_t : public ref_rnn_common_t<prop_kind::forward, src_type,
     using base_t::base_t;
 
 private:
-    rnn_gemm_sig(gemm) override;
-    rnn_gemm_sig(packed_gemm) override;
     rnn_cell_execution_sig(cell_execution_ref) override;
     rnn_merged_layer_execution_sig(merged_layer_execution_ref) override;
     rnn_cell_execution_sig(cell_execution_brgemm) override;
@@ -364,22 +337,8 @@ private:
     rnn_cell_execution_sig(cell_execution_gru_lbr) override;
 };
 
-template <impl::data_type_t src_type, impl::data_type_t weights_type,
-        impl::data_type_t acc_type>
-struct ref_rnn_bwd_t : public ref_rnn_common_t<prop_kind::backward, src_type,
-                               weights_type, acc_type> {
-    using base_t = ref_rnn_common_t<prop_kind::backward, src_type, weights_type,
-            acc_type>;
-    using src_layer_t = typename base_t::src_layer_t;
-    using src_iter_t = typename base_t::src_iter_t;
-    using dst_layer_t = typename base_t::dst_layer_t;
-    using dst_iter_t = typename base_t::dst_iter_t;
-    using weights_t = typename base_t::weights_t;
-    using gemm_data_t = typename base_t::gemm_data_t;
-    using gemm_acc_t = typename base_t::gemm_acc_t;
-    using scratch_t = typename base_t::scratch_t;
-    using ht_t = typename base_t::ht_t;
-    using gates_t = typename base_t::gates_t;
+struct ref_rnn_bwd_t : public ref_rnn_common_t<prop_kind::backward> {
+    using base_t = ref_rnn_common_t<prop_kind::backward>;
 
     using base_t::cell_func;
     using base_t::grid_computation;
@@ -398,8 +357,6 @@ struct ref_rnn_bwd_t : public ref_rnn_common_t<prop_kind::backward, src_type,
     using base_t::base_t;
 
 private:
-    rnn_gemm_sig(gemm) override;
-    rnn_gemm_sig(packed_gemm) override;
     rnn_cell_execution_sig(cell_execution_ref) override;
     rnn_merged_layer_execution_sig(merged_layer_execution_ref) override;
     rnn_cell_execution_sig(cell_execution_brgemm) override;
@@ -410,43 +367,6 @@ private:
     }
 };
 
-using ref_rnn_common_fwd_f32_t = ref_rnn_common_t<prop_kind::forward,
-        data_type::f32, data_type::f32, data_type::f32>;
-using ref_rnn_common_bwd_f32_t = ref_rnn_common_t<prop_kind::backward,
-        data_type::f32, data_type::f32, data_type::f32>;
-
-using ref_rnn_common_fwd_bf16_t = ref_rnn_common_t<prop_kind::forward,
-        data_type::bf16, data_type::bf16, data_type::f32>;
-using ref_rnn_common_bwd_bf16_t = ref_rnn_common_t<prop_kind::backward,
-        data_type::bf16, data_type::bf16, data_type::f32>;
-using ref_rnn_common_fwd_f16_t = ref_rnn_common_t<prop_kind::forward,
-        data_type::f16, data_type::f16, data_type::f32>;
-using ref_rnn_common_bwd_f16_t = ref_rnn_common_t<prop_kind::backward,
-        data_type::f16, data_type::f16, data_type::f32>;
-using ref_rnn_common_fwd_u8s8_t = ref_rnn_common_t<prop_kind::forward,
-        data_type::u8, data_type::s8, data_type::s32>;
-using ref_rnn_common_fwd_s8s8_t = ref_rnn_common_t<prop_kind::forward,
-        data_type::s8, data_type::s8, data_type::s32>;
-
-using ref_rnn_fwd_f32_t
-        = ref_rnn_fwd_t<data_type::f32, data_type::f32, data_type::f32>;
-using ref_rnn_bwd_f32_t
-        = ref_rnn_bwd_t<data_type::f32, data_type::f32, data_type::f32>;
-
-using ref_rnn_fwd_bf16_t
-        = ref_rnn_fwd_t<data_type::bf16, data_type::bf16, data_type::f32>;
-using ref_rnn_bwd_bf16_t
-        = ref_rnn_bwd_t<data_type::bf16, data_type::bf16, data_type::f32>;
-
-using ref_rnn_fwd_f16_t
-        = ref_rnn_fwd_t<data_type::f16, data_type::f16, data_type::f32>;
-using ref_rnn_bwd_f16_t
-        = ref_rnn_bwd_t<data_type::f16, data_type::f16, data_type::f32>;
-
-using ref_rnn_fwd_u8s8_t
-        = ref_rnn_fwd_t<data_type::u8, data_type::s8, data_type::s32>;
-using ref_rnn_fwd_s8s8_t
-        = ref_rnn_fwd_t<data_type::s8, data_type::s8, data_type::s32>;
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

@@ -133,7 +133,7 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble(
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::injector_preamble_tail(
-        const injector_utils::vmm_index_set_iterator_t start_idx_it) {
+        const injector_utils::vmm_index_set_iterator_t &start_idx_it) {
     size_t tail_vecs_to_preserve = std::distance(start_idx_it, start_idx_tail);
     if (tail_vecs_to_preserve == 0) return;
 

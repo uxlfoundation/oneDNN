@@ -25,15 +25,15 @@ namespace x64 {
 
 src_layer_iter_transpose_t::src_layer_iter_transpose_t(const dim_t src_ld,
         const dim_t dst_ld, const dim_t rows, const dim_t cols,
-        jit_brgemm_trans_src_t *const kernel_transpose)
+        const size_t dt_size, jit_brgemm_trans_src_t *const kernel_transpose)
     : src_ld_(src_ld)
     , dst_ld_(dst_ld)
     , src_rows_(rows)
     , src_cols_(cols)
+    , dt_size_(dt_size)
     , kernel_transpose_(kernel_transpose) {}
 
-template <typename Dt>
-void src_layer_iter_transpose_t::execute(const Dt *src, Dt *dst) const {
+void src_layer_iter_transpose_t::execute(const void *src, void *dst) const {
     static constexpr dim_t block_size = 16;
     const auto rows_div = std::div(src_rows_, block_size);
     const auto rows_tail = rows_div.rem;
@@ -49,8 +49,10 @@ void src_layer_iter_transpose_t::execute(const Dt *src, Dt *dst) const {
                 = (cols_tail && c == cols_blks - 1) ? cols_tail : block_size;
 
         auto ctx = jit_brgemm_trans_src_t::ctx_t();
-        ctx.src = (void *)(src + (r * src_ld_ + c) * block_size);
-        ctx.tr_src = (void *)(dst + (c * dst_ld_ + r) * block_size);
+        ctx.src = (void *)(static_cast<const char *>(src)
+                + (r * src_ld_ + c) * block_size * dt_size_);
+        ctx.tr_src = (void *)(static_cast<char *>(dst)
+                + (c * dst_ld_ + r) * block_size * dt_size_);
         ctx.current_gemm_batch = 1;
         ctx.current_M = current_cols;
         ctx.current_K = current_rows;
@@ -59,12 +61,6 @@ void src_layer_iter_transpose_t::execute(const Dt *src, Dt *dst) const {
     });
 }
 
-template void src_layer_iter_transpose_t::execute<float>(
-        const float *, float *) const;
-template void src_layer_iter_transpose_t::execute<bfloat16_t>(
-        const bfloat16_t *, bfloat16_t *) const;
-template void src_layer_iter_transpose_t::execute<float16_t>(
-        const float16_t *, float16_t *) const;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

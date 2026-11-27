@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <vector>
+
 #include "common/c_types_map.hpp"
 #include "common/matmul_pd.hpp"
 #include "common/primitive_desc_iterator.hpp"
@@ -66,13 +68,13 @@ status_t ref_rnn_common_pd_t<aprop>::init_ref(const engine_t *engine,
 
     rnn_ = utils::zero<decltype(rnn_)>();
     rnn_.is_brgemm = false;
-    VDISPATCH_RNN(
-            rnn_utils::init_conf(rnn_, *this->desc(), *this->attr(), src_type,
-                    acc_type, scratch_type, this->src_md(0), this->src_md(1),
-                    this->src_md(2), this->weights_md(0), this->weights_md(1),
-                    this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
-                    this->dst_md(1), this->dst_md(2),
-                    this->arg_md(DNNL_ARG_BIAS)),
+    VDISPATCH_RNN(rnn_utils::init_conf(rnn_, *this->desc(), *this->attr(),
+                          src_type, weights_type, acc_type, scratch_type,
+                          this->src_md(0), this->src_md(1), this->src_md(2),
+                          this->weights_md(0), this->weights_md(1),
+                          this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
+                          this->dst_md(0), this->dst_md(1), this->dst_md(2),
+                          this->arg_md(DNNL_ARG_BIAS)),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "rnn");
 
     VDISPATCH_RNN(IMPLICATION(rnn_.is_f16_conf(), !rnn_.is_training),
@@ -341,13 +343,13 @@ status_t ref_rnn_common_pd_t<aprop>::init_brgemm(const engine_t *engine,
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
-    VDISPATCH_RNN(
-            rnn_utils::init_conf(rnn_, *this->desc(), *this->attr(), src_type,
-                    acc_type, scratch_type, this->src_md(0), this->src_md(1),
-                    this->src_md(2), this->weights_md(0), this->weights_md(1),
-                    this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
-                    this->dst_md(1), this->dst_md(2),
-                    this->arg_md(DNNL_ARG_BIAS)),
+    VDISPATCH_RNN(rnn_utils::init_conf(rnn_, *this->desc(), *this->attr(),
+                          src_type, weights_type, acc_type, scratch_type,
+                          this->src_md(0), this->src_md(1), this->src_md(2),
+                          this->weights_md(0), this->weights_md(1),
+                          this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
+                          this->dst_md(0), this->dst_md(1), this->dst_md(2),
+                          this->arg_md(DNNL_ARG_BIAS)),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "rnn");
 
     VDISPATCH_RNN(IMPLICATION(utils::one_of(this->desc()->prop_kind,
@@ -559,6 +561,62 @@ status_t ref_rnn_common_pd_t<aprop>::init_brgemm(const engine_t *engine,
 #else
     return status::unimplemented;
 #endif
+}
+
+template <prop_kind_t aprop>
+status_t ref_rnn_common_pd_t<aprop>::init(const engine_t *engine) {
+    using namespace data_type;
+    struct dts_t {
+        data_type_t src, weights, acc;
+    };
+    const bool is_fwd = aprop == prop_kind::forward;
+    // The order defines the preference. bf16 goes first for f32 forward
+    // since it may serve the f32 descriptor via bf32 fpmath mode.
+    std::vector<dts_t> candidates;
+    switch (this->desc()->src_layer_desc.data_type) {
+        case f32:
+            if (is_fwd)
+                candidates = {{bf16, bf16, f32}, {f32, f32, f32}};
+            else
+                candidates = {{f32, f32, f32}, {bf16, bf16, f32}};
+            break;
+        case bf16: candidates = {{bf16, bf16, f32}}; break;
+        case f16: candidates = {{f16, f16, f32}}; break;
+        case u8:
+            if (is_fwd) candidates = {{u8, s8, s32}};
+            break;
+        case s8:
+            if (is_fwd) candidates = {{s8, s8, s32}};
+            break;
+        default: break;
+    }
+    VDISPATCH_RNN(!candidates.empty(), VERBOSE_UNSUPPORTED_DT);
+
+    // A failed attempt may leave weights formats and nested descriptors
+    // initialized for its data types, hence restore them for the next one.
+    const memory_desc_t weights_layer_md = this->weights_layer_md_;
+    const memory_desc_t weights_iter_md = this->weights_iter_md_;
+    const memory_desc_t weights_projection_md = this->weights_projection_md_;
+
+    status_t st = status::unimplemented;
+    for (const auto &c : candidates) {
+        this->weights_layer_md_ = weights_layer_md;
+        this->weights_iter_md_ = weights_iter_md;
+        this->weights_projection_md_ = weights_projection_md;
+        for (auto *n_pd : {&matmul_layer_1_pd_, &matmul_layer_2_pd_,
+                     &matmul_layer_3_pd_, &matmul_iter_1_pd_,
+                     &matmul_iter_2_pd_, &matmul_iter_3_pd_,
+                     &matmul_part2_1_pd_, &matmul_part2_2_pd_,
+                     &matmul_part2_3_pd_, &matmul_part2_4_pd_})
+            n_pd->reset();
+#if DNNL_X64
+        bf32_wei_layer_reorder_pd_.reset();
+        bf32_wei_iter_reorder_pd_.reset();
+#endif
+        st = init(engine, c.src, c.weights, c.acc);
+        if (st == status::success) break;
+    }
+    return st;
 }
 
 template <prop_kind_t aprop>

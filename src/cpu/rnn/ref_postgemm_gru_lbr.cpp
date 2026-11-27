@@ -32,39 +32,41 @@ using namespace dnnl::impl::math;
 using namespace rnn_utils;
 #define AOC array_offset_calculator
 
-template <typename T1, typename T2, typename T3, typename src_data_t,
-        typename scratch_data_t>
+template <typename src_data_t, typename scratch_data_t, typename T1,
+        typename T2, typename T3>
 void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
         const float *scales, const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position, src_data_t *ws_gates_,
-        scratch_data_t *scratch_gates_, const src_data_t *augru_attention_,
-        src_data_t *dst_layer_, src_data_t *dst_iter_,
-        const src_data_t *src_iter_, const void *bias_, src_data_t *ws_grid_,
-        scratch_data_t *scratch_cell_, dim_t block_step) {
+        rnn_utils::cell_position_t cell_position, void *ws_gates_,
+        void *scratch_gates_, const void *augru_attention_, void *dst_layer_,
+        void *dst_iter_, const void *src_iter_, const void *bias_,
+        void *ws_grid_, void *scratch_cell_, dim_t block_step) {
 
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
     const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
     const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
 
     const augru_attention_aoc_t<const src_data_t> augru_attention(
-            rnn, augru_attention_);
+            rnn, static_cast<const src_data_t *>(augru_attention_));
     const ws_states_layer_aoc_t<src_data_t> dst_layer(
-            rnn, dst_layer_, dst_layer_ld);
+            rnn, static_cast<src_data_t *>(dst_layer_), dst_layer_ld);
     const ws_states_iter_aoc_t<src_data_t> dst_iter(
-            rnn, dst_iter_, dst_iter_ld);
+            rnn, static_cast<src_data_t *>(dst_iter_), dst_iter_ld);
     const ws_states_iter_aoc_t<const src_data_t> src_iter(
-            rnn, src_iter_, src_iter_ld);
-    const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
+            rnn, static_cast<const src_data_t *>(src_iter_), src_iter_ld);
+    const ws_gates_aoc_t<src_data_t> ws_gates(
+            rnn, static_cast<src_data_t *>(ws_gates_));
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
-            rnn, scratch_gates_);
+            rnn, static_cast<scratch_data_t *>(scratch_gates_));
     const auto bias_aoc = rnn_utils::make_raw_aoc(
             bias_, types::data_type_size(rnn.bias_dt), rnn.n_bias, rnn.dhc);
 
     const auto bias = [&](int gate_id, dim_t dhc_id) {
         return to_float(bias_aoc(gate_id, dhc_id), rnn.bias_dt);
     };
-    const scratch_gates_aoc_t<scratch_data_t> scratch_cell(rnn, scratch_cell_);
-    const AOC<src_data_t, 2> ws_Wh_b(ws_grid_, rnn.mb, rnn.dhc);
+    const scratch_gates_aoc_t<scratch_data_t> scratch_cell(
+            rnn, static_cast<scratch_data_t *>(scratch_cell_));
+    const AOC<src_data_t, 2> ws_Wh_b(
+            static_cast<src_data_t *>(ws_grid_), rnn.mb, rnn.dhc);
 
     const auto get_scales = [](const float *scales, int idx) {
         return scales ? scales + idx : nullptr;
@@ -135,10 +137,10 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
     }
 }
 
-template <data_type_t src_type, data_type_t scratch_type, data_type_t acc_type>
-rnn_postgemm_sig((rnn_postgemm_fwd_t<src_type, scratch_type,
-        acc_type>::gru_lbr_postgemm)) {
-    const float *scales = this->pd_->attr()->rnn_tparams_.scales_;
+namespace {
+template <typename gates_t>
+void gru_lbr_fwd_postgemm(const rnn_pd_t *pd, rnn_postgemm_sig_args) {
+    const float *scales = pd->attr()->rnn_tparams_.scales_;
 
     const auto linear_f
             = [](const float *scale, float a) { return *scale * a; };
@@ -149,62 +151,69 @@ rnn_postgemm_sig((rnn_postgemm_fwd_t<src_type, scratch_type,
             = [](const float *scale, float a) { return tanh_fwd<float>(a); };
     const auto to_src = [](float a) { return gates_t(a); };
 
-    if (!this->pd_->attr()->rnn_tparams_.test_mode_)
-        gru_lbr_fwd_postgemm_template(logistic_f, tanh_f, to_src, scales, rnn,
-                cell_position, ws_gates_, scratch_gates_, augru_attention_,
-                dst_layer_, dst_iter_, src_iter_, bias_, ws_grid_,
-                scratch_cell_, block_step);
+    if (!pd->attr()->rnn_tparams_.test_mode_)
+        gru_lbr_fwd_postgemm_template<gates_t, float>(logistic_f, tanh_f,
+                to_src, scales, rnn, cell_position, ws_gates_, scratch_gates_,
+                augru_attention_, dst_layer_, dst_iter_, src_iter_, bias_,
+                ws_grid_, scratch_cell_, block_step);
     else
-        gru_lbr_fwd_postgemm_template(linear_f, linear_f, to_src, scales, rnn,
-                cell_position, ws_gates_, scratch_gates_, augru_attention_,
-                dst_layer_, dst_iter_, src_iter_, bias_, ws_grid_,
-                scratch_cell_, block_step);
+        gru_lbr_fwd_postgemm_template<gates_t, float>(linear_f, linear_f,
+                to_src, scales, rnn, cell_position, ws_gates_, scratch_gates_,
+                augru_attention_, dst_layer_, dst_iter_, src_iter_, bias_,
+                ws_grid_, scratch_cell_, block_step);
 }
 
-template <>
-rnn_postgemm_sig(rnn_postgemm_fwd_u8_t::gru_lbr_postgemm) {
-    assert(!"GRU LBR int8 is not supported");
+} // namespace
+
+rnn_postgemm_sig(rnn_postgemm_fwd_t::gru_lbr_postgemm) {
+    switch (rnn.cell_dt) {
+        case data_type::f32:
+            gru_lbr_fwd_postgemm<float>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::bf16:
+            gru_lbr_fwd_postgemm<bfloat16_t>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::f16:
+            gru_lbr_fwd_postgemm<float16_t>(pd_, rnn_postgemm_args);
+            break;
+        case data_type::u8: assert(!"GRU LBR int8 is not supported"); break;
+        case data_type::s8:
+            assert(!"GRU LBR signed int8 is not supported");
+            break;
+        default: assert(!"unsupported data type");
+    }
 }
 
-template <>
-rnn_postgemm_sig(rnn_postgemm_fwd_s8_t::gru_lbr_postgemm) {
-    assert(!"GRU LBR signed int8 is not supported");
-}
-
-template rnn_postgemm_sig(rnn_postgemm_fwd_f32_t::gru_lbr_postgemm);
-template rnn_postgemm_sig(rnn_postgemm_fwd_bf16_t::gru_lbr_postgemm);
-template rnn_postgemm_sig(rnn_postgemm_fwd_f16_t::gru_lbr_postgemm);
-
-template <typename T1, typename src_data_t, typename acc_data_t,
-        typename scratch_data_t>
+template <typename src_data_t, typename acc_data_t, typename scratch_data_t,
+        typename T1>
 void gru_lbr_bwd_postgemm_template(T1 to_src, const rnn_utils::rnn_conf_t &rnn,
-        cell_position_t cell_position, src_data_t *ws_gates_,
-        scratch_data_t *scratch_gates_, const src_data_t *augru_attention_,
-        const src_data_t *src_iter_, acc_data_t *diff_src_iter_,
-        acc_data_t *diff_dst_iter_, acc_data_t *diff_augru_attention_,
-        acc_data_t *diff_dst_layer_, scratch_data_t *scratch_cell_,
-        src_data_t *ws_grid_) {
+        cell_position_t cell_position, void *ws_gates_, void *scratch_gates_,
+        const void *augru_attention_, const void *src_iter_,
+        void *diff_src_iter_, void *diff_dst_iter_, void *diff_augru_attention_,
+        void *diff_dst_layer_, void *scratch_cell_, void *ws_grid_) {
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
 
     const augru_attention_aoc_t<const src_data_t> augru_attention(
-            rnn, augru_attention_);
+            rnn, static_cast<const src_data_t *>(augru_attention_));
     const augru_attention_aoc_t<acc_data_t> diff_augru_attention(
-            rnn, diff_augru_attention_);
+            rnn, static_cast<acc_data_t *>(diff_augru_attention_));
 
     const ws_states_iter_aoc_t<const src_data_t> src_iter(
-            rnn, src_iter_, src_iter_ld);
-    const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
+            rnn, static_cast<const src_data_t *>(src_iter_), src_iter_ld);
+    const ws_gates_aoc_t<src_data_t> ws_gates(
+            rnn, static_cast<src_data_t *>(ws_gates_));
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
-            rnn, scratch_gates_);
+            rnn, static_cast<scratch_data_t *>(scratch_gates_));
     const ws_diff_states_iter_aoc_t<acc_data_t> diff_src_iter(
-            rnn, diff_src_iter_);
+            rnn, static_cast<acc_data_t *>(diff_src_iter_));
     const ws_diff_states_iter_aoc_t<acc_data_t> diff_dst_iter(
-            rnn, diff_dst_iter_);
+            rnn, static_cast<acc_data_t *>(diff_dst_iter_));
     const ws_diff_states_layer_aoc_t<acc_data_t> diff_dst_layer(
-            rnn, diff_dst_layer_);
+            rnn, static_cast<acc_data_t *>(diff_dst_layer_));
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates_r(
-            rnn, scratch_cell_);
-    const AOC<src_data_t, 2> ws_Wh_b(ws_grid_, rnn.mb, rnn.dhc);
+            rnn, static_cast<scratch_data_t *>(scratch_cell_));
+    const AOC<src_data_t, 2> ws_Wh_b(
+            static_cast<src_data_t *>(ws_grid_), rnn.mb, rnn.dhc);
 
     // 1. calculate dG1 dG2 dG3
     // dG0 = (dht - G2) * dht * (1 - G0) * G0
@@ -238,19 +247,31 @@ void gru_lbr_bwd_postgemm_template(T1 to_src, const rnn_utils::rnn_conf_t &rnn,
     });
 }
 
-template <data_type_t src_type, data_type_t scratch_type, data_type_t acc_type>
-rnn_postgemm_sig((rnn_postgemm_bwd_t<src_type, scratch_type,
-        acc_type>::gru_lbr_postgemm)) {
-    auto to_src = [&](float a) { return scratch_t(a); };
-    gru_lbr_bwd_postgemm_template(to_src, rnn, cell_position, ws_gates_,
-            scratch_gates_, augru_attention_, src_iter_, diff_src_iter_,
-            diff_dst_iter_, diff_augru_attention_, diff_dst_layer_,
-            scratch_cell_, ws_grid_);
+namespace {
+template <typename gates_t>
+void gru_lbr_bwd_postgemm(rnn_postgemm_sig_args) {
+    auto to_src = [&](float a) { return gates_t(a); };
+    gru_lbr_bwd_postgemm_template<gates_t, float, gates_t>(to_src, rnn,
+            cell_position, ws_gates_, scratch_gates_, augru_attention_,
+            src_iter_, diff_src_iter_, diff_dst_iter_, diff_augru_attention_,
+            diff_dst_layer_, scratch_cell_, ws_grid_);
 }
+} // namespace
 
-template rnn_postgemm_sig(rnn_postgemm_bwd_f32_t::gru_lbr_postgemm);
-template rnn_postgemm_sig(rnn_postgemm_bwd_bf16_t::gru_lbr_postgemm);
-template rnn_postgemm_sig(rnn_postgemm_bwd_f16_t::gru_lbr_postgemm);
+rnn_postgemm_sig(rnn_postgemm_bwd_t::gru_lbr_postgemm) {
+    switch (rnn.cell_dt) {
+        case data_type::f32:
+            gru_lbr_bwd_postgemm<float>(rnn_postgemm_args);
+            break;
+        case data_type::bf16:
+            gru_lbr_bwd_postgemm<bfloat16_t>(rnn_postgemm_args);
+            break;
+        case data_type::f16:
+            gru_lbr_bwd_postgemm<float16_t>(rnn_postgemm_args);
+            break;
+        default: assert(!"unsupported data type");
+    }
+}
 
 } // namespace cpu
 } // namespace impl

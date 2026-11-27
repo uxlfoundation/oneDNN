@@ -67,7 +67,7 @@ private:
 template <cpu_isa_t isa>
 struct jit_uni_dw_conv_fwd_kernel_t final
     : public jit_uni_dw_conv_fwd_kernel_base_t {
-    jit_uni_dw_conv_fwd_kernel_t(jit_conv_conf_t ajcp)
+    jit_uni_dw_conv_fwd_kernel_t(const jit_conv_conf_t &ajcp)
         : jit_uni_dw_conv_fwd_kernel_base_t() {
         assert(ajcp.isa == isa);
         ker_ = utils::make_unique<jit_uni_dw_conv_fwd_kernel_f32_t<isa>>(ajcp);
@@ -369,7 +369,7 @@ inline void jit_uni_dw_conv_fwd_kernel_base_t::init_scratchpad(
 template <cpu_isa_t isa, data_type_t kernel_dt>
 struct jit_uni_dw_conv_bwd_data_kernel_t {
 
-    jit_uni_dw_conv_bwd_data_kernel_t(jit_conv_conf_t ajcp)
+    jit_uni_dw_conv_bwd_data_kernel_t(const jit_conv_conf_t &ajcp)
         : ker_(utils::make_unique<jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>>(
                   ajcp)) {}
 
@@ -498,7 +498,7 @@ void jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_scratchpad(
 template <cpu_isa_t isa, data_type_t kernel_dt>
 struct jit_uni_dw_conv_bwd_weights_kernel_t {
 
-    jit_uni_dw_conv_bwd_weights_kernel_t(jit_conv_conf_t ajcp)
+    jit_uni_dw_conv_bwd_weights_kernel_t(const jit_conv_conf_t &ajcp)
         : ker_(utils::make_unique<
                   jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>>(ajcp)) {}
 

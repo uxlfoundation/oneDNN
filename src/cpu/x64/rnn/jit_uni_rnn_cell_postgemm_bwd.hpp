@@ -24,18 +24,17 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
+template <cpu_isa_t isa>
 struct jit_uni_rnn_cell_postgemm_bwd_t : public jit_uni_rnn_postgemm_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_rnn_cell_postgemm_bwd_t)
 
-    jit_uni_rnn_cell_postgemm_bwd_t(
-            const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
-        : jit_uni_rnn_postgemm_t(rnn, pd, jit_name()) {}
+    jit_uni_rnn_cell_postgemm_bwd_t(const rnn_utils::rnn_conf_t &rnn,
+            const rnn_pd_t *pd, data_type_t src_dt, data_type_t scratch_dt)
+        : jit_uni_rnn_postgemm_t(rnn, pd, src_dt, scratch_dt, jit_name()) {}
 
     ~jit_uni_rnn_cell_postgemm_bwd_t() override = default;
 
-    status_t init(data_type_t sdt) override;
+    status_t init() override;
 
 protected:
     // register size in bytes
@@ -44,11 +43,11 @@ protected:
     static constexpr int hstate_dt_size = sizeof(float);
     const int vlen_scratch = vlen
             / static_cast<int>(
-                    sizeof(float) / types::data_type_size(scratch_data_t));
+                    sizeof(float) / types::data_type_size(scratch_dt_));
     const int gate_dt_size
-            = static_cast<int>(types::data_type_size(scratch_data_t));
+            = static_cast<int>(types::data_type_size(scratch_dt_));
     const int scratch_dt_size
-            = static_cast<int>(types::data_type_size(scratch_data_t));
+            = static_cast<int>(types::data_type_size(scratch_dt_));
 
     void generate() override;
 };

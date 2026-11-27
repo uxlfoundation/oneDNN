@@ -29,22 +29,21 @@ namespace x64 {
 
 using namespace dnnl::impl::utils;
 
-template <typename weights_t, typename scratch_t, typename gemm_acc_t>
-brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
-        gemm_acc_t>::brgemm_diff_src_layer_iter_t(const ref_rnn_brgemm_t
-                                                          &rnn_brgemm,
-        const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position, scratch_t *scratch_gates,
-        weights_t *w_iter, weights_t *w_layer, gemm_acc_t *diff_src_iter,
-        gemm_acc_t *diff_src_layer, gemm_acc_t *amx_scratchpad,
-        x64::brgemm_batch_element_t *addr_batch_global)
+brgemm_diff_src_layer_iter_t::brgemm_diff_src_layer_iter_t(
+        const ref_rnn_brgemm_t &rnn_brgemm, const rnn_utils::rnn_conf_t &rnn,
+        rnn_utils::cell_position_t cell_position, void *scratch_gates,
+        void *w_iter, void *w_layer, void *diff_src_iter, void *diff_src_layer,
+        void *amx_scratchpad, x64::brgemm_batch_element_t *addr_batch_global)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
-    , A_(scratch_gates)
-    , B_wei_iter_(w_iter)
-    , B_wei_layer_(w_layer)
-    , C_diff_iter_(diff_src_iter)
-    , C_diff_layer_(diff_src_layer)
+    , wei_dt_size_(types::data_type_size(rnn.weights_dt))
+    , scratch_dt_size_(types::data_type_size(rnn.scratch_dt))
+    , acc_dt_size_(types::data_type_size(rnn.acc_dt))
+    , A_(static_cast<const char *>(scratch_gates))
+    , B_wei_iter_(static_cast<const char *>(w_iter))
+    , B_wei_layer_(static_cast<const char *>(w_layer))
+    , C_diff_iter_(static_cast<char *>(diff_src_iter))
+    , C_diff_layer_(static_cast<char *>(diff_src_layer))
     , k_blocks_n_gates_(rnn.diff_src_brgemm.K_blocks)
     , k_blocks_(rnn.diff_src_brgemm.K_blocks / rnn.n_gates)
     , k_tail_(rnn.diff_src_brgemm.k_tail)
@@ -92,12 +91,10 @@ brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
               rnn_brgemm_.diff_src_.kernel_iter_layer_K_tail_beta1_.get())
     , kernel_layer_nk_tail_(
               rnn_brgemm_.diff_src_.kernel_layer_NK_tail_beta1_.get())
-    , amx_scratchpad_(amx_scratchpad)
+    , amx_scratchpad_(static_cast<char *>(amx_scratchpad))
     , addr_batch_global_(addr_batch_global) {}
 
-template <typename weights_t, typename scratch_t, typename gemm_acc_t>
-void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::execute()
-        const {
+void brgemm_diff_src_layer_iter_t::execute() const {
     if (rnn_.is_cell_amx()) {
         parallel(max_nthr_, [this](const int ithr, const int nthr) {
             this->kernel_amx(ithr, nthr);
@@ -109,22 +106,20 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::execute()
     }
 }
 
-template <typename weights_t, typename scratch_t, typename gemm_acc_t>
-void brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
-        gemm_acc_t>::kernel_amx_compute_iter(const dim_t m_block_id,
-        const dim_t n_block_id, const int gates_start, const int gates_end,
-        thread_exec_ctx_t &ctx) const {
+void brgemm_diff_src_layer_iter_t::kernel_amx_compute_iter(
+        const dim_t m_block_id, const dim_t n_block_id, const int gates_start,
+        const int gates_end, thread_exec_ctx_t &ctx) const {
 
     const dim_t m = m_block_id * rnn_.diff_src_brgemm.m_block;
     const dim_t n = n_block_id * rnn_.diff_src_brgemm.n_block;
     const int num_gates = gates_end - gates_start;
-    const scratch_t *const A_m = A_ + m * LDA_;
+    const char *const A_m = A_ + m * LDA_ * scratch_dt_size_;
     const auto B_n_offset = n_block_id * B_nb_offset_;
-    const weights_t *const B_wei_iter_n = B_wei_iter_ + B_n_offset;
-    const weights_t *const B_wei_layer_n = B_wei_layer_ + B_n_offset;
+    const char *const B_wei_iter_n = B_wei_iter_ + B_n_offset * wei_dt_size_;
+    const char *const B_wei_layer_n = B_wei_layer_ + B_n_offset * wei_dt_size_;
     const auto C_offset = m * LDC_ + n;
-    gemm_acc_t *const C_diff_iter_n = C_diff_iter_ + C_offset;
-    gemm_acc_t *const C_diff_layer_n = C_diff_layer_ + C_offset;
+    char *const C_diff_iter_n = C_diff_iter_ + C_offset * acc_dt_size_;
+    char *const C_diff_layer_n = C_diff_layer_ + C_offset * acc_dt_size_;
 
     const brgemm_kernel_t *kernel_iter = gates_start == 0
             ? kernel_iter_full_blocks_b0_
@@ -166,13 +161,13 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
             const auto g_block_id = gate_id * k_blocks_;
             const auto A_gb_offset = gate_id * rnn_.diff_src_brgemm.K;
             const auto B_g_offset = gate_id * B_gb_iter_offset_;
-            const auto A_gm = A_m + A_gb_offset;
-            const auto B_wei_iter_gn = B_wei_iter_n + B_g_offset;
+            const auto A_gm = A_m + A_gb_offset * scratch_dt_size_;
+            const auto B_wei_iter_gn = B_wei_iter_n + B_g_offset * wei_dt_size_;
             for (int k_block_id = 0; k_block_id < k_blocks_; k_block_id++) {
                 ctx.addr_batch[g_block_id + k_block_id].ptr.A
-                        = A_gm + k_block_id * k_block_;
-                ctx.addr_batch[g_block_id + k_block_id].ptr.B
-                        = B_wei_iter_gn + k_block_id * B_kb_offset_;
+                        = A_gm + k_block_id * k_block_ * scratch_dt_size_;
+                ctx.addr_batch[g_block_id + k_block_id].ptr.B = B_wei_iter_gn
+                        + k_block_id * B_kb_offset_ * wei_dt_size_;
             }
         }
 
@@ -200,13 +195,14 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
             const auto g_block_id = gate_id * k_blocks_;
             const auto A_gb_offset = gate_id * rnn_.diff_src_brgemm.K;
             const auto B_g_offset = gate_id * B_gb_layer_offset_;
-            const auto A_gm = A_m + A_gb_offset;
-            const auto B_wei_layer_gn = B_wei_layer_n + B_g_offset;
+            const auto A_gm = A_m + A_gb_offset * scratch_dt_size_;
+            const auto B_wei_layer_gn
+                    = B_wei_layer_n + B_g_offset * wei_dt_size_;
             for (int k_block_id = 0; k_block_id < k_blocks_; k_block_id++) {
                 ctx.addr_batch[g_block_id + k_block_id].ptr.A
-                        = A_gm + k_block_id * k_block_;
-                ctx.addr_batch[g_block_id + k_block_id].ptr.B
-                        = B_wei_layer_gn + k_block_id * B_kb_offset_;
+                        = A_gm + k_block_id * k_block_ * scratch_dt_size_;
+                ctx.addr_batch[g_block_id + k_block_id].ptr.B = B_wei_layer_gn
+                        + k_block_id * B_kb_offset_ * wei_dt_size_;
             }
         }
 
@@ -221,9 +217,9 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
             const auto A_gb_offset = gate_id * rnn_.diff_src_brgemm.K;
             const auto B_gb_offset = gate_id * B_gb_iter_offset_;
             ctx.addr_batch[gate_id].ptr.A
-                    = A_m + A_gb_offset + A_k_tail_offset_;
-            ctx.addr_batch[gate_id].ptr.B
-                    = B_wei_iter_n + B_gb_offset + B_k_tail_offset_;
+                    = A_m + (A_gb_offset + A_k_tail_offset_) * scratch_dt_size_;
+            ctx.addr_batch[gate_id].ptr.B = B_wei_iter_n
+                    + (B_gb_offset + B_k_tail_offset_) * wei_dt_size_;
         }
 
         ctx.tile_configure_if_needed(kernel_iter_k_tail_config);
@@ -236,9 +232,9 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
             const auto A_gb_offset = gate_id * rnn_.diff_src_brgemm.K;
             const auto B_gb_offset = gate_id * B_gb_layer_offset_;
             ctx.addr_batch[gate_id].ptr.A
-                    = A_m + A_gb_offset + A_k_tail_offset_;
-            ctx.addr_batch[gate_id].ptr.B
-                    = B_wei_layer_n + B_gb_offset + B_k_tail_offset_;
+                    = A_m + (A_gb_offset + A_k_tail_offset_) * scratch_dt_size_;
+            ctx.addr_batch[gate_id].ptr.B = B_wei_layer_n
+                    + (B_gb_offset + B_k_tail_offset_) * wei_dt_size_;
         }
 
         ctx.tile_configure_if_needed(kernel_layer_k_tail_config);
@@ -248,8 +244,7 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
 }
 
 // TODO consider merging with kernel - check perf after merge
-template <typename weights_t, typename scratch_t, typename gemm_acc_t>
-void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel_amx(
+void brgemm_diff_src_layer_iter_t::kernel_amx(
         const int ithr, const int nthr) const {
     using namespace cpu::rnn_utils;
 
@@ -262,8 +257,8 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel_amx(
     thread_exec_ctx_t ctx;
     ctx.addr_batch = addr_batch_global_ + ithr * (k_blocks_n_gates_ + 1);
     ctx.amx_buffer = amx_scratchpad_
-            + rnn_.diff_src_brgemm.m_block * rnn_.diff_src_brgemm.n_block
-                    * ithr;
+            + rnn_.diff_src_brgemm.m_block * rnn_.diff_src_brgemm.n_block * ithr
+                    * acc_dt_size_;
 
     for (dim_t gate_idx = 0; gate_idx < n_gates; gate_idx += gates_block_size) {
         const int gates_start = static_cast<int>(gate_idx);
@@ -301,8 +296,7 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel_amx(
     }
 }
 
-template <typename weights_t, typename scratch_t, typename gemm_acc_t>
-void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
+void brgemm_diff_src_layer_iter_t::kernel(
         const int ithr, const int nthr) const {
     dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
@@ -317,13 +311,15 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
     while (start < end) {
         const dim_t m = m_block_id * rnn_.diff_src_brgemm.m_block;
         const dim_t n = n_block_id * rnn_.diff_src_brgemm.n_block;
-        const scratch_t *const A_m = A_ + m * LDA_;
+        const char *const A_m = A_ + m * LDA_ * scratch_dt_size_;
         const auto B_n_offset = n_block_id * B_nb_offset_;
-        const weights_t *const B_wei_iter_n = B_wei_iter_ + B_n_offset;
-        const weights_t *const B_wei_layer_n = B_wei_layer_ + B_n_offset;
+        const char *const B_wei_iter_n
+                = B_wei_iter_ + B_n_offset * wei_dt_size_;
+        const char *const B_wei_layer_n
+                = B_wei_layer_ + B_n_offset * wei_dt_size_;
         const auto C_offset = m * LDC_ + n;
-        gemm_acc_t *const C_diff_iter_n = C_diff_iter_ + C_offset;
-        gemm_acc_t *const C_diff_layer_n = C_diff_layer_ + C_offset;
+        char *const C_diff_iter_n = C_diff_iter_ + C_offset * acc_dt_size_;
+        char *const C_diff_layer_n = C_diff_layer_ + C_offset * acc_dt_size_;
         const brgemm_kernel_t *kernel_iter = kernel_iter_full_blocks_b0_;
         const brgemm_kernel_t *kernel_iter_k_tail = kernel_iter_k_tail_;
         const brgemm_kernel_t *kernel_layer = kernel_layer_full_blocks_b0_;
@@ -345,13 +341,14 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
                 const auto g_block_id = gate_id * k_blocks_;
                 const auto A_gb_offset = gate_id * rnn_.diff_src_brgemm.K;
                 const auto B_gb_offset = gate_id * B_gb_iter_offset_;
-                const auto A_gm = A_m + A_gb_offset;
-                const auto B_wei_iter_gn = B_wei_iter_n + B_gb_offset;
+                const auto A_gm = A_m + A_gb_offset * scratch_dt_size_;
+                const auto B_wei_iter_gn
+                        = B_wei_iter_n + B_gb_offset * wei_dt_size_;
                 for (int k_block_id = 0; k_block_id < k_blocks_; k_block_id++) {
                     addr_batch[g_block_id + k_block_id].ptr.A
-                            = A_gm + k_block_id * k_block_;
-                    addr_batch[g_block_id + k_block_id].ptr.B
-                            = B_wei_iter_gn + k_block_id * B_kb_offset_;
+                            = A_gm + k_block_id * k_block_ * scratch_dt_size_;
+                    addr_batch[g_block_id + k_block_id].ptr.B = B_wei_iter_gn
+                            + k_block_id * B_kb_offset_ * wei_dt_size_;
                 }
             }
 
@@ -372,13 +369,14 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
                 const auto g_block_id = gate_id * k_blocks_;
                 const auto A_gb_offset = gate_id * rnn_.diff_src_brgemm.K;
                 const auto B_gb_offset = gate_id * B_gb_layer_offset_;
-                const auto A_gm = A_m + A_gb_offset;
-                const auto B_wei_layer_gn = B_wei_layer_n + B_gb_offset;
+                const auto A_gm = A_m + A_gb_offset * scratch_dt_size_;
+                const auto B_wei_layer_gn
+                        = B_wei_layer_n + B_gb_offset * wei_dt_size_;
                 for (int k_block_id = 0; k_block_id < k_blocks_; k_block_id++) {
                     addr_batch[g_block_id + k_block_id].ptr.A
-                            = A_gm + k_block_id * k_block_;
-                    addr_batch[g_block_id + k_block_id].ptr.B
-                            = B_wei_layer_gn + k_block_id * B_kb_offset_;
+                            = A_gm + k_block_id * k_block_ * scratch_dt_size_;
+                    addr_batch[g_block_id + k_block_id].ptr.B = B_wei_layer_gn
+                            + k_block_id * B_kb_offset_ * wei_dt_size_;
                 }
             }
             brgemm_kernel_execute(kernel_layer, k_blocks_n_gates_, addr_batch,
@@ -389,10 +387,10 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
             for (int gate_id = 0; gate_id < n_gates; gate_id++) {
                 const auto A_gb_offset = gate_id * rnn_.diff_src_brgemm.K;
                 const auto B_gb_offset = gate_id * B_gb_iter_offset_;
-                addr_batch[gate_id].ptr.A
-                        = A_m + A_gb_offset + A_k_tail_offset_;
-                addr_batch[gate_id].ptr.B
-                        = B_wei_iter_n + B_gb_offset + B_k_tail_offset_;
+                addr_batch[gate_id].ptr.A = A_m
+                        + (A_gb_offset + A_k_tail_offset_) * scratch_dt_size_;
+                addr_batch[gate_id].ptr.B = B_wei_iter_n
+                        + (B_gb_offset + B_k_tail_offset_) * wei_dt_size_;
             }
 
             brgemm_kernel_execute(kernel_iter_k_tail, n_gates, addr_batch,
@@ -403,10 +401,10 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
             for (int gate_id = 0; gate_id < n_gates; gate_id++) {
                 const auto A_gb_offset = gate_id * rnn_.diff_src_brgemm.K;
                 const auto B_gb_offset = gate_id * B_gb_layer_offset_;
-                addr_batch[gate_id].ptr.A
-                        = A_m + A_gb_offset + A_k_tail_offset_;
-                addr_batch[gate_id].ptr.B
-                        = B_wei_layer_n + B_gb_offset + B_k_tail_offset_;
+                addr_batch[gate_id].ptr.A = A_m
+                        + (A_gb_offset + A_k_tail_offset_) * scratch_dt_size_;
+                addr_batch[gate_id].ptr.B = B_wei_layer_n
+                        + (B_gb_offset + B_k_tail_offset_) * wei_dt_size_;
             }
 
             brgemm_kernel_execute(kernel_layer_k_tail, n_gates, addr_batch,
@@ -418,31 +416,30 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
     }
 }
 
-template <typename src_layer_t, typename src_iter_t, typename scratch_t,
-        typename gemm_acc_t>
-brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
-        gemm_acc_t>::brgemm_diff_weights_layer_iter_t(const ref_rnn_brgemm_t
-                                                              &rnn_brgemm,
-        const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position, const src_layer_t *src_iter,
-        scratch_t *const A_iter_transposed_scratch, const src_iter_t *src_layer,
-        scratch_t *const A_layer_transposed_scratch, const scratch_t *scratch,
-        scratch_t *scratch_gates_blocked, gemm_acc_t *diff_weights_iter,
-        gemm_acc_t *diff_weights_layer, gemm_acc_t *diff_bias,
-        gemm_acc_t *amx_scratchpad,
+brgemm_diff_weights_layer_iter_t::brgemm_diff_weights_layer_iter_t(
+        const ref_rnn_brgemm_t &rnn_brgemm, const rnn_utils::rnn_conf_t &rnn,
+        rnn_utils::cell_position_t cell_position, const void *src_iter,
+        void *const A_iter_transposed_scratch, const void *src_layer,
+        void *const A_layer_transposed_scratch, const void *scratch,
+        void *scratch_gates_blocked, void *diff_weights_iter,
+        void *diff_weights_layer, void *diff_bias, void *amx_scratchpad,
         x64::brgemm_batch_element_t *addr_batch_global)
     : rnn_brgemm_(rnn_brgemm)
     , rnn_(rnn)
+    , src_dt_size_(types::data_type_size(rnn.cell_dt))
+    , scratch_dt_size_(types::data_type_size(rnn.scratch_dt))
+    , acc_dt_size_(types::data_type_size(rnn.acc_dt))
     , is_amx_(is_superset(rnn_.brgemm_isa, avx512_core_amx))
-    , A_iter_(src_iter)
-    , A_iter_transposed_scratch_(A_iter_transposed_scratch)
-    , A_layer_(src_layer)
-    , A_layer_transposed_scratch_(A_layer_transposed_scratch)
-    , B_(scratch)
-    , B_blocked_scratch_(scratch_gates_blocked)
-    , C_iter_(diff_weights_iter)
-    , C_layer_(diff_weights_layer)
-    , diff_bias_(diff_bias)
+    , A_iter_(static_cast<const char *>(src_iter))
+    , A_iter_transposed_scratch_(static_cast<char *>(A_iter_transposed_scratch))
+    , A_layer_(static_cast<const char *>(src_layer))
+    , A_layer_transposed_scratch_(
+              static_cast<char *>(A_layer_transposed_scratch))
+    , B_(static_cast<const char *>(scratch))
+    , B_blocked_scratch_(static_cast<char *>(scratch_gates_blocked))
+    , C_iter_(static_cast<char *>(diff_weights_iter))
+    , C_layer_(static_cast<char *>(diff_weights_layer))
+    , diff_bias_(static_cast<char *>(diff_bias))
     , LDA_iter_(rnn.diff_wei_brgemm.LDA_iter)
     , LDA_layer_(rnn.diff_wei_brgemm.LDA_layer)
     , LDC_iter_(rnn.diff_wei_brgemm.LDC_iter)
@@ -460,7 +457,6 @@ brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     , A_k_iter_tail_offset_(k_blocks_ * k_block_)
     , A_k_layer_tail_offset_(k_blocks_ * k_block_)
     , B_kb_offset_(k_block_ * rnn.diff_wei_brgemm.n_block)
-    , B_k_tail_offset_(k_blocks_ * k_block_ * rnn.scratch_gates_ld)
     , B_k_tail_offset_blocked_(
               k_blocks_ * k_block_ * rnn.diff_wei_brgemm.n_block)
     , work_amount_(n_blocking_ * m_blocking_)
@@ -476,7 +472,6 @@ brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
               rnn_brgemm.diff_wei_.kernel_layer_K_tail_beta1_.get())
     , kernel_layer_nk_tail_(
               rnn_brgemm.diff_wei_.kernel_layer_NK_tail_beta1_.get())
-    , cell_position_(cell_position)
     , kernel_gates_reduction_(rnn_brgemm.kernel_gates_reduction_.get())
     , kernel_gates_reduction_tail_(
               rnn_brgemm.kernel_gates_reduction_tail_.get())
@@ -484,13 +479,10 @@ brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     , kernel_transpose_layer_(rnn_brgemm.kernel_transpose_single_row_layer_
                       ? rnn_brgemm.kernel_transpose_single_row_layer_.get()
                       : kernel_transpose_iter_)
-    , amx_scratchpad_(amx_scratchpad)
+    , amx_scratchpad_(static_cast<char *>(amx_scratchpad))
     , addr_batch_global_(addr_batch_global) {}
 
-template <typename src_layer_t, typename src_iter_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
-        gemm_acc_t>::execute() const {
+void brgemm_diff_weights_layer_iter_t::execute() const {
     if (is_amx_) {
         parallel(max_nthr_, [this](const int ithr, const int nthr) {
             this->kernel_amx(ithr, nthr);
@@ -502,11 +494,8 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     }
 }
 
-template <typename src_layer_t, typename src_iter_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
-        gemm_acc_t>::reorder_scratch_gates(const scratch_t *src, scratch_t *dst,
-        const bool do_n_tail) const {
+void brgemm_diff_weights_layer_iter_t::reorder_scratch_gates(
+        const void *src, void *dst, const bool do_n_tail) const {
     auto ctx = matmul::jit_brgemm_matmul_copy_b_t::ctx_t();
     ctx.src = (void *)src;
     ctx.tr_src = (void *)dst;
@@ -517,26 +506,26 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     (*rnn_brgemm_.diff_wei_.srcatch_gates_reorder_kernel_)(&ctx);
 }
 
-template <typename src_layer_t, typename src_iter_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
-        gemm_acc_t>::kernel(const int ithr, const int nthr) const {
+void brgemm_diff_weights_layer_iter_t::kernel(
+        const int ithr, const int nthr) const {
 
     const bool global_transpose = rnn_.diff_wei_brgemm.global_transpose;
 
-    scratch_t *const B_blocked = B_blocked_scratch_
-            + ithr * rnn_.diff_wei_brgemm.Kpadded
-                    * rnn_.diff_wei_brgemm.n_block;
+    char *const B_blocked = B_blocked_scratch_
+            + ithr * rnn_.diff_wei_brgemm.Kpadded * rnn_.diff_wei_brgemm.n_block
+                    * scratch_dt_size_;
 
-    scratch_t *const A_iter_transposed_ithr = global_transpose
+    char *const A_iter_transposed_ithr = global_transpose
             ? A_iter_transposed_scratch_
             : (A_iter_transposed_scratch_
-                      + ithr * rnn_.diff_wei_brgemm.Kpadded * m_iter_block_);
+                      + ithr * rnn_.diff_wei_brgemm.Kpadded * m_iter_block_
+                              * src_dt_size_);
 
-    scratch_t *const A_layer_transposed_ithr = global_transpose
+    char *const A_layer_transposed_ithr = global_transpose
             ? A_layer_transposed_scratch_
             : A_layer_transposed_scratch_
-                    + ithr * rnn_.diff_wei_brgemm.Kpadded * m_layer_block_;
+                    + ithr * rnn_.diff_wei_brgemm.Kpadded * m_layer_block_
+                            * src_dt_size_;
 
     dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
@@ -552,34 +541,32 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     while (start < end) {
         const bool should_reorder_gates = last_n_block_id != n_block_id;
         const bool transpose_needed
-                = !(rnn_.mb == 1 && std::is_same<float, src_iter_t>::value);
+                = !(rnn_.mb == 1 && rnn_.cell_dt == data_type::f32);
         const bool should_transpose_src = transpose_needed && !global_transpose
                 && (last_m_block_id != m_block_id);
 
         const dim_t m_iter = m_block_id * m_iter_block_;
         const dim_t m_layer = m_block_id * m_layer_block_;
-        const src_iter_t *const A_iter_m = global_transpose
-                ? A_iter_transposed_ithr + m_iter * LDA_iter_
-                : A_iter_ + m_iter;
-        const src_layer_t *const A_layer_m = global_transpose
-                ? A_layer_transposed_ithr + m_layer * LDA_layer_
-                : A_layer_ + m_layer;
+        const char *const A_iter_m = global_transpose
+                ? A_iter_transposed_ithr + m_iter * LDA_iter_ * src_dt_size_
+                : A_iter_ + m_iter * src_dt_size_;
+        const char *const A_layer_m = global_transpose
+                ? A_layer_transposed_ithr + m_layer * LDA_layer_ * src_dt_size_
+                : A_layer_ + m_layer * src_dt_size_;
 
-        src_iter_t *const A_iter_transposed
-                = (global_transpose || !transpose_needed)
-                ? const_cast<src_iter_t *>(A_iter_m)
+        char *const A_iter_transposed = (global_transpose || !transpose_needed)
+                ? const_cast<char *>(A_iter_m)
                 : A_iter_transposed_ithr;
-        src_layer_t *const A_layer_transposed
-                = (global_transpose || !transpose_needed)
-                ? const_cast<src_layer_t *>(A_layer_m)
+        char *const A_layer_transposed = (global_transpose || !transpose_needed)
+                ? const_cast<char *>(A_layer_m)
                 : A_layer_transposed_ithr;
 
         const dim_t n = n_block_id * rnn_.diff_wei_brgemm.n_block;
-        const scratch_t *const B_n = B_ + n;
+        const char *const B_n = B_ + n * scratch_dt_size_;
         const auto C_iter_offset = m_iter * LDC_iter_ + n;
         const auto C_layer_offset = m_layer * LDC_layer_ + n;
-        gemm_acc_t *const C_diff_iter_n = C_iter_ + C_iter_offset;
-        gemm_acc_t *const C_diff_layer_n = C_layer_ + C_layer_offset;
+        char *const C_diff_iter_n = C_iter_ + C_iter_offset * acc_dt_size_;
+        char *const C_diff_layer_n = C_layer_ + C_layer_offset * acc_dt_size_;
 
         const bool do_n_tail
                 = (n + rnn_.diff_wei_brgemm.n_block) > rnn_.diff_wei_brgemm.N;
@@ -604,16 +591,17 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
             if (m_block_id == 0) {
                 jit_gates_reduction_t::call_params_t params;
                 params.src = reinterpret_cast<const void *>(B_blocked);
-                params.dst = reinterpret_cast<void *>(diff_bias_ + n);
+                params.dst = reinterpret_cast<void *>(
+                        diff_bias_ + n * acc_dt_size_);
                 (*kernel_reduction)(&params);
             }
         }
 
         for (int k_block_id = 0; k_block_id < k_blocks_; k_block_id++) {
             addr_batch[k_block_id].ptr.A
-                    = A_iter_transposed + k_block_id * k_block_;
+                    = A_iter_transposed + k_block_id * k_block_ * src_dt_size_;
             addr_batch[k_block_id].ptr.B
-                    = B_blocked + k_block_id * B_kb_offset_;
+                    = B_blocked + k_block_id * B_kb_offset_ * scratch_dt_size_;
         }
         if (should_transpose_src) {
             jit_brgemm_transpose_single_row_t::call_params_t params;
@@ -626,9 +614,9 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
 
         for (int k_block_id = 0; k_block_id < k_blocks_; k_block_id++) {
             addr_batch[k_block_id].ptr.A
-                    = A_layer_transposed + k_block_id * k_block_;
+                    = A_layer_transposed + k_block_id * k_block_ * src_dt_size_;
             addr_batch[k_block_id].ptr.B
-                    = B_blocked + k_block_id * B_kb_offset_;
+                    = B_blocked + k_block_id * B_kb_offset_ * scratch_dt_size_;
         }
         if (should_transpose_src) {
             jit_brgemm_transpose_single_row_t::call_params_t params;
@@ -640,15 +628,18 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
                 reinterpret_cast<void *>(C_diff_layer_n), nullptr);
 
         if (k_tail_) {
-            const auto B_blocked_k_tail = B_blocked + B_k_tail_offset_blocked_;
+            const auto B_blocked_k_tail
+                    = B_blocked + B_k_tail_offset_blocked_ * scratch_dt_size_;
 
-            addr_batch[0].ptr.A = A_iter_transposed + A_k_iter_tail_offset_;
+            addr_batch[0].ptr.A
+                    = A_iter_transposed + A_k_iter_tail_offset_ * src_dt_size_;
             addr_batch[0].ptr.B = B_blocked_k_tail;
 
             brgemm_kernel_execute(kernel_iter_k_tail, 1, addr_batch,
                     reinterpret_cast<void *>(C_diff_iter_n), nullptr);
 
-            addr_batch[0].ptr.A = A_layer_transposed + A_k_layer_tail_offset_;
+            addr_batch[0].ptr.A = A_layer_transposed
+                    + A_k_layer_tail_offset_ * src_dt_size_;
             addr_batch[0].ptr.B = B_blocked_k_tail;
 
             brgemm_kernel_execute(kernel_layer_k_tail, 1, addr_batch,
@@ -663,10 +654,8 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     }
 }
 
-template <typename src_layer_t, typename src_iter_t, typename scratch_t,
-        typename gemm_acc_t>
-void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
-        gemm_acc_t>::kernel_amx(const int ithr, const int nthr) const {
+void brgemm_diff_weights_layer_iter_t::kernel_amx(
+        const int ithr, const int nthr) const {
     using namespace cpu::rnn_utils;
 
     const bool global_transpose = rnn_.diff_wei_brgemm.global_transpose;
@@ -690,21 +679,23 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
 
     x64::brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * (k_blocks_ + 1);
-    scratch_t *const B_blocked = B_blocked_scratch_
-            + ithr * rnn_.diff_wei_brgemm.Kpadded
-                    * rnn_.diff_wei_brgemm.n_block;
-    scratch_t *const A_iter_transposed_ithr = global_transpose
+    char *const B_blocked = B_blocked_scratch_
+            + ithr * rnn_.diff_wei_brgemm.Kpadded * rnn_.diff_wei_brgemm.n_block
+                    * scratch_dt_size_;
+    char *const A_iter_transposed_ithr = global_transpose
             ? A_iter_transposed_scratch_
             : (A_iter_transposed_scratch_
-                      + ithr * rnn_.diff_wei_brgemm.Kpadded * m_iter_block_);
-    scratch_t *const A_layer_transposed_ithr = global_transpose
+                      + ithr * rnn_.diff_wei_brgemm.Kpadded * m_iter_block_
+                              * src_dt_size_);
+    char *const A_layer_transposed_ithr = global_transpose
             ? A_layer_transposed_scratch_
             : A_layer_transposed_scratch_
-                    + ithr * rnn_.diff_wei_brgemm.Kpadded * m_layer_block_;
+                    + ithr * rnn_.diff_wei_brgemm.Kpadded * m_layer_block_
+                            * src_dt_size_;
 
-    gemm_acc_t *const amx_buffer = amx_scratchpad_
-            + rnn_.diff_wei_brgemm.m_block * rnn_.diff_wei_brgemm.n_block
-                    * ithr;
+    char *const amx_buffer = amx_scratchpad_
+            + rnn_.diff_wei_brgemm.m_block * rnn_.diff_wei_brgemm.n_block * ithr
+                    * acc_dt_size_;
     const bool m_equal
             = rnn_.diff_wei_brgemm.M_iter == rnn_.diff_wei_brgemm.M_layer;
     amx_tile_configuration_loader_t load_cfg_if_needed;
@@ -716,26 +707,26 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
 
         const dim_t m_iter = m_block_id * m_iter_block_;
         const dim_t m_layer = m_block_id * m_layer_block_;
-        const src_iter_t *const A_iter_m = global_transpose
-                ? A_iter_transposed_ithr + m_iter * LDA_iter_
-                : A_iter_ + m_iter;
-        const src_layer_t *const A_layer_m = global_transpose
-                ? A_layer_transposed_ithr + m_layer * LDA_layer_
-                : A_layer_ + m_layer;
+        const char *const A_iter_m = global_transpose
+                ? A_iter_transposed_ithr + m_iter * LDA_iter_ * src_dt_size_
+                : A_iter_ + m_iter * src_dt_size_;
+        const char *const A_layer_m = global_transpose
+                ? A_layer_transposed_ithr + m_layer * LDA_layer_ * src_dt_size_
+                : A_layer_ + m_layer * src_dt_size_;
 
-        src_iter_t *const A_iter_transposed = global_transpose
-                ? const_cast<src_iter_t *>(A_iter_m)
+        char *const A_iter_transposed = global_transpose
+                ? const_cast<char *>(A_iter_m)
                 : A_iter_transposed_ithr;
-        src_layer_t *const A_layer_transposed = global_transpose
-                ? const_cast<src_layer_t *>(A_layer_m)
+        char *const A_layer_transposed = global_transpose
+                ? const_cast<char *>(A_layer_m)
                 : A_layer_transposed_ithr;
 
         const dim_t n = n_block_id * rnn_.diff_wei_brgemm.n_block;
-        const scratch_t *const B_n = B_ + n;
+        const char *const B_n = B_ + n * scratch_dt_size_;
         const auto C_iter_offset = m_iter * LDC_iter_ + n;
         const auto C_layer_offset = m_layer * LDC_layer_ + n;
-        gemm_acc_t *const C_diff_iter_n = C_iter_ + C_iter_offset;
-        gemm_acc_t *const C_diff_layer_n = C_layer_ + C_layer_offset;
+        char *const C_diff_iter_n = C_iter_ + C_iter_offset * acc_dt_size_;
+        char *const C_diff_layer_n = C_layer_ + C_layer_offset * acc_dt_size_;
 
         const bool do_n_tail
                 = (n + rnn_.diff_wei_brgemm.n_block) > rnn_.diff_wei_brgemm.N;
@@ -782,16 +773,17 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
             if (m_block_id == 0) {
                 jit_gates_reduction_t::call_params_t params;
                 params.src = reinterpret_cast<const void *>(B_blocked);
-                params.dst = reinterpret_cast<void *>(diff_bias_ + n);
+                params.dst = reinterpret_cast<void *>(
+                        diff_bias_ + n * acc_dt_size_);
                 (*kernel_reduction)(&params);
             }
         }
 
         for (int k_block_id = 0; k_block_id < k_blocks_; k_block_id++) {
             addr_batch[k_block_id].ptr.A
-                    = A_iter_transposed + k_block_id * k_block_;
+                    = A_iter_transposed + k_block_id * k_block_ * src_dt_size_;
             addr_batch[k_block_id].ptr.B
-                    = B_blocked + k_block_id * B_kb_offset_;
+                    = B_blocked + k_block_id * B_kb_offset_ * scratch_dt_size_;
         }
         if (should_transpose_src) {
             jit_brgemm_transpose_single_row_t::call_params_t params;
@@ -806,9 +798,9 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
 
         for (int k_block_id = 0; k_block_id < k_blocks_; k_block_id++) {
             addr_batch[k_block_id].ptr.A
-                    = A_layer_transposed + k_block_id * k_block_;
+                    = A_layer_transposed + k_block_id * k_block_ * src_dt_size_;
             addr_batch[k_block_id].ptr.B
-                    = B_blocked + k_block_id * B_kb_offset_;
+                    = B_blocked + k_block_id * B_kb_offset_ * scratch_dt_size_;
         }
 
         if (should_transpose_src) {
@@ -823,16 +815,19 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
                 reinterpret_cast<void *>(C_diff_layer_n), amx_buffer);
 
         if (k_tail_) {
-            const auto B_blocked_k_tail = B_blocked + B_k_tail_offset_blocked_;
+            const auto B_blocked_k_tail
+                    = B_blocked + B_k_tail_offset_blocked_ * scratch_dt_size_;
 
-            addr_batch[0].ptr.A = A_iter_transposed + A_k_iter_tail_offset_;
+            addr_batch[0].ptr.A
+                    = A_iter_transposed + A_k_iter_tail_offset_ * src_dt_size_;
             addr_batch[0].ptr.B = B_blocked_k_tail;
 
             load_cfg_if_needed(kernel_iter_k_tail_config);
             brgemm_kernel_execute(kernel_iter_k_tail, 1, addr_batch,
                     reinterpret_cast<void *>(C_diff_iter_n), amx_buffer);
 
-            addr_batch[0].ptr.A = A_layer_transposed + A_k_layer_tail_offset_;
+            addr_batch[0].ptr.A = A_layer_transposed
+                    + A_k_layer_tail_offset_ * src_dt_size_;
             addr_batch[0].ptr.B = B_blocked_k_tail;
 
             load_cfg_if_needed(kernel_layer_k_tail_config);
@@ -858,12 +853,11 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     }
 }
 
-template <typename scratch_t>
-brgemm_diff_wei_peep_t<scratch_t>::brgemm_diff_wei_peep_t(
+brgemm_diff_wei_peep_t::brgemm_diff_wei_peep_t(
         const ref_rnn_brgemm_t &rnn_brgemm, const rnn_utils::rnn_conf_t &rnn,
-        rnn_utils::cell_position_t cell_position,
-        const scratch_t *scratch_gates, const void *src_iter_c,
-        const void *dst_iter_c, float *diff_weights_peephole)
+        rnn_utils::cell_position_t cell_position, const void *scratch_gates,
+        const void *src_iter_c, const void *dst_iter_c,
+        float *diff_weights_peephole)
     : rnn_(rnn)
     , scratch_gates_(scratch_gates)
     , src_iter_c_(src_iter_c)
@@ -875,16 +869,13 @@ brgemm_diff_wei_peep_t<scratch_t>::brgemm_diff_wei_peep_t(
     , kernel_(rnn_brgemm.kernel_peephole_.get())
     , kernel_tail_(rnn_brgemm.kernel_peephole_tail_.get()) {}
 
-template <typename scratch_t>
-void brgemm_diff_wei_peep_t<scratch_t>::execute() const {
+void brgemm_diff_wei_peep_t::execute() const {
     parallel(rnn_.nthr, [this](const int ithr, const int nthr) {
         this->kernel(ithr, nthr);
     });
 }
 
-template <typename scratch_t>
-void brgemm_diff_wei_peep_t<scratch_t>::kernel(
-        const int ithr, const int nthr) const {
+void brgemm_diff_wei_peep_t::kernel(const int ithr, const int nthr) const {
 
     dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
@@ -901,8 +892,9 @@ void brgemm_diff_wei_peep_t<scratch_t>::kernel(
             types::data_type_size(rnn_.src_iter_c_dt),
             rnn_.ws_states_iter_c_nld, src_iter_c_ld_);
 
-    const rnn_utils::scratch_gates_aoc_t<const scratch_t> scratch_gates(
-            rnn_, scratch_gates_);
+    const auto scratch_gates = rnn_utils::make_raw_aoc(scratch_gates_,
+            types::data_type_size(rnn_.scratch_dt), rnn_.scratch_gates_nld,
+            rnn_.scratch_gates_ld);
     const rnn_utils::weights_peephole_aoc_t<float> diff_weights_peephole(
             rnn_, diff_weights_peephole_);
 
@@ -919,7 +911,8 @@ void brgemm_diff_wei_peep_t<scratch_t>::kernel(
 
         for (int mb = 0; mb < rnn_.mb; ++mb) {
             params.c_states = c_states(mb, dhc);
-            params.scratch_gates = &scratch_gates(mb, scratch_g, dhc);
+            params.scratch_gates
+                    = scratch_gates(mb, scratch_g * rnn_.dhc + dhc);
             params.dst = &diff_weights_peephole(g, dhc);
             (*kernel)(&params);
         }
@@ -928,20 +921,6 @@ void brgemm_diff_wei_peep_t<scratch_t>::kernel(
         nd_iterator_step(g, n_gates_, dhc_block_id, rnn_.dhc_blocks_peephole);
     }
 }
-
-template class brgemm_diff_src_layer_iter_t<float, float, float>;
-template class brgemm_diff_src_layer_iter_t<bfloat16_t, bfloat16_t, float>;
-template class brgemm_diff_src_layer_iter_t<float16_t, float16_t, float>;
-
-template class brgemm_diff_weights_layer_iter_t<float, float, float, float>;
-template class brgemm_diff_weights_layer_iter_t<bfloat16_t, bfloat16_t,
-        bfloat16_t, float>;
-template class brgemm_diff_weights_layer_iter_t<float16_t, float16_t, float16_t,
-        float>;
-
-template class brgemm_diff_wei_peep_t<bfloat16_t>;
-template class brgemm_diff_wei_peep_t<float16_t>;
-template class brgemm_diff_wei_peep_t<float>;
 
 } // namespace x64
 } // namespace cpu

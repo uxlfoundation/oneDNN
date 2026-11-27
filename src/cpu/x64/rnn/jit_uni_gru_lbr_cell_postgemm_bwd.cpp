@@ -21,19 +21,14 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-status_t
-jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t, scratch_data_t>::init(
-        data_type_t sdt) {
-    CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
+template <cpu_isa_t isa>
+status_t jit_uni_gru_lbr_cell_postgemm_bwd_t<isa>::init() {
+    CHECK(jit_uni_rnn_postgemm_t::init());
     return create_kernel();
 }
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
-        scratch_data_t>::generate() {
+template <cpu_isa_t isa>
+void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa>::generate() {
     using namespace Xbyak;
 
     const bool is_augru = pd_->cell_kind() == alg_kind::lbr_augru;
@@ -107,7 +102,7 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
     if (is_augru) {
         uni_vpxor(Vmm(dattn_acc_idx), Vmm(dattn_acc_idx), Vmm(dattn_acc_idx));
         const Xmm attn1s(attn_idx);
-        to_float(attn1s, ptr[addr_attn_reg], src_data_t, hstate_dt_size);
+        to_float(attn1s, ptr[addr_attn_reg], src_dt_, hstate_dt_size);
     }
 
     mov(loop_cnt, rnn_.dhc * scratch_dt_size);
@@ -127,9 +122,9 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
                 tmp2(tmp2_idx), h(h_idx), diff_attn_acc(dattn_acc_idx),
                 attn(attn_idx);
 
-        to_float(G0, wg_addr(0), src_data_t, vlen);
-        to_float(G1, wg_addr(1), src_data_t, vlen);
-        to_float(G2, wg_addr(2), src_data_t, vlen);
+        to_float(G0, wg_addr(0), src_dt_, vlen);
+        to_float(G1, wg_addr(1), src_dt_, vlen);
+        to_float(G2, wg_addr(2), src_dt_, vlen);
 
         // compute dHt
         uni_vmovups(dHt, ptr[addr_diff_states_tp1_l_reg]);
@@ -138,7 +133,7 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vaddps(dHt, dHt, tmp1);
 
         // compute dG0
-        to_float(h, ptr[addr_states_tm1_l_reg], src_data_t, vlen);
+        to_float(h, ptr[addr_states_tm1_l_reg], src_dt_, vlen);
         uni_vmovups(dG0, G0);
         uni_vmovups(tmp1, G0);
         uni_vfnmadd231ps(dG0, tmp1, tmp1); // (G0 - G0^2)
@@ -164,7 +159,7 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vmulps(dG2, dG2, dHt); //(1 - G0) * (1 - G2^2) * dHt
 
         // compute dG1
-        to_float(tmp1, ptr[addr_ws_grid_reg], src_data_t, vlen);
+        to_float(tmp1, ptr[addr_ws_grid_reg], src_dt_, vlen);
         uni_vmovups(dG1, G1);
         uni_vmovups(tmp2, G1);
         uni_vfnmadd231ps(dG1, tmp2, tmp2); // (G1 - G1^2)
@@ -180,20 +175,20 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vmulps(tmp1, tmp1, G1);
 
         // downconvert and write data
-        to_src(sc_addr(0), dG0, scratch_data_t, vlen);
+        to_src(sc_addr(0), dG0, scratch_dt_, vlen);
         // As to_src is called with write_only=true it's important for xf16
         // src_dt to execute just after to_src method with write_only=false
         // for the same Vmm
-        to_src(sg_addr(0), dG0, scratch_data_t, vlen, true);
+        to_src(sg_addr(0), dG0, scratch_dt_, vlen, true);
 
-        to_src(sc_addr(1), dG1, scratch_data_t, vlen);
+        to_src(sc_addr(1), dG1, scratch_dt_, vlen);
         // As to_src is called with write_only=true it's important for xf16
         // src_dt to execute just after to_src method with write_only=false
         // for the same Vmm
-        to_src(sg_addr(1), dG1, scratch_data_t, vlen, true);
+        to_src(sg_addr(1), dG1, scratch_dt_, vlen, true);
 
-        to_src(sc_addr(2), tmp1, scratch_data_t, vlen);
-        to_src(sg_addr(2), dG2, scratch_data_t, vlen);
+        to_src(sc_addr(2), tmp1, scratch_dt_, vlen);
+        to_src(sg_addr(2), dG2, scratch_dt_, vlen);
 
         // increment address pointers
         add(addr_ws_gates_reg, vlen_scratch);
@@ -242,9 +237,9 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
                 tmp2(tmp2_idx), h(h_idx), diff_attn_acc(dattn_acc_idx),
                 attn(attn_idx);
 
-        to_float(G0, wg_addr(0), src_data_t, hstate_dt_size);
-        to_float(G1, wg_addr(1), src_data_t, hstate_dt_size);
-        to_float(G2, wg_addr(2), src_data_t, hstate_dt_size);
+        to_float(G0, wg_addr(0), src_dt_, hstate_dt_size);
+        to_float(G1, wg_addr(1), src_dt_, hstate_dt_size);
+        to_float(G2, wg_addr(2), src_dt_, hstate_dt_size);
 
         // compute dHt
         uni_vmovss(dHt, ptr[addr_diff_states_tp1_l_reg]);
@@ -253,7 +248,7 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vaddss(dHt, dHt, tmp1);
 
         // compute dG0
-        to_float(h, ptr[addr_states_tm1_l_reg], src_data_t, hstate_dt_size);
+        to_float(h, ptr[addr_states_tm1_l_reg], src_dt_, hstate_dt_size);
         uni_vmovss(dG0, G0);
         uni_vmovss(tmp1, dG0);
         uni_vfnmadd231ps(dG0, tmp1, tmp1); // (G0 - G0^2)
@@ -285,7 +280,7 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vmulss(dG2, dG2, dHt); //(1 - G0) * (1 - G2^2) * dHt
 
         // compute dG1
-        to_float(tmp1, ptr[addr_ws_grid_reg], src_data_t, hstate_dt_size);
+        to_float(tmp1, ptr[addr_ws_grid_reg], src_dt_, hstate_dt_size);
         uni_vmovss(dG1, G1);
         uni_vmovss(tmp2, G1);
         uni_vfnmadd231ps(dG1, tmp2, tmp2); // (G1 - G1^2)
@@ -301,20 +296,20 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vmulss(tmp1, tmp1, G1);
 
         // downconvert and write data
-        to_src(sc_addr(0), dG0, scratch_data_t, hstate_dt_size);
+        to_src(sc_addr(0), dG0, scratch_dt_, hstate_dt_size);
         // As to_src is called with write_only=true it's important for xf16
         // src_dt to execute just after to_src method with write_only=false
         // for the same Vmm
-        to_src(sg_addr(0), dG0, scratch_data_t, hstate_dt_size, true);
+        to_src(sg_addr(0), dG0, scratch_dt_, hstate_dt_size, true);
 
-        to_src(sc_addr(1), dG1, scratch_data_t, hstate_dt_size);
+        to_src(sc_addr(1), dG1, scratch_dt_, hstate_dt_size);
         // As to_src is called with write_only=true it's important for xf16
         // src_dt to execute just after to_src method with write_only=false
         // for the same Vmm
-        to_src(sg_addr(1), dG1, scratch_data_t, hstate_dt_size, true);
+        to_src(sg_addr(1), dG1, scratch_dt_, hstate_dt_size, true);
 
-        to_src(sc_addr(2), tmp1, scratch_data_t, hstate_dt_size);
-        to_src(sg_addr(2), dG2, scratch_data_t, hstate_dt_size);
+        to_src(sc_addr(2), tmp1, scratch_dt_, hstate_dt_size);
+        to_src(sg_addr(2), dG2, scratch_dt_, hstate_dt_size);
 
         // increment address pointers
         add(addr_ws_gates_reg, scratch_dt_size);
@@ -358,18 +353,8 @@ void jit_uni_gru_lbr_cell_postgemm_bwd_t<isa, src_data_t,
     }
 }
 
-template struct jit_uni_gru_lbr_cell_postgemm_bwd_t<avx512_core, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_gru_lbr_cell_postgemm_bwd_t<avx512_core,
-        data_type::bf16, data_type::bf16>;
-template struct jit_uni_gru_lbr_cell_postgemm_bwd_t<avx512_core, data_type::f16,
-        data_type::f16>;
-template struct jit_uni_gru_lbr_cell_postgemm_bwd_t<avx2, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_gru_lbr_cell_postgemm_bwd_t<avx2, data_type::bf16,
-        data_type::bf16>;
-template struct jit_uni_gru_lbr_cell_postgemm_bwd_t<avx2, data_type::f16,
-        data_type::f16>;
+template struct jit_uni_gru_lbr_cell_postgemm_bwd_t<avx512_core>;
+template struct jit_uni_gru_lbr_cell_postgemm_bwd_t<avx2>;
 
 } // namespace x64
 } // namespace cpu

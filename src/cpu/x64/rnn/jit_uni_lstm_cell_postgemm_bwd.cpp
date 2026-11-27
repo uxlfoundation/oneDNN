@@ -21,12 +21,9 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-status_t
-jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t, scratch_data_t>::init(
-        data_type_t sdt) {
-    CHECK(jit_uni_rnn_postgemm_t::init(src_data_t));
+template <cpu_isa_t isa>
+status_t jit_uni_lstm_cell_postgemm_bwd_t<isa>::init() {
+    CHECK(jit_uni_rnn_postgemm_t::init());
     // we use rax for both constant tables as they use the same table
     tanh_injector_
             = utils::make_unique<injector_t>(this, alg_kind::eltwise_tanh, 0.0f,
@@ -34,10 +31,8 @@ jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t, scratch_data_t>::init(
     return create_kernel();
 }
 
-template <cpu_isa_t isa, impl::data_type_t src_data_t,
-        impl::data_type_t scratch_data_t>
-void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
-        scratch_data_t>::generate() {
+template <cpu_isa_t isa>
+void jit_uni_lstm_cell_postgemm_bwd_t<isa>::generate() {
     using namespace Xbyak;
 
     // Labels declaration
@@ -119,10 +114,10 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
         // TODO: if w_gates are bfloat, we have to convert them to float
         // datatypes summary:
         // - c states are all float
-        // - h states are all src_data_t
+        // - h states are all src_dt_
         // - diff_* are all float
-        // - scratch is src_data_t
-        // - ws_gates is src_data_t
+        // - scratch is src_dt_
+        // - ws_gates is src_dt_
 
         // compute tanhCt
         to_float(tanhCt, ptr[addr_c_states_t_l_reg], rnn_.src_iter_c_dt, vlen_);
@@ -143,7 +138,7 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vmovups(tmp_dCt2, tanhCt);
         uni_vfnmadd231ps(tmp_dCt1, tmp_dCt2, tmp_dCt2);
         uni_vmulps(tmp_dCt1, tmp_dCt1, dHt);
-        to_float(dG3, wg_addr(3), src_data_t, vlen_);
+        to_float(dG3, wg_addr(3), src_dt_, vlen_);
         uni_vmulps(tmp_dCt1, tmp_dCt1, dG3);
         uni_vmovups(dCt, ptr[addr_diff_c_states_tp1_l_reg]);
         uni_vaddps(dCt, dCt, tmp_dCt1);
@@ -161,8 +156,8 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
 
         // compute dG0
         // we will reuse G0 and G2 later for dG2
-        to_float(G0, wg_addr(0), src_data_t, vlen_);
-        to_float(dG2, wg_addr(2), src_data_t, vlen_);
+        to_float(G0, wg_addr(0), src_dt_, vlen_);
+        to_float(dG2, wg_addr(2), src_dt_, vlen_);
         uni_vmovups(dG0, G0);
         const auto tmp_g0 = this->vmm_backup(G0);
         uni_vfnmadd231ps(dG0, tmp_g0, tmp_g0);
@@ -170,7 +165,7 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vmulps(dG0, dG0, dG2);
 
         // compute dG1
-        to_float(G1, wg_addr(1), src_data_t, vlen_);
+        to_float(G1, wg_addr(1), src_dt_, vlen_);
         uni_vmovups(dG1, G1);
         const auto tmp_g1 = this->vmm_backup(G1);
         uni_vfnmadd231ps(dG1, tmp_g1, tmp_g1);
@@ -199,10 +194,10 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
         }
         uni_vmovups(ptr[addr_diff_c_states_t_l_reg], dCt);
 
-        to_src(sg_addr(0), dG0, scratch_data_t, vlen_);
-        to_src(sg_addr(1), dG1, scratch_data_t, vlen_);
-        to_src(sg_addr(2), dG2, scratch_data_t, vlen_);
-        to_src(sg_addr(3), dG3, scratch_data_t, vlen_);
+        to_src(sg_addr(0), dG0, scratch_dt_, vlen_);
+        to_src(sg_addr(1), dG1, scratch_dt_, vlen_);
+        to_src(sg_addr(2), dG2, scratch_dt_, vlen_);
+        to_src(sg_addr(3), dG3, scratch_dt_, vlen_);
 
         // increment address pointers
         add(addr_ws_gates_reg, vlen_scratch_);
@@ -253,7 +248,7 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vmovss(tmp_dCt2, tanhCt);
         uni_vfnmadd231ss(tmp_dCt1, tmp_dCt2, tmp_dCt2);
         uni_vmulss(tmp_dCt1, tmp_dCt1, dHt);
-        to_float(dG3, wg_addr(3), src_data_t, hstate_dt_size_);
+        to_float(dG3, wg_addr(3), src_dt_, hstate_dt_size_);
         uni_vmulss(tmp_dCt1, tmp_dCt1, dG3);
         uni_vmovss(dCt, ptr[addr_diff_c_states_tp1_l_reg]);
         uni_vaddss(dCt, dCt, tmp_dCt1);
@@ -272,8 +267,8 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
 
         // compute dG0
         // we will reuse G0 and G2 later for dG2
-        to_float(G0, wg_addr(0), src_data_t, hstate_dt_size_);
-        to_float(dG2, wg_addr(2), src_data_t, hstate_dt_size_);
+        to_float(G0, wg_addr(0), src_dt_, hstate_dt_size_);
+        to_float(dG2, wg_addr(2), src_dt_, hstate_dt_size_);
 
         uni_vmovss(dG0, G0);
         const auto tmp_g0 = this->xmm_backup(G0);
@@ -282,7 +277,7 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
         uni_vmulss(dG0, dG0, dG2);
 
         // compute dG1
-        to_float(G1, wg_addr(1), src_data_t, hstate_dt_size_);
+        to_float(G1, wg_addr(1), src_dt_, hstate_dt_size_);
         const auto tmp_g1 = this->xmm_backup(G1);
         uni_vmovss(dG1, G1);
         uni_vfnmadd231ss(dG1, tmp_g1, tmp_g1);
@@ -311,10 +306,10 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
         }
         uni_vmovss(ptr[addr_diff_c_states_t_l_reg], dCt);
 
-        to_src(sg_addr(0), dG0, scratch_data_t, hstate_dt_size_);
-        to_src(sg_addr(1), dG1, scratch_data_t, hstate_dt_size_);
-        to_src(sg_addr(2), dG2, scratch_data_t, hstate_dt_size_);
-        to_src(sg_addr(3), dG3, scratch_data_t, hstate_dt_size_);
+        to_src(sg_addr(0), dG0, scratch_dt_, hstate_dt_size_);
+        to_src(sg_addr(1), dG1, scratch_dt_, hstate_dt_size_);
+        to_src(sg_addr(2), dG2, scratch_dt_, hstate_dt_size_);
+        to_src(sg_addr(3), dG3, scratch_dt_, hstate_dt_size_);
 
         // increment address pointers
         add(addr_ws_gates_reg, scratch_dt_size_);
@@ -347,18 +342,8 @@ void jit_uni_lstm_cell_postgemm_bwd_t<isa, src_data_t,
     }
 }
 
-template struct jit_uni_lstm_cell_postgemm_bwd_t<avx512_core, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_lstm_cell_postgemm_bwd_t<avx512_core, data_type::bf16,
-        data_type::bf16>;
-template struct jit_uni_lstm_cell_postgemm_bwd_t<avx512_core, data_type::f16,
-        data_type::f16>;
-template struct jit_uni_lstm_cell_postgemm_bwd_t<avx2, data_type::f32,
-        data_type::f32>;
-template struct jit_uni_lstm_cell_postgemm_bwd_t<avx2, data_type::bf16,
-        data_type::bf16>;
-template struct jit_uni_lstm_cell_postgemm_bwd_t<avx2, data_type::f16,
-        data_type::f16>;
+template struct jit_uni_lstm_cell_postgemm_bwd_t<avx512_core>;
+template struct jit_uni_lstm_cell_postgemm_bwd_t<avx2>;
 
 } // namespace x64
 } // namespace cpu

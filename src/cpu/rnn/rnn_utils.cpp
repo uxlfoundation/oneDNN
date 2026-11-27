@@ -35,7 +35,6 @@ using namespace dnnl::impl::utils;
 using namespace rnn_utils;
 using namespace format_tag;
 using namespace rnn_packed_format;
-using namespace data_type;
 
 static bool check_dims_contiguous_except_one(const memory_desc_wrapper &mdw,
         int idx_with_arbitrary_stride, std::initializer_list<int> perm) {
@@ -354,14 +353,8 @@ float rnn_utils::to_float(const void *data, const data_type_t dt) {
 
 const void *rnn_utils::inc_ptr(
         const void *data, data_type_t data_type, dim_t offset) {
-    if (data_type == data_type::f32)
-        return static_cast<const float *>(data) + offset;
-    else if (data_type == data_type::bf16)
-        return static_cast<const bfloat16_t *>(data) + offset;
-    else if (data_type == data_type::f16)
-        return static_cast<const float16_t *>(data) + offset;
-    else
-        return data;
+    return static_cast<const char *>(data)
+            + offset * static_cast<dim_t>(types::data_type_size(data_type));
 }
 
 void *rnn_utils::inc_ptr(void *data, data_type_t data_type, dim_t offset) {
@@ -371,8 +364,8 @@ void *rnn_utils::inc_ptr(void *data, data_type_t data_type, dim_t offset) {
 
 bool rnn_utils::init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
         const primitive_attr_t &attr, data_type_t src_type,
-        data_type_t acc_type, data_type_t scratch_type,
-        const memory_desc_wrapper &src_layer_d,
+        data_type_t weights_type, data_type_t acc_type,
+        data_type_t scratch_type, const memory_desc_wrapper &src_layer_d,
         const memory_desc_wrapper &src_iter_d,
         const memory_desc_wrapper &src_iter_c_d,
         const memory_desc_wrapper &weights_layer_d,
@@ -400,6 +393,9 @@ bool rnn_utils::init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
                                                : dst_iter_c_d.data_type();
 
     rnn.cell_dt = src_type;
+    rnn.weights_dt = weights_type;
+    rnn.acc_dt = acc_type;
+    rnn.scratch_dt = scratch_type;
     const int src_dt_size = static_cast<int>(types::data_type_size(src_type));
     const int acc_dt_size = static_cast<int>(types::data_type_size(acc_type));
     const int scratch_dt_size

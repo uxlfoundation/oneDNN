@@ -143,26 +143,19 @@ template <typename Vmm>
 void jit_uni_postops_injector_t<Vmm>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
-
-    int rhs_arg_idx = 0;
-    for (int i = 0; i < post_ops_.len(); i++) {
-        const auto &post_op = post_ops_.entry_[i];
-        if (post_op.is_eltwise()) {
+    binary_injector_utils::for_each_post_op_with_rhs_arg_idx(post_ops_,
+            [&](int i, const post_ops_t::entry_t &post_op, int rhs_arg_idx) {
+        if (post_op.is_eltwise())
             alg_to_eltwise_injector_.at(i).compute_vector_range(vmm_idxs);
-        } else if (post_op.is_like_binary()) {
+        else if (post_op.is_like_binary())
             binary_injector_->compute_vector_range(
                     vmm_idxs, rhs_arg_idx, post_op, rhs_arg_params);
-            ++rhs_arg_idx;
-            // Ternary op handles two arguments at the same time, thus,
-            // skipping one more.
-            if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
-        } else if (inject_sum_ && post_op.is_sum(false, false)) {
+        else if (inject_sum_ && post_op.is_sum(false, false))
             idx_to_sum_injector_.at(i).compute_vector_range(
                     vmm_idxs, rhs_arg_params);
-        }
         // A sum entry falls through when `inject_sum_` is unset. The kernel
         // applies it itself in that case.
-    }
+    });
 }
 template <typename Vmm>
 void jit_uni_postops_injector_t<Vmm>::compute_vector_range(
@@ -201,15 +194,15 @@ jit_uni_postops_injector_t<Vmm>::preload_scalar_vector_range(
     if (!binary_injector_) return preloaded_rhs;
 
     auto vmm_it = vmm_idxs.cbegin();
-    int rhs_arg_idx = 0;
-    for (int i = 0; i < post_ops_.len() && vmm_it != vmm_idxs.cend(); i++) {
-        const auto &post_op = post_ops_.entry_[i];
-        if (!post_op.is_like_binary()) continue;
-        if (binary_injector_->preload_scalar_rhs(*vmm_it, rhs_arg_idx, post_op))
+    binary_injector_utils::for_each_post_op_with_rhs_arg_idx(post_ops_,
+            [&](int, const post_ops_t::entry_t &post_op, int rhs_arg_idx) {
+        if (vmm_it == vmm_idxs.cend()) return;
+        if (post_op.is_like_binary()
+                && binary_injector_->preload_scalar_rhs(
+                        *vmm_it, rhs_arg_idx, post_op)) {
             preloaded_rhs.emplace(rhs_arg_idx, *vmm_it++);
-        // Counts arguments the same way as compute_vector_range().
-        rhs_arg_idx += post_op.is_binary_with_ternary_op() ? 2 : 1;
-    }
+        }
+    });
     return preloaded_rhs;
 }
 

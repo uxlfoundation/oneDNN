@@ -271,40 +271,32 @@ bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
     });
 }
 
-void extend_binary_args_per_w(const post_ops_t &post_ops,
-        const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
+void expand_binary_args_per_w(const post_ops_t &post_ops,
         std::vector<const void *> &post_ops_binary_rhs_arg_vec,
         uint8_t *expanded_rhs, const std::vector<dim_t> &expanded_elems_len) {
     dim_t offset = 0;
-    const int po_len = post_ops.len();
-    auto binary_post_op_idx = 0;
-
-    for (int i = 0; i < po_len; ++i) {
-        if (!post_ops.entry_[i].is_binary()) { continue; }
-        if (expanded_elems_len[i] > 0) {
-            const auto &rhs_md = post_ops.entry_[i].binary.src1_desc;
+    binary_injector_utils::for_each_post_op_with_rhs_arg_idx(post_ops,
+            [&](int i, const post_ops_t::entry_t &e, int rhs_arg_idx) {
+        const auto expanded_elem_len = expanded_elems_len[i];
+        if (e.is_binary() && expanded_elem_len > 0) {
+            const auto &rhs_md = e.binary.src1_desc;
             const memory_desc_wrapper rhs_md_wrap(&rhs_md);
-            const dim_t rhs_len = rhs_md_wrap.nelems();
-            const data_type_t dt = rhs_md.data_type;
-            const auto dt_size = types::data_type_size(dt);
+            const auto rhs_len = rhs_md_wrap.nelems();
+            const auto dt_size = types::data_type_size(rhs_md.data_type);
 
             const uint8_t *src = reinterpret_cast<const uint8_t *>(
-                    orig_post_ops_binary_rhs_arg_vec[binary_post_op_idx]);
+                    post_ops_binary_rhs_arg_vec[rhs_arg_idx]);
             auto *dst = expanded_rhs + offset;
 
-            for (dim_t j = 0; j < expanded_elems_len[i]; ++j) {
-                const dim_t src_idx = j % rhs_len;
+            for (dim_t j = 0; j < expanded_elem_len; ++j) {
+                const auto src_idx = j % rhs_len;
                 memcpy(dst + j * dt_size, src + src_idx * dt_size, dt_size);
             }
 
-            post_ops_binary_rhs_arg_vec[binary_post_op_idx] = dst;
-            offset += expanded_elems_len[binary_post_op_idx] * dt_size;
-        } else {
-            post_ops_binary_rhs_arg_vec[binary_post_op_idx]
-                    = orig_post_ops_binary_rhs_arg_vec[binary_post_op_idx];
+            post_ops_binary_rhs_arg_vec[rhs_arg_idx] = dst;
+            offset += expanded_elem_len * dt_size;
         }
-        binary_post_op_idx++;
-    }
+    });
 }
 
 static_params_t::static_params_t(const Xbyak::Reg64 &param1,

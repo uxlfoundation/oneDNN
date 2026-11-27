@@ -69,8 +69,7 @@ bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set);
 
-void extend_binary_args_per_w(const post_ops_t &post_ops,
-        const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
+void expand_binary_args_per_w(const post_ops_t &post_ops,
         std::vector<const void *> &post_ops_binary_rhs_arg_vec,
         uint8_t *expanded_rhs, const std::vector<dim_t> &expanded_elems_len);
 

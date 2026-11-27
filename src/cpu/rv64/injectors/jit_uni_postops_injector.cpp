@@ -97,24 +97,19 @@ void jit_uni_postops_injector_t<isa>::compute_vector_range(
     // group_stride is each accumulator's e32 LMUL (1/2/4); the binary injector
     // needs it to pick the narrow-dtype rhs load LMUL. The eltwise injector
     // computes at the host vtype (it issues no vsetvli) and so is LMUL-agnostic.
-    std::size_t rhs_arg_idx = 0;
-    for (int i = 0; i < post_ops_.len(); i++) {
-        const auto &post_op = post_ops_.entry_[i];
+    binary_injector_utils::for_each_post_op_with_rhs_arg_idx(post_ops_,
+            [&](int i, const post_ops_t::entry_t &post_op, int rhs_arg_idx) {
         if (post_op.is_eltwise()) {
             alg_to_eltwise_injector_.at(i).compute_vector_range(
                     vmm_idxs, group_stride);
         } else if (post_op.is_like_binary()) {
             binary_injector_->compute_vector_range(vmm_idxs, rhs_arg_idx,
                     post_op, rhs_arg_params, group_stride);
-            ++rhs_arg_idx;
-            // Ternary op handles two arguments at the same time, thus,
-            // skipping one more.
-            if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
         } else {
             const auto lam = lambda_jit_injectors_.find(post_op.kind);
             if (lam != lambda_jit_injectors_.end()) lam->second();
         }
-    }
+    });
 }
 
 template <cpu_isa_t isa>

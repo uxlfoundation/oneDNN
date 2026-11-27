@@ -411,7 +411,6 @@ void jit_softmax_sve_t::store(
                     P_ALL_ONE);
             frinti(src_vmm.s, P_ALL_ONE / T_m, src_vmm.s);
             fcvtzu(src_vmm.s, P_ALL_ONE / T_m, src_vmm.s);
-            smin(src_vmm.s, 127);
             st1b(src_vmm.s, opmask, ptr(addr));
             break;
         case data_type::s8:
@@ -419,7 +418,6 @@ void jit_softmax_sve_t::store(
                     P_ALL_ONE);
             frinti(src_vmm.s, opmask / T_m, src_vmm.s);
             fcvtzs(src_vmm.s, opmask / T_m, src_vmm.s);
-            smin(src_vmm.s, 127);
             smax(src_vmm.s, -128);
             st1b(src_vmm.s, opmask, ptr(addr));
             break;

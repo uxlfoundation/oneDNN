@@ -320,11 +320,10 @@ status_t jit_uni_reorder_direct_copy_t::pd_t::init(const engine_t *engine,
     VDISPATCH_REORDER(src_d.similar_to(dst_d, true, false, 0),
             VERBOSE_TENSOR_FORMAT_MISMATCH, "src", "dst");
 
-    // Direct copy doesn't operate on plain non-dense cases, though it can
-    // simply extend nelems to contain wholes in strides but it would be
-    // inefficient.
-    // TODO: enable smart plain non-dense case support.
-    VDISPATCH_REORDER(IMPLICATION(src_d.is_plain(), src_d.is_dense()),
+    // Direct copy moves `nelems` contiguous elements, so it only operates on
+    // dense layouts (no gaps between elements), with or without inner blocks.
+    // TODO: enable smart non-dense case support.
+    VDISPATCH_REORDER(src_d.is_dense(/* with_padding = */ true),
             VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
 
     VDISPATCH_REORDER(src_d.extra().flags == dst_d.extra().flags,

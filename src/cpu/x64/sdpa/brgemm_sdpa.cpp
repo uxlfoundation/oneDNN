@@ -234,6 +234,35 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     bp_.softmax_inf_as_zero
             = desc()->softmax_alg == alg_kind::softmax_accurate_inf_as_zero;
 
+    // Debugging/perf overrides of the full-softmax strategies:
+    // ONEDNN_SDPA_SCHEDULE={per_head,kv_head_group,auto},
+    // ONEDNN_SDPA_KV_PACKING={ahead,per_tile,auto} and
+    // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking).
+    const std::string schedule = getenv_string_user("SDPA_SCHEDULE");
+    if (schedule == "per_head")
+        bp_.schedule = sdpa_full_softmax_schedule_t::per_head;
+    else if (schedule == "kv_head_group")
+        bp_.schedule = sdpa_full_softmax_schedule_t::kv_head_group;
+    else
+        VDISPATCH_SDPA(
+                utils::one_of(schedule, std::string(), std::string("auto")),
+                "unknown ONEDNN_SDPA_SCHEDULE value '%s'", schedule.c_str());
+    const std::string kv_packing = getenv_string_user("SDPA_KV_PACKING");
+    if (kv_packing == "ahead")
+        bp_.kv_packing = sdpa_full_softmax_kv_packing_t::ahead;
+    else if (kv_packing == "per_tile")
+        bp_.kv_packing = sdpa_full_softmax_kv_packing_t::per_tile;
+    else
+        VDISPATCH_SDPA(
+                utils::one_of(kv_packing, std::string(), std::string("auto")),
+                "unknown ONEDNN_SDPA_KV_PACKING value '%s'",
+                kv_packing.c_str());
+    const std::string stack_heads = getenv_string_user("SDPA_STACK_HEADS");
+    VDISPATCH_SDPA(utils::one_of(stack_heads, std::string(), std::string("0"),
+                           std::string("1"), std::string("auto")),
+            "unknown ONEDNN_SDPA_STACK_HEADS value '%s'", stack_heads.c_str());
+    bp_.allow_stack_heads = stack_heads != "0";
+
     if (with_attn_scale()) {
         sdpa_mm1_post_op_t sc;
         sc.alg = alg_kind::binary_mul;
@@ -255,8 +284,7 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
         bp_.mm1_post_ops.push_back(mk);
     }
 
-    VDISPATCH_SDPA_SC(
-            sdpa_full_softmax::configure(bp_, full_conf_, full_descs_),
+    VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(bp_, full_conf_),
             "sdpa_full_softmax configuration failed");
     nthr_ = full_conf_.nthr;
     scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
@@ -272,9 +300,8 @@ status_t brgemm_sdpa_fwd_t::init(engine_t *engine) {
         return sdpa_online_softmax::create_kernels(isa_for_ir,
                 pd()->online_softmax_conf(), engine, online_kernels_);
     } else {
-        return sdpa_full_softmax::create_kernels(isa_for_ir,
-                pd()->full_softmax_conf(), pd()->full_softmax_descs(), engine,
-                full_kernels_);
+        return sdpa_full_softmax::create_kernels(
+                isa_for_ir, pd()->full_softmax_conf(), engine, full_kernels_);
     }
     assert(!"Unknown SDPA implementation kind");
     return status::unimplemented;

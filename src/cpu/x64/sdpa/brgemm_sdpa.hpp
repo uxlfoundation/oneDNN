@@ -54,9 +54,6 @@ struct brgemm_sdpa_fwd_t : public primitive_t {
         const sdpa_full_softmax_conf_t &full_softmax_conf() const {
             return full_conf_;
         }
-        const sdpa_full_softmax_descs_t &full_softmax_descs() const {
-            return full_descs_;
-        }
         const sdpa_online_softmax_conf_t &online_softmax_conf() const {
             return online_conf_;
         }
@@ -66,14 +63,8 @@ struct brgemm_sdpa_fwd_t : public primitive_t {
         friend struct brgemm_sdpa_fwd_t;
 
         sdpa_impl_kind_t kind_ = sdpa_impl_kind_t::full_softmax;
-        // Derived compute configuration computed once in init() (via the
-        // strategy's JIT-free configure()); only the struct matching kind_ is
-        // populated. It owns the KV/query tiling and per-thread scratch layout,
-        // so the pd sizes its scratchpad from it. For full_softmax, the finalized
-        // BRGEMM descriptors live alongside it in full_descs_ (like brgemm_matmul's
-        // brg_descs_); the primitive JIT-compiles the kernels from conf + descs.
+        // Only the configuration matching kind_ is populated.
         sdpa_full_softmax_conf_t full_conf_;
-        sdpa_full_softmax_descs_t full_descs_;
         sdpa_online_softmax_conf_t online_conf_;
         int nthr_ = 1;
     };
@@ -91,8 +82,8 @@ private:
 
     // Compute state owned by the primitive, built in init() from the pd's conf;
     // only the one matching pd()->impl_kind() is populated. Both strategies
-    // are folded in as free functions (namespace sdpa_online_softmax / sdpa_full_softmax) over
-    // the pd conf (+ descs) and these kernels.
+    // are folded in as free functions (namespace sdpa_online_softmax /
+    // sdpa_full_softmax) over the pd configuration and these kernels.
     sdpa_online_softmax_kernels_t online_kernels_;
     sdpa_full_softmax_kernels_t full_kernels_;
 };

@@ -195,7 +195,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
         const int total_elements = total_tokens * K;
         std::vector<float> values(total_elements);
         std::vector<int32_t> offsets(ngroups);
-        offsets = {0, 1, 4, 9};
+        offsets = {1, 4, 9};
 
         EXPECT_NO_THROW(mem = memory(md, eng, {values.data(), offsets.data()}));
     }
@@ -205,7 +205,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
         const int total_elements = total_tokens * K;
         std::vector<float> values(total_elements);
         std::vector<int32_t> offsets(ngroups);
-        offsets = {0, 1, 1, 9}; // skip group 2
+        offsets = {1, 1, 9}; // skip group 1
 
         EXPECT_NO_THROW(mem = memory(md, eng, {values.data(), offsets.data()}));
     }

@@ -219,7 +219,7 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
 
         if (prb->sparse_options.is_grouped(DNNL_ARG_SRC)
                 && prb->sparse_options.is_grouped(DNNL_ARG_DST)) {
-            // verify_grouped_input() enforces bia_mask=2 (N-only)
+            // Bias is per group and column
             const int64_t group_count = prb->sparse_options.get_group_count();
             const dnnl_dim_t grouped_bias_dims[2] = {group_count, prb->n};
             DNN_SAFE_STATUS(dnn_mem_t::init_md(bia_d, 2, grouped_bias_dims,

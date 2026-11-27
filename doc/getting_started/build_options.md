@@ -340,7 +340,7 @@ of GEMM operations. The following options are supported:
 | ONEDNN_ENABLE_CPU_ISA_HINTS       | **ON**  | OFF              | Enables [CPU ISA hints](@ref dev_guide_cpu_isa_hints)                                          |
 | [ONEDNN_SAFE_RBP]                 | **OFF** | ON               | Enables restriction for JIT kernels to pollute RBP vector register content                     |
 | [ONEDNN_X64_USE_ZEN]              | **OFF** | ON               | Enables integration with the ZenDNN library for AMD (Zen) CPUs                                  |
-| [ONEDNN_ZENDNN_SOURCE]            | [ZenDNN\@v6.1.2][ZenDNN] | \<path\>, \<url\>\@\<tag\> | ZenDNN source to build when no ZenDNN package is found           |
+| [ONEDNN_ZENDNN_SOURCE]            | [ZenDNN\@v6.1.4][ZenDNN] | \<path\>, \<url\>\@\<tag\> | ZenDNN source to build when no ZenDNN package is found           |
 
 [ONEDNN_ENABLE_PRIMITIVE_CPU_ISA]: @ref opt_enable_primitive_cpu_isa
 [ONEDNN_ENABLE_GEMM_KERNELS_ISA]: @ref opt_enable_gemm_kernels_isa
@@ -410,8 +410,10 @@ When enabled, oneDNN looks for ZenDNN in this order:
 
 If a package is found, `ONEDNN_ZENDNN_SOURCE` is ignored; configure with
 `-DCMAKE_DISABLE_FIND_PACKAGE_zendnnl=ON` to build from source anyway. Both
-static (archive) and shared ZenDNN packages are supported. A source build
-links the resulting static archive (`zendnnl::zendnnl_archive`).
+static (archive) and shared ZenDNN packages are supported. On Windows, a
+shared package's `zendnnl.dll` must be on `PATH` when running oneDNN,
+including its tests. A source build links the resulting static archive
+(`zendnnl::zendnnl_archive`).
 
 Otherwise ZenDNN is compiled as an external project. The first build in a
 build directory also downloads ZenDNN's own dependencies (AOCL-DLP,
@@ -428,11 +430,13 @@ ZenDNN is not installed.
 
 When `ONEDNN_X64_USE_ZEN=ON`, the following additional requirements apply
 (they do not affect the default `OFF` build):
-* Targets Linux on x86_64; Windows builds are rejected at configure time.
+* Targets Linux or Windows on x86_64; other operating systems and
+  architectures are rejected at configure time.
 * Requires CMake 3.26 or later.
-* Requires GCC 11.2 or later, or Clang 14 or later; other compilers are
-  rejected.
-* Requires ZenDNN version 6.1.2 or later. For a package, the version comes
+* On Linux, requires GCC 11.2 or later or Clang 14 or later. On Windows,
+  requires MSVC 19.43 or later (Visual Studio 2022 version 17.13). Other
+  compilers, including MinGW and clang-cl on Windows, are rejected.
+* Requires ZenDNN version 6.1.4 or later. For a package, the version comes
   from its package config; for a source build, from the `project()`
   declaration in the ZenDNN `CMakeLists.txt`.
 * Requires `ONEDNN_CPU_RUNTIME=OMP`; ZenDNN only supports the OpenMP threading

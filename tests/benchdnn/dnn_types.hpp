@@ -264,6 +264,9 @@ struct attr_t {
 
             policy_t policy = POLICY_TOTAL;
             float scale = 1.f;
+            // Multi-element scales are filled with `scale` instead of random
+            // values when set.
+            bool has_constant_scale = false;
             dnnl_data_type_t dt = dnnl_f32;
             std::vector<dnnl_dim_t> groups;
             int64_t mask = INT_MIN;

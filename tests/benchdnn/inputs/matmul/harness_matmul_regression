@@ -89,3 +89,5 @@
 # AMX relaxed accumulation used the bf16/f16 dst as the K-chunk C buffer for int8 too, which gave wrong results.
 --reset --impl=brg --dt=s8:u4:f16 --attr-acc-mode=relaxed 64x4096:4096x64_n"int8_relaxed_acc_mode"
 --reset --impl=brg --dt=u8:u8:bf16 --attr-acc-mode=any --attr-scales=wei:per_ocic:f32:128x1 64x4096:4096x64_n"int8_any_acc_mode"
+# MX scales outside the f16 range must not overflow or underflow on GPU (MFDNN-15953).
+--reset --dt=f8_e4m3:f8_e4m3:bf16,f4_e2m1:f4_e2m1:bf16 --attr-scales=src:per_tensor:0x1p120:e8m0:1x32+wei:per_tensor:0x1p-120:e8m0:32x1 1x96:96x1 4x128:128x16_n"mx_large_reciprocal_e8m0_scales"

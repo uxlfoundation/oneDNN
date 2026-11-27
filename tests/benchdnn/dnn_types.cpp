@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <sstream>
 #include <unordered_set>
@@ -326,8 +327,27 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
                     "Error: the scale can't be negative:", this->scale);
             SAFE_V(FAIL);
         }
+        HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+    } else if (!this->is_dynamic()) {
+        // An optional constant value for all scale factors, distinguished from
+        // the data type token by being a number.
+        size_t value_pos = start_pos;
+        const auto value_str = parser::get_substr(s, value_pos, ':');
+        char *end = nullptr;
+        const float value = strtof(value_str.c_str(), &end);
+        if (!value_str.empty() && end == value_str.c_str() + value_str.size()) {
+            if (!(value > 0.f) || !std::isfinite(value)) {
+                BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                        "Error: the scale must be positive and finite:",
+                        value_str.c_str());
+                SAFE_V(FAIL);
+            }
+            this->scale = value;
+            this->has_constant_scale = true;
+            start_pos = value_pos;
+            HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+        }
     }
-    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
     // process data type
     const auto dt_str = parser::get_substr(s, start_pos, ':');
@@ -941,6 +961,12 @@ std::ostream &operator<<(
         s << scale.policy;
     }
     if (scale.has_single_element()) s << ":" << scale.scale;
+    if (scale.has_constant_scale) {
+        // Print with full precision so the reproducer line is exact.
+        const auto prec = s.precision(std::numeric_limits<float>::max_digits10);
+        s << ":" << scale.scale;
+        s.precision(prec);
+    }
 
     s << dump_fields_backward({
             {scale.qmode != dnnl_quantization_mode_static_sazp,

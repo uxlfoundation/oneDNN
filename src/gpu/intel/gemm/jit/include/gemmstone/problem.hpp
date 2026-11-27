@@ -409,6 +409,17 @@ void GEMMProblem::autoTypeConversions(bool systolicAvailable)
         }
     }
 
+    // e8m0 scales exceed the f16 range, so applying them to f8/f4 data upconverted
+    // to f16 may overflow/underflow. Use bf16 instead (lossless for f8/f4).
+    // TODO: f4 -> bf16 dequantization with 2D scales gives wrong results for unaligned B.
+    bool e8m0Scales = (aScale2D() && Ta_scale == Type::f8_e8m0)
+                   || (bScale2D() && Tb_scale == Type::f8_e8m0);
+    bool f4 = Ta_ext.isF4() || Tb_ext.isF4();
+    bool lowPrecision = (Ta_ext.isF8() || Ta_ext.isF4()) && (Tb_ext.isF8() || Tb_ext.isF4())
+                     && (!f4 || B.alignment % 16 == 0);
+    if (e8m0Scales && lowPrecision && Ta == Type::f16 && Tb == Type::f16 && Tc == Type::f32)
+        Ta = Tb = Type::bf16;
+
     if (!systolicAvailable && Tc == Type::f32) {
         if (Ta == Type::f16) Ta = Type::f32;
         if (Tb == Type::f16) Tb = Type::f32;

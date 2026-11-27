@@ -171,35 +171,7 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     auto scratchpad = scratchpad_registry().registrar();
 
     if (kind_ == sdpa_impl_kind_t::online_softmax) {
-        auto &fp_ = online_conf_.params;
-        fp_ = sdpa_online_softmax_params_t();
-        fp_.ndims = sdpa_pd_t::ndims;
-        fp_.batch = desc()->batch();
-        fp_.num_head_q = desc()->num_q_heads();
-        fp_.group_head = desc()->num_q_heads() / desc()->num_kv_heads();
-        fp_.seq_q = desc()->queries();
-        fp_.seq_kv = desc()->keys();
-        fp_.head_size_qk = desc()->head_size();
-        fp_.head_size_v = desc()->values();
-        fp_.q_strides.assign(
-                qry_mdw.strides(), qry_mdw.strides() + sdpa_pd_t::ndims);
-        fp_.k_strides.assign(
-                key_mdw.strides(), key_mdw.strides() + sdpa_pd_t::ndims);
-        fp_.v_strides.assign(
-                val_mdw.strides(), val_mdw.strides() + sdpa_pd_t::ndims);
-        fp_.o_strides.assign(
-                dst_mdw.strides(), dst_mdw.strides() + sdpa_pd_t::ndims);
-        fp_.has_select = with_select_mask();
-        fp_.invert_select = desc()->invert_select;
-        if (with_select_mask()) {
-            const memory_desc_wrapper cond_mdw(desc()->attn_mask_md());
-            fp_.cond_strides.assign(
-                    cond_mdw.strides(), cond_mdw.strides() + sdpa_pd_t::ndims);
-            fp_.cond_dims.assign(
-                    cond_mdw.dims(), cond_mdw.dims() + sdpa_pd_t::ndims);
-        }
-
-        VDISPATCH_SDPA_SC(sdpa_online_softmax::configure(fp_, online_conf_),
+        VDISPATCH_SDPA_SC(sdpa_online_softmax::configure(*this, online_conf_),
                 "sdpa_online_softmax configuration failed");
         nthr_ = online_conf_.nthr;
         scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
@@ -207,63 +179,33 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
         return status::success;
     }
 
-    auto &bp_ = full_conf_.params;
-    bp_ = sdpa_full_softmax_params_t();
-    bp_.batch = desc()->batch();
-    bp_.num_head_q = desc()->num_q_heads();
-    bp_.group_head = desc()->num_q_heads() / desc()->num_kv_heads();
-    bp_.seq_q = desc()->queries();
-    bp_.seq_kv = desc()->keys();
-    bp_.hs_qk = desc()->head_size();
-    bp_.hs_v = desc()->values();
-    bp_.mm_dt = dt;
-    bp_.out_dt = dt;
-    bp_.q_strides.assign(
-            qry_mdw.strides(), qry_mdw.strides() + sdpa_pd_t::ndims);
-    bp_.k_strides.assign(
-            key_mdw.strides(), key_mdw.strides() + sdpa_pd_t::ndims);
-    bp_.v_strides.assign(
-            val_mdw.strides(), val_mdw.strides() + sdpa_pd_t::ndims);
-    bp_.o_strides.assign(
-            dst_mdw.strides(), dst_mdw.strides() + sdpa_pd_t::ndims);
-    bp_.has_select = with_select_mask();
-    bp_.invert_select = desc()->invert_select;
-    if (with_select_mask()) {
-        const memory_desc_wrapper cond_mdw(desc()->attn_mask_md());
-        bp_.cond_strides.assign(
-                cond_mdw.strides(), cond_mdw.strides() + sdpa_pd_t::ndims);
-        bp_.cond_dims.assign(
-                cond_mdw.dims(), cond_mdw.dims() + sdpa_pd_t::ndims);
-    }
-    bp_.softmax_inf_as_zero
-            = desc()->softmax_alg == alg_kind::softmax_accurate_inf_as_zero;
-
     // Debugging/perf overrides of the full-softmax strategies:
     // ONEDNN_SDPA_SCHEDULE={per_head,kv_head_group,split_kv,auto},
     // ONEDNN_SDPA_SPLIT_KV_CHUNKS=<n> (seq_kv chunks per split_kv work item;
     // 0 or unset lets the cost model choose),
     // ONEDNN_SDPA_KV_PACKING={ahead,per_tile,auto} and
     // ONEDNN_SDPA_STACK_HEADS={0,1,auto} (1 and auto allow stacking).
+    sdpa_full_softmax_knobs_t knobs;
     const std::string schedule = getenv_string_user("SDPA_SCHEDULE");
     if (schedule == "per_head")
-        bp_.schedule = sdpa_full_softmax_schedule_t::per_head;
+        knobs.schedule = sdpa_full_softmax_schedule_t::per_head;
     else if (schedule == "kv_head_group")
-        bp_.schedule = sdpa_full_softmax_schedule_t::kv_head_group;
+        knobs.schedule = sdpa_full_softmax_schedule_t::kv_head_group;
     else if (schedule == "split_kv")
-        bp_.schedule = sdpa_full_softmax_schedule_t::split_kv;
+        knobs.schedule = sdpa_full_softmax_schedule_t::split_kv;
     else
         VDISPATCH_SDPA(
                 utils::one_of(schedule, std::string(), std::string("auto")),
                 "unknown ONEDNN_SDPA_SCHEDULE value '%s'", schedule.c_str());
-    bp_.split_kv_chunks = getenv_int_user("SDPA_SPLIT_KV_CHUNKS", 0);
-    VDISPATCH_SDPA(bp_.split_kv_chunks >= 0,
+    knobs.split_kv_chunks = getenv_int_user("SDPA_SPLIT_KV_CHUNKS", 0);
+    VDISPATCH_SDPA(knobs.split_kv_chunks >= 0,
             "invalid ONEDNN_SDPA_SPLIT_KV_CHUNKS value %lld",
-            static_cast<long long>(bp_.split_kv_chunks));
+            static_cast<long long>(knobs.split_kv_chunks));
     const std::string kv_packing = getenv_string_user("SDPA_KV_PACKING");
     if (kv_packing == "ahead")
-        bp_.kv_packing = sdpa_full_softmax_kv_packing_t::ahead;
+        knobs.kv_packing = sdpa_full_softmax_kv_packing_t::ahead;
     else if (kv_packing == "per_tile")
-        bp_.kv_packing = sdpa_full_softmax_kv_packing_t::per_tile;
+        knobs.kv_packing = sdpa_full_softmax_kv_packing_t::per_tile;
     else
         VDISPATCH_SDPA(
                 utils::one_of(kv_packing, std::string(), std::string("auto")),
@@ -273,30 +215,9 @@ status_t brgemm_sdpa_fwd_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_SDPA(utils::one_of(stack_heads, std::string(), std::string("0"),
                            std::string("1"), std::string("auto")),
             "unknown ONEDNN_SDPA_STACK_HEADS value '%s'", stack_heads.c_str());
-    bp_.allow_stack_heads = stack_heads != "0";
+    knobs.allow_stack_heads = stack_heads != "0";
 
-    if (with_attn_scale()) {
-        sdpa_mm1_post_op_t sc;
-        sc.alg = alg_kind::binary_mul;
-        sc.is_binary = true;
-        sc.rhs_is_scalar = true;
-        sc.rhs_dt = f32;
-        bp_.mm1_post_ops.push_back(sc);
-    }
-    if (with_buffer_mask()) {
-        const memory_desc_wrapper mask_mdw(desc()->attn_mask_md());
-        sdpa_mm1_post_op_t mk;
-        mk.alg = alg_kind::binary_add;
-        mk.is_binary = true;
-        mk.rhs_is_scalar = false;
-        mk.rhs_dt = mask_mdw.data_type();
-        mk.rhs_dims.assign(mask_mdw.dims(), mask_mdw.dims() + sdpa_pd_t::ndims);
-        mk.rhs_strides.assign(
-                mask_mdw.strides(), mask_mdw.strides() + sdpa_pd_t::ndims);
-        bp_.mm1_post_ops.push_back(mk);
-    }
-
-    VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(bp_, full_conf_),
+    VDISPATCH_SDPA_SC(sdpa_full_softmax::configure(*this, knobs, full_conf_),
             "sdpa_full_softmax configuration failed");
     nthr_ = full_conf_.nthr;
     scratchpad.book(memory_tracking::names::key_sdpa_brgemm_buffer,
@@ -309,11 +230,11 @@ status_t brgemm_sdpa_fwd_t::init(engine_t *engine) {
     const auto isa_for_ir = mayiuse(avx512_core) ? avx512_core : avx2;
 
     if (pd()->impl_kind() == sdpa_impl_kind_t::online_softmax) {
-        return sdpa_online_softmax::create_kernels(isa_for_ir,
+        return sdpa_online_softmax::create_kernels(isa_for_ir, *pd(),
                 pd()->online_softmax_conf(), engine, online_kernels_);
     } else {
-        return sdpa_full_softmax::create_kernels(
-                isa_for_ir, pd()->full_softmax_conf(), engine, full_kernels_);
+        return sdpa_full_softmax::create_kernels(isa_for_ir, *pd(),
+                pd()->full_softmax_conf(), engine, full_kernels_);
     }
     assert(!"Unknown SDPA implementation kind");
     return status::unimplemented;
@@ -358,22 +279,18 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
     auto *v = CTX_IN_MEM(const void *, DNNL_ARG_VALUES);
     auto *out = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    // The scale is applied as a multiply; invert_scale means the user stored a
-    // divisor, so multiply by its reciprocal. The local outlives the execute
-    // call (the full-softmax path passes &scale_val by pointer). A host scalar scale is read
-    // from host storage; a regular tensor scale from its device buffer.
     float scale_val = 1.0f;
     if (pd()->with_attn_scale()) {
         CHECK(get_scalar_value(ctx, *pd(), DNNL_ARG_SCALE, scale_val));
         if (pd()->desc()->invert_scale) scale_val = 1.0f / scale_val;
     }
 
-    // The condition tensor is passed as the attention-mask argument.
-    // For select masks, the fill value is a scalar.
-    const void *cond = nullptr;
+    const bool with_select_mask = pd()->with_select_mask();
+    const void *mask_data = with_select_mask || pd()->with_buffer_mask()
+            ? CTX_IN_MEM(const void *, DNNL_ARG_ATTN_MASK)
+            : nullptr;
     float fill_val = 0.0f;
-    if (pd()->with_select_mask()) {
-        cond = CTX_IN_MEM(const void *, DNNL_ARG_ATTN_MASK);
+    if (with_select_mask) {
         CHECK(get_scalar_value(ctx, *pd(), DNNL_ARG_ATTN_MASK_FILL, fill_val));
     }
 
@@ -382,37 +299,25 @@ status_t brgemm_sdpa_fwd_t::execute(const exec_ctx_t &ctx) const {
         args.q = q;
         args.k = k;
         args.v = v;
-        args.cond = cond;
+        args.cond = with_select_mask ? mask_data : nullptr;
         args.out = out;
         args.scale = scale_val;
         args.fill = fill_val;
-        return sdpa_online_softmax::execute(pd()->online_softmax_conf(),
+        return sdpa_online_softmax::execute(*pd(), pd()->online_softmax_conf(),
                 online_kernels_, args, scratch, pd()->nthr());
     }
 
     sdpa_full_softmax_run_args_t args;
-    args.q.md = pd()->desc()->qry_md();
-    args.q.buffer = static_cast<const char *>(q);
-    args.k.md = pd()->desc()->key_md();
-    args.k.buffer = static_cast<const char *>(k);
-    args.v.md = pd()->desc()->val_md();
-    args.v.buffer = static_cast<const char *>(v);
-    if (pd()->with_select_mask()) {
-        args.cond.md = pd()->desc()->attn_mask_md();
-        args.cond.buffer = static_cast<const char *>(cond);
-    }
-    args.out.md = pd()->dst_md();
-    args.out.buffer = static_cast<char *>(out);
+    args.q = static_cast<const char *>(q);
+    args.k = static_cast<const char *>(k);
+    args.v = static_cast<const char *>(v);
+    args.mask_data = static_cast<const char *>(mask_data);
+    args.out = static_cast<char *>(out);
     args.scratch = scratch;
+    args.scale = scale_val;
     args.fill = fill_val;
-    // rhs base pointers for the mm1 binary post-ops, in the same order they
-    // were appended to bp_.mm1_post_ops: scale (scalar) then attention mask.
-    if (pd()->with_attn_scale()) args.mm1_post_op_rhs.push_back(&scale_val);
-    if (pd()->with_buffer_mask())
-        args.mm1_post_op_rhs.push_back(
-                CTX_IN_MEM(const void *, DNNL_ARG_ATTN_MASK));
-    return sdpa_full_softmax::execute(
-            pd()->full_softmax_conf(), full_kernels_, args, pd()->nthr());
+    return sdpa_full_softmax::execute(*pd(), pd()->full_softmax_conf(),
+            full_kernels_, args, pd()->nthr());
 }
 
 } // namespace x64

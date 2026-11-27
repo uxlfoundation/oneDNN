@@ -92,44 +92,9 @@ enum class sdpa_full_softmax_schedule_t {
 // packs each tile into its own scratch right before using it.
 enum class sdpa_full_softmax_kv_packing_t { any, ahead, per_tile };
 
-struct sdpa_full_softmax_params_t {
-    dim_t batch = 0;
-    dim_t num_head_q = 0;
-    // GQA group size: num_head_q / num_head_kv (>= 1).
-    dim_t group_head = 1;
-    dim_t seq_q = 0;
-    dim_t seq_kv = 0;
-    dim_t hs_qk = 0;
-    dim_t hs_v = 0;
-
-    // Compute data type for Q/K/V and the mm1/mm2 BRGEMM inputs (f32/f16/bf16).
-    // The scores and pv tiles are always accumulated in f32 (BRGEMM C is f32);
-    // the transposed-K buffer and P (mm2's A operand) are materialised in this
-    // type, and the softmax runs on the f32 scores.
-    dnnl::impl::data_type_t mm_dt = dnnl::impl::data_type::f32;
-    // SDPA output (result) data type; f32 accumulators are converted to it.
-    dnnl::impl::data_type_t out_dt = dnnl::impl::data_type::f32;
-
-    // Derived source layout metadata used while configuring BRGEMM and packing.
-    std::vector<dim_t> q_strides, k_strides, v_strides, o_strides;
-    std::vector<dim_t> cond_strides, cond_dims;
-
-    bool has_select = false;
-    // When true, keep scores where cond == 0; otherwise keep where cond != 0.
-    bool invert_select = false;
-
-    // SoftMax "inf_as_zero" mode: a fully-masked row (all -inf) produces an
-    // all-zero probability row instead of NaN. Selects the softmax primitive
-    // alg_kind (softmax_accurate_inf_as_zero vs softmax_accurate).
-    bool softmax_inf_as_zero = false;
-
-    // Supported mm1 (QK^T) post-ops, applied in order: scale then attention
-    // mask. Select is handled separately. These ops are sliced to the query-tile
-    // shape and folded into the BRGEMM store. Soft-cap is not wired into this path.
-    // Empty when mm1 has no post-ops.
-    std::vector<sdpa_mm1_post_op_t> mm1_post_ops;
-
-    // Requested strategies; `any` lets configure() choose.
+// Debugging / performance overrides of the strategy choices made by
+// configure(). The defaults let configure() choose everything.
+struct sdpa_full_softmax_knobs_t {
     sdpa_full_softmax_schedule_t schedule = sdpa_full_softmax_schedule_t::any;
     sdpa_full_softmax_kv_packing_t kv_packing
             = sdpa_full_softmax_kv_packing_t::any;
@@ -140,25 +105,19 @@ struct sdpa_full_softmax_params_t {
     bool allow_stack_heads = true;
 };
 
-template <typename T>
-struct sdpa_arg_buf_t {
-    T *buffer = nullptr;
-    const memory_desc_t *md = nullptr;
-};
-
-// Runtime pointers / scalars, resolved per execute call.
+// Runtime pointers / scalars, resolved per execute call. The buffers are laid
+// out as described by the pd's memory descriptors.
 struct sdpa_full_softmax_run_args_t {
-    sdpa_arg_buf_t<const char> q, k, v, cond;
-    sdpa_arg_buf_t<char> out;
+    const char *q = nullptr;
+    const char *k = nullptr;
+    const char *v = nullptr;
+    // Additive mask or select condition.
+    const char *mask_data = nullptr;
+    char *out = nullptr;
 
     void *scratch = nullptr;
+    float scale = 1.0f;
     float fill = 0.0f;
-    // Base pointers for the mm1 binary post-op right-hand sides, one per binary
-    // entry in sdpa_full_softmax_params_t::mm1_post_ops (in the same order; eltwise
-    // entries consume none). Each is offset per (batch, head, query-tile) using
-    // the entry's dims/strides. For a scalar rhs (e.g. the QK scale) the pointer
-    // addresses a single element and is not offset.
-    std::vector<const void *> mm1_post_op_rhs;
 };
 
 struct tensor_copy_desc_t {
@@ -173,39 +132,8 @@ struct tensor_copy_desc_t {
 // start at offset 0; unused areas have zero size.
 struct sdpa_full_softmax_thread_scratch_t {
     bool has_prob = false;
-    size_t pv = 0, prob = 0, amx_wsp = 0;
+    size_t pv = 0, prob = 0, brg_wsp = 0;
     size_t size = 0;
-
-    void set_compute_type(data_type_t dt, size_t dt_sz) {
-        has_prob = dt != data_type::f32;
-        prob_dt_size_ = dt_sz;
-    }
-
-    size_t score_tile_row_bytes(dim_t ld_scores, dim_t ld_prob) const {
-        return static_cast<size_t>(ld_scores) * sizeof(float)
-                + (has_prob ? static_cast<size_t>(ld_prob) * prob_dt_size_ : 0);
-    }
-
-    void set_tile_buffers(size_t item_q_rows, dim_t ld_scores, dim_t ld_prob,
-            dim_t ld_pv, bool mm2_direct, size_t amx_wsp_bytes) {
-        const size_t scores_bytes
-                = align64(item_q_rows * ld_scores * sizeof(float));
-        const size_t pv_bytes
-                = mm2_direct ? 0 : align64(item_q_rows * ld_pv * sizeof(float));
-        const size_t prob_bytes
-                = has_prob ? align64(item_q_rows * ld_prob * prob_dt_size_) : 0;
-        pv = scores_bytes;
-        prob = pv + pv_bytes;
-        amx_wsp = prob + prob_bytes;
-        size = amx_wsp + amx_wsp_bytes;
-    }
-
-private:
-    static size_t align64(size_t n) {
-        return (n + 63) & ~static_cast<size_t>(63);
-    }
-
-    size_t prob_dt_size_ = 0;
 };
 
 // Layout of the split_kv schedule. mm1 and mm2 split seq_kv into mm1_chunks
@@ -232,10 +160,15 @@ struct sdpa_full_softmax_brgemm_t {
 };
 
 // Derived compute configuration: the JIT-free arithmetic (query/KV blocking,
-// per-thread + global scratch layout). Computed once by configure() and owned
-// by the primitive_desc, which also sizes its scratchpad from this config.
+// per-thread + global scratch layout). Computed once by configure() from the
+// pd and owned by the primitive_desc, which also sizes its scratchpad from
+// this config. Problem shapes, data types and strides are not duplicated
+// here; they are read from the pd.
 struct sdpa_full_softmax_conf_t {
-    sdpa_full_softmax_params_t params;
+    // Supported mm1 (QK^T) post-ops, applied in order: scale then attention
+    // mask. Select is handled separately. These ops are sliced to the query-tile
+    // shape and folded into the BRGEMM store. Empty when mm1 has no post-ops.
+    std::vector<sdpa_mm1_post_op_t> mm1_post_ops;
     // Resolved strategies (never `any`).
     sdpa_full_softmax_schedule_t schedule
             = sdpa_full_softmax_schedule_t::per_head;
@@ -286,7 +219,7 @@ struct sdpa_full_softmax_conf_t {
     // Fold non-inverted select into mm1 for dense condition rows or a single
     // query row.
     bool mm1_select_postop = false;
-    size_t amx_wsp_bytes = 0;
+    size_t brg_wsp_bytes = 0;
     sdpa_full_softmax_thread_scratch_t thread_scratch;
     // The scratchpad holds one block per thread followed by a shared area.
     size_t scratch_per_thread = 0;
@@ -296,10 +229,9 @@ struct sdpa_full_softmax_conf_t {
     sdpa_full_softmax_brgemm_t brgemm;
     sdpa_full_softmax_split_kv_t split_kv;
 
-    // The optional copy descriptors describe whole tensors packed ahead into
-    // the shared scratch area.
-    utils::optional_t<tensor_copy_desc_t> q_copy_desc, k_copy_desc, v_copy_desc,
-            o_copy_desc, cond_copy_desc;
+    // The optional copy descriptors describe whole K / V tensors packed ahead
+    // into the shared scratch area.
+    utils::optional_t<tensor_copy_desc_t> k_copy_desc, v_copy_desc;
     // Tile buffers for packing per tile: scratch_offset is relative to the
     // thread's scratch block, padded_k is that of a full (non-tail) tile.
     utils::optional_t<tensor_copy_desc_t> k_tile_desc, v_tile_desc;
@@ -347,19 +279,20 @@ struct sdpa_full_softmax_kernels_t {
 namespace sdpa_full_softmax {
 
 // Compute the derived configuration (query/KV blocking, per-thread + global
-// scratch layout) and build the finalized BRGEMM descriptors. JIT-free, so a
-// primitive_desc can size its scratchpad without compiling kernels.
-status_t configure(const sdpa_full_softmax_params_t &params,
+// scratch layout) and build the finalized BRGEMM descriptors from the pd's
+// shapes, data types and strides. JIT-free, so a primitive_desc can size its
+// scratchpad without compiling kernels.
+status_t configure(const sdpa_pd_t &pd, const sdpa_full_softmax_knobs_t &knobs,
         sdpa_full_softmax_conf_t &conf);
 
 // JIT-compile the BRGEMM + softmax kernels from the configuration produced by
 // configure(), into `kernels`. The engine instantiates the reused jit softmax
 // kernel; the execute path stays engine-free.
-status_t create_kernels(cpu_isa_t isa_for_ir,
+status_t create_kernels(cpu_isa_t isa_for_ir, const sdpa_pd_t &pd,
         const sdpa_full_softmax_conf_t &conf, engine_t *engine,
         sdpa_full_softmax_kernels_t &kernels);
 
-status_t execute(const sdpa_full_softmax_conf_t &conf,
+status_t execute(const sdpa_pd_t &pd, const sdpa_full_softmax_conf_t &conf,
         const sdpa_full_softmax_kernels_t &kernels,
         const sdpa_full_softmax_run_args_t &args, int nthr);
 

@@ -89,3 +89,5 @@
 # AMX relaxed accumulation used the bf16/f16 dst as the K-chunk C buffer for int8 too, which gave wrong results.
 --reset --impl=brg --dt=s8:u4:f16 --attr-acc-mode=relaxed 64x4096:4096x64_n"int8_relaxed_acc_mode"
 --reset --impl=brg --dt=u8:u8:bf16 --attr-acc-mode=any --attr-scales=wei:per_ocic:f32:128x1 64x4096:4096x64_n"int8_any_acc_mode"
+# runtime M with padded (non-dense) row-major src strides
+--reset --dt=bf16:bf16:bf16,u8:s8:u8 --dtag=ab --strides=100x1:: --runtime_dims_masks=1:0 37x77:77x50_n"runtime_m_padded_src_strides"

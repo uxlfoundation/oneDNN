@@ -49,7 +49,12 @@ struct matmul_helper_t {
 
     char transA() const {
         const auto &strides = &src_md_.blocking_desc().strides[ndims() - 2];
-        return (strides[1] == 1 && src_md_.dims()[ndims() - 2] > 1) ? 'N' : 'T';
+        const dim_t src_M = src_md_.dims()[ndims() - 2];
+        // A runtime M is not known to be degenerate (M == 1), so the layout
+        // is defined by the strides alone.
+        return (strides[1] == 1 && (is_runtime_value(src_M) || src_M > 1))
+                ? 'N'
+                : 'T';
     }
 
     char transB() const {

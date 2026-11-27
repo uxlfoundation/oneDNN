@@ -58,9 +58,32 @@ register_exe(${TEST_EXE}_isa_compat
 list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_isa_compat.cpp)
 
 # Register SDPA tests as a separate executable due to their runtime
-register_exe(${TEST_EXE}_sdpa
-        "${MAIN_SRC_GTEST};${CMAKE_CURRENT_SOURCE_DIR}/test_sdpa.cpp;${CMAKE_CURRENT_SOURCE_DIR}/test_utils.cpp"
-        "test" "dnnl_gtest")
+if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_GPU_VENDOR STREQUAL "INTEL")
+    get_property(LIB_DEPS GLOBAL PROPERTY DNNL_LIB_DEPS)
+    add_executable(${TEST_EXE}_sdpa
+            ${MAIN_SRC_GTEST}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_sdpa.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_utils.cpp
+            ${LIB_DEPS})
+    target_include_directories(${TEST_EXE}_sdpa PRIVATE
+            ${PROJECT_SOURCE_DIR}/src/gpu/intel/gemm/jit/include
+            ${PROJECT_SOURCE_DIR}/src/gpu/intel/jit/config
+            ${PROJECT_SOURCE_DIR}/third_party/ngen)
+    set_target_properties(${TEST_EXE}_sdpa PROPERTIES CXX_STANDARD 17)
+    get_property(STATIC_LIB_DEPS GLOBAL PROPERTY DNNL_SUBDIR_EXTRA_STATIC_LIBS)
+    get_property(SHARED_LIB_DEPS GLOBAL PROPERTY DNNL_SUBDIR_EXTRA_SHARED_LIBS)
+    target_link_libraries(${TEST_EXE}_sdpa
+            dnnl_gtest
+            ${EXTRA_SHARED_LIBS}
+            ${EXTRA_STATIC_LIBS}
+            ${STATIC_LIB_DEPS}
+            ${SHARED_LIB_DEPS})
+    add_dnnl_test(${TEST_EXE}_sdpa ${TEST_EXE}_sdpa)
+else()
+    register_exe(${TEST_EXE}_sdpa
+            "${MAIN_SRC_GTEST};${CMAKE_CURRENT_SOURCE_DIR}/test_sdpa.cpp;${CMAKE_CURRENT_SOURCE_DIR}/test_utils.cpp"
+            "test" "dnnl_gtest")
+endif()
 list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_sdpa.cpp)
 
 # Register separate-executable X64-only tests

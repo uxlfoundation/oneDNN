@@ -83,8 +83,10 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 
     Txo_int = Txo.isInteger() ? Tx.asSignedInt() : Tx;
     Txs_int = Tx;
-    if (Tx == Type::bf16 && !pureBf16)
+    if (Tx == Type::bf16 && !pureBf16) {
         Txs_int = Type::f32;
+        if (Txo_int == Type::bf16 && hw < HW::Xe3p) Txo_int = Type::f32;
+    }
     Txg_int = Txg;
 
     int cpoDiv = 1;
@@ -726,7 +728,7 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
 
     auto Tx_int = xo2DEarly ? Txo_int : Tdst;
 
-    if (xo2DEarly && !xs2D && (Txo_int.bits() > Tdst.bits()))
+    if (xo2DEarly && (Tdst == Type::bf16 || !xs2D) && (Txo_int.bits() > Tdst.bits()))
         Tx_int = Tdst;
 
     int offR = doA ? 0 : h % kab_repack;

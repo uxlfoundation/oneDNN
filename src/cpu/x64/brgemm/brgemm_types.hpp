@@ -549,7 +549,17 @@ struct brgemm_desc_t {
         const dim_t row_bytes = static_cast<dim_t>(rd_block) * LDA * typesize_A;
         const bool f32_pf
                 = is_f32 && isa_impl == avx2 && rdb >= 32 && row_bytes >= 2048;
-        return f32_pf ? pf_rd_blocks : 0;
+        if (!f32_pf) return 0;
+        constexpr int long_pf_rd_blocks = 16;
+        // The prefetch instruction uses a signed 32-bit displacement.
+        const dim_t max_prefetch_disp = std::numeric_limits<int>::max();
+        const dim_t max_block_offset
+                = static_cast<dim_t>(bd_block) * typesize_A;
+        // Longer lead may hide latency for long, widely strided reductions.
+        const bool long_prefetch = rdb >= 4096 && row_bytes >= 4096
+                && row_bytes <= (max_prefetch_disp - max_block_offset)
+                                / long_pf_rd_blocks;
+        return long_prefetch ? long_pf_rd_blocks : pf_rd_blocks;
     }
 
     // Returns true if GEMV uses a single scale value.

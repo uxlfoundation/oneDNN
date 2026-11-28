@@ -86,19 +86,20 @@ inline constexpr int mmla_bd_blk() {
 inline constexpr int mmla_ld_blk() {
     return 2;
 }
-// BFMMLA consumes K4 chunks of 8 bytes; two chunks form a K8 block.
-inline constexpr int mmla_rd_chunk_bytes() {
-    return 8;
-}
-inline constexpr int mmla_rd_block() {
-    return 8;
-}
-
+// Each instruction consumes 8 bytes from each A row.
 inline constexpr int mmla_rd_chunk_elems(int dt_a_sz) {
-    return mmla_rd_chunk_bytes() / dt_a_sz;
+    return 8 / dt_a_sz;
 }
-inline constexpr int mmla_rd_chunks_per_block(int dt_a_sz) {
-    return mmla_rd_block() / mmla_rd_chunk_elems(dt_a_sz);
+inline constexpr int mmla_rd_chunks_per_block() {
+    return 2;
+}
+// Two K chunks per compute step: K8 for BF16, K16 for INT8.
+inline constexpr int mmla_rd_block(int dt_a_sz) {
+    return mmla_rd_chunks_per_block() * mmla_rd_chunk_elems(dt_a_sz);
+}
+// Weight storage is blocked by K8 for both datatypes.
+inline constexpr int mmla_wei_k_block() {
+    return 8;
 }
 
 // Preferred blocking for large plain-A problems: 24 accumulator registers.
@@ -112,9 +113,9 @@ inline int mmla_n_block(cpu_isa_t isa) {
     return mmla_default_ld_block2_plain_a() * simd_elems(data_type::f32, isa);
 }
 
-// Small OpenMP workloads can favor BFDOT. Scale the measured crossover by
-// the ISA-specific N tile while leaving the requested thread team unchanged.
-inline bool has_sufficient_mmla_work(double work, int nthr, int n_block) {
+// Small OpenMP workloads can favor BFDOT. Scale the work threshold by
+// the ISA-specific N tile without changing the requested thread team.
+inline bool has_sufficient_bf16_mmla_work(double work, int nthr, int n_block) {
     return DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_OMP || nthr <= 1
             || work >= 16. * 1024 * n_block * nthr;
 }

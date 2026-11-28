@@ -18,6 +18,8 @@
 
 #include "cpu/aarch64/jit_brgemm_conv_comp_pad_kernel.hpp"
 
+#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -40,8 +42,10 @@ jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::
     : jcp_(ajcp)
     , inp_dsz_(jcp_.wei_dsz)
     , out_dsz_(jcp_.acc_dsz)
-    , nb_ic_(utils::div_up(jcp_.ic, 4))
-    , inp_ic_sz_(static_cast<size_t>(inp_dsz_) * jcp_.oc_block * 4)
+    , ic_block_(jcp_.use_mmla ? brgemm_utils::mmla_wei_k_block()
+                              : data_type_vnni_granularity(data_type::s8))
+    , nb_ic_(utils::div_up(jcp_.ic, ic_block_))
+    , inp_ic_sz_(static_cast<size_t>(inp_dsz_) * jcp_.oc_block * ic_block_)
     , inp_kw_sz_(static_cast<size_t>(inp_dsz_) * jcp_.icp * jcp_.oc_block)
     , inp_kh_sz_(static_cast<size_t>(jcp_.kw) * inp_kw_sz_)
     , inp_kd_sz_(static_cast<size_t>(jcp_.kh) * inp_kh_sz_)
@@ -56,7 +60,7 @@ size_t jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::out_oc_offset(
 template <cpu_isa_t isa>
 size_t jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::inp_ic_offset(
         const int m_block, const int icb, const int m, const int n) const {
-    return static_cast<size_t>(inp_dsz_) * n * m_block2_ * last_ic_block_
+    return static_cast<size_t>(inp_dsz_) * n * m_block2_ * ic_block_
             + ((icb * m_block) + m) * inp_ic_sz_;
 }
 
@@ -69,12 +73,17 @@ Xbyak_aarch64::ZReg jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::accum(
 template <cpu_isa_t isa>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::store_accumulators(
         const int m_block, const int n_block) {
+    // Combine input-channel partial sums before updating the buffers.
+    for (int n = 0; n < n_block; ++n) {
+        auto sum = accum(n_block, 0, n);
+        for (int m = 1; m < m_block; ++m)
+            add(sum.s, sum.s, accum(n_block, m, n).s);
+    }
     if (jcp_.src_zero_point) {
-        for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             str(vmm_zp_shift, ptr(sp, -1, MUL_VL));
 
-            auto vmm = accum(n_block, m, n);
+            auto vmm = accum(n_block, 0, n);
             auto vmm_tmp = vmm_tmp_1();
             auto vmm_zp = vmm_zp_shift;
             ldr(vmm_tmp, ptr(sp, -1, MUL_VL));
@@ -90,11 +99,10 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::store_accumulators(
     }
 
     if (jcp_.s8s8_compensation_required) {
-        for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             str(vmm_cp_shift, ptr(sp, -1, MUL_VL));
 
-            auto vmm = accum(n_block, m, n);
+            auto vmm = accum(n_block, 0, n);
             auto vmm_tmp = vmm_tmp_1();
             auto vmm_zp = vmm_cp_shift;
             ldr(vmm_tmp, ptr(sp, -1, MUL_VL));
@@ -132,8 +140,20 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::compute(const int ic_step,
             auto vmm = accum(n_block, m, n);
             const auto oc_offset = inp_ic_offset(m_block, ic, m, n);
             add_imm(X_DEFAULT_ADDR, reg_aux_in, oc_offset, X_TMP_0);
-            ldr(vmm_tmp, ptr(X_DEFAULT_ADDR));
-            sdot(vmm.s, vmm_one_bytes.b, vmm_tmp.b);
+            if (jcp_.use_mmla) {
+                const auto vmm_b0 = zmm_one_words;
+                const auto vmm_b1 = zmm_int8_temp;
+                ldr(vmm_b0, ptr(X_DEFAULT_ADDR));
+                ldr(vmm_b1, ptr(X_DEFAULT_ADDR, 1, MUL_VL));
+                // Sum the two K4 halves of each MMLA-packed K8 column.
+                uzp1(vmm_tmp.s, vmm_b0.s, vmm_b1.s);
+                uzp2(vmm_b1.s, vmm_b0.s, vmm_b1.s);
+                sdot(vmm.s, vmm_one_bytes.b, vmm_tmp.b);
+                sdot(vmm.s, vmm_one_bytes.b, vmm_b1.b);
+            } else {
+                ldr(vmm_tmp, ptr(X_DEFAULT_ADDR));
+                sdot(vmm.s, vmm_one_bytes.b, vmm_tmp.b);
+            }
         }
     }
 }
@@ -221,7 +241,7 @@ int jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::compute_ic_step(
                 / ((n_block + blocks) * max_ic_step);
         const float block_eff = block_disb * eff;
         float block_footprint = static_cast<float>(inp_dsz_) * blocks
-                * jcp_.oc_block * last_ic_block_;
+                * jcp_.oc_block * ic_block_;
         if (block_footprint <= static_cast<float>(
                     platform::get_per_core_cache_size(1))
                 && (block_eff > best_block_eff)) {
@@ -258,8 +278,13 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::generate() {
         dup(zmm_one_words.h, reg32_scratch);
     }
 
-    const int max_regs = isa_max_regs
-            - (is_int8_sve ? 6 : (jcp_.s8s8_compensation_required ? 4 : 3));
+    int reserved_regs = 3;
+    // MMLA reuses z26-z27 for weight sums, leaving z0-z25 for accumulators.
+    if (jcp_.use_mmla || is_int8_sve)
+        reserved_regs = 6;
+    else if (jcp_.s8s8_compensation_required)
+        reserved_regs = 4;
+    const int max_regs = isa_max_regs - reserved_regs;
     const int nb = div_up(nstl::min(jcp_.oc, jcp_.oc_block), m_block2_);
     const int nb2 = nb / n_max_regs_;
     const int nb2_tail = nb % n_block2_;

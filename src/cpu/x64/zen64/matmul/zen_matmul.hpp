@@ -28,6 +28,7 @@
 #include "cpu/gemm_inner_product_utils.hpp"
 #include "cpu/matmul/cpu_matmul_pd.hpp"
 #include "cpu/x64/zen64/common/zen_post_ops_fallback.hpp"
+#include "cpu/x64/zen64/common/zen_unpack_fallback.hpp"
 
 #if DNNL_X64_USE_ZEN
 #include "lowoha_operators/matmul/lowoha_common.hpp"
@@ -65,13 +66,22 @@ struct zen_matmul_t : public primitive_t {
             return post_ops_fallback_;
         }
 
+        // Enabled for prepacked weights the Zen kernel cannot execute; then
+        // the whole problem runs through it.
+        const zen::unpack_fallback_t &unpack_fallback() const {
+            return unpack_fallback_;
+        }
+
     private:
+        status_t init_zen(const engine_t *engine);
         status_t init_post_ops(const engine_t *engine, bool wei_already_packed);
+        status_t init_unpack_fallback(const engine_t *engine);
         bool pp_kernel_ok(const post_ops_t &post_ops) const;
 
         // The suffix shows in verbose output that post-ops run after the Zen
         // kernel and how.
         const char *impl_name() const {
+            if (unpack_fallback_.enabled()) return unpack_fallback_.name();
             if (use_pp_kernel_) return "zen:matmul:f32|bf16|f16:amd+pp_kernel";
             if (!post_ops_fallback_.empty())
                 return "zen:matmul:f32|bf16|f16:amd+post_ops_fallback";
@@ -83,6 +93,7 @@ struct zen_matmul_t : public primitive_t {
         bool use_pp_kernel_ = false;
         primitive_attr_t pp_attr_;
         zen::post_ops_fallback_t post_ops_fallback_;
+        zen::unpack_fallback_t unpack_fallback_;
     };
 
     zen_matmul_t(const pd_t *apd) : primitive_t(apd) {}
@@ -103,6 +114,8 @@ private:
             pp_kernel_;
     // Copy of the pd's fallback that owns the nested post-op primitives.
     zen::post_ops_fallback_t post_ops_fallback_;
+    // Copy of the pd's unpack fallback that owns the nested primitives.
+    zen::unpack_fallback_t unpack_fallback_;
 
 #if DNNL_X64_USE_ZEN
     // Pre-built Zen post-op chain. Owned by the primitive (never copied

@@ -24,6 +24,7 @@
 #include "common/type_helpers.hpp"
 
 #include "cpu/matmul/cpu_matmul_pd.hpp"
+#include "cpu/x64/zen64/common/zen_unpack_fallback.hpp"
 
 #if DNNL_X64_USE_ZEN
 #include "lowoha_operators/matmul/lowoha_common.hpp"
@@ -61,24 +62,38 @@ struct zen_lowp_scale_info_t {
 //     apply_to_int and prepacked weights; wei scale per-channel-N or grouped
 //     along K; s8 wei zp required for u4, rejected for s4.
 //   bias (both): f32/bf16, 1xN.
-// Weights must be passed in a plain ab/ba layout (abc/acb with a batch):
-// format_any and prepacked (zen_packed) weights are declined, so WOQ declines
+// int8 weights are plain ab/ba (abc/acb with a batch) or prepacked
+// (zen_packed); format_any selects zen_packed. Prepacked weights this
+// implementation cannot execute run through unpack_fallback(). WOQ declines
 // to the next implementation.
 struct zen_lowp_matmul_t : public primitive_t {
     struct pd_t : public ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t {
         using ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
 
-        DECLARE_COMMON_PD_T("zen:matmul:lowp:amd", zen_lowp_matmul_t);
+        DECLARE_COMMON_PD_T(impl_name(), zen_lowp_matmul_t);
 
         status_t init(const engine_t *engine);
 
+        const zen::unpack_fallback_t &unpack_fallback() const {
+            return unpack_fallback_;
+        }
+
     private:
+        status_t init_lowp(const engine_t *engine);
+
+        const char *impl_name() const {
+            return unpack_fallback_.enabled() ? unpack_fallback_.name()
+                                              : "zen:matmul:lowp:amd";
+        }
+
         // Weight-only-quantization (WOQ / weight decompression) validation:
         // bf16 source with s4/u4 weights dequantized via weight scales
         // (per-channel or per-group along K) and a u4 weight zero-point,
         // which is required for u4 and rejected for s4. Called from init()
         // on the WOQ branch.
         status_t init_woq(const engine_t *engine);
+
+        zen::unpack_fallback_t unpack_fallback_;
     };
 
     zen_lowp_matmul_t(const pd_t *apd) : primitive_t(apd) {}
@@ -94,6 +109,9 @@ struct zen_lowp_matmul_t : public primitive_t {
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t execute_body(const exec_ctx_t &ctx) const;
+
+    // Copy of the pd's unpack fallback that owns the nested primitives.
+    zen::unpack_fallback_t unpack_fallback_;
 
 #if DNNL_X64_USE_ZEN
     // Pre-built Zen post-op chain. Owned by the primitive (never copied by the

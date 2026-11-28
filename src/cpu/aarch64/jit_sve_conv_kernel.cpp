@@ -4393,6 +4393,17 @@ status_t jit_sve_conv_bwd_weights_kernel_f32_t<isa>::init_conf(
             && jcp.oc <= diff_weights_d.padded_dims()[with_groups + 0];
     if (!args_ok) return status::unimplemented;
 
+    // Match the small-problem thread cap in the specialized 1x1 BWD_W
+    // kernel, since this implementation can also handle those convolutions.
+    if (isa == sve_128 && jcp.ngroups == 1 && jcp.mb == 1 && jcp.ic <= 64
+            && jcp.oc <= 64
+            && everyone_is(1, jcp.kd, jcp.kh, jcp.kw, jcp.stride_d,
+                    jcp.stride_h, jcp.stride_w)) {
+        const dim_t macs = static_cast<dim_t>(jcp.mb) * jcp.ic * jcp.oc * jcp.od
+                * jcp.oh * jcp.ow;
+        if (macs <= 64 * 1024) jcp.nthr = jcp.aligned_threads = 1;
+    }
+
     int nthr, nthr_mb, nthr_g, nthr_oc_b, nthr_ic_b;
     if (jcp.harness == harness_nxc) {
         // The harness_nxc is quite different from the other kernels. The

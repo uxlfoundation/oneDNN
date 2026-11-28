@@ -221,11 +221,12 @@ struct dnn_mem_t {
     // Initializes memory descriptor for host scalar memory.
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_host_scalar_md(
             dnnl_data_type_t data_type);
-    // Initializes memory descriptor for grouped encoding.
+    // Initializes memory descriptor for grouped encoding, empty strides give
+    // the default layout.
     static dnnl_status_t init_grouped_md(
             benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> &md, int ndims,
             const dnnl_dims_t dims, dnnl_data_type_t data_type,
-            int variable_dim_idx, dnnl_dim_t group_count,
+            dnnl_dim_t total, const dims_t &strides,
             dnnl_data_type_t offsets_dt = dnnl_s32);
 
     /* fields */
@@ -281,6 +282,10 @@ using dnn_mem_map_t = std::unordered_map<int, dnn_mem_t>;
 bool has_sparse_md(const dnn_mem_map_t &dnn_mem_map);
 
 bool has_grouped_encoding(const_dnnl_memory_desc_t md);
+
+// Fills `dims` with the dims of `md`. A grouped md runs over `total` along its
+// variable dim, and a `mask` covering that dim fuses the group dim into it
+void get_logical_dims(const_dnnl_memory_desc_t md, dnnl_dims_t dims, int &mask);
 
 dnnl_memory_desc_t clone_md(const_dnnl_memory_desc_t md);
 

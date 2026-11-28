@@ -1,0 +1,20 @@
+# Grouped shapes in the 3D form of the library descriptor, with G first, as
+# oneDNN verbose prints them
+
+# Variable M: src {G, total_M, K}, dense weights {G, K, N}
+--reset
+--dt=f32:f32:f32,bf16:bf16:bf16
+--wtag=abx --dtag=abx
+--grouped=0:4:4+12+0+16
+4x32x64:4x64x48
+--grouped=0:4:balanced
+4x40x64:4x64x48
+
+# Variable K: src {G, M, total_K}, weights {G, total_K, N}
+--reset
+--dt=f32:f32:f32,bf16:bf16:bf16
+--dtag=abx
+--grouped=1:4:16+48+0+64
+4x24x128:4x128x40
+--grouped=1:4:balanced
+4x24x96:4x96x40

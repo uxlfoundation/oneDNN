@@ -120,7 +120,8 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeSubByte) {
     const int ngroups = 3;
     for (auto data_type : sub_byte_types) {
         auto ref_size = (data_type == dt::u2) ? ref_size_2 : ref_size_4;
-        auto md = memory::desc::grouped({M, K}, data_type, 0, ngroups);
+        auto md = memory::desc::grouped(
+                {ngroups, DNNL_VARIABLE_DIM_VAL, K}, data_type, M);
         ASSERT_EQ(md.get_size(0), ref_size)
                 << "Grouped size(0) mismatch for dt="
                 << static_cast<int>(data_type);
@@ -161,7 +162,8 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeU3) {
         const int ngroups = std::get<2>(c);
         const size_t nelems = static_cast<size_t>(M) * K;
         const size_t ref_size = (nelems + 7) / 8 * 3;
-        auto md = memory::desc::grouped({M, K}, dt::u3, 0, ngroups);
+        auto md = memory::desc::grouped(
+                {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::u3, M);
         ASSERT_EQ(md.get_size(0), ref_size)
                 << "u3 grouped size(0) mismatch for nelems=" << nelems;
     }

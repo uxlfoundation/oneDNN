@@ -188,13 +188,44 @@ int verify_input(const settings_t &s, const settings_t &def) {
     return OK;
 }
 
+// A grouped src, and the weights of variable K, may also come in the 3D form
+// of the library descriptor that verbose prints, with G first. Dropping G
+// gives the 2D form the driver uses
+int drop_group_dim(settings_t &s) {
+    const auto &so = s.sparse_options[0];
+    if (!so.is_grouped(DNNL_ARG_SRC)) return OK;
+
+    const bool is_var_K = so.get_variable_dim_idx(DNNL_ARG_SRC) == 1;
+    auto vdims = s.prb_vdims.vdims;
+    bool dropped = false;
+    for (int i = 0; i < (is_var_K ? 2 : 1); i++) {
+        if (vdims[i].size() != 3) continue;
+        // All grouped configs run with this shape
+        for (const auto &i_so : s.sparse_options) {
+            if (!i_so.is_grouped(DNNL_ARG_SRC)
+                    || vdims[i][0] == i_so.get_group_count())
+                continue;
+            BENCHDNN_PRINT(0,
+                    "ERROR: grouped %s dim 0 (%lld) doesn't match the number "
+                    "of groups (%lld)\n",
+                    i == 0 ? "src" : "wei", (long long)vdims[i][0],
+                    (long long)i_so.get_group_count());
+            SAFE_V(FAIL);
+        }
+        vdims[i].erase(vdims[i].begin());
+        dropped = true;
+    }
+    if (dropped) s.prb_vdims = prb_vdims_t(vdims, s.prb_vdims.name);
+    return OK;
+}
+
 // Validate input consistency for grouped encoding
 //
 // Two configurations are supported:
-//  - 2Dx3D with variable_dim_idx=0: src is [total_M, K] with dim 0
+//  - variable M with variable_dim_idx=0: src is [total_M, K] with dim 0
 //    variable (row-major), wei is dense 3D [G, K, N],
 //    dst is [total_M, N] with dim 0 variable,
-//  - 2Dx2D with variable_dim_idx=1: src is [M, total_K] with dim 1
+//  - variable K with variable_dim_idx=1: src is [M, total_K] with dim 1
 //    variable (col-major), wei is [total_K, N] with dim 0
 //    variable (row-major), dst is dense 3D [G, M, N]
 int verify_grouped_input(const settings_t &s) {
@@ -205,8 +236,8 @@ int verify_grouped_input(const settings_t &s) {
 
     if (variable_dim_idx != 0 && variable_dim_idx != 1) {
         BENCHDNN_PRINT(0,
-                "ERROR: grouped encoding supports dim 0 (2Dx3D) or "
-                "dim 1 (2Dx2D , got dim %d\n",
+                "ERROR: grouped encoding supports dim 0 (variable M) or "
+                "dim 1 (variable K), got dim %d\n",
                 variable_dim_idx);
         SAFE_V(FAIL);
     }
@@ -214,19 +245,19 @@ int verify_grouped_input(const settings_t &s) {
     // The variable dim is encoded in the src tensor at variable_dim_idx
     const auto &src_dims = s.prb_vdims.vdims[0];
 
-    // The 2Dx2D variant additionally requires wei dim 0 == src dim 1
+    // The variable K variant additionally requires wei dim 0 == src dim 1
     // (i.e., shared contraction dim)
     if (variable_dim_idx == 1) {
         const auto &wei_dims = s.prb_vdims.vdims[1];
         if (wei_dims.size() != 2) {
             BENCHDNN_PRINT(0, "%s\n",
-                    "ERROR: 2Dx2D variant (variable_dim_idx=1) requires 2D "
-                    "weights with shape [total_K, N]");
+                    "ERROR: variable K variant (variable_dim_idx=1) requires "
+                    "2D weights with shape [total_K, N]");
             SAFE_V(FAIL);
         }
         if (wei_dims[0] != src_dims[1]) {
             BENCHDNN_PRINT(0,
-                    "ERROR: 2Dx2D variant wei dim 0 (%lld) must match src "
+                    "ERROR: variable K variant wei dim 0 (%lld) must match src "
                     "dim 1 (%lld)\n",
                     (long long)wei_dims[0], (long long)src_dims[1]);
             SAFE_V(FAIL);
@@ -267,7 +298,7 @@ static const std::string help_bia_mask
           "which bias dimensions coincide with C matrix dimensions, when `1` "
           "is on a correspondent dimension.\n    Note: for grouped matmul "
           "(--grouped) only `bia_mask=2` (N-only) is supported; the bias "
-          "shape becomes `[G, N]` (one value per column per expert).\n";
+          "shape becomes `[G, 1, N]` (one value per column per expert).\n";
 
 static const std::string help_runtime_dims_masks
         = "UINT:UINT    (Default: `0:0`)\n    Specifies a bit-mask for "
@@ -354,6 +385,7 @@ int bench(int argc, char **argv) {
             catch_unknown_options(argv[0]);
 
             parse_prb_vdims(s.prb_vdims, argv[0]);
+            SAFE(drop_group_dim(s), WARN);
 
             SAFE(verify_input(s, def), WARN);
             SAFE(verify_grouped_input(s), WARN);

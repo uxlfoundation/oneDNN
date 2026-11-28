@@ -77,9 +77,9 @@ void grouped_matmul_example(engine::kind engine_kind) {
     }
     std::cout << " tokens per expert)" << std::endl;
 
-    // src is [total_tokens, K] with grouped encoding
+    // src is {num_experts, *, K} with grouped encoding, total_tokens rows
     // wei is [num_experts, K, N] with standard 3D format
-    // dst is [total_tokens, N] with grouped encoding
+    // dst is {num_experts, *, N} with grouped encoding, total_tokens rows
     const memory::dim K = 64; // Input feature dimension
     const memory::dim N = 128; // Output feature dimension
 
@@ -103,15 +103,16 @@ void grouped_matmul_example(engine::kind engine_kind) {
     std::vector<uint16_t> dst_data(total_tokens * N, 0);
 
     // Create memory descriptors with grouped encoding
-    // variable_dim_idx=0 indicates M dimension varies per group
-    memory::dims src_dims = {total_tokens, K};
+    // DNNL_VARIABLE_DIM_VAL marks M as the dimension varying per group, and
+    // total_tokens is its size summed over all groups
+    memory::dims src_dims = {num_experts, DNNL_VARIABLE_DIM_VAL, K};
     memory::dims weights_dims = {num_experts, K, N};
-    memory::dims dst_dims = {total_tokens, N};
+    memory::dims dst_dims = {num_experts, DNNL_VARIABLE_DIM_VAL, N};
 
     auto src_md = memory::desc::grouped(
-            src_dims, memory::data_type::f8_e4m3, 0, num_experts);
+            src_dims, memory::data_type::f8_e4m3, total_tokens);
     auto dst_md = memory::desc::grouped(
-            dst_dims, memory::data_type::bf16, 0, num_experts);
+            dst_dims, memory::data_type::bf16, total_tokens);
     auto weights_md = memory::desc(
             weights_dims, memory::data_type::f8_e4m3, memory::format_tag::acb);
 
@@ -137,8 +138,8 @@ void grouped_matmul_example(engine::kind engine_kind) {
     primitive_attr matmul_attr;
 
     // Row-wise (per-token) src scales: one f32 scale per token.
-    // The buffer is concatenated across experts, mirroring how src tokens
-    // are concatenated in the grouped src memory.
+    // The mask covers the experts and the tokens, and the buffer runs over the
+    // tokens of all experts, mirroring the grouped src memory.
     std::vector<float> src_scales(total_tokens);
     for (int32_t i = 0; i < total_tokens; ++i)
         src_scales[i] = 1.0f + (i % 100) / 500.0f;
@@ -147,7 +148,7 @@ void grouped_matmul_example(engine::kind engine_kind) {
             {total_tokens}, memory::data_type::f32, memory::format_tag::a);
     auto src_scales_mem = memory(src_scales_md, eng);
     write_to_dnnl_memory(src_scales.data(), src_scales_mem);
-    matmul_attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0));
+    matmul_attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0) | (1 << 1));
 
     // Column-wise wei scales: per-expert and per-column
     std::vector<float> wei_scales(num_experts * N);

@@ -425,9 +425,9 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
 
                 // parse tag input - processed for both src1/2 tensors.
                 //
-                // WARNING: "grouped" in the tag position means post-op tensor
-                // follows dst layout (e.g., offsets, layout, strides),
-                // in this case tag is left as default (any)
+                // WARNING: "grouped" in the tag position makes the post-op
+                // tensor grouped with the dst groups and offsets, in the
+                // default layout, in this case tag is left as default (any)
                 const auto tag_str = get_substr(s, src_subpos, delim);
                 if (tag_str == "grouped") {
                     e.binary.grouped = true;
@@ -1111,10 +1111,10 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         }
 
         // Set grouped encoding based on the src varying dim:
-        //  - dim 0 (M varies, 2Dx3D variant)
+        //  - dim 0 (variable M)
         //    src is [total_M, K] (var_dim_idx=0),  wei is dense [G, K, N],
         //    dst is [total_M, N] (var_dim_idx=0)
-        //  - dim 1 (K/contraction varies, 2Dx2D variant)
+        //  - dim 1 (variable K, the contraction dim)
         //    src is [M, total_K] (var_dim_idx=1), wei is [total_K, N] (var_dim_idx=0),
         //    dst is dense 3D [G, M, N]
         gd_t gd;
@@ -1128,7 +1128,7 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         }
         gd.variable_dim_idx = variable_dim_idx;
         v.set_grouped(DNNL_ARG_SRC, gd);
-        // dst (for 2Dx3D) / weights (for 2Dx2D) vary along dim 0
+        // dst (for variable M) / weights (for variable K) vary along dim 0
         gd.variable_dim_idx = 0;
         v.set_grouped(
                 variable_dim_idx == 0 ? DNNL_ARG_DST : DNNL_ARG_WEIGHTS, gd);

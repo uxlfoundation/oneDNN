@@ -809,19 +809,13 @@ int measure_perf(
 
 std::vector<float> prepare_po_vals(const dnn_mem_t &dst_m, const args_t &args,
         const std::vector<std::pair<int, int>> &v_po_masks,
-        const size_t dst_off, int64_t group_id) {
+        const size_t dst_off) {
     if (v_po_masks.empty()) return std::vector<float>();
 
     std::vector<float> v_vals(v_po_masks.size());
 
     for (size_t d = 0; d < v_po_masks.size(); ++d) {
-        // For grouped memory, mask == 0 is overloaded to mean per-group:
-        // a single value per concatenated group, indexed by group_id
-        //
-        // Note, that group_id is 0 for non-grouped use
-        const auto po_offset = v_po_masks[d].second == 0
-                ? group_id
-                : dst_m.get_idx(dst_off, v_po_masks[d].second);
+        const auto po_offset = dst_m.get_idx(dst_off, v_po_masks[d].second);
         const float val
                 = args.find(v_po_masks[d].first).get_f32_elem(po_offset);
         v_vals[d] = val;
@@ -1654,10 +1648,12 @@ float reorder_rescale_factor() {
 dims_t md2dims(const_dnnl_memory_desc_t md, int mask, bool extend_by_ones,
         const std::vector<int64_t> &groups) {
     auto ndims = query_md_ndims(md);
+    dnnl_dims_t md_dims;
+    get_logical_dims(md, md_dims, mask);
     dims_t dims;
     for (int d = 0; d < ndims; ++d) {
         if (mask & (1 << d)) {
-            dims.push_back(query_md_dims(md)[d]);
+            dims.push_back(md_dims[d]);
             // Note: groups are done for matmul's last two dimensions.
             const auto group_dim = d - (ndims - 2);
             if (!groups.empty() && group_dim >= 0) {

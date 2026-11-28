@@ -1,3 +1,7 @@
 --reset
 --batch=harness_grouped_matmul_generated_ci
 --batch=harness_matmul_grouped_decompression_u3
+--batch=harness_matmul_grouped_3d_shapes
+
+# Explicit group sizes without the max group size hint
+--reset --grouped=0:4:3+5+2+6 16x32:4x32x24

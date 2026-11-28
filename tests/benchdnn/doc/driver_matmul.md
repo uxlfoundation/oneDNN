@@ -27,8 +27,8 @@ where *matmul-knobs* are:
  - `--bia_mask=INT` -- a bit-mask that indicates which bias dimensions are
             broadcasted. 0-bit means broadcast, 1-bit means full dimension.
             Note: for grouped matmul (`--grouped`) only `bia_mask=2`
-            (N-axis only) is supported. The resulting bias shape is `[G, N]`,
-            i.e. one value per output column per expert.
+            (N-axis only) is supported. The resulting bias shape is
+            `[G, 1, N]`, i.e. one value per output column per expert.
  - `--runtime_dims_masks=[INT][:INT]` -- a bit-mask with values for `src` and
             `weights` that indicates whether a dimension is
             `DNNL_RUNTIME_DIM_VAL` (indicated as 1-bit in the corresponding
@@ -48,10 +48,19 @@ where *matmul-knobs* are:
             When `M` is variable, weights must be provided as 3D `[G,K,N]`
             where `G` matches `NUM_GROUPS`. When `K` is variable, weights are
             2D `[total_K,N]` and the destination is 3D `[G,M,N]`.
+            Grouped operands can also be given in the 3D form of the library
+            descriptor that oneDNN verbose prints, with `G` first: `GxMxK`
+            for the source and `GxKxN` for variable `K` weights, where the
+            variable dimension is the total.
             Multiple configs can be comma-separated to iterate over them.
+            Masks of `--attr-scales` and `--attr-zero-points` are over the 3D
+            operands, src `{G, M, K}` and weights `{G, K, N}`: e.g., `src:3`
+            gives row-wise and `src:7` K-grouped src scales.
             Example: `--grouped=0:4:32+0+32+96 160x512:4x512x256`
             means `M` dimension is variable, `4` experts are used, `32, 0, ...`
             are sizes of each group with total `32+0+32+96 = 160`.
+            Example: `--grouped=0:4:32+0+32+96 4x160x512:4x512x256` is the
+            same problem with the source in the 3D form.
             Example: `--grouped=0:4:8+8+8+8:8` specifies max group size of `8`.
             Example: `--grouped=0:4:8+8+8+8,0:3:2+6+8` iterates over two configs.
  - `--grouped=DIM_IDX:NUM_GROUPS:PROFILE[.PARAM][:HINT]` -- alternative form
@@ -73,9 +82,12 @@ where *matmul-knobs* are:
             Example: `--grouped=0:64:balanced:512 512x512:64x512x256`
             Example: `--grouped=0:32:hot.80 256x512:32x512x256`
             Example: `--grouped=0:16:decode 8x512:16x512x256`
-            Note: a binary post-op with `mask = 0` (e.g.
-            `--attr-post-ops=mul:f32:0`) is applied per group (`[G, 1]`,
-            e.g. NVFP4 global scale), not a whole-tensor.
+            Masks of binary post-ops are over the 3D destination `{G, M, N}`:
+            e.g., `mul:f32:1` multiplies by one value per group. A tensor
+            varying along `M` takes `grouped` in the tag position to follow
+            the destination groups: `mul:f32:3:grouped` for one value per
+            row, `mul:f32:7:grouped` for one value per element. Masks without
+            `M` don't take `grouped`.
  - `--gpu-kernel=STR` -- GPU kernel override, passed via a primitive
             attribute. `N` runs the Nth candidate after sort (rank); `A-B` and
             `all` run ranks `A` through `B` or every rank, clamped to the

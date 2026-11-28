@@ -44,7 +44,7 @@ namespace matmul {
 // Which axis of the problem is partitioned by the grouped offsets array.
 //   m_axis: src [total_M, K] and dst [total_M, N] grouped, wei dense 3D
 //           [G, K, N]. The token count varies per expert (MoE forward).
-//           Called 2Dx3D by the common layer.
+//           Called variable M by the common layer.
 //   k_axis: src [M, total_K] and wei [total_K, N] grouped with the same
 //           partition, dst dense 3D [G, M, N]. The contraction dim varies
 //           per group (MoE backward).
@@ -137,11 +137,9 @@ struct grouped_micro_gemm_t : public primitive_t {
 
         // Axis partitioned by the grouped src
         grouped_axis_t axis() const {
-            switch (memory_desc_wrapper(src_md())
-                            .sparse_desc()
-                            .grouped_desc.variable_dim_idx) {
-                case 0: return grouped_axis_t::m_axis;
-                case 1: return grouped_axis_t::k_axis;
+            switch (memory_desc_wrapper(src_md()).grouped_variable_dim()) {
+                case 1: return grouped_axis_t::m_axis;
+                case 2: return grouped_axis_t::k_axis;
                 default: return grouped_axis_t::undefined;
             }
         }
@@ -154,11 +152,10 @@ struct grouped_micro_gemm_t : public primitive_t {
         }
 
         // Number of groups partitioning the grouped axis
-        dim_t ngroups() const {
-            return memory_desc_wrapper(src_md())
-                    .sparse_desc()
-                    .grouped_desc.group_count;
-        }
+        dim_t ngroups() const { return src_md()->dims[0]; }
+
+        // A src mask covering the variable dim covers the group dim too
+        int src_qmask_GM() const { return (1 << 0) | src_qmask_M(); }
 
         // Quantization of src and weights
         quantization_t src_quant() const {

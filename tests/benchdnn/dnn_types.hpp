@@ -755,7 +755,7 @@ struct sparse_options_t {
     }
 
     // Check for grouped SRC by grouped WEI into dense DST
-    bool is_2dby2d() const {
+    bool is_var_K() const {
         return is_grouped(DNNL_ARG_SRC) && is_grouped(DNNL_ARG_WEIGHTS)
                 && get_variable_dim_idx(DNNL_ARG_SRC) == 1;
     }
@@ -822,8 +822,7 @@ struct attr_args_t {
 
     dnnl_status_t prepare_post_ops_mds(const attr_t &attr, int ndims,
             const dnnl_dims_t prb_dims,
-            dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
-            const sparse_options_t *sparse_options = nullptr);
+            dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive);
 
     void prepare_dw_post_op(const attr_t &attr, dnnl_data_type_t wei_dt,
             dnnl_data_type_t bia_dt);

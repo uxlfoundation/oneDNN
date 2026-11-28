@@ -390,7 +390,8 @@ class StridesMixin(TagTripletMixin):
 
         def add_strides_or_tag(arg, md: ir.MemoryDescriptor):
             if md.format_kind == "sparse":
-                strides.append(md.strides)
+                # grouped mds take the layout --grouped implies
+                strides.append("" if md.tag == "grouped" else md.strides)
                 return
             tag = maybe_make_any_tag(md)
             if arg == "wei" and str(md.flags.value) != "f0":
@@ -654,7 +655,7 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
         for md in self.entry.mds:
             if md.arg not in counts:
                 continue
-            if md.format_kind != "sparse" or md.grouped:
+            if md.format_kind != "sparse" or md.tag == "grouped":
                 continue
             count = counts[md.arg]
             nnz = max(200, count // 100)
@@ -665,23 +666,30 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
         encoding = ":".join(encodings.get(arg, "") for arg in counts)
         return f"--encoding={encoding}"
 
+    def _is_grouped(self, arg) -> bool:
+        return any(
+            md.arg == arg and md.tag == "grouped" for md in self.entry.mds
+        )
+
     @property
     def grouped(self) -> str:
-        # grouped params come from the src variable dim
-        src_md = next((md for md in self.entry.mds if md.arg == "src"), None)
-        desc = src_md.grouped if src_md is not None else None
-        if desc is None:
+        # grouped src is {G, *, K} with grouped dst, or {G, M, *} with grouped
+        # wei, and its dims show the size summed over all groups at `*`
+        if not self._is_grouped("src"):
             return ""
-        var_idx, count = desc.variable_dim_idx, desc.group_count
-        # verbose omits per-group sizes, so split the src dim evenly
+        var_idx = 0 if self._is_grouped("dst") else 1
         src_dims = self.entry.shapes.split(":")[0].split("x")
-        total_dim = int(src_dims[var_idx])
+        count, total_dim = int(src_dims[0]), int(src_dims[var_idx + 1])
+        # verbose omits per-group sizes, so split the src dim evenly
         group_size, remainder = divmod(total_dim, count)
         sizes = [group_size] * count
         for i in range(remainder):
             sizes[i] += 1
         group_sizes = "+".join(map(str, sizes))
-        return f"--grouped={var_idx}:{count}:{group_sizes}"
+        grouped = f"--grouped={var_idx}:{count}:{group_sizes}"
+        # exec lines carry the max group size hint, `*` means no hint
+        hint = self.entry.aux.get("hint_max_group_size", "*")
+        return grouped if hint == "*" else f"{grouped}:{hint}"
 
     @property
     def aux(self):

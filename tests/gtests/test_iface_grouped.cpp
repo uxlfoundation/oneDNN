@@ -27,59 +27,111 @@
 namespace dnnl {
 
 using dt = memory::data_type;
+using tag = memory::format_tag;
 
 class iface_grouped_test_t : public ::testing::Test {};
 
 TEST(iface_grouped_test_t, TestGroupedMDCreation) {
     const int ngroups = 3;
     const int K = 256;
+    const int total_tokens = 9;
 
-    // variable_dim_idx = 0
-    ASSERT_NO_THROW(memory::desc::grouped({9, K}, dt::f32, 0, ngroups));
+    // Variable M and variable K with the default layout
+    ASSERT_NO_THROW(memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, total_tokens));
+    ASSERT_NO_THROW(memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f16, 4, {}, dt::s32));
+    ASSERT_NO_THROW(memory::desc::grouped(
+            {ngroups, K, DNNL_VARIABLE_DIM_VAL}, dt::f32, total_tokens));
 
-    ASSERT_NO_THROW(
-            memory::desc::grouped({4, K}, dt::f16, 0, ngroups, dt::s32));
+    // Variable dim outermost or contiguous
+    ASSERT_NO_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+            dt::f32, total_tokens, {0, K, 1}));
+    ASSERT_NO_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+            dt::f32, total_tokens, {0, 1, total_tokens}));
+    ASSERT_NO_THROW(memory::desc::grouped({ngroups, K, DNNL_VARIABLE_DIM_VAL},
+            dt::f32, total_tokens, {0, total_tokens, 1}));
+    ASSERT_NO_THROW(memory::desc::grouped({ngroups, K, DNNL_VARIABLE_DIM_VAL},
+            dt::f32, total_tokens, {0, 1, K}));
 
-    // variable_dim_idx = 1
-    ASSERT_NO_THROW(memory::desc::grouped({K, 9}, dt::f32, 1, ngroups));
+    // Both strides are 1 when the other matrix extent is 1
+    ASSERT_NO_THROW(memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, 1, {0, 1, 1}));
+    ASSERT_NO_THROW(memory::desc::grouped({ngroups, 1, DNNL_VARIABLE_DIM_VAL},
+            dt::f32, total_tokens, {0, 1, 1}));
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDInvalidArgs) {
     const int ngroups = 2;
-    const int M = 100, K = 256;
+    const int total_tokens = 100, K = 256;
 
-    // 3D is not supported
-    EXPECT_THROW(memory::desc::grouped({4, K, 10}, dt::f32, 0, ngroups),
-            dnnl::error);
-
-    // Invalid group count: 0, negative
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, 0, 0), dnnl::error);
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, 0, -1), dnnl::error);
-
-    // Invalid variable_dim_idx: out of range for a 2D tensor
-    EXPECT_THROW(
-            memory::desc::grouped({4, K}, dt::f32, -1, ngroups), dnnl::error);
-    EXPECT_THROW(
-            memory::desc::grouped({4, K}, dt::f32, 2, ngroups), dnnl::error);
-
-    // Runtime dimensions not supported
+    // Only 3D is supported
     EXPECT_THROW(memory::desc::grouped(
-                         {DNNL_RUNTIME_DIM_VAL, K}, dt::f32, 0, ngroups),
+                         {DNNL_VARIABLE_DIM_VAL, K}, dt::f32, total_tokens),
             dnnl::error);
-    EXPECT_THROW(memory::desc::grouped(
-                         {M, DNNL_RUNTIME_DIM_VAL}, dt::f32, 0, ngroups),
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K, 10},
+                         dt::f32, total_tokens),
             dnnl::error);
 
-    // Zero dimensions not allowed
-    EXPECT_THROW(
-            memory::desc::grouped({0, K}, dt::f32, 0, ngroups), dnnl::error);
-    EXPECT_THROW(
-            memory::desc::grouped({M, 0}, dt::f32, 0, ngroups), dnnl::error);
+    // Exactly one matrix dim is variable, the group dim never is
+    EXPECT_THROW(memory::desc::grouped(
+                         {ngroups, total_tokens, K}, dt::f32, total_tokens),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL,
+                                               DNNL_VARIABLE_DIM_VAL},
+                         dt::f32, total_tokens),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({DNNL_VARIABLE_DIM_VAL, total_tokens, K},
+                         dt::f32, total_tokens),
+            dnnl::error);
+
+    // Invalid group count, total_tokens, and fixed dim: zero, negative, runtime
+    EXPECT_THROW(memory::desc::grouped(
+                         {0, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, total_tokens),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped(
+                         {-1, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, total_tokens),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped(
+                         {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, 0),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped(
+                         {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, -1),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                         dt::f32, DNNL_RUNTIME_DIM_VAL),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, 0},
+                         dt::f32, total_tokens),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped(
+                         {ngroups, DNNL_VARIABLE_DIM_VAL, DNNL_RUNTIME_DIM_VAL},
+                         dt::f32, total_tokens),
+            dnnl::error);
+
+    // Strides: G has a zero stride, one matrix dim is contiguous, and the
+    // other one strides over its extent, without padding
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                         dt::f32, total_tokens, {total_tokens * K, K, 1}),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                         dt::f32, total_tokens, {0, 2 * K, 2}),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                         dt::f32, total_tokens, {0, K - 1, 1}),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                         dt::f32, total_tokens, {0, 1, total_tokens + 1}),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                         dt::f32, total_tokens, {0, K}),
+            dnnl::error);
 
     // Valid offsets type: s32; invalid: f32
-    ASSERT_NO_THROW(
-            memory::desc::grouped({M, K}, dt::f32, 0, ngroups, dt::s32));
-    EXPECT_THROW(memory::desc::grouped({M, K}, dt::f32, 0, ngroups, dt::f32),
+    ASSERT_NO_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+            dt::f32, total_tokens, {}, dt::s32));
+    EXPECT_THROW(memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                         dt::f32, total_tokens, {}, dt::f32),
             dnnl::error);
 }
 
@@ -87,88 +139,86 @@ TEST(iface_grouped_test_t, TestGroupedMDQueries) {
     const int ngroups = 3;
     const int K = 256;
     const int total_tokens = 9;
-    const memory::dims dims = {total_tokens, K};
+    const size_t f32_size = memory::data_type_size(dt::f32);
 
     {
-        const memory::data_type data_type = dt::f32;
-        const memory::data_type offsets_dt = dt::s32;
-
+        // Variable M, the default layout has the variable dim outermost
+        const memory::dims dims = {ngroups, DNNL_VARIABLE_DIM_VAL, K};
         memory::desc md;
         ASSERT_NO_THROW(md = memory::desc::grouped(
-                                dims, data_type, 0, ngroups, offsets_dt));
+                                dims, dt::f32, total_tokens, {}, dt::s32));
 
-        // Basic queries
+        ASSERT_EQ(md.get_ndims(), 3);
         ASSERT_EQ(md.get_dims(), dims);
-        ASSERT_EQ(md.get_data_type(), data_type);
-        ASSERT_EQ(md.get_data_type(0), data_type);
+        ASSERT_EQ(md.get_data_type(), dt::f32);
+        ASSERT_EQ(md.get_data_type(0), dt::f32);
+        ASSERT_EQ(md.get_data_type(1), dt::s32);
         ASSERT_EQ(md.get_format_kind(), memory::format_kind::sparse);
         ASSERT_EQ(md.get_sparse_encoding(), memory::sparse_encoding::grouped);
-        ASSERT_EQ(md.get_data_type(1), offsets_dt);
-
-        // Query nnz
-        memory::dim nnz = md.get_nnz();
-        ASSERT_EQ(nnz, total_tokens * K);
-
-        // Query strides
-        // Note, that this return empty vector since strides are not supported
-        memory::dims strides = md.get_strides();
-        ASSERT_TRUE(strides.empty());
+        ASSERT_EQ(md.get_num_handles(), 2);
+        ASSERT_EQ(md.get_nnz(), total_tokens * K);
+        ASSERT_EQ(md.get_strides(), memory::dims({0, K, 1}));
+        ASSERT_EQ(md.get_size(0), total_tokens * K * f32_size);
+        ASSERT_EQ(md.get_size(1), ngroups * memory::data_type_size(dt::s32));
     }
 
     {
-        // variable_dim_idx = 1, dims = [K, total_tokens]
-        const memory::dims dims_t = {K, total_tokens};
+        // Variable K, the default layout is column-major
+        const memory::dims dims = {ngroups, K, DNNL_VARIABLE_DIM_VAL};
         memory::desc md;
-        ASSERT_NO_THROW(md
-                = memory::desc::grouped(dims_t, dt::f32, 1, ngroups, dt::s32));
-
-        ASSERT_EQ(md.get_dims(), dims_t);
-        ASSERT_EQ(md.get_sparse_encoding(), memory::sparse_encoding::grouped);
+        ASSERT_NO_THROW(
+                md = memory::desc::grouped(dims, dt::f32, total_tokens));
+        ASSERT_EQ(md.get_dims(), dims);
         ASSERT_EQ(md.get_nnz(), K * total_tokens);
-        ASSERT_EQ(md.get_size(0),
-                K * total_tokens * memory::data_type_size(dt::f32));
-        ASSERT_EQ(md.get_size(1), ngroups * memory::data_type_size(dt::s32));
+        ASSERT_EQ(md.get_strides(), memory::dims({0, 1, K}));
+        ASSERT_EQ(md.get_size(0), K * total_tokens * f32_size);
+    }
+
+    {
+        // Variable K contiguous, total_tokens is the leading dim
+        const memory::dim ld = total_tokens;
+        memory::desc md;
+        ASSERT_NO_THROW(
+                md = memory::desc::grouped({ngroups, K, DNNL_VARIABLE_DIM_VAL},
+                        dt::f32, total_tokens, {0, ld, 1}));
+        ASSERT_EQ(md.get_strides(), memory::dims({0, ld, 1}));
+        ASSERT_EQ(md.get_nnz(), K * total_tokens);
+        ASSERT_EQ(md.get_size(0), K * ld * f32_size);
     }
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDComparison) {
     const int ngroups = 2;
     const int K = 256;
+    const int total_tokens = 4;
 
-    memory::desc md1, md2;
+    memory::desc md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, total_tokens);
 
-    // equal descriptors
-    ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
-    ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
-    ASSERT_EQ(md1, md2);
+    // Equal descriptors, the default strides are the block ones
+    ASSERT_EQ(md,
+            memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32,
+                    total_tokens));
+    ASSERT_EQ(md,
+            memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32,
+                    total_tokens, {0, K, 1}));
 
-    // different data types
-    ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
-    ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f16, 0, ngroups));
-    ASSERT_NE(md1, md2);
-
-    // different ngroups
-    ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
-    ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f32, 0, 3));
-    ASSERT_NE(md1, md2);
-}
-
-TEST(iface_grouped_test_t, TestGroupedMDSize) {
-    const int ngroups = 3;
-    const int K = 256;
-    const int total_tokens = 9;
-
-    memory::desc md;
-    ASSERT_NO_THROW(md = memory::desc::grouped(
-                            {total_tokens, K}, dt::f32, 0, ngroups, dt::s32));
-
-    // Size of values buffer (buffer 0): total_tokens * K elements
-    size_t ref_values_size = total_tokens * K * memory::data_type_size(dt::f32);
-    ASSERT_EQ(md.get_size(0), ref_values_size);
-
-    // Size of offsets buffer (buffer 1): ngroups
-    size_t ref_offsets_size = ngroups * memory::data_type_size(dt::s32);
-    ASSERT_EQ(md.get_size(1), ref_offsets_size);
+    // Different data types, group counts, totals, variable dims, and strides
+    ASSERT_NE(md,
+            memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f16,
+                    total_tokens));
+    ASSERT_NE(md,
+            memory::desc::grouped(
+                    {3, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, total_tokens));
+    ASSERT_NE(md,
+            memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32,
+                    total_tokens + 1));
+    ASSERT_NE(md,
+            memory::desc::grouped({ngroups, K, DNNL_VARIABLE_DIM_VAL}, dt::f32,
+                    total_tokens));
+    ASSERT_NE(md,
+            memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32,
+                    total_tokens, {0, 1, total_tokens}));
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
@@ -181,11 +231,11 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
     const int ngroups = 3;
     const int K = 256;
     const int total_tokens = 9;
-    int variable_dim_idx = 0;
 
     memory::desc md;
-    ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            variable_dim_idx, ngroups));
+    ASSERT_NO_THROW(
+            md = memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                    dt::f32, total_tokens));
 
     memory mem;
     mem = memory(md, eng);
@@ -195,7 +245,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
         const int total_elements = total_tokens * K;
         std::vector<float> values(total_elements);
         std::vector<int32_t> offsets(ngroups);
-        offsets = {0, 1, 4, 9};
+        offsets = {1, 4, 9};
 
         EXPECT_NO_THROW(mem = memory(md, eng, {values.data(), offsets.data()}));
     }
@@ -205,7 +255,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
         const int total_elements = total_tokens * K;
         std::vector<float> values(total_elements);
         std::vector<int32_t> offsets(ngroups);
-        offsets = {0, 1, 1, 9}; // skip group 2
+        offsets = {1, 1, 9}; // skip group 1
 
         EXPECT_NO_THROW(mem = memory(md, eng, {values.data(), offsets.data()}));
     }
@@ -222,11 +272,11 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     const int ngroups = 3;
     const int K = 256;
     const int total_tokens = 9;
-    int variable_dim_idx = 0;
 
     memory::desc md;
-    ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            variable_dim_idx, ngroups));
+    ASSERT_NO_THROW(
+            md = memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                    dt::f32, total_tokens));
 
     memory mem = memory(md, eng);
 
@@ -253,11 +303,11 @@ TEST(iface_grouped_test_t, TestGroupedMemoryMapUnmap) {
     const int ngroups = 2;
     const int K = 4;
     const int total_tokens = 3;
-    int variable_dim_idx = 0;
 
     memory::desc md;
-    ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            variable_dim_idx, ngroups, dt::s32));
+    ASSERT_NO_THROW(
+            md = memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, K},
+                    dt::f32, total_tokens, {}, dt::s32));
 
     const int total_elements = total_tokens * K;
     std::vector<float> values(total_elements);
@@ -292,16 +342,21 @@ TEST(c_api_grouped_md, TestGroupedMDQueries) {
     const int total_elements = total_tokens * K;
 
     dnnl_memory_desc_t md = nullptr;
-    dnnl_dims_t dims = {total_tokens, K};
+    dnnl_dims_t dims = {ngroups, DNNL_VARIABLE_DIM_VAL, K};
 
     DNNL_CHECK(dnnl_memory_desc_create_with_grouped_encoding(
-            &md, 2, dims, dnnl_f32, 0, ngroups, dnnl_s32));
+            &md, 3, dims, dnnl_f32, total_tokens, nullptr, dnnl_s32));
     ASSERT_NE(md, nullptr);
 
     // Query all properties
     int ndims = -1;
     DNNL_CHECK(dnnl_memory_desc_query(md, dnnl_query_ndims_s32, &ndims));
-    EXPECT_EQ(ndims, 2);
+    EXPECT_EQ(ndims, 3);
+
+    const dnnl_dims_t *queried_dims = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_query(md, dnnl_query_dims, &queried_dims));
+    for (int d = 0; d < 3; d++)
+        EXPECT_EQ((*queried_dims)[d], dims[d]);
 
     dnnl_data_type_t dtype = dnnl_data_type_undef;
     DNNL_CHECK(dnnl_memory_desc_query(md, dnnl_query_data_type, &dtype));
@@ -320,6 +375,12 @@ TEST(c_api_grouped_md, TestGroupedMDQueries) {
     DNNL_CHECK(dnnl_memory_desc_query_v2(md, dnnl_query_nnz_s64, 0, &nnz));
     EXPECT_EQ(nnz, total_elements);
 
+    const dnnl_dims_t *strides = nullptr;
+    DNNL_CHECK(dnnl_memory_desc_query(md, dnnl_query_strides, &strides));
+    EXPECT_EQ((*strides)[0], 0);
+    EXPECT_EQ((*strides)[1], K);
+    EXPECT_EQ((*strides)[2], 1);
+
     size_t values_size = dnnl_memory_desc_get_size_v2(md, 0);
     EXPECT_EQ(values_size, total_elements * sizeof(float));
 
@@ -327,43 +388,58 @@ TEST(c_api_grouped_md, TestGroupedMDQueries) {
     EXPECT_EQ(offsets_size, (ngroups) * sizeof(int32_t));
 
     DNNL_CHECK(dnnl_memory_desc_destroy(md));
+
+    // User strides are kept as is
+    const dnnl_dims_t window_strides = {0, 1, total_tokens};
+    DNNL_CHECK(dnnl_memory_desc_create_with_grouped_encoding(
+            &md, 3, dims, dnnl_f32, total_tokens, window_strides, dnnl_s32));
+    DNNL_CHECK(dnnl_memory_desc_query(md, dnnl_query_strides, &strides));
+    for (int d = 0; d < 3; d++)
+        EXPECT_EQ((*strides)[d], window_strides[d]);
+    DNNL_CHECK(dnnl_memory_desc_destroy(md));
 }
 
 TEST(c_api_grouped_md, TestGroupedMDInvalidArgs) {
     dnnl_memory_desc_t md = nullptr;
-    const int K = 256;
-    dnnl_dims_t dims = {4, K};
+    const int K = 256, total_tokens = 4;
+    dnnl_dims_t dims = {2, DNNL_VARIABLE_DIM_VAL, K};
 
-    // 3D is not supported
-    dnnl_dims_t dims_3d = {4, K, 10};
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 3, dims_3d, dnnl_f32, 0, 2, dnnl_s32),
+    // Only 3D is supported
+    dnnl_dims_t dims_2d = {DNNL_VARIABLE_DIM_VAL, K};
+    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(&md, 2, dims_2d,
+                      dnnl_f32, total_tokens, nullptr, dnnl_s32),
             dnnl_unimplemented);
     EXPECT_EQ(md, nullptr);
 
-    // variable_dim_idx out of range
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 2, dims, dnnl_f32, -1, 2, dnnl_s32),
-            dnnl_invalid_arguments);
-    EXPECT_EQ(md, nullptr);
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 2, dims, dnnl_f32, 2, 2, dnnl_s32),
+    // No variable dim
+    dnnl_dims_t dims_fixed = {2, total_tokens, K};
+    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(&md, 3, dims_fixed,
+                      dnnl_f32, total_tokens, nullptr, dnnl_s32),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
 
-    // invalid group count
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 2, dims, dnnl_f32, 0, 0, dnnl_s32),
+    // Invalid group count and total_tokens
+    dnnl_dims_t dims_no_groups = {0, DNNL_VARIABLE_DIM_VAL, K};
+    ASSERT_EQ(
+            dnnl_memory_desc_create_with_grouped_encoding(&md, 3,
+                    dims_no_groups, dnnl_f32, total_tokens, nullptr, dnnl_s32),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
     ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
-                      &md, 2, dims, dnnl_f32, 0, -1, dnnl_s32),
+                      &md, 3, dims, dnnl_f32, 0, nullptr, dnnl_s32),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(md, nullptr);
+
+    // Non-zero group stride
+    const dnnl_dims_t strides = {total_tokens * K, K, 1};
+    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
+                      &md, 3, dims, dnnl_f32, total_tokens, strides, dnnl_s32),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
 
     // null pointer md
     dnnl_status_t status = dnnl_memory_desc_create_with_grouped_encoding(
-            nullptr, 2, dims, dnnl_f32, 0, 2, dnnl_s32);
+            nullptr, 3, dims, dnnl_f32, total_tokens, nullptr, dnnl_s32);
     ASSERT_EQ(status, dnnl_invalid_arguments);
 }
 
@@ -372,24 +448,34 @@ TEST(iface_grouped_test_t, TestGroupedMatmulValidation) {
     const int ngroups = 3;
     const int M = 100, K = 256, N = 512;
 
-    auto src_md = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
-    auto dst_md = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
-    auto wei_md
-            = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
+    auto src_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, M);
+    auto dst_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
+    auto wei_md = memory::desc({ngroups, K, N}, dt::f32, tag::abc);
+    EXPECT_NO_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md));
 
     // Invalid: 2D weights
-    auto wei_2d = memory::desc({K, N}, dt::f32, memory::format_tag::ab);
+    auto wei_2d = memory::desc({K, N}, dt::f32, tag::ab);
     EXPECT_THROW(
             matmul::primitive_desc(eng, src_md, wei_2d, dst_md), dnnl::error);
 
-    // Invalid: mismatched ngroups
-    auto dst_4groups = memory::desc::grouped({M, N}, dt::f32, 0, 4);
-    auto wei_4groups
-            = memory::desc({4, K, N}, dt::f32, memory::format_tag::abc);
-
+    // Invalid: mismatched number of groups
+    auto dst_4groups
+            = memory::desc::grouped({4, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
+    auto wei_4groups = memory::desc({4, K, N}, dt::f32, tag::abc);
     EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_4groups),
             dnnl::error);
     EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_4groups, dst_md),
+            dnnl::error);
+
+    // Invalid: mismatched totals and K
+    auto dst_other_total = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M + 1);
+    EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_other_total),
+            dnnl::error);
+    auto wei_other_k = memory::desc({ngroups, K + 1, N}, dt::f32, tag::abc);
+    EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_other_k, dst_md),
             dnnl::error);
 }
 
@@ -398,73 +484,169 @@ TEST(iface_grouped_test_t, TestGroupedMatmulPatterns) {
 
     const int ngroups = 2;
     const int M = 4, K = 8, N = 6;
-    const auto abc = memory::format_tag::abc;
 
     // Shapes to mix and match:
 
-    // 2D grouped, variable idx = 0
-    auto src_grouped_var0 = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
-    auto wei_grouped_var0 = memory::desc::grouped({K, N}, dt::f32, 0, ngroups);
-    auto dst_grouped_var0 = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
-
-    // 2D grouped, variable idx = 1
-    auto src_grouped_var1 = memory::desc::grouped({M, K}, dt::f32, 1, ngroups);
-    auto wei_grouped_var1 = memory::desc::grouped({K, N}, dt::f32, 1, ngroups);
+    // Grouped, variable M, K, or N
+    auto src_var_m = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, M);
+    auto dst_var_m = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
+    auto src_var_k = memory::desc::grouped(
+            {ngroups, M, DNNL_VARIABLE_DIM_VAL}, dt::f32, K);
+    auto wei_var_k = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, K);
+    auto wei_var_n = memory::desc::grouped(
+            {ngroups, K, DNNL_VARIABLE_DIM_VAL}, dt::f32, N);
 
     // Dense 3D shapes
-    auto src_dense_3d = memory::desc({ngroups, M / ngroups, K}, dt::f32, abc);
-    auto wei_dense_3d = memory::desc({ngroups, K, N}, dt::f32, abc);
-    auto dst_dense_3d = memory::desc({ngroups, M, N}, dt::f32, abc);
+    auto src_dense_3d
+            = memory::desc({ngroups, M / ngroups, K}, dt::f32, tag::abc);
+    auto wei_dense_3d = memory::desc({ngroups, K, N}, dt::f32, tag::abc);
+    auto dst_dense_3d = memory::desc({ngroups, M, N}, dt::f32, tag::abc);
 
     // Valid cases:
 
     // grouped(varM) * dense 3D -> grouped(varM) (MoE forward)
-    EXPECT_NO_THROW(matmul::primitive_desc(
-            eng, src_grouped_var0, wei_dense_3d, dst_grouped_var0));
+    EXPECT_NO_THROW(
+            matmul::primitive_desc(eng, src_var_m, wei_dense_3d, dst_var_m));
 
     // grouped(varK) * grouped(varK) -> dense 3D (MoE backward)
-    EXPECT_NO_THROW(matmul::primitive_desc(
-            eng, src_grouped_var1, wei_grouped_var0, dst_dense_3d));
+    EXPECT_NO_THROW(
+            matmul::primitive_desc(eng, src_var_k, wei_var_k, dst_dense_3d));
 
     // Unsupported cases:
 
     // grouped(varM) * dense 3D -> dense 3D
-    EXPECT_THROW(matmul::primitive_desc(
-                         eng, src_grouped_var0, wei_dense_3d, dst_dense_3d),
+    EXPECT_THROW(
+            matmul::primitive_desc(eng, src_var_m, wei_dense_3d, dst_dense_3d),
             dnnl::error);
 
     // dense 3D * dense 3D -> grouped
-    EXPECT_THROW(matmul::primitive_desc(
-                         eng, src_dense_3d, wei_dense_3d, dst_grouped_var0),
+    EXPECT_THROW(
+            matmul::primitive_desc(eng, src_dense_3d, wei_dense_3d, dst_var_m),
             dnnl::error);
 
     // grouped(varM) * grouped(varK) -> dense 3D
-    EXPECT_THROW(matmul::primitive_desc(
-                         eng, src_grouped_var0, wei_grouped_var0, dst_dense_3d),
+    EXPECT_THROW(
+            matmul::primitive_desc(eng, src_var_m, wei_var_k, dst_dense_3d),
             dnnl::error);
 
     // grouped(varK) * grouped(varN) -> dense 3D
-    EXPECT_THROW(matmul::primitive_desc(
-                         eng, src_grouped_var1, wei_grouped_var1, dst_dense_3d),
+    EXPECT_THROW(
+            matmul::primitive_desc(eng, src_var_k, wei_var_n, dst_dense_3d),
             dnnl::error);
 }
 
-TEST(iface_grouped_test_t, TestGrouped2Dby2DUnsupportedAttr) {
+TEST(iface_grouped_test_t, TestGroupedMatmulScales) {
+    engine eng = get_test_engine();
+    SKIP_IF(unsupported_data_type(dt::f8_e4m3, dt::bf16),
+            "Engine does not support f8_e4m3 or bf16.");
+
+    const int ngroups = 2;
+    const int M = 32, K = 64, N = 16;
+
+    // Masks are over src {G, M, K} and wei {G, K, N}
+    const int src_rowwise = (1 << 0) | (1 << 1);
+    const int src_k_blocked = src_rowwise | (1 << 2);
+    const int wei_colwise = (1 << 0) | (1 << 2);
+    const int wei_k_blocked = wei_colwise | (1 << 1);
+
+    auto src_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f8_e4m3, M);
+    auto wei_md = memory::desc({ngroups, K, N}, dt::f8_e4m3, tag::acb);
+    auto dst_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::bf16, M);
+
+    // Row-wise src and column-wise wei scales (FP8 row-wise)
+    {
+        primitive_attr attr;
+        attr.set_scales_mask(DNNL_ARG_SRC, src_rowwise);
+        attr.set_scales_mask(DNNL_ARG_WEIGHTS, wei_colwise);
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
+
+    // K-blocked src and wei scales (MXFP8)
+    {
+        primitive_attr attr;
+        attr.set_scales(DNNL_ARG_SRC, src_k_blocked, {1, 32}, dt::e8m0);
+        attr.set_scales(DNNL_ARG_WEIGHTS, wei_k_blocked, {32, 1}, dt::e8m0);
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
+
+    // A mask covering the variable dim must cover G too
+    {
+        primitive_attr attr;
+        attr.set_scales_mask(DNNL_ARG_SRC, (1 << 1));
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+
+    // Groups go with K-blocked masks only
+    {
+        primitive_attr attr;
+        attr.set_scales(DNNL_ARG_SRC, src_rowwise, {1, 32}, dt::e8m0);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
+}
+
+TEST(iface_grouped_test_t, TestGroupedMatmulBias) {
+    engine eng = get_test_engine();
+
+    const int ngroups = 3;
+    const int M = 12, K = 8, N = 4;
+
+    auto src_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, M);
+    auto wei_md = memory::desc({ngroups, K, N}, dt::f32, tag::abc);
+    auto dst_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
+
+    // Bias is [G, 1, N]
+    auto bia_md = memory::desc({ngroups, 1, N}, dt::f32, tag::abc);
+    EXPECT_NO_THROW(
+            matmul::primitive_desc(eng, src_md, wei_md, bia_md, dst_md));
+
+    auto bia_2d = memory::desc({ngroups, N}, dt::f32, tag::ab);
+    EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, bia_2d, dst_md),
+            dnnl::error);
+    auto bia_shared = memory::desc({1, 1, N}, dt::f32, tag::abc);
+    EXPECT_THROW(
+            matmul::primitive_desc(eng, src_md, wei_md, bia_shared, dst_md),
+            dnnl::error);
+
+    // Variable K takes no bias
+    auto src_var_k = memory::desc::grouped(
+            {ngroups, M, DNNL_VARIABLE_DIM_VAL}, dt::f32, K);
+    auto wei_var_k = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, K);
+    auto dst_dense = memory::desc({ngroups, M, N}, dt::f32, tag::abc);
+    EXPECT_THROW(matmul::primitive_desc(
+                         eng, src_var_k, wei_var_k, bia_md, dst_dense),
+            dnnl::error);
+}
+
+TEST(iface_grouped_test_t, TestGroupedVarKUnsupportedAttr) {
     engine eng = get_test_engine();
 
     const int ngroups = 2;
     const int M = 4, K = 8, N = 6;
 
-    // Valid 2Dx2D config: grouped(varK) * grouped(varK) -> dense 3D
-    auto src_md = memory::desc::grouped({M, K}, dt::f32, 1, ngroups);
-    auto wei_md = memory::desc::grouped({K, N}, dt::f32, 0, ngroups);
+    // Valid variable K config: grouped(varK) * grouped(varK) -> dense 3D
+    auto src_md = memory::desc::grouped(
+            {ngroups, M, DNNL_VARIABLE_DIM_VAL}, dt::f32, K);
+    auto wei_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, K);
     auto dst_md
             = memory::desc({ngroups, M, N}, dt::f32, memory::format_tag::abc);
 
     // Default attributes are supported
     EXPECT_NO_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md));
 
-    // 2Dx2D supports only default attributes
+    // Variable K supports only default attributes
     // Scales
     {
         primitive_attr attr;
@@ -500,13 +682,15 @@ TEST(iface_grouped_test_t, TestGroupedUnsupportedQuantMode) {
     const auto sbzp = quantization_mode::static_sbzp;
 
     // Per token src and per expert wei masks
-    const int src_mask = 1 << 0;
+    const int src_mask = (1 << 0) | (1 << 1);
     const int wei_mask = (1 << 0) | (1 << 2);
 
-    auto src_md = memory::desc::grouped({M, K}, dt::s8, 0, ngroups);
+    auto src_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::s8, M);
     auto wei_md
             = memory::desc({ngroups, K, N}, dt::s8, memory::format_tag::abc);
-    auto dst_md = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+    auto dst_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
 
     // only the default mode is supported for any argument
     {
@@ -536,7 +720,8 @@ TEST(iface_grouped_test_t, TestGroupedUnsupportedQuantMode) {
 
     // static_sbzp (WoQ weights) is not supported yet
     {
-        auto woq_src_md = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
+        auto woq_src_md = memory::desc::grouped(
+                {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, M);
         primitive_attr attr;
         attr.set_fpmath_mode(fpmath_mode::strict, true);
         attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, {}, dt::f16, false, sbzp);
@@ -562,10 +747,11 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestMaxGroupMHint) {
         const int ngroups = 2;
         const int M = 6, K = 4, N = 4;
 
-        auto src_md = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
-        auto wei_md = memory::desc(
-                {ngroups, K, N}, dt::f32, memory::format_tag::abc);
-        auto dst_md = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+        auto src_md = memory::desc::grouped(
+                {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, M);
+        auto wei_md = memory::desc({ngroups, K, N}, dt::f32, tag::abc);
+        auto dst_md = memory::desc::grouped(
+                {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
 
         matmul::primitive_desc pd(eng, src_md, wei_md, dst_md);
         matmul prim(pd);
@@ -590,9 +776,9 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestMaxGroupMHint) {
     // Non-grouped matmul
     {
         const int M = 4, K = 8, N = 6;
-        auto src_md = memory::desc({M, K}, dt::f32, memory::format_tag::ab);
-        auto wei_md = memory::desc({K, N}, dt::f32, memory::format_tag::ab);
-        auto dst_md = memory::desc({M, N}, dt::f32, memory::format_tag::ab);
+        auto src_md = memory::desc({M, K}, dt::f32, tag::ab);
+        auto wei_md = memory::desc({K, N}, dt::f32, tag::ab);
+        auto dst_md = memory::desc({M, N}, dt::f32, tag::ab);
 
         matmul::primitive_desc pd(eng, src_md, wei_md, dst_md);
         matmul prim(pd);
@@ -628,30 +814,44 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestBinaryPostOpPDCreation) {
             "Test requires host-allocated memory.");
 
     const int ngroups = 2;
-    auto src_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
-    auto wei_md
-            = memory::desc({ngroups, 4, 4}, dt::f32, memory::format_tag::abc);
-    auto dst_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
-    auto bin_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
+    const int M = 6, K = 4, N = 4;
+    auto src_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, M);
+    auto wei_md = memory::desc({ngroups, K, N}, dt::f32, tag::abc);
+    auto dst_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
 
-    post_ops po;
-    po.append_binary(algorithm::binary_mul, bin_md);
-    primitive_attr attr;
-    attr.set_post_ops(po);
+    // A grouped operand matches dst's groups and has the default layout
+    for (const auto &bin_md : {
+                 memory::desc::grouped(
+                         {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M),
+                 memory::desc::grouped(
+                         {ngroups, DNNL_VARIABLE_DIM_VAL, 1}, dt::f32, M),
+         }) {
+        post_ops po;
+        po.append_binary(algorithm::binary_mul, bin_md);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
 
-    ASSERT_NO_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
-
-    // Mismatched: 3 groups vs 2
-    auto mismatched_bin_md = memory::desc::grouped({6, 4}, dt::f32, 0, 3);
-
-    post_ops mismatched_po;
-    mismatched_po.append_binary(algorithm::binary_mul, mismatched_bin_md);
-    primitive_attr mismatched_attr;
-    mismatched_attr.set_post_ops(mismatched_po);
-
-    EXPECT_THROW(matmul::primitive_desc(
-                         eng, src_md, wei_md, dst_md, mismatched_attr),
-            dnnl::error);
+    // Other groups, another total, or another layout are not supported
+    for (const auto &bin_md : {
+                 memory::desc::grouped(
+                         {3, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M),
+                 memory::desc::grouped(
+                         {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M + 1),
+                 memory::desc::grouped({ngroups, DNNL_VARIABLE_DIM_VAL, N},
+                         dt::f32, M, {0, 1, M}),
+         }) {
+        post_ops po;
+        po.append_binary(algorithm::binary_mul, bin_md);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
+                dnnl::error);
+    }
 }
 
 TEST(iface_grouped_test_t, TestPostOps) {
@@ -662,11 +862,14 @@ TEST(iface_grouped_test_t, TestPostOps) {
             "Test requires host-allocated memory.");
 
     const int ngroups = 2;
-    auto src_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
-    auto wei_md
-            = memory::desc({ngroups, 4, 4}, dt::f32, memory::format_tag::abc);
-    auto dst_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
-    auto bin_md = memory::desc({6, 4}, dt::f32, memory::format_tag::ab);
+    const int M = 6, K = 4, N = 4;
+    auto src_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, M);
+    auto wei_md = memory::desc({ngroups, K, N}, dt::f32, tag::abc);
+    auto dst_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
+    auto bin_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, M);
 
     // Any eltwise algorithm is accepted as an activation post-op
     for (auto alg : {algorithm::eltwise_relu, algorithm::eltwise_tanh,
@@ -733,11 +936,13 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     const int K = 4;
     const int N = 4;
 
-    auto src_md = memory::desc::grouped({total_m, K}, dt::f32, 0, ngroups);
-    auto wei_md
-            = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
-    auto dst_md = memory::desc::grouped({total_m, N}, dt::f32, 0, ngroups);
-    auto bin_md = memory::desc::grouped({total_m, N}, dt::f32, 0, ngroups);
+    auto src_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, total_m);
+    auto wei_md = memory::desc({ngroups, K, N}, dt::f32, tag::abc);
+    auto dst_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, total_m);
+    auto bin_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, total_m);
 
     post_ops po;
     po.append_binary(algorithm::binary_mul, bin_md);
@@ -778,44 +983,34 @@ TEST(iface_grouped_test_t, TestBinaryPostOpDenseShapes) {
     const int K = 64;
     const int N = 32;
 
-    auto src_md = memory::desc::grouped({total_m, K}, dt::f32, 0, ngroups);
-    auto wei_md
-            = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
-    auto dst_md = memory::desc::grouped({total_m, N}, dt::f32, 0, ngroups);
+    auto src_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, K}, dt::f32, total_m);
+    auto wei_md = memory::desc({ngroups, K, N}, dt::f32, tag::abc);
+    auto dst_md = memory::desc::grouped(
+            {ngroups, DNNL_VARIABLE_DIM_VAL, N}, dt::f32, total_m);
 
-    // Scalar [1, 1] binary post-op should be rejected
+    // A dense operand is supported per group
     {
-        auto scalar_md = memory::desc({1, 1}, dt::f32, memory::format_tag::ab);
         post_ops po;
-        po.append_binary(algorithm::binary_mul, scalar_md);
+        po.append_binary(algorithm::binary_mul,
+                memory::desc({ngroups, 1, 1}, dt::f32, tag::abc));
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
+
+    // A per-tensor operand is not supported, varying along the variable dim
+    // takes a grouped operand, and 2D operands don't match the dst rank
+    for (const auto &bin_md : {memory::desc({1, 1, 1}, dt::f32, tag::abc),
+                 memory::desc({1, total_m, 1}, dt::f32, tag::abc),
+                 memory::desc({ngroups, 1}, dt::f32, tag::ab)}) {
+        post_ops po;
+        po.append_binary(algorithm::binary_mul, bin_md);
         primitive_attr attr;
         attr.set_post_ops(po);
         EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr),
                 dnnl::error);
-    }
-
-    // Per-group [G, 1] binary post-op is supported
-    {
-        auto per_group_md
-                = memory::desc({ngroups, 1}, dt::f32, memory::format_tag::ab);
-        post_ops po;
-        po.append_binary(algorithm::binary_mul, per_group_md);
-        primitive_attr attr;
-        attr.set_post_ops(po);
-        EXPECT_NO_THROW(
-                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
-    }
-
-    // Per-row [total_M, 1] binary post-op is supported
-    {
-        auto per_row_md
-                = memory::desc({total_m, 1}, dt::f32, memory::format_tag::ab);
-        post_ops po;
-        po.append_binary(algorithm::binary_mul, per_row_md);
-        primitive_attr attr;
-        attr.set_post_ops(po);
-        EXPECT_NO_THROW(
-                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
     }
 }
 

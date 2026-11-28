@@ -375,15 +375,19 @@ status_t grouped_micro_params_t::get_kernel_ctx(
     return status::success;
 }
 
+// Group sizes along the last N dims of desc
 template <size_t N>
 void calc_group_sizes(std::array<int, N> &dims, const quant_entry_t &entry,
         const memory_desc_wrapper &desc) {
     memory_desc_t md;
     entry.get_md(md, *desc.md_);
     for (size_t i = 0; i < N; i++) {
-        const dim_t d = desc.dims()[i];
-        const dim_t d2 = md.dims[i];
-        const bool in_mask = entry.get_mask() & (1 << i);
+        const int idx = desc.ndims() - static_cast<int>(N - i);
+        dim_t d = desc.dims()[idx];
+        if (desc.is_grouped_desc() && idx == desc.grouped_variable_dim())
+            d = desc.grouped_total();
+        const dim_t d2 = md.dims[idx];
+        const bool in_mask = entry.get_mask() & (1 << idx);
         if (d2 == 0 && !in_mask && !entry.has_default_groups())
             dims[i] = static_cast<int>(d);
         else
@@ -419,9 +423,11 @@ status_t grouped_micro_gemm_t::pd_t::init_k_axis(const impl::engine_t *engine) {
     // src is col-major, wei is row-major
     const dims_t &src_strides = src_d.strides();
     const dims_t &wei_strides = wei_d.strides();
-    VDISPATCH_MATMUL(src_strides[0] == 1 && src_strides[1] == src_d.dims()[0],
+    VDISPATCH_MATMUL(
+            src_strides[ndims() - 2] == 1 && src_strides[ndims() - 1] == M(),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
-    VDISPATCH_MATMUL(wei_strides[1] == 1 && wei_strides[0] == wei_d.dims()[1],
+    VDISPATCH_MATMUL(
+            wei_strides[ndims() - 1] == 1 && wei_strides[ndims() - 2] == N(),
             VERBOSE_UNSUPPORTED_TAG_S, "weights");
 
     VDISPATCH_MATMUL(!dst_d.is_sparse_desc() && !dst_d.is_grouped_desc(),
@@ -513,8 +519,8 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
     if (src_quant().with_zp()) {
         const int src_zp_mask = src_quant().zp_mask();
         // Only per-row or K-grouped zero points supported for src
-        VDISPATCH_MATMUL(utils::one_of(src_zp_mask, src_qmask_M(),
-                                 src_qmask_M() | src_qmask_K()),
+        VDISPATCH_MATMUL(utils::one_of(src_zp_mask, src_qmask_GM(),
+                                 src_qmask_GM() | src_qmask_K()),
                 VERBOSE_UNSUPPORTED_ZP_CFG ": src zero points mask(%d)",
                 src_zp_mask);
         VDISPATCH_MATMUL(utils::one_of(src_quant().zp_dt(), u8, s8),
@@ -604,7 +610,7 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
     // Weights and src that can't use block 2D loads are copied into SLM, and
     // with 2D quantization on both the microkernel loads their parameters per
     // SLM chunk. Different k groups need a chunk that spans both.
-    const int src_qmask_MK = src_qmask_M() | src_qmask_K();
+    const int src_qmask_MK = src_qmask_GM() | src_qmask_K();
     const bool src_q2d = (src_quant().with_scale()
                                  && src_quant().scale_mask() == src_qmask_MK
                                  && src_groups[1] < K())
@@ -772,7 +778,7 @@ void init_ukernel_problem(const grouped_micro_gemm_t::pd_t &pd,
         problem.B_scale.setAlignment(
                 static_cast<int>(types::data_type_size(conf.src_scale_dt)));
         problem.bsPtrDims = pd.src_quant().scale_mask()
-                        == (pd.src_qmask_M() | pd.src_qmask_K())
+                        == (pd.src_qmask_GM() | pd.src_qmask_K())
                 ? 2
                 : 1;
         problem.B_scale.layout
@@ -783,7 +789,7 @@ void init_ukernel_problem(const grouped_micro_gemm_t::pd_t &pd,
         problem.BO.setAlignment(
                 static_cast<int>(types::data_type_size(conf.src_zp_dt)));
         problem.boPtrDims = pd.src_quant().zp_mask()
-                        == (pd.src_qmask_M() | pd.src_qmask_K())
+                        == (pd.src_qmask_GM() | pd.src_qmask_K())
                 ? 2
                 : 1;
         problem.bOffset = ABOffset::Calc;
@@ -979,9 +985,9 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     // Grouped src is common to both workloads, its variable dim selects which
     // axis is partitioned (grouped_matmul_desc_init() checked the others)
     VDISPATCH_MATMUL(src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-    switch (src_d.sparse_desc().grouped_desc.variable_dim_idx) {
-        case 0: CHECK(init_m_axis(engine)); break;
-        case 1: CHECK(init_k_axis(engine)); break;
+    switch (axis()) {
+        case grouped_axis_t::m_axis: CHECK(init_m_axis(engine)); break;
+        case grouped_axis_t::k_axis: CHECK(init_k_axis(engine)); break;
         default: return status::unimplemented;
     }
     bool with_post_op = !attr()->post_ops_.has_default_values();
@@ -1038,8 +1044,9 @@ status_t grouped_micro_gemm_t::execute_k_axis(const exec_ctx_t &ctx) const {
     const dim_t M = dst_md->dims[1];
     const dim_t N = dst_md->dims[2];
 
-    const dim_t ldsrc = memory_desc_wrapper(src_md).strides()[1];
-    const dim_t ldwei = memory_desc_wrapper(wei_md).strides()[0];
+    const int ndims = src_md->ndims;
+    const dim_t ldsrc = memory_desc_wrapper(src_md).strides()[ndims - 1];
+    const dim_t ldwei = memory_desc_wrapper(wei_md).strides()[ndims - 2];
     const dim_t ldc = gemm_desc_t::get_ld(*dst_md);
 
     // Assign the microkernel operands so that the C tile stores contiguously:
@@ -1135,7 +1142,7 @@ status_t grouped_micro_gemm_t::execute_m_axis(const exec_ctx_t &ctx) const {
         ldweiq = static_cast<int>(
                 wei_quant_md->format_desc.blocking.strides[1]);
     }
-    dim_t m_all = dst_md->dims[dst_md->ndims - 2];
+    dim_t m_all = pd()->M();
     dim_t n = dst_md->dims[dst_md->ndims - 1];
     dim_t k = src_md->dims[src_md->ndims - 1];
 

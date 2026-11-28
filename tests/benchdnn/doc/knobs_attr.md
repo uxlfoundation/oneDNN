@@ -349,10 +349,10 @@ tensor to be specified. A different format is thus used for providing the
 arguments for both the tensors:
 
 ```
---attr-post-ops=select:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]]
+--attr-post-ops=select:DT[.S1_MASK_INPUT[.S1_TAG[.S1_STRIDES]]][:S2_MASK_INPUT[.S2_TAG[.S2_STRIDES]]]
 ```
 
-The arguments for each tensor are are delimited using `.`, with the arguments
+The arguments for each tensor are delimited using `.`, with the arguments
 for the third tensor positioned after that of the second and are separated by `:`.
 The arguments are optional for the third tensor and the data type value for
 the third tensor is fixed at `s8`.

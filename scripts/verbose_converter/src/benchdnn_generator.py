@@ -140,7 +140,7 @@ class Converter(metaclass=ConverterMeta):
             src1_arg = src1_arg + f".{po.tag}"
         src2_arg = f"{po.src2_mask}"
         if po.src2_tag != "any":
-            src2_arg = src2_arg + f".{po.tag}"
+            src2_arg = src2_arg + f".{po.src2_tag}"
         return ":".join([po.alg, src1_arg, src2_arg])
 
     def _convert_binary_post_op(self, po: ir.BinaryPostOp):

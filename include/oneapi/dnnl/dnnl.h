@@ -3132,7 +3132,7 @@ dnnl_status_t DNNL_API dnnl_vanilla_rnn_forward_primitive_desc_create(
 ///     vector.
 /// @param diff_dst_iter_desc Memory descriptor for the diff of output
 ///     recurrent hidden state vector.
-/// @param flags Unused.
+/// @param flags RNN flags (@ref dnnl_rnn_flags_t).
 /// @param alpha Negative slope if activation is #dnnl_eltwise_relu.
 /// @param beta Unused.
 /// @param hint_fwd_pd Primitive descriptor for a respective forward propagation
@@ -3296,7 +3296,7 @@ dnnl_status_t DNNL_API dnnl_lstm_forward_primitive_desc_create(
 ///     recurrent hidden state vector.
 /// @param diff_dst_iter_c_desc Memory descriptor for the diff of output
 ///     recurrent cell state vector.
-/// @param flags Unused.
+/// @param flags RNN flags (@ref dnnl_rnn_flags_t).
 /// @param hint_fwd_pd Primitive descriptor for a respective forward propagation
 ///     primitive.
 /// @param attr Primitive attributes (can be NULL).
@@ -3421,7 +3421,7 @@ dnnl_status_t DNNL_API dnnl_gru_forward_primitive_desc_create(
 ///     vector.
 /// @param diff_dst_iter_desc Memory descriptor for the diff of output
 ///     recurrent hidden state vector.
-/// @param flags Unused.
+/// @param flags RNN flags (@ref dnnl_rnn_flags_t).
 /// @param hint_fwd_pd Primitive descriptor for a respective forward propagation
 ///     primitive.
 /// @param attr Primitive attributes (can be NULL).
@@ -3534,7 +3534,7 @@ dnnl_status_t DNNL_API dnnl_lbr_gru_forward_primitive_desc_create(
 ///     vector.
 /// @param diff_dst_iter_desc Memory descriptor for the diff of output
 ///     recurrent hidden state vector.
-/// @param flags Unused.
+/// @param flags RNN flags (@ref dnnl_rnn_flags_t).
 /// @param hint_fwd_pd Primitive descriptor for a respective forward propagation
 ///     primitive.
 /// @param attr Primitive attributes (can be NULL).
@@ -3655,7 +3655,7 @@ dnnl_status_t DNNL_API dnnl_augru_forward_primitive_desc_create(
 ///     vector.
 /// @param diff_dst_iter_desc Memory descriptor for the diff of output
 ///     recurrent hidden state vector.
-/// @param flags Unused.
+/// @param flags RNN flags (@ref dnnl_rnn_flags_t).
 /// @param hint_fwd_pd Primitive descriptor for a respective forward propagation
 ///     primitive.
 /// @param attr Primitive attributes (can be NULL).
@@ -3774,7 +3774,7 @@ dnnl_status_t DNNL_API dnnl_lbr_augru_forward_primitive_desc_create(
 ///     vector.
 /// @param diff_dst_iter_desc Memory descriptor for the diff of output
 ///     recurrent hidden state vector.
-/// @param flags Unused.
+/// @param flags RNN flags (@ref dnnl_rnn_flags_t).
 /// @param hint_fwd_pd Primitive descriptor for a respective forward propagation
 ///     primitive.
 /// @param attr Primitive attributes (can be NULL).

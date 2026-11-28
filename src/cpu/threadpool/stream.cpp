@@ -54,8 +54,8 @@ void stream_t::after_exec_hook() {
     threadpool_utils::deactivate_threadpool();
 }
 
-status_t stream_t::run_verbose_profiler(
-        const std::string &pd_info, double start_ms, uint64_t component) {
+status_t stream_t::run_verbose_profiler(const std::string &pd_info,
+        double start_ms, uint64_t component, uint64_t trace_id) {
     if (!is_verbose_profiler_enabled()) {
         VERROR(primitive, exec,
                 "running verbose profiler while it is not enabled");
@@ -78,7 +78,7 @@ status_t stream_t::run_verbose_profiler(
     // no-op for a null event, which is the fallback for threadpools that do
     // not support profiling.
     vp->register_event(tp->get_event());
-    vp->add_to_pending_primitive_list(start_ms, pd_info, component);
+    vp->add_to_pending_primitive_list(start_ms, pd_info, component, trace_id);
 
     return status::success;
 }

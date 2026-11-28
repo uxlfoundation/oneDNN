@@ -19,7 +19,7 @@ import argparse
 import logging
 import sys
 from argparse import RawTextHelpFormatter
-from typing import IO, Dict, Iterable, List
+from typing import IO, Dict, Iterable, List, Optional
 
 from src.benchdnn_generator import InputGenerator  # type: ignore
 from src.breakdown_generator import BreakdownGenerator  # type: ignore
@@ -56,6 +56,7 @@ def convert(
     split_output: bool,
     agg_keys: List[str],
     events: Iterable[str] = default_events,
+    trace_ids: Optional[Iterable[int]] = None,
 ) -> Dict[str, str]:
     if not check_version():
         raise ConverterError("Unsupported Python version")
@@ -67,7 +68,7 @@ def convert(
         raise ConverterError("Unsupported parser")
 
     logger.info("Processing input ...")
-    log_parser.process(events)
+    log_parser.process(events, trace_ids)
 
     if action == "dumpIR":
         logger.info("Dumping data from input...")
@@ -175,6 +176,18 @@ def main() -> int:
              events to parse (default: create and exec). Values: {event_opts}.
              """),
     )
+    args_parser.add_argument(
+        "-t",
+        "--trace_ids",
+        nargs="+",
+        type=int,
+        default=None,
+        help=one_line("""
+             parse only records printed between the start and end trace
+             markers of the given trace IDs (default: all records). Requires a
+             log collected with ONEDNN_VERBOSE=trace.
+             """),
+    )
     args = args_parser.parse_args()
 
     # validate options
@@ -228,6 +241,7 @@ def main() -> int:
                 split_output=args.split,
                 agg_keys=args.aggregate,
                 events=events,
+                trace_ids=args.trace_ids,
             )
         except ConverterError as e:
             logger.error(str(e))

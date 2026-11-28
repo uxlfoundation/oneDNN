@@ -205,6 +205,8 @@ uint32_t get_verbose(verbose_t::flag_kind verbosity_kind,
                 k |= verbose_t::create_profile | verbose_t::exec_profile;
             if (s == "profile_create") k |= verbose_t::create_profile;
             if (s == "profile_exec") k |= verbose_t::exec_profile;
+            if (s == "trace")
+                k |= verbose_t::create_trace | verbose_t::exec_trace;
             // Enable profiling to external libraries
             if (s == "profile_externals") k |= verbose_t::profile_externals;
             if (s == "warn") k |= verbose_t::warn;
@@ -1807,6 +1809,8 @@ void verbose_printf_impl(const char *raw_fmt_str, verbose_t::flag_kind kind) {
                         {verbose_t::create_profile, log_manager_t::info},
                         {verbose_t::profile_externals, log_manager_t::info},
                         {verbose_t::exec_profile, log_manager_t::info},
+                        {verbose_t::create_trace, log_manager_t::trace},
+                        {verbose_t::exec_trace, log_manager_t::trace},
                         {verbose_t::exec_check, log_manager_t::error},
                         {verbose_t::error, log_manager_t::critical},
                         {verbose_t::warn, log_manager_t::warn},

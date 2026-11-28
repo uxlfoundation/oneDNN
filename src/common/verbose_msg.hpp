@@ -37,6 +37,7 @@
 #define VERBOSE_check ":check"
 #define VERBOSE_dispatch ":dispatch"
 #define VERBOSE_debug ":debug"
+#define VERBOSE_trace ":trace"
 #define VERBOSE_profile ""
 #define VERBOSE_external ":external"
 

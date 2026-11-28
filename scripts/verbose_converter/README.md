@@ -21,7 +21,8 @@ To get an appropriate version of the script:
 ``` sh
 python3 verbose_converter.py [-h] [-i INPUT] [-p PARSER] [-a ACTION] [-s SPLIT]
                             [-k AGGREGATE [AGGREGATE ...]] [-v VERBOSE_LEVEL] [-o OUTPUT]
-                            [-g GENERATOR]
+                            [-g GENERATOR] [-e EVENTS [EVENTS ...]]
+                            [-t TRACE_IDS [TRACE_IDS ...]]
 ```
 ### Arguments
   - `{-h,--help}` -- display help message and exit.
@@ -46,6 +47,13 @@ python3 verbose_converter.py [-h] [-i INPUT] [-p PARSER] [-a ACTION] [-s SPLIT]
             Refer to ``Generators`` below.
   - `{-e,--events} event [event ...]` -- list of events to parse. Possible
             event values: `create` and `exec`. Default is `create` and `exec`.
+            Trace markers (`create:trace` and `exec:trace`) are never parsed
+            as events.
+  - `{-t,--trace_ids} id [id ...]` -- parse only records printed between the
+            start and end trace markers (`start_id:<id>` and `end_id:<id>`)
+            of the given trace IDs, e.g. the creation, nested primitive and
+            profiling records of one invocation. Requires a log collected with
+            `ONEDNN_VERBOSE=trace`. Default: all records.
 
 ### Option 2: as Python module
 ``` python
@@ -67,6 +75,8 @@ output = verbose_converter.convert(verbose_level, parser, input, action,
   - `generator STRING` -- target generator.
             Refer to ``Generators`` below.
   - `events LIST` -- list of events to parse. Default is ['create', 'exec'].
+  - `trace_ids LIST` -- if set, only records between the start and end trace
+            markers of these trace IDs are parsed. Default is `None`.
 
 ### Return value
   - `status STRING` -- status of conversion.

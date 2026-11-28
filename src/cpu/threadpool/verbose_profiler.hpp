@@ -49,6 +49,8 @@ struct verbose_profiler_t : public impl::verbose_profiler_t {
     struct prim_profile_data_t {
         uint64_t component_kind_ = 0;
         double start_ms_ = 0.0;
+        // 0 when tracing is disabled for this entry
+        uint64_t trace_id_ = 0;
         std::string pd_info_;
         std::vector<std::shared_ptr<
                 dnnl::threadpool_interop::threadpool_event_iface_t>>
@@ -70,7 +72,8 @@ struct verbose_profiler_t : public impl::verbose_profiler_t {
     }
 
     void add_to_pending_primitive_list(double start_ms,
-            const std::string &pd_info, uint64_t component) override;
+            const std::string &pd_info, uint64_t component,
+            uint64_t trace_id) override;
 
     void check_for_completed_primitives() override;
 

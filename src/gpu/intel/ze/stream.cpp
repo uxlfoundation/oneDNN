@@ -90,12 +90,12 @@ void stream_t::after_exec_hook() {
     if (auto *vp = verbose_profiler()) { vp->check_for_completed_primitives(); }
 }
 
-status_t stream_t::run_verbose_profiler(
-        const std::string &pd_info, double start_ms, uint64_t component) {
+status_t stream_t::run_verbose_profiler(const std::string &pd_info,
+        double start_ms, uint64_t component, uint64_t trace_id) {
     if (!is_verbose_profiler_enabled()) return status::success;
 
     auto *vp = verbose_profiler();
-    vp->add_to_pending_primitive_list(start_ms, pd_info, component);
+    vp->add_to_pending_primitive_list(start_ms, pd_info, component, trace_id);
     return status::success;
 }
 

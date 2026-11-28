@@ -91,7 +91,7 @@ struct stream_t : public gpu::intel::stream_t {
     }
 
     status_t run_verbose_profiler(const std::string &pd_info, double start_ms,
-            uint64_t component) override;
+            uint64_t component, uint64_t trace_id) override;
 
     ::sycl::queue &queue() const { return *impl()->queue(); }
 

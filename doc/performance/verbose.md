@@ -33,6 +33,7 @@ the type of tracing information to display.
 | \                          | `profile_exec`      | primitive execution timings                       |
 | \                          | `profile`           | primitive creation and execution timings          |
 | \                          | `dispatch`          | primitive dispatching information                 |
+| \                          | `trace`             | creation and execution trace markers              |
 | \                          | `all`               | enables all above flags but `none`                |
 | \                          | `debuginfo=<level>` | enables internal debug printing (for developers)  |
 | `ONEDNN_VERBOSE_TIMESTAMP` | **0**               | **display timestamps disabled (default)**         |
@@ -178,6 +179,34 @@ created while `profile_exec` is enabled; enabling it later with
 @ref dnnl::set_verbose falls back to host-measured times for existing streams.
 For the asynchronous threadpool, it can be enabled or disabled at any time.
 
+### Identifying a crashing primitive with `trace` markers
+
+`ONEDNN_VERBOSE=trace` prints start and end trace markers around each
+primitive and compiled partition creation and execution. A start marker
+without a matching end marker identifies the primitive that crashed.
+
+~~~sh
+ONEDNN_VERBOSE=trace ./benchdnn --matmul 3x128x256:3x256x512
+~~~
+
+This produces the following output (shortened for brevity):
+
+~~~sh
+onednn_verbose,v1,primitive,create:trace,cpu,matmul,brg_matmul:avx512_core,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,,,3x128x256:3x256x512,start_id:1
+onednn_verbose,v1,primitive,create:trace,cpu,matmul,brg_matmul:avx512_core,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,,,3x128x256:3x256x512,end_id:1
+onednn_verbose,v1,primitive,exec:trace,cpu,matmul,brg_matmul:avx512_core,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,,,3x128x256:3x256x512,start_id:2
+onednn_verbose,v1,primitive,exec:trace,cpu,matmul,brg_matmul:avx512_core,undef,src:f32::blocked:abc::f0 wei:f32::blocked:abc::f0 dst:f32::blocked:abc::f0,,,3x128x256:3x256x512,end_id:2
+~~~
+
+The start and end markers of the same call share a trace ID (`start_id:<id>`
+and `end_id:<id>`).
+
+The end marker is printed only after the work has finished: by the
+asynchronous verbose profiler described above when it is enabled, or after
+waiting for the stream otherwise. On asynchronous
+runtimes several calls may be in flight, so after a crash or hang the culprit
+is the earliest start marker without a matching end marker.
+
 ### Understanding why a given implementation is dispatched
 
 When performance is lower than expected, it is usually likely due to
@@ -261,7 +290,8 @@ line from left to right:
   this number represents amount of milliseconds since the last system start.
 * API kind: `primitive|graph|common` for API information
 * operation: `exec|create:<cache_hit|cache_miss|kernel_cache_hit|persistent_cache_hit|nested_primitive_cache_hit|compiled_partition_cache_hit>` for
-  profiling information, `error|check|dispatch` for other information.
+  profiling information, `error|warn|check|dispatch` for other information,
+  `create:trace|exec:trace` for trace markers.
 * engine kind: `cpu` or `gpu` (`cpu2gpu` or `gpu2cpu` for cross-engine reorder)
 * primitive name: `convolution`, `reorder`, `sum`, etc
 * primitive implementation
@@ -270,7 +300,9 @@ line from left to right:
 * primitive attributes
 * auxiliary information like algorithm name or number of inputs
 * a problem description in [benchdnn format](@ref dev_guide_benchdnn)
-* execution time in milliseconds
+* execution time in milliseconds (profiling records only)
+* trace ID in the form `<start|end>_id:<id>` (trace markers only), shared by
+  the start and end markers of the same call
 
 The information about a particular operation tensors has the following format:
 `tensor_name`_`data_type`:`properties`:`format_kind`:`format_tag`:`strides`:`extra_flags`,

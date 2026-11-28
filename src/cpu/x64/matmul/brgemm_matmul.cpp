@@ -181,8 +181,8 @@ status_t brgemm_matmul_base_t::pd_t::init(
     const bool with_int8_grouped_quantization = one_of(src_dt, u8, s8)
             && one_of(wei_dt, s4, u4, s8, u8) && one_of(dst_dt, f16, bf16, f32)
             && has_grouped_quant_attrs;
-    const bool is_f32_with_f4_wei
-            = src_dt == f32 && wei_dt == data_type::f4_e2m1 && dst_dt == f32;
+    const bool is_fp_with_f4_wei = one_of(src_dt, f32, bf16, f16)
+            && wei_dt == data_type::f4_e2m1 && one_of(dst_dt, src_dt, f32);
 
     auto check_bias = [&]() -> bool {
         const auto bia_dt = weights_md(1)->data_type;
@@ -231,13 +231,13 @@ status_t brgemm_matmul_base_t::pd_t::init(
         // weights scales. ISA-specific restrictions are checked in init_conf.
         const bool supports_xf16_scales = is_bf16_with_int_wei
                 || is_f16_with_int_wei || is_f32_with_int_wei
-                || with_int8_grouped_quantization || is_f32_with_f4_wei;
+                || with_int8_grouped_quantization || is_fp_with_f4_wei;
         for (const int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS}) {
             const auto scales_dt = asc.get_data_type(arg);
             VDISPATCH_MATMUL(one_of(scales_dt, undef, f32)
                             || (supports_xf16_scales
                                     && one_of(scales_dt, bf16, f16))
-                            || (is_f32_with_f4_wei && arg == DNNL_ARG_WEIGHTS
+                            || (is_fp_with_f4_wei && arg == DNNL_ARG_WEIGHTS
                                     && scales_dt == e8m0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
@@ -298,7 +298,7 @@ status_t brgemm_matmul_base_t::pd_t::init(
     const bool problem_dt_correct = one_of(true, is_f4, is_int8, is_f8, is_bf16,
             is_f32, is_f16, is_f32_f16, is_f32_bf16, is_bf16_with_int_wei,
             is_f16_with_int_wei, is_f32_with_int_wei, is_xf16_fp8,
-            with_int8_grouped_quantization, is_f32_with_f4_wei);
+            with_int8_grouped_quantization, is_fp_with_f4_wei);
 
     auto src_d = memory_desc_wrapper(src_md_);
     auto weights_d = memory_desc_wrapper(weights_md_);
@@ -2910,7 +2910,9 @@ void brgemm_matmul_base_t::copy_b_chunk_in_buffer(
         const auto &k_group = bgmmc.is_wei_zp_per_k ? bgmmc.wei_zp_k_gsize
                                                     : bgmmc.wei_scales_k_gsize;
         const auto brgemm_k_blk = nstl::min(bgmmc.K, bgmmc.K_blk);
-        const auto adj_k_blk = nstl::min(brgemm_k_blk, k_group);
+        const auto adj_k_blk = bgmmc.use_xf16_f4_grouped_copy()
+                ? brgemm_k_blk
+                : nstl::min(brgemm_k_blk, k_group);
         assert(adj_k_blk > 0);
         auto k = k_start;
         // is_K_tail behaves incorrectly for the case K < K_blk

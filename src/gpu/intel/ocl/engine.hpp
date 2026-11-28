@@ -86,16 +86,6 @@ public:
         return std::make_tuple(0, reinterpret_cast<uint64_t>(device()), 0);
     }
 
-    status_t serialize_device(serialization_stream_t &sstream) const override;
-
-    status_t get_cache_blob_size(size_t *size) const override {
-        return device_info_->get_cache_blob_size(size);
-    }
-
-    status_t get_cache_blob(size_t size, uint8_t *cache_blob) const override {
-        return device_info_->get_cache_blob(size, cache_blob);
-    }
-
     status_t create_program(xpu::ocl::wrapper_t<cl_program> &program,
             compute::program_src_t &src,
             const std::vector<const char *> &kernel_names,

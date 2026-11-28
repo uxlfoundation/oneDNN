@@ -123,6 +123,8 @@ status_t engine_t::create_kernels(std::vector<compute::kernel_t> *kernels,
         return status::invalid_arguments;
     }
 
+    maybe_print_build_info(kernel_names, kernel_ctx);
+
     const char *source = nullptr;
     for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
         source = intel::get_kernel_source(kernel_names[i]);
@@ -204,25 +206,6 @@ status_t engine_t::create_kernels_from_cache_blob(
 gpu_utils::device_id_t engine_t::device_id() const {
     return std::tuple_cat(
             std::make_tuple(1), xpu::ze::get_device_uuid(device()));
-}
-
-status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
-    sstream.append_array(
-            device_info()->name().size(), device_info()->name().data());
-    sstream.append(device_info()->runtime_version().major);
-    sstream.append(device_info()->runtime_version().minor);
-    sstream.append(device_info()->runtime_version().build);
-    sstream.append(device_info()->runtime_version().revision);
-
-    return status::success;
-}
-
-status_t engine_t::get_cache_blob_size(size_t *size) const {
-    return device_info_->get_cache_blob_size(size);
-}
-
-status_t engine_t::get_cache_blob(size_t size, uint8_t *cache_blob) const {
-    return device_info_->get_cache_blob(size, cache_blob);
 }
 
 ze_driver_handle_t engine_t::driver() const {

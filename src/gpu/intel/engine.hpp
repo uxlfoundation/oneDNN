@@ -54,6 +54,9 @@ struct generator_base_t;
 namespace dsl = gemmstone::dsl;
 } // namespace jit
 
+void maybe_print_build_info(const std::vector<const char *> &kernel_names,
+        const compute::kernel_ctx_t &kernel_ctx);
+
 class engine_t : public gpu::engine_t {
 public:
     engine_t(impl::engine_impl_t *impl) : gpu::engine_t(impl) {}
@@ -63,6 +66,16 @@ public:
 
     const compute::device_info_t *device_info() const {
         return device_info_.get();
+    }
+
+    status_t serialize_device(serialization_stream_t &sstream) const override;
+
+    status_t get_cache_blob_size(size_t *size) const override {
+        return device_info_->get_cache_blob_size(size);
+    }
+
+    status_t get_cache_blob(size_t size, uint8_t *cache_blob) const override {
+        return device_info_->get_cache_blob(size, cache_blob);
     }
 
     virtual status_t create_kernel(
@@ -209,6 +222,5 @@ extern "C" bool DNNL_API dnnl_impl_gpu_intel_mayiuse_ngen_kernels(
         dnnl::impl::engine_t *engine);
 extern "C" DNNL_API const char *dnnl_impl_gpu_intel_get_isa_name(
         dnnl::impl::engine_t *engine);
-extern "C" void DNNL_API dnnl_impl_gpu_intel_clear_device_info_cache();
 
 #endif

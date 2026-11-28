@@ -110,11 +110,11 @@ TEST(OCLApi, Engine) {
 
     auto alloc = ocl_interop::make_allocator(ocl_malloc_shared, ocl_free);
     {
-        auto cache_blob
+        auto cache_blob_id
                 = dnnl::ocl_interop::get_engine_cache_blob_id(device_id);
-        EXPECT_NO_THROW({
+        EXPECT_ANY_THROW({
             ocl_interop::make_engine_with_allocator(
-                    device_id, ctx, alloc, cache_blob);
+                    device_id, ctx, alloc, cache_blob_id);
         });
     }
 

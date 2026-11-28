@@ -234,12 +234,11 @@ status_t get_kernel_binary(ze_kernel_handle_t kernel, xpu::binary_t &binary) {
 bool mayiuse_microkernels(ze_device_handle_t device,
         ze_context_handle_t context, const std::string &code) {
     xpu::ze::wrapper_t<ze_module_handle_t> module_handle;
-    auto st = compile_ocl_module(
-            &module_handle.unwrap(), device, context, code, "");
-    (void)st;
-    assert(st == status::success);
-
-    return (bool)module_handle;
+    // A failed build is a valid outcome: the driver can't compile
+    // microkernels.
+    return compile_ocl_module(
+                   &module_handle.unwrap(), device, context, code, "")
+            == status::success;
 }
 
 status_t compile_ocl_module_to_binary(ze_device_handle_t device,

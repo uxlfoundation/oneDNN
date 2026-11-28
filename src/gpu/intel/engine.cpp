@@ -18,6 +18,8 @@
 
 #include "gpu/intel/engine.hpp"
 
+#include "gpu/intel/logging.hpp"
+
 #include "common/rw_mutex.hpp"
 #include "common/utils.hpp"
 
@@ -25,6 +27,18 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+
+void maybe_print_build_info(const std::vector<const char *> &kernel_names,
+        const compute::kernel_ctx_t &kernel_ctx) {
+
+    gpu_info() << "build kernels:" << [&]() {
+        ostringstream_t names;
+        for (const char *name : kernel_names)
+            if (name) names << " " << name;
+        return names.str();
+    }();
+    gpu_info() << "build options: " << kernel_ctx.options();
+}
 
 // Cache for device_info_t objects. Reuse the already initialized
 // device_info_t objects to save time on HW detection and nGEN binary
@@ -71,7 +85,10 @@ status_t engine_t::init() {
 }
 
 status_t engine_t::init(const std::vector<uint8_t> &cache_blob) {
-    if (device_info_cache_get(&device_info_, this)) return status::success;
+    // A cache blob is always parsed: a cached device info would let a blob
+    // from another build, runtime, or driver pass without verification.
+    if (cache_blob.empty() && device_info_cache_get(&device_info_, this))
+        return status::success;
     // Since init_device_info that takes a cache blob is only defined for
     // OpenCL we need to do manual dispatching here.
     if (cache_blob.empty())
@@ -79,6 +96,21 @@ status_t engine_t::init(const std::vector<uint8_t> &cache_blob) {
     else
         CHECK(init_device_info(cache_blob));
     device_info_cache_set(this, device_info_);
+
+    return status::success;
+}
+
+status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
+    assert(utils::one_of(runtime_kind(), runtime_kind::ocl, runtime_kind::ze));
+    if (runtime_kind() == runtime_kind::ocl)
+        sstream.append_array(device_info()->platform_name().size(),
+                device_info()->platform_name().data());
+    sstream.append_array(
+            device_info()->name().size(), device_info()->name().data());
+    sstream.append(device_info()->runtime_version().major);
+    sstream.append(device_info()->runtime_version().minor);
+    sstream.append(device_info()->runtime_version().build);
+    sstream.append(device_info()->runtime_version().revision);
 
     return status::success;
 }
@@ -103,12 +135,4 @@ const char *dnnl_impl_gpu_intel_get_isa_name(dnnl::impl::engine_t *engine) {
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
     return intel::compute::to_string(device_info->gpu_arch());
-}
-
-void dnnl_impl_gpu_intel_clear_device_info_cache() {
-    using namespace dnnl::impl;
-    using namespace dnnl::impl::gpu::intel;
-
-    utils::lock_write_t lock(device_info_cache_mutex());
-    device_info_cache().clear();
 }

@@ -29,11 +29,11 @@
 #include "gemmstone/microkernel/fuser.hpp"
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
-#include "gpu/intel/logging.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 #include "gpu/intel/ocl/stream.hpp"
 #include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -53,18 +53,6 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
     *engine = e.release();
 
     return status::success;
-}
-
-void maybe_print_build_info(const std::vector<const char *> &kernel_names,
-        const compute::kernel_ctx_t &kernel_ctx) {
-
-    gpu_info() << "build kernels:" << [&]() {
-        ostringstream_t names;
-        for (const char *name : kernel_names)
-            if (name) names << " " << name;
-        return names.str();
-    }();
-    gpu_info() << "build options: " << kernel_ctx.options();
 }
 
 status_t engine_t::init() {
@@ -444,28 +432,6 @@ status_t engine_t::init_device_info() {
 status_t engine_t::init_device_info(const std::vector<uint8_t> &cache_blob) {
     device_info_ = std::make_shared<device_info_t>();
     CHECK(device_info_->init(this, cache_blob));
-    return status::success;
-}
-
-status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
-    size_t platform_name_len;
-    cl_int err = xpu::ocl::clGetPlatformInfo(impl()->platform(),
-            CL_PLATFORM_NAME, 0, nullptr, &platform_name_len);
-    OCL_CHECK(err);
-
-    std::vector<char> platform_name(platform_name_len);
-    err = xpu::ocl::clGetPlatformInfo(impl()->platform(), CL_PLATFORM_NAME,
-            platform_name.size(), platform_name.data(), nullptr);
-    OCL_CHECK(err);
-
-    sstream.append_array(platform_name.size(), platform_name.data());
-    sstream.append_array(
-            device_info()->name().size(), device_info()->name().data());
-    sstream.append(device_info()->runtime_version().major);
-    sstream.append(device_info()->runtime_version().minor);
-    sstream.append(device_info()->runtime_version().build);
-    sstream.append(device_info()->runtime_version().revision);
-
     return status::success;
 }
 

@@ -16,6 +16,7 @@
 
 #include "oneapi/dnnl/dnnl_ze.h"
 
+#include "common/cache_blob_id.hpp"
 #include "common/utils.hpp"
 
 #include "xpu/ze/engine_factory.hpp"
@@ -120,8 +121,8 @@ status_t dnnl_ze_interop_engine_get_cache_blob_id(ze_driver_handle_t driver,
     VERROR_ENGINE(size, status::invalid_arguments, VERBOSE_NULL_ARG);
     size_t &id_size = *size;
 
-    // Get oneDNN version.
-    auto version = dnnl_version();
+    serialization_stream_t version_sstream;
+    serialize_version(version_sstream);
 
     // Get device name.
     ze_device_properties_t device_properties = {};
@@ -144,9 +145,7 @@ status_t dnnl_ze_interop_engine_get_cache_blob_id(ze_driver_handle_t driver,
         // `sstream.append_array` calls which adds the size itself besides
         // the content of the array.
         id_size = device_name.size() + driver_version_len
-                + sizeof(version->major) + sizeof(version->minor)
-                + sizeof(version->patch) + std::strlen(version->hash)
-                + 3 * sizeof(size_t);
+                + version_sstream.get_data().size() + 2 * sizeof(size_t);
         return status::success;
     }
 
@@ -163,13 +162,7 @@ status_t dnnl_ze_interop_engine_get_cache_blob_id(ze_driver_handle_t driver,
     // Serialize driver version.
     sstream.append_array(driver_version.size(), driver_version.data());
 
-    // Serialize oneDNN version.
-    sstream.append(version->major);
-    sstream.append(version->minor);
-    sstream.append(version->patch);
-
-    // Serialize oneDNN hash.
-    sstream.append_array(std::strlen(version->hash), version->hash);
+    serialize_version(sstream);
 
     VERROR_ENGINE(id_size == sstream.get_data().size(),
             status::invalid_arguments,

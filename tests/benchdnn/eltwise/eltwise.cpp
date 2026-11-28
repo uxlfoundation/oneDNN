@@ -230,6 +230,7 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
     const bool is_log = prb->alg == alg_t::LOG;
+    const bool is_exp = prb->alg == alg_t::EXP || prb->alg == alg_t::EXP_DST;
 
     benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
         int64_t idx_start = idx_chunk * chunk_size;
@@ -253,8 +254,19 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
         std::uniform_real_distribution<> fgen(0.f, 0.09f);
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            const int64_t num_of_generation_variants
-                    = 13 + (2 * static_cast<int64_t>(is_log));
+            // Keep an odd variant count for `is_exp` (17) so special values
+            // naturally hit all power-of-two SIMD lanes (e.g., 16 f32 lanes on
+            // AVX-512). Keep `SRC` and `DIFF_DST` (`kind == DST`) on the same
+            // variant index to avoid `f64` vs `f32`-ref mismatch when
+            // `SRC > logf(FLT_MAX)` overflows in `f32` (`0 * inf = NaN`) but
+            // stays finite in `f64` (`0 * finite = 0`). In cases 13-16,
+            // give `DIFF_DST` (`kind != SRC`) finite non-zero values instead of
+            // `NaN`/`+-inf`: on backward (`diff_src = diff_dst * exp(src)`),
+            // `DIFF_DST = NaN` would produce `NaN * anything = NaN` and mask a
+            // broken `exp(NaN)` (e.g., `exp(NaN) -> +inf`) at the same index.
+            const int64_t num_of_generation_variants = 13
+                    + (2 * static_cast<int64_t>(is_log || is_exp))
+                    + (2 * static_cast<int64_t>(is_exp));
             float value = FLT_MAX;
             switch (idx % num_of_generation_variants) {
                 case 0: value = (float)igen(msr); break; // [0-10] pos
@@ -276,8 +288,18 @@ int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
                     break; // values close to logf(FLT_MAX)/2.0 for fwd mish alg testing
                 case 11: value = prb->alpha; break; // `x = alpha` corner cases
                 case 12: value = prb->beta; break; // `x = beta` corner cases
-                case 13: value = INFINITY; break; // used in LOG alg only
-                case 14: value = -INFINITY; break; // used in LOG alg only
+                case 13:
+                    value = (is_exp && kind != SRC) ? 1.f : INFINITY;
+                    break; // used in LOG and EXP algs only
+                case 14:
+                    value = (is_exp && kind != SRC) ? 1.f : -INFINITY;
+                    break; // used in LOG and EXP algs only
+                case 15:
+                    value = kind == SRC ? NAN : 1.f;
+                    break; // used in EXP algs only
+                case 16:
+                    value = kind == SRC ? -NAN : -1.f;
+                    break; // used in EXP algs only
             }
             value = round_to_nearest_representable(prb->dt, value);
 

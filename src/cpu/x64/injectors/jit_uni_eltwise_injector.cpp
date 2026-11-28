@@ -380,13 +380,15 @@ void jit_uni_eltwise_injector_t<Wmm>::exp_compute_vector_fwd(
 
     compute_cmp_mask(vmm_src, vmm_aux(0), _cmp_lt_os);
 
-    h->uni_vminps(vmm_src, vmm_src, table_val(exp_ln_flt_max_f));
-    h->uni_vmaxps(vmm_src, vmm_src, vmm_aux(0));
-    h->uni_vmovups(vmm_aux(0), vmm_src);
+    // Put `vmm_src` as the second source operand of vminps/vmaxps so that NaN
+    // inputs are propagated instead of being clamped to the finite bounds.
+    h->uni_vmovups(vmm_aux(1), table_val(exp_ln_flt_max_f));
+    h->uni_vminps(vmm_aux(1), vmm_aux(1), vmm_src);
+    h->uni_vmaxps(vmm_aux(0), vmm_aux(0), vmm_aux(1));
 
     // calculate exp(x)
     // fx = x * log2ef + 0.5
-    h->uni_vmulps(vmm_src, vmm_src, table_val(exp_log2ef));
+    h->uni_vmulps(vmm_src, vmm_aux(0), table_val(exp_log2ef));
     h->uni_vaddps(vmm_src, vmm_src, table_val(half));
 
     // tmp = floorf(fx)

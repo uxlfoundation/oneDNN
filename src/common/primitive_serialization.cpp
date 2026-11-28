@@ -123,6 +123,7 @@ void serialize(serialization_stream_t &sstream, const memory_desc_t &md) {
             sstream.append(md.format_desc.zen_packed_desc.per_slice_size);
             sstream.append(md.format_desc.zen_packed_desc.gemm_src_dt);
             sstream.append(md.format_desc.zen_packed_desc.weights_transposed);
+            sstream.append(md.format_desc.zen_packed_desc.sym_group_size);
             break;
         case format_kind::rnn_packed:
             sstream.append(md.format_desc.rnn_packed_desc.format);

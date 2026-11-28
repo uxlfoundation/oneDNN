@@ -177,6 +177,9 @@ size_t get_md_hash(const memory_desc_t &md) {
             seed = hash_combine(seed,
                     static_cast<size_t>(
                             md.format_desc.zen_packed_desc.weights_transposed));
+            seed = hash_combine(seed,
+                    static_cast<size_t>(
+                            md.format_desc.zen_packed_desc.sym_group_size));
             break;
         case format_kind::rnn_packed:
             seed = hash_combine(seed,

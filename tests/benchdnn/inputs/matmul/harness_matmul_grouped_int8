@@ -1,0 +1,176 @@
+# Symmetric static int8 grouped GEMM (2Dx3D): s8 src, s8/s4 wei.
+# Sections expected to run on zen:grouped_matmul:lowp set --skip-impl=ref;
+# sections labeled as fallbacks run on the reference.
+#
+# Symmetric static int8: s8 src/wei with row-wise (per-token) src scales and
+# column-wise (per-expert, per-N) wei scales, no zero points. Includes an
+# empty group and a single-row-per-expert split (degenerate per-token scale).
+--reset
+--skip-impl=ref
+--dt=s8:s8:f32,s8:s8:bf16
+--wtag=any,abc,acb
+--grouped=0:4:8+8+8+8,0:4:8+0+16+8,0:4:1+1+1+29
+--attr-scales=src:1+wei:5:f32,src:1:bf16+wei:5:bf16
+32x64:4x64x32
+
+# Symmetric static int8 scale dtype fallbacks: the source and weight scales
+# must share one data type on the Zen path, so the mixed f32/bf16 pairs fall
+# back to the reference.
+--reset
+--dt=s8:s8:bf16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-scales=src:1:bf16+wei:5:f32,src:1+wei:5:bf16
+32x64:4x64x32
+
+# Symmetric static int8 with K-blocked (per-group) scales. The source and
+# weight scales must share the same K group size, a multiple of 4 dividing K
+# (not necessarily a power of two).
+--reset
+--skip-impl=ref
+--dt=s8:s8:f32,s8:s8:bf16
+--wtag=abc,acb
+--grouped=0:4:8+8+8+8,0:4:8+0+16+8
+--attr-scales=src:3:f32:1x128+wei:7:f32:128x1,src:3:bf16:1x32+wei:7:bf16:32x1
+32x512:4x512x256
+--attr-scales=src:3:f32:1x12+wei:7:f32:12x1,src:3:bf16:1x48+wei:7:bf16:48x1
+32x192:4x192x64
+
+# Per-token src with K-blocked wei: ZenDNN takes the K group size from the
+# weight scale alone, so a per-token source pairs with any weight blocking.
+# Includes a single-row-per-expert split.
+--reset
+--skip-impl=ref
+--dt=s8:s8:f32,s8:s8:bf16
+--wtag=any,abc,acb
+--grouped=0:4:8+8+8+8,0:4:8+0+16+8,0:4:1+1+1+29
+--attr-scales=src:1+wei:7:f32:128x1,src:1:bf16+wei:7:bf16:32x1
+32x512:4x512x256
+--attr-scales=src:1+wei:7:f32:48x1
+32x192:4x192x64
+
+# Symmetric static int8 fallbacks that must stay on the reference: a K-blocked
+# src with per-column wei or with a different wei group size, a wei group size
+# that is not a multiple of 4, and per-column wei scales with K % 4 != 0.
+--reset
+--dt=s8:s8:bf16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-scales=src:3:f32:1x128+wei:5:f32,src:3:f32:1x64+wei:7:f32:128x1
+32x512:4x512x256
+--attr-scales=src:1+wei:7:f32:6x1
+32x192:4x192x64
+--attr-scales=src:1+wei:5:f32
+32x30:4x30x32
+
+# Fallbacks outside the symmetric s8 contract, each one change from a
+# supported case: a u8 source, an f16 destination, and a src or wei zero
+# point.
+--reset
+--dt=u8:s8:bf16,s8:s8:f16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-scales=src:1+wei:5:f32
+32x64:4x64x32
+--dt=s8:s8:bf16
+--attr-zero-points=src:1:s8,wei:5:s8
+32x64:4x64x32
+
+# Symmetric static int8 with per-expert bias and post-ops
+--reset
+--skip-impl=ref
+--dt=s8:s8:bf16
+--wtag=any,abc
+--grouped=0:4:8+8+8+8
+--bia-dt=f32,bf16 --bia_mask=2
+--attr-scales=src:1+wei:5:f32
+--attr-post-ops=,eltwise_relu,eltwise_relu:0.25,eltwise_swish:1.0,eltwise_gelu_tanh,eltwise_clip:-1.0:2.0,eltwise_clip_v2:-0.5:0.5,mul:f32:3:grouped,mul:bf16:3:grouped,eltwise_swish:1.0+mul:f32:3:grouped,eltwise_relu:0.1+eltwise_clip:-2.0:2.0,eltwise_gelu_erf,eltwise_tanh,eltwise_logistic,eltwise_mish,mul:f32:3:ab,mul:bf16:3:ab
+32x64:4x64x32
+
+# Post-op fallbacks: a chain longer than 8 entries (counting the bias), and a
+# per-expert [G, 1] multiplier with total_M == G and N == 1.
+--reset
+--dt=s8:s8:bf16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-scales=src:1+wei:5:f32
+--attr-post-ops=relu+relu+relu+relu+relu+relu+relu+relu+relu
+32x64:4x64x32
+--bia-dt=f32 --bia_mask=2
+--attr-post-ops=relu+relu+relu+relu+relu+relu+relu+relu
+32x64:4x64x32
+
+--reset
+--dt=s8:s8:bf16
+--wtag=abc
+--grouped=0:4:2+0+1+1
+--attr-scales=src:1+wei:5:f32
+--attr-post-ops=mul:f32:0:ab
+4x64:4x64x1
+
+# Symmetric static W4A8: s8 src with s4 wei -> f32 or bf16 dst (ZenDNN W4A8
+# path). Same scale pairs as the s8 cases above, with no zero points.
+# Plain weights are abc only.
+--reset
+--skip-impl=ref
+--dt=s8:s4:f32,s8:s4:bf16
+--wtag=any,abc
+--grouped=0:4:8+8+8+8,0:4:8+0+16+8,0:4:1+1+1+29
+--attr-scales=src:1+wei:5:f32,src:1:bf16+wei:5:bf16
+32x64:4x64x32
+
+# Symmetric static W4A8 with K-blocked (per-group) wei scales: a K-blocked src
+# sharing the K group, or a per-token src.
+--reset
+--skip-impl=ref
+--dt=s8:s4:f32,s8:s4:bf16
+--wtag=any,abc
+--grouped=0:4:8+8+8+8,0:4:8+0+16+8,0:4:1+1+1+29
+--attr-scales=src:3:f32:1x128+wei:7:f32:128x1,src:3:bf16:1x32+wei:7:bf16:32x1,src:1+wei:7:f32:128x1
+32x512:4x512x256
+--attr-scales=src:3:f32:1x12+wei:7:f32:12x1,src:1:bf16+wei:7:bf16:48x1
+32x192:4x192x64
+
+# Symmetric static W4A8 with per-expert bias and post-ops
+--reset
+--skip-impl=ref
+--dt=s8:s4:f32,s8:s4:bf16
+--wtag=any,abc
+--grouped=0:4:8+8+8+8
+--bia-dt=f32,bf16 --bia_mask=2
+--attr-scales=src:1+wei:5:f32
+--attr-post-ops=,eltwise_relu,eltwise_relu:0.25,eltwise_swish:1.0,eltwise_gelu_tanh,eltwise_clip:-1.0:2.0,eltwise_clip_v2:-0.5:0.5,mul:f32:3:grouped,mul:bf16:3:grouped,eltwise_swish:1.0+mul:f32:3:grouped,eltwise_relu:0.1+eltwise_clip:-2.0:2.0,eltwise_gelu_erf,eltwise_tanh,eltwise_logistic,mul:f32:3:ab,mul:bf16:3:ab
+32x64:4x64x32
+
+# W4A8 with acb weights and N == 1: the same bytes as abc, so Zen runs it.
+--reset
+--skip-impl=ref
+--dt=s8:s4:f32,s8:s4:bf16
+--wtag=acb
+--grouped=0:4:8+8+8+8,0:4:2+0+1+29
+--attr-scales=src:1+wei:5:f32
+32x64:4x64x1
+
+# W4A8 fallbacks that must stay on the reference: plain acb weights,
+# per-column wei scales with K % 4 != 0, and mish.
+--reset
+--dt=s8:s4:bf16
+--wtag=acb
+--grouped=0:4:8+8+8+8
+--attr-scales=src:1+wei:5:f32
+32x64:4x64x32
+
+--reset
+--dt=s8:s4:bf16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-scales=src:1+wei:5:f32
+32x30:4x30x32
+
+--reset
+--dt=s8:s4:f32,s8:s4:bf16
+--wtag=any,abc
+--grouped=0:4:8+8+8+8
+--attr-scales=src:1+wei:5:f32
+--attr-post-ops=eltwise_mish,eltwise_relu+eltwise_mish
+32x64:4x64x32

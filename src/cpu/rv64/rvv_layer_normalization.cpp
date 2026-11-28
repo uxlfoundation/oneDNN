@@ -33,19 +33,61 @@ namespace rv64 {
 DEFINE_PD_CREATE(rvv_layer_normalization_fwd_t::pd_t)
 DEFINE_PD_CREATE(jit_uni_layer_normalization_bwd_t::pd_t)
 
+namespace {
+template <data_type_t dt, bool scale, bool shift, bool weights_xf16>
+const jit_rvv_layernorm_xf16_fused_kernel_t &get_xf16_kernel(
+        bool widening_sum) {
+    if (widening_sum) {
+        static const jit_rvv_layernorm_xf16_fused_kernel_t kernel(
+                dt, scale, shift, weights_xf16, true);
+        return kernel;
+    }
+    static const jit_rvv_layernorm_xf16_fused_kernel_t kernel(
+            dt, scale, shift, weights_xf16, false);
+    return kernel;
+}
+
+template <data_type_t dt, bool scale, bool shift>
+const jit_rvv_layernorm_xf16_fused_kernel_t &get_xf16_kernel(
+        bool weights_xf16, bool widening_sum) {
+    return weights_xf16
+            ? get_xf16_kernel<dt, scale, shift, true>(widening_sum)
+            : get_xf16_kernel<dt, scale, shift, false>(widening_sum);
+}
+
+template <data_type_t dt, bool scale>
+const jit_rvv_layernorm_xf16_fused_kernel_t &get_xf16_kernel(
+        bool shift, bool weights_xf16, bool widening_sum) {
+    return shift
+            ? get_xf16_kernel<dt, scale, true>(weights_xf16, widening_sum)
+            : get_xf16_kernel<dt, scale, false>(weights_xf16, widening_sum);
+}
+
+template <data_type_t dt>
+const jit_rvv_layernorm_xf16_fused_kernel_t &get_xf16_kernel(
+        bool scale, bool shift, bool weights_xf16, bool widening_sum) {
+    return scale
+            ? get_xf16_kernel<dt, true>(shift, weights_xf16, widening_sum)
+            : get_xf16_kernel<dt, false>(shift, weights_xf16, widening_sum);
+}
+} // namespace
+
 rvv_layer_normalization_fwd_t::rvv_layer_normalization_fwd_t(const pd_t *apd)
     : primitive_t(apd) {
-    if (pd()->src_md()->data_type == data_type::f16) {
+    const auto dt = pd()->src_md()->data_type;
+    if (utils::one_of(dt, data_type::f16, data_type::bf16)) {
         // The widening sum is profitable on the tested VLEN <= 256 systems
         // only when the normalized axis contains at least 129 elements.
         constexpr dim_t widening_sum_min_len = 129;
-        const bool use_widening_sum = get_platform_vlen() <= 256
+        const bool use_widening_sum = dt == data_type::f16
+                && get_platform_vlen() <= 256
                 && pd()->norm_axis() >= widening_sum_min_len;
-        const bool weights_f16
-                = pd()->weights_md()->data_type == data_type::f16;
-        f16_fused_kernel_.reset(
-                new jit_rvv_layernorm_f16_fused_kernel_t(pd()->use_scale(),
-                        pd()->use_shift(), weights_f16, use_widening_sum));
+        const bool weights_xf16 = pd()->weights_md()->data_type == dt;
+        xf16_fused_kernel_ = dt == data_type::bf16
+                ? &get_xf16_kernel<data_type::bf16>(pd()->use_scale(),
+                          pd()->use_shift(), weights_xf16, use_widening_sum)
+                : &get_xf16_kernel<data_type::f16>(pd()->use_scale(),
+                          pd()->use_shift(), weights_xf16, use_widening_sum);
     } else {
         fused_kernel_.reset(new jit_rvv_layernorm_fused_kernel_t(
                 pd()->use_scale(), pd()->use_shift()));
@@ -80,7 +122,7 @@ status_t rvv_layer_normalization_fwd_t::execute_forward(
     const bool save_stats = pd()->is_training();
     const bool calculate_stats = !pd()->stats_are_src();
 
-    if (pd()->src_md()->data_type == data_type::f16) {
+    if (xf16_fused_kernel_) {
         const auto *src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
         auto *dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
         const void *scale = pd()->use_scale()
@@ -89,19 +131,24 @@ status_t rvv_layer_normalization_fwd_t::execute_forward(
         const void *shift = pd()->use_shift()
                 ? CTX_IN_MEM(const void *, DNNL_ARG_SHIFT)
                 : nullptr;
-        const size_t dt_size = types::data_type_size(data_type::f16);
+        const size_t dt_size = types::data_type_size(pd()->src_md()->data_type);
+        const memory_desc_wrapper src_d(pd()->src_md()), dst_d(pd()->dst_md());
+        const dim_t src_offset = src_d.offset0();
+        const dim_t dst_offset = dst_d.offset0();
 
         parallel_nd(N, [&](dim_t n) {
-            jit_rvv_layernorm_f16_fused_kernel_t::call_params_t p;
-            p.src = reinterpret_cast<const char *>(src) + n * C * dt_size;
-            p.dst = reinterpret_cast<char *>(dst) + n * C * dt_size;
+            jit_rvv_layernorm_xf16_fused_kernel_t::call_params_t p;
+            p.src = reinterpret_cast<const char *>(src)
+                    + (src_offset + n * C) * dt_size;
+            p.dst = reinterpret_cast<char *>(dst)
+                    + (dst_offset + n * C) * dt_size;
             p.scale = scale;
             p.shift = shift;
             p.len = C;
             p.eps = eps;
             p.mean = save_stats ? mean_ptr + n : nullptr;
             p.variance = save_stats ? variance_ptr + n : nullptr;
-            (*f16_fused_kernel_)(&p);
+            (*xf16_fused_kernel_)(&p);
         });
         return status::success;
     }

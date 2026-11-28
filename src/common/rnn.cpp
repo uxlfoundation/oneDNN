@@ -580,6 +580,19 @@ status_t rnn_attr_check(const rnn_desc_t &desc, const engine_t *engine,
                     VCONDCHECK_RNN_UNIMPL(
                             mask == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
+            VCONDCHECK_RNN(sc.is_consistent_with(desc.weights_layer_desc),
+                    "weights scales count is inconsistent with mask");
+        }
+
+        // Check weights projection scales
+        if (!attr->rnn_weights_projection_qparams_.has_default_values()
+                && !types::is_zero_md(&desc.weights_projection_desc)) {
+            const auto &sc = attr->rnn_weights_projection_qparams_;
+            VCONDCHECK_RNN_UNIMPL(utils::one_of(sc.mask_, 0, 8),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VCONDCHECK_RNN(sc.is_consistent_with(desc.weights_projection_desc),
+                    "weights projection scales count is inconsistent with "
+                    "mask");
         }
     } else {
         VCONDCHECK_RNN_UNIMPL(

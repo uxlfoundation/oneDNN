@@ -829,13 +829,13 @@ std::vector<float> prepare_po_vals(const dnn_mem_t &dst_m, const args_t &args,
     return v_vals;
 }
 
-bool check_md_consistency_with_tag(
-        const_dnnl_memory_desc_t md, const std::string &tag) {
+bool check_md_consistency_with_tag(const_dnnl_memory_desc_t md,
+        const std::string &tag, const dims_t &strides) {
     // `tag` is either `tag::abx` or the problem tag already used in `init_pd`
     // for a tensor of the same rank, so a failure is not expected.
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> md_new_tag;
     DNN_SAFE_V(dnn_mem_t::init_md(md_new_tag, query_md_ndims(md),
-            query_md_dims(md), query_md_data_type(md), tag));
+            query_md_dims(md), query_md_data_type(md), tag, strides));
     return dnnl_memory_desc_equal(md_new_tag, md);
 }
 

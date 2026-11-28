@@ -26,6 +26,7 @@ void check_correctness(const settings_t &s, task_executor_t &task_executor) {
     for_(const auto &i_ddt : s.ddt)
     for_(const auto &i_stag : s.stag)
     for_(const auto &i_dtag : s.dtag)
+    for_(const auto &i_strides : s.strides)
     for_(const auto &i_alg : s.alg)
     for_(const auto &i_p : s.p)
     for_(const auto &i_eps : s.eps)
@@ -33,15 +34,15 @@ void check_correctness(const settings_t &s, task_executor_t &task_executor) {
     for_(const auto &i_ctx_init : s.ctx_init)
     for (const auto &i_ctx_exe : s.ctx_exe) {
         auto prb = std::make_shared<prb_t>(s.prb_vdims, i_sdt, i_ddt, i_stag,
-                i_dtag, i_alg, i_p, i_eps, i_attr, i_ctx_init, i_ctx_exe,
-                s.impl_filter);
+                i_dtag, i_strides, i_alg, i_p, i_eps, i_attr, i_ctx_init,
+                i_ctx_exe, s.impl_filter);
         if (s.pattern && !match_regex(prb->str(), s.pattern)) return;
 
         task_executor.submit(prb, s.perf_template, createit, checkit, doit);
     }
 }
 
-int verify_input(const settings_t &s) {
+int verify_input(const settings_t &s, const settings_t &def) {
     // Expect exactly two inputs for problem dimensions.
     static constexpr int n_inputs = 2;
 
@@ -51,6 +52,40 @@ int verify_input(const settings_t &s) {
                 "Please use NxNxNxNxN:MxMxMxMxM as a problem description "
                 "format.");
         SAFE_V(FAIL);
+    }
+
+    for (const auto &i_strides : s.strides) {
+        if (i_strides.size() != n_inputs) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: `strides` option expects two inputs in format "
+                    "`[SRC]:[DST]` (colon must present).");
+            SAFE_V(FAIL);
+        }
+        for (int i = 0; i < n_inputs; i++) {
+            if (!i_strides[i].empty()
+                    && i_strides[i].size()
+                            != static_cast<size_t>(s.prb_vdims.ndims)) {
+                BENCHDNN_PRINT(0, "%s\n",
+                        "ERROR: number of dimensions in the `strides` option "
+                        "doesn't match the number of dimensions in the "
+                        "problem.");
+                SAFE_V(FAIL);
+            }
+        }
+    }
+
+    for_(const auto &i_strides : s.strides)
+    for_(const auto &i_stag : s.stag)
+    for (const auto &i_dtag : s.dtag) {
+        const bool no_stride_with_tag
+                = IMPLICATION(i_stag != def.stag[0], i_strides[0].empty())
+                && IMPLICATION(i_dtag != def.dtag[0], i_strides[1].empty());
+        if (!no_stride_with_tag) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: both `strides` and `tag` knobs can't be used "
+                    "with either of `src`, or `dst` tensors.");
+            SAFE_V(FAIL);
+        }
     }
 
     return OK;
@@ -77,6 +112,7 @@ int bench(int argc, char **argv) {
                 || parse_dt(s.ddt, def.ddt, argv[0], "ddt")
                 || parse_tag(s.stag, def.stag, argv[0], "stag")
                 || parse_tag(s.dtag, def.dtag, argv[0], "dtag")
+                || parse_strides(s.strides, def.strides, argv[0], "strides")
                 || parse_alg(s.alg, def.alg, str2alg, argv[0])
                 || parse_vector_option(s.p, def.p, atof, argv[0], "p", help_p)
                 || parse_vector_option(
@@ -87,7 +123,7 @@ int bench(int argc, char **argv) {
 
             parse_prb_vdims(s.prb_vdims, argv[0]);
 
-            SAFE(verify_input(s), WARN);
+            SAFE(verify_input(s, def), WARN);
             s.finalize();
             check_correctness(s, task_executor);
         }

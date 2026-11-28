@@ -185,6 +185,8 @@ std::string prb_t::set_repro_line() {
         else
             s << tag[0] << " ";
     }
+    if (canonical || strides != def.strides[0])
+        s << "--strides=" << vdims2str(strides) << " ";
 
     if (canonical || flags != def.flags[0])
         s << "--flags=" << flags2str(flags) << " ";

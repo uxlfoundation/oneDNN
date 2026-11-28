@@ -59,6 +59,8 @@ std::string prb_t::set_repro_line() {
     if (canonical || ddt != def.ddt[0]) s << "--ddt=" << ddt << " ";
     if (canonical || stag != def.stag[0]) s << "--stag=" << stag << " ";
     if (canonical || dtag != def.dtag[0]) s << "--dtag=" << dtag << " ";
+    if (canonical || strides != def.strides[0])
+        s << "--strides=" << vdims2str(strides) << " ";
     if (canonical || alg != def.alg[0]) s << "--alg=" << alg2str(alg) << " ";
     if (canonical || axis != def.axis[0]) s << "--axis=" << axis << " ";
     if (canonical || inplace != def.inplace[0])

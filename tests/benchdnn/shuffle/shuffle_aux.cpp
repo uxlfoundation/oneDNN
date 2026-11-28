@@ -35,6 +35,8 @@ std::string prb_t::set_repro_line() {
     if (canonical || dir != def.dir[0]) s << "--dir=" << dir << " ";
     if (canonical || dt != def.dt[0]) s << "--dt=" << dt << " ";
     if (canonical || tag != def.tag[0]) s << "--tag=" << tag << " ";
+    if (canonical || strides != def.strides[0])
+        s << "--strides=" << vdims2str(strides) << " ";
     if (canonical || group != def.group[0]) s << "--group=" << group << " ";
     if (canonical || axis != def.axis[0]) s << "--axis=" << axis << " ";
 

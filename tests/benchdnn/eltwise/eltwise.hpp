@@ -41,6 +41,7 @@ struct settings_t : public base_settings_t {
     std::vector<dir_t> dir {FWD_D};
     std::vector<dnnl_data_type_t> dt {dnnl_f32};
     std::vector<std::string> tag {tag::abx};
+    std::vector<vdims_t> strides {vdims_t(2)};
     std::vector<alg_t> alg {alg_t::RELU};
     std::vector<float> alpha {0.f}, beta {0.f};
 
@@ -53,29 +54,31 @@ struct settings_t : public base_settings_t {
 
     bool has_single_setup() const override {
         return dir.size() == 1 && dt.size() == 1 && tag.size() == 1
-                && alg.size() == 1 && alpha.size() == 1 && beta.size() == 1
-                && base_settings_t::has_single_setup();
+                && strides.size() == 1 && alg.size() == 1 && alpha.size() == 1
+                && beta.size() == 1 && base_settings_t::has_single_setup();
     }
 };
 
 struct prb_t : public prb_dims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
-        : prb_t(s.prb_dims, s.dir[0], s.dt[0], s.tag[0], s.alg[0], s.alpha[0],
-                  s.beta[0], s.mb[0], s.inplace[0], s.attributes.front(),
-                  s.ctx_init[0], s.ctx_exe[0], s.impl_filter) {
+        : prb_t(s.prb_dims, s.dir[0], s.dt[0], s.tag[0], s.strides[0], s.alg[0],
+                  s.alpha[0], s.beta[0], s.mb[0], s.inplace[0],
+                  s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
+                  s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
     prb_t(const prb_dims_t &prb_dims, dir_t dir, dnnl_data_type_t dt,
-            const std::string &tag, alg_t alg, float alpha, float beta,
-            int64_t mb, bool inplace, const attr_t &attr,
-            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
-            const impl_filter_t &impl_filter)
+            const std::string &tag, const vdims_t &strides, alg_t alg,
+            float alpha, float beta, int64_t mb, bool inplace,
+            const attr_t &attr, const thr_ctx_t &ctx_init,
+            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
         , base_prb_t(dir, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , tag(tag)
+        , strides(strides)
         , alg(alg)
         , alpha(alpha)
         , beta(beta)
@@ -85,6 +88,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     }
     dnnl_data_type_t dt;
     std::string tag;
+    vdims_t strides;
     alg_t alg;
     float alpha, beta;
     int64_t user_mb;

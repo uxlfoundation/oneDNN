@@ -225,6 +225,8 @@ std::string prb_t::set_repro_line() {
     if (canonical || sdt != def.sdt[0]) s << "--sdt=" << sdt << " ";
     if (canonical || ddt != def.ddt[0]) s << "--ddt=" << ddt << " ";
     if (canonical || tag != def.tag[0]) s << "--tag=" << tag << " ";
+    if (canonical || strides != def.strides[0])
+        s << "--strides=" << vdims2str(strides) << " ";
     if (canonical || alg != def.alg[0]) s << "--alg=" << alg2str(alg) << " ";
 
     s << attr;

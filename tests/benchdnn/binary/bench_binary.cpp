@@ -101,6 +101,16 @@ int verify_input(const settings_t &s, const settings_t &def) {
         }
     }
 
+    for_(const auto &i_strides : s.strides)
+    for (auto i_inplace : s.inplace) {
+        if (i_inplace && !i_strides[STRIDES_DST].empty()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: binary driver: `dst` strides can't be used with "
+                    "`inplace=true`, only `src` strides are allowed.");
+            SAFE_V(FAIL);
+        }
+    }
+
     for (const auto &i_alg : s.alg) {
         if (!(i_alg > alg_t::BINARY_START && i_alg < alg_t::BINARY_END)) {
             BENCHDNN_PRINT(0,

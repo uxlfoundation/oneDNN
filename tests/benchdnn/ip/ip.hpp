@@ -54,6 +54,7 @@ struct settings_t : public base_settings_t {
     std::vector<std::vector<dnnl_data_type_t>> dt {{dnnl_f32}};
     std::vector<dnnl_data_type_t> bia_dt {dnnl_data_type_undef};
     std::vector<std::string> stag {tag::any}, wtag {tag::any}, dtag {tag::any};
+    std::vector<vdims_t> strides {vdims_t(STRIDES_SIZE)};
 
     const char *perf_template_csv() const {
         static const std::string args
@@ -66,7 +67,7 @@ struct settings_t : public base_settings_t {
     bool has_single_setup() const override {
         return dir.size() == 1 && dt.size() == 1 && bia_dt.size() == 1
                 && stag.size() == 1 && wtag.size() == 1 && dtag.size() == 1
-                && base_settings_t::has_single_setup();
+                && strides.size() == 1 && base_settings_t::has_single_setup();
     }
 };
 
@@ -74,17 +75,17 @@ struct prb_t : public desc_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.desc, s.dir[0], s.dt[0], s.bia_dt[0], s.stag[0], s.wtag[0],
-                  s.dtag[0], s.mb[0], s.attributes.front(), s.ctx_init[0],
-                  s.ctx_exe[0], s.impl_filter) {
+                  s.dtag[0], s.strides[0], s.mb[0], s.attributes.front(),
+                  s.ctx_init[0], s.ctx_exe[0], s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
     prb_t(const desc_t &desc, dir_t dir,
             const std::vector<dnnl_data_type_t> &dt, dnnl_data_type_t bia_dt,
             const std::string &stag, const std::string &wtag,
-            const std::string &dtag, int64_t mb, const attr_t &attr,
-            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
-            const impl_filter_t &impl_filter)
+            const std::string &dtag, const vdims_t &strides, int64_t mb,
+            const attr_t &attr, const thr_ctx_t &ctx_init,
+            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : desc_t(desc)
         , base_prb_t(dir, false, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
@@ -92,6 +93,7 @@ struct prb_t : public desc_t, public base_prb_t {
         , stag(stag)
         , wtag(wtag)
         , dtag(dtag)
+        , strides(strides)
         , user_mb(mb)
         , ops(0) {
         if (mb) this->mb = mb;
@@ -105,6 +107,7 @@ struct prb_t : public desc_t, public base_prb_t {
     std::vector<dnnl_data_type_t> dt;
     dnnl_data_type_t bia_dt_; // `_` to avoid conflicting name with bia_dt().
     std::string stag, wtag, dtag;
+    vdims_t strides;
     int64_t user_mb;
     double ops;
     void count_ops() {

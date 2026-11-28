@@ -55,6 +55,7 @@ struct settings_t : public base_settings_t {
     std::vector<dir_t> dir {FWD_D};
     std::vector<std::vector<dnnl_data_type_t>> dt {{dnnl_f32}};
     std::vector<std::vector<std::string>> tag {{tag::abx, tag::any}};
+    std::vector<vdims_t> strides {vdims_t(2)};
     std::vector<std::string> stat_tag {tag::any};
     std::vector<dnnl_data_type_t> ss_dt {dnnl_f32};
     std::vector<flags_t> flags {NONE};
@@ -71,7 +72,8 @@ struct settings_t : public base_settings_t {
 
     bool has_single_setup() const override {
         return dir.size() == 1 && dt.size() == 1 && tag.size() == 1
-                && stat_tag.size() == 1 && flags.size() == 1 && eps.size() == 1
+                && strides.size() == 1 && stat_tag.size() == 1
+                && flags.size() == 1 && eps.size() == 1
                 && base_settings_t::has_single_setup();
     }
 };
@@ -79,15 +81,16 @@ struct settings_t : public base_settings_t {
 struct prb_t : public prb_dims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
-        : prb_t(s.prb_dims, s.tag[0], s.stat_tag[0], s.ss_dt[0], s.dir[0],
-                  s.dt[0], s.flags[0], s.check_alg, s.eps[0], s.inplace[0],
-                  s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
-                  s.impl_filter) {
+        : prb_t(s.prb_dims, s.tag[0], s.strides[0], s.stat_tag[0], s.ss_dt[0],
+                  s.dir[0], s.dt[0], s.flags[0], s.check_alg, s.eps[0],
+                  s.inplace[0], s.attributes.front(), s.ctx_init[0],
+                  s.ctx_exe[0], s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
     prb_t(const prb_dims_t &prb_dims, const std::vector<std::string> &tag,
-            const std::string &stat_tag, dnnl_data_type_t ss_dt, dir_t dir,
+            const vdims_t &strides, const std::string &stat_tag,
+            dnnl_data_type_t ss_dt, dir_t dir,
             const std::vector<dnnl_data_type_t> &dt, flags_t flags,
             check_alg_t check_alg, float eps, bool inplace, const attr_t &attr,
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
@@ -96,6 +99,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
         , base_prb_t(dir, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , check_alg(check_alg)
         , tag(tag)
+        , strides(strides)
         , stat_tag(stat_tag)
         , ss_dt(ss_dt)
         , dt(dt)
@@ -114,6 +118,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
 
     check_alg_t check_alg;
     std::vector<std::string> tag;
+    vdims_t strides;
     std::string stat_tag;
     dnnl_data_type_t ss_dt;
     std::vector<dnnl_data_type_t> dt;

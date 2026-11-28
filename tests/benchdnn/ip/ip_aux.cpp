@@ -165,6 +165,8 @@ std::string prb_t::set_repro_line() {
     if (canonical || stag != def.stag[0]) s << "--stag=" << stag << " ";
     if (canonical || wtag != def.wtag[0]) s << "--wtag=" << wtag << " ";
     if (canonical || dtag != def.dtag[0]) s << "--dtag=" << dtag << " ";
+    if (canonical || strides != def.strides[0])
+        s << "--strides=" << vdims2str(strides) << " ";
 
     s << attr;
     if (canonical || ctx_init != def.ctx_init[0])

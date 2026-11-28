@@ -524,8 +524,8 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
     const prb_t *prb = prb_t::from(base_prb);
     // Update prb descriptor to re-use convolution reference.
     prb_t prb_tr((desc_t)*prb, prb->dir, prb->dt, prb->bia_dt(), prb->stag,
-            prb->wtag, prb->dtag, prb->alg, prb->mb, prb->attr, prb->ctx_init,
-            prb->ctx_exe, prb->impl_filter);
+            prb->wtag, prb->dtag, prb->strides, prb->alg, prb->mb, prb->attr,
+            prb->ctx_init, prb->ctx_exe, prb->impl_filter);
     std::swap(prb_tr.ic, prb_tr.oc);
     std::swap(prb_tr.ih, prb_tr.oh);
     std::swap(prb_tr.id, prb_tr.od);

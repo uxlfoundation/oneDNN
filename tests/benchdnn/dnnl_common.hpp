@@ -279,8 +279,8 @@ std::vector<float> prepare_po_vals(const dnn_mem_t &dst_m, const args_t &args,
         const std::vector<std::pair<int, int>> &v_po_masks,
         const size_t dst_off, int64_t group_id = 0);
 
-bool check_md_consistency_with_tag(
-        const_dnnl_memory_desc_t md, const std::string &tag);
+bool check_md_consistency_with_tag(const_dnnl_memory_desc_t md,
+        const std::string &tag, const dims_t &strides = {});
 
 memory_kind_ext_t str2memory_kind(const char *str);
 

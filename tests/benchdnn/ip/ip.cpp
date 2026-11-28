@@ -38,13 +38,13 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     bool force_f32_dt = init_pd_args.force_f32_dt;
 
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> src_d;
-    DNN_SAFE_STATUS(
-            dnn_mem_t::init_md(src_d, prb->ndims, prb->src_dims().data(),
-                    force_f32_dt ? dnnl_f32 : prb->get_dt(SRC), prb->stag));
+    DNN_SAFE_STATUS(dnn_mem_t::init_md(src_d, prb->ndims,
+            prb->src_dims().data(), force_f32_dt ? dnnl_f32 : prb->get_dt(SRC),
+            prb->stag, prb->strides[STRIDES_SRC]));
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> wei_d;
-    DNN_SAFE_STATUS(
-            dnn_mem_t::init_md(wei_d, prb->ndims, prb->wei_dims().data(),
-                    force_f32_dt ? dnnl_f32 : prb->get_dt(WEI), prb->wtag));
+    DNN_SAFE_STATUS(dnn_mem_t::init_md(wei_d, prb->ndims,
+            prb->wei_dims().data(), force_f32_dt ? dnnl_f32 : prb->get_dt(WEI),
+            prb->wtag, prb->strides[STRIDES_WEI]));
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> bia_d {};
     if (prb->bia_dt() != dnnl_data_type_undef) {
         DNN_SAFE_STATUS(dnn_mem_t::init_md(bia_d, 1, prb->bia_dims().data(),
@@ -52,7 +52,8 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     }
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dst_d;
     DNN_SAFE_STATUS(dnn_mem_t::init_md(dst_d, 2, prb->dst_dims().data(),
-            force_f32_dt ? dnnl_f32 : prb->get_dt(DST), prb->dtag));
+            force_f32_dt ? dnnl_f32 : prb->get_dt(DST), prb->dtag,
+            prb->strides[STRIDES_DST]));
 
     attr_args_t attr_args;
     DNN_SAFE_STATUS(attr_args.prepare_post_ops_mds(
@@ -126,8 +127,8 @@ int init_prim_ref(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &prim_ref,
         // Create a new copy of prb to avoid potentially corrupting the test by
         // modifying prb in place.
         prb_t prb_cpu {*prb, prb->dir, prim_ref_dt_i, prim_ref_bia_dt_i,
-                tag::any, tag::any, tag::any, prb->mb, cpu_attr, prb->ctx_init,
-                prb->ctx_exe, prb->impl_filter};
+                tag::any, tag::any, tag::any, {vdims_t(STRIDES_SIZE)}, prb->mb,
+                cpu_attr, prb->ctx_init, prb->ctx_exe, prb->impl_filter};
 
         auto st = init_prim_ref_common(prim_ref, &prb_cpu, res, init_pd);
         if (st == OK) return OK;

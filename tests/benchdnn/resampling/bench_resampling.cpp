@@ -31,17 +31,57 @@ void check_correctness(const settings_t &s, task_executor_t &task_executor) {
     for_(const auto &i_sdt : s.sdt)
     for_(const auto &i_ddt : s.ddt)
     for_(const auto &i_tag : s.tag)
+    for_(const auto &i_strides : s.strides)
     for_(const auto &i_alg : s.alg)
     for_(const auto &i_mb : s.mb)
     for_(const auto &i_attr : s.attributes)
     for_(const auto &i_ctx_init : s.ctx_init)
     for (const auto &i_ctx_exe : s.ctx_exe) {
         auto prb = std::make_shared<prb_t>(s.desc, i_dir, i_sdt, i_ddt, i_tag,
-                i_alg, i_mb, i_attr, i_ctx_init, i_ctx_exe, s.impl_filter);
+                i_strides, i_alg, i_mb, i_attr, i_ctx_init, i_ctx_exe,
+                s.impl_filter);
         if (s.pattern && !match_regex(prb->str(), s.pattern)) return;
 
         task_executor.submit(prb, s.perf_template, createit, checkit, doit);
     }
+}
+
+int verify_input(const settings_t &s, const settings_t &def) {
+    static constexpr int n_inputs = 2;
+
+    for (const auto &i_strides : s.strides) {
+        if (i_strides.size() != n_inputs) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: `strides` option expects two inputs in format "
+                    "`[SRC]:[DST]` (colon must present).");
+            SAFE_V(FAIL);
+        }
+        for (int i = 0; i < n_inputs; i++) {
+            if (!i_strides[i].empty()
+                    && i_strides[i].size()
+                            != static_cast<size_t>(s.desc.ndims)) {
+                BENCHDNN_PRINT(0, "%s\n",
+                        "ERROR: number of dimensions in the `strides` option "
+                        "doesn't match the number of dimensions in the "
+                        "problem.");
+                SAFE_V(FAIL);
+            }
+        }
+    }
+
+    for_(const auto &i_strides : s.strides)
+    for (const auto &i_tag : s.tag) {
+        const bool strided_input
+                = !i_strides[0].empty() || !i_strides[1].empty();
+        if (strided_input && i_tag != def.tag[0]) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: both `strides` and `tag` knobs can't be used "
+                    "together.");
+            SAFE_V(FAIL);
+        }
+    }
+
+    return OK;
 }
 
 int bench(int argc, char **argv) {
@@ -57,6 +97,7 @@ int bench(int argc, char **argv) {
                 || parse_dt(s.sdt, def.sdt, argv[0], "sdt")
                 || parse_dt(s.ddt, def.ddt, argv[0], "ddt")
                 || parse_tag(s.tag, def.tag, argv[0])
+                || parse_strides(s.strides, def.strides, argv[0], "strides")
                 || parse_alg(s.alg, def.alg, str2alg, argv[0])
                 || parse_mb(s.mb, def.mb, argv[0])
                 || parse_driver_shared_settings(s, def, argv[0]);
@@ -64,6 +105,8 @@ int bench(int argc, char **argv) {
             catch_unknown_options(argv[0]);
 
             SAFE(str2desc(&s.desc, argv[0]), CRIT);
+
+            SAFE(verify_input(s, def), WARN);
             s.finalize();
             check_correctness(s, task_executor);
         }

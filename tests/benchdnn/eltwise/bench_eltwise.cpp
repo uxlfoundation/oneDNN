@@ -30,6 +30,7 @@ void check_correctness(const settings_t &s, task_executor_t &task_executor) {
     for_(const auto &i_dir : s.dir)
     for_(const auto &i_dt : s.dt)
     for_(const auto &i_tag : s.tag)
+    for_(const auto &i_strides : s.strides)
     for_(const auto &i_alg : s.alg)
     for_(const auto &i_alpha : s.alpha)
     for_(const auto &i_beta : s.beta)
@@ -39,15 +40,59 @@ void check_correctness(const settings_t &s, task_executor_t &task_executor) {
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (auto i_inplace : s.inplace) {
         auto prb = std::make_shared<prb_t>(s.prb_dims, i_dir, i_dt, i_tag,
-                i_alg, i_alpha, i_beta, i_mb, i_inplace, i_attr, i_ctx_init,
-                i_ctx_exe, s.impl_filter);
+                i_strides, i_alg, i_alpha, i_beta, i_mb, i_inplace, i_attr,
+                i_ctx_init, i_ctx_exe, s.impl_filter);
         if (s.pattern && !match_regex(prb->str(), s.pattern)) return;
 
         task_executor.submit(prb, s.perf_template, createit, checkit, doit);
     }
 }
 
-int verify_input(const settings_t &s) {
+int verify_input(const settings_t &s, const settings_t &def) {
+    static constexpr int n_inputs = 2;
+
+    for (const auto &i_strides : s.strides) {
+        if (i_strides.size() != n_inputs) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: `strides` option expects two inputs in format "
+                    "`[SRC]:[DST]` (colon must present).");
+            SAFE_V(FAIL);
+        }
+        for (int i = 0; i < n_inputs; i++) {
+            if (!i_strides[i].empty()
+                    && i_strides[i].size()
+                            != static_cast<size_t>(s.prb_dims.ndims)) {
+                BENCHDNN_PRINT(0, "%s\n",
+                        "ERROR: number of dimensions in the `strides` option "
+                        "doesn't match the number of dimensions in the "
+                        "problem.");
+                SAFE_V(FAIL);
+            }
+        }
+    }
+
+    for_(const auto &i_strides : s.strides)
+    for (const auto &i_tag : s.tag) {
+        const bool strided_input
+                = !i_strides[0].empty() || !i_strides[1].empty();
+        if (strided_input && i_tag != def.tag[0]) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: both `strides` and `tag` knobs can't be used "
+                    "together.");
+            SAFE_V(FAIL);
+        }
+    }
+
+    for_(const auto &i_strides : s.strides)
+    for (auto i_inplace : s.inplace) {
+        if (i_inplace && !i_strides[1].empty()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: `dst` strides can't be used with `inplace=true`, "
+                    "only `src` strides are allowed.");
+            SAFE_V(FAIL);
+        }
+    }
+
     for (const auto &i_alg : s.alg) {
         bool ok = i_alg > alg_t::ELTWISE_START && i_alg < alg_t::ELTWISE_END;
         if (!ok) {
@@ -122,6 +167,7 @@ int bench(int argc, char **argv) {
                 || parse_dir(s.dir, def.dir, argv[0])
                 || parse_dt(s.dt, def.dt, argv[0])
                 || parse_tag(s.tag, def.tag, argv[0])
+                || parse_strides(s.strides, def.strides, argv[0], "strides")
                 || parse_vector_option(s.alpha, def.alpha, atof, argv[0],
                         "alpha", help_alpha_beta)
                 || parse_vector_option(s.beta, def.beta, atof, argv[0], "beta",
@@ -136,7 +182,7 @@ int bench(int argc, char **argv) {
 
             parse_prb_dims(s.prb_dims, argv[0]);
 
-            SAFE(verify_input(s), WARN);
+            SAFE(verify_input(s, def), WARN);
             s.finalize();
             check_correctness(s, task_executor);
         }

@@ -107,3 +107,32 @@
 --match=Prefill
 --mask=causal_top_left
 --batch=shapes_llm
+
+########################################
+# Dropout: no offset (legacy) and with offset, Sk aligned and unaligned
+# (127, 129, 385: not a multiple of the dropout group size; 132: multiple of
+# 4 only; 257: Q and K both odd)
+########################################
+
+--reset
+--dt=f16
+--scale=div
+--attr-dropout=0.1:12345:undef,0.1:12345:undef:777,0.5:99:undef:4294967298
+2x4x256x64:2x4x64x256:2x4x256x64
+2x4x256x64:2x4x64x127:2x4x127x64
+2x4x256x64:2x4x64x129:2x4x129x64
+2x4x256x64:2x4x64x132:2x4x132x64
+2x4x256x64:2x4x64x385:2x4x385x64
+2x3x257x64:2x3x64x257:2x3x257x64
+
+--reset
+--dir=BWD_D
+--dt=f16,bf16
+--scale=div
+--attr-dropout=0.1:12345:undef,0.1:12345:undef:777,0.5:99:undef:4294967298
+2x4x256x64:2x4x64x256:2x4x256x64
+2x4x256x64:2x4x64x127:2x4x127x64
+2x4x256x64:2x4x64x129:2x4x129x64
+2x4x256x64:2x4x64x132:2x4x132x64
+2x4x256x64:2x4x64x385:2x4x385x64
+2x3x257x64:2x3x64x257:2x3x257x64

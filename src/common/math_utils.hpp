@@ -455,6 +455,13 @@ inline bool is_eltwise_ok(
     return eltwise_use_src || eltwise_use_dst;
 }
 
+// Dropout uses 7 Philox rounds; stochastic rounding and the other generators
+// keep the standard 10. GPU kernels get it as PHILOX_DROPOUT_ROUNDS and
+// gpu/intel/include/philox.h fails to compile if it differs from what it
+// implements.
+constexpr int philox_dropout_rounds = 7;
+
+template <int nrounds = 10>
 inline uint32_t philox4x32(uint64_t idx, uint64_t seed, uint64_t offset) {
     // This impl is aligned with PyTorch at
     // https://github.com/pytorch/pytorch/blob/09c950c/aten/src/ATen/core/PhiloxRNGEngine.h
@@ -495,7 +502,6 @@ inline uint32_t philox4x32(uint64_t idx, uint64_t seed, uint64_t offset) {
         key[0] += PHILOX_W4x32_0;
         key[1] += PHILOX_W4x32_1;
     };
-    constexpr int nrounds = 10;
     for (int i = 0; i < (nrounds - 1); ++i) {
         philox4x32round();
         philox4x32bumpkey();
@@ -505,13 +511,31 @@ inline uint32_t philox4x32(uint64_t idx, uint64_t seed, uint64_t offset) {
     return ctr[idx & 3L];
 }
 
+template <int nrounds = 10>
 inline uint32_t philox4x32(uint32_t idx, uint32_t seed) {
     // Note: this is for compatibility with impls that don't support s64 rand
     uint64_t x = idx & ~3L;
     uint64_t idx_64 = ((x + 3) << 32) + (x + 2);
     uint64_t offset_64 = ((x + 1) << 32) + x;
     uint64_t seed_64 = (uint64_t(seed) << 32) + seed;
-    return philox4x32(idx_64, seed_64, offset_64);
+    return philox4x32<nrounds>(idx_64, seed_64, offset_64);
+}
+
+inline uint32_t philox4x32_dropout(uint32_t idx, uint32_t seed) {
+    return philox4x32<philox_dropout_rounds>(idx, seed);
+}
+
+// Dropout generator with offset: one Philox block gives eight 16-bit values.
+// idx uses halfword (idx & 7) of the block for counter (idx & ~7). The value
+// is returned in the upper 16 bits so it compares against the same 32-bit
+// threshold as the other generators.
+// Must match philox_4x32_dropout_w_offset() in src/gpu/intel/include/philox.h.
+inline uint32_t philox4x32_dropout(
+        uint64_t idx, uint64_t seed, uint64_t offset) {
+    const uint64_t h = idx & 7;
+    const uint32_t w = philox4x32<philox_dropout_rounds>(
+            (idx & ~uint64_t(7)) + (h >> 1), seed, offset);
+    return (h & 1) ? (w & 0xFFFF0000u) : (w << 16);
 }
 
 inline uint16_t philox8x16(uint32_t idx, uint32_t seed) {

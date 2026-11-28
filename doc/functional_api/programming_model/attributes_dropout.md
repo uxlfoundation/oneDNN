@@ -13,7 +13,9 @@ by fusing it with the primitive.
 In oneDNN, dropout is a special operation akin to a binary post-op that gets
 applied to the output values of a primitive right before post-ops. It depends
 on a deterministic PRNG (current implementation uses a variation of Philox
-algorithm) and transforms the values as follows:
+algorithm with 7 rounds instead of the 10 of the reference algorithm, which
+makes random number generation cheaper when fused into a primitive such as
+SDPA) and transforms the values as follows:
 
 \f[
     \mathrm{mask}[:] = (\mathrm{PRNG}(S, \mathrm{off}, :) > P) \\

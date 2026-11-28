@@ -107,53 +107,191 @@ typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
 
 #if WITH_DROPOUT
-
-inline void apply_dropout_s_tile(
-        s_tile_type *tile, int tile_offset_r, int tile_offset_c, int max_r,
-        int max_c, ulong batch_head_base, int k_stride, int use_dropout_offset,
-        long seed, long offset, uint threshold, float inv_q
+#define blk_r ugemm_kq_c_type_block0
+#define blk_c ugemm_kq_c_type_block1
+#define nblk_r ugemm_kq_c_type_nblock0
+#define nblk_c ugemm_kq_c_type_nblock1
+#define tile_len (blk_c * nblk_c)
+/* Zeroes the dropped entries of the S tile; the 1 / (1 - p) scale is
+   applied to the output. lane_base is the dropout index of key
+   tile_offset_r in this lane's first column. */
+inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
+        int tile_offset_c, int max_r, int max_c, ulong batch_head_base,
+        ulong lane_base, int k_stride, long seed, long offset, uint threshold
 #if DROPOUT_OUTPUT_MASK
         ,
         global uchar *mask_buf
 #endif
 ) {
+    /* SDPA_DROPOUT_PER_ELEMENT=1 forces the per-element reference path. */
+#define DROPOUT_GROUPED (!DROPOUT_PER_ELEMENT)
 #define dropout_predicate(offset_r, offset_c) \
     ({ \
         ulong _goff = batch_head_base + (ulong)offset_c * (ulong)k_stride \
                 + (ulong)offset_r; \
-        uint _philox = use_dropout_offset \
-                ? philox_4x32_w_offset(_goff, seed, offset) \
-                : philox_4x32(_goff, seed); \
+        uint _philox = DROPOUT_USE_OFFSET \
+                ? philox_4x32_dropout_w_offset(_goff, seed, offset) \
+                : philox_4x32_dropout(_goff, seed); \
         (offset_r < max_r && offset_c < max_c) && (_philox > threshold); \
     })
-
-    /* Build float scale tile: inv_q if keep, 0.f if drop -- same type as s_tile */
-    volatile s_tile_type scale_tile;
-    tile_predicated_select_t(scale_tile, tile_offset_r, tile_offset_c,
-            dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
-            ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
-            ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1);
-
-    /* Multiply S_tile element-wise by scale tile (both float, no conversion) */
-    s_tile_type tmp = *tile;
-#define dropout_mul(x, y) ((x) * (y))
-    tile_binary(tmp, scale_tile, dropout_mul);
-#undef dropout_mul
-    *tile = tmp;
-
-#if DROPOUT_OUTPUT_MASK
-    /* Derive uchar mask from scale_tile: nonzero -> 1 (keep), zero -> 0 (drop) */
-#define dropout_scale_to_mask(x) ((uchar)((x) != 0.f))
-    tile_store_global_bounds_cvt(scale_tile, mask_buf + batch_head_base,
-            (ulong)k_stride, tile_offset_r, tile_offset_c, max_r, max_c,
-            dropout_scale_to_mask, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
-            ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
-            ugemm_kq_c_type_nblock1);
-#undef dropout_scale_to_mask
+    /* Without a mask output, zero dropped entries in S directly. Entries
+       past max_r/max_c are already zero or never stored. */
+#define DROPOUT_IN_PLACE \
+    (DROPOUT_GROUPED && !DROPOUT_OUTPUT_MASK \
+            && !DROPOUT_VOLATILE_SCALE_WORKAROUND)
+#if DROPOUT_IN_PLACE
+    s_tile_type s_tile = *tile;
+#define dropout_set(i0, j, keep) \
+    tile_access(s_tile, i0, j, SUBGROUP_SIZE, blk_r, blk_c, nblk_r) = (keep) \
+            ? tile_access(s_tile, i0, j, SUBGROUP_SIZE, blk_r, blk_c, nblk_r) \
+            : 0.f
+#else
+#if DROPOUT_VOLATILE_SCALE_WORKAROUND
+    // Xe-HPG only: volatile avoids an IGC miscompile but adds memory traffic.
+    volatile s_tile_type keep_tile;
+#else
+    s_tile_type keep_tile;
+#endif
+#define dropout_set(i0, j, keep) \
+    tile_access(keep_tile, i0, j, SUBGROUP_SIZE, blk_r, blk_c, nblk_r) \
+            = (keep) ? 1.f : 0.f
 #endif
 
+#if DROPOUT_GROUPED
+    const philox_key_schedule_t ks = philox_4x32_key_schedule(
+            DROPOUT_USE_OFFSET ? (ulong)seed : philox_4x32_legacy_seed(seed));
+    /* A group is the DROPOUT_G consecutive dropout indices that share one
+       Philox block, starting at a multiple of DROPOUT_G: eight 16-bit values
+       (offset) or four copies of one 32-bit word (legacy). dropout_gen()
+       returns the values of the group containing its argument, and
+       dropout_gen2() those of two adjacent groups from two independent
+       chains. */
+#if DROPOUT_USE_OFFSET
+#define DROPOUT_G 8
+#define dropout_vec_t ushort8
+#define dropout_vec2_t ushort16
+#define dropout_gen(x) \
+    as_ushort8(philox_4x32_vec4_ctr_w_keys( \
+            philox_4x32_ctr_w_offset((x) & ~7UL, offset), ks.key0, ks.key1))
+#define dropout_gen2(x) \
+    ({ \
+        const ulong _g = (x) & ~7UL; \
+        as_ushort16(philox_4x32_vec4x2_ctr_w_keys( \
+                philox_4x32_ctr_w_offset(_g, offset), \
+                philox_4x32_ctr_w_offset(_g + 8, offset), ks.key0, ks.key1)); \
+    })
+#define dropout_window philox_window8
+    /* r > threshold for 32-bit r = v << 16. */
+    const ushort thr = (ushort)(threshold >> 16);
+#else
+#define DROPOUT_G 4
+#define dropout_vec_t uint4
+#define dropout_vec2_t uint8
+#define dropout_gen(x) \
+    (uint4)(philox_4x32_vec4_ctr_w_keys( \
+            philox_4x32_ctr_legacy((uint)(x)), ks.key0, ks.key1) \
+                    .s2)
+#define dropout_gen2(x) \
+    ({ \
+        const uint _g = (uint)(x); \
+        const uint8 _r \
+                = philox_4x32_vec4x2_ctr_w_keys(philox_4x32_ctr_legacy(_g), \
+                        philox_4x32_ctr_legacy(_g + 4), ks.key0, ks.key1); \
+        (uint8)((uint4)(_r.s2), (uint4)(_r.s6)); \
+    })
+#define dropout_window philox_window4
+    const uint thr = threshold;
+#endif
+#define dropout_store(v, j0) \
+    { \
+        const dropout_vec_t _v = (v); \
+        for (int w = 0; w < DROPOUT_G && (j0) + w < tile_len; w++) \
+            dropout_set(i0, (j0) + w, _v[w] > thr); \
+    }
+    /* Uniform: every lane's first key starts on a Philox block boundary. */
+    const bool aligned = (k_stride % DROPOUT_G) == 0
+            && ((batch_head_base + (ulong)tile_offset_r) % DROPOUT_G) == 0;
+    /* Each lane owns one column per i0 step and takes 2 * DROPOUT_G keys
+       per step from two independent Philox chains, for ILP (instruction-level
+       parallelism: independent instructions the GPU can overlap). */
+#pragma unroll
+    for (int i0 = 0; i0 < blk_r * nblk_r; i0 += SUBGROUP_SIZE) {
+        const ulong s = lane_base + (ulong)i0 * (ulong)k_stride;
+        if (aligned) {
+#pragma unroll
+            for (int j = 0; j < tile_len; j += 2 * DROPOUT_G) {
+                if (j + DROPOUT_G < tile_len) {
+                    const dropout_vec2_t v = dropout_gen2(s + (ulong)j);
+                    dropout_store(v.lo, j);
+                    dropout_store(v.hi, j + DROPOUT_G);
+                } else {
+                    dropout_store(dropout_gen(s + (ulong)j), j);
+                }
+            }
+        } else {
+            /* Start at the block below s and shift by a = s % DROPOUT_G. */
+            const int a = (int)(s % DROPOUT_G);
+            const ulong x0 = s - (ulong)a;
+            dropout_vec_t cur = dropout_gen(x0);
+#pragma unroll
+            for (int j = 0; j < tile_len; j += 2 * DROPOUT_G) {
+                if (j + DROPOUT_G < tile_len) {
+                    const dropout_vec2_t v
+                            = dropout_gen2(x0 + (ulong)j + DROPOUT_G);
+                    dropout_store(dropout_window(cur, v.lo, a), j);
+                    dropout_store(dropout_window(v.lo, v.hi, a), j + DROPOUT_G);
+                    cur = v.hi;
+                } else {
+                    dropout_store(
+                            dropout_window(cur,
+                                    dropout_gen(x0 + (ulong)j + DROPOUT_G), a),
+                            j);
+                }
+            }
+        }
+    }
+#undef dropout_window
+#undef dropout_store
+#undef dropout_gen2
+#undef dropout_gen
+#undef dropout_vec2_t
+#undef dropout_vec_t
+#undef DROPOUT_G
+#else
+    tile_predicated_select_t(keep_tile, tile_offset_r, tile_offset_c,
+            dropout_predicate, 1.f, 0.f, SUBGROUP_SIZE, blk_r, blk_c, nblk_r,
+            nblk_c);
+#endif
+#undef dropout_set
 #undef dropout_predicate
+
+#if DROPOUT_IN_PLACE
+    *tile = s_tile;
+#else
+    s_tile_type tmp = *tile;
+#define dropout_mul(x, y) ((x) * (y))
+    tile_binary(tmp, keep_tile, dropout_mul);
+#undef dropout_mul
+    *tile = tmp;
+#endif
+
+#if DROPOUT_OUTPUT_MASK
+    /* uchar mask: nonzero -> 1 (keep), zero -> 0 (drop). */
+#define dropout_to_mask(x) ((uchar)((x) != 0.f))
+    tile_store_global_bounds_cvt(keep_tile, mask_buf + batch_head_base,
+            (ulong)k_stride, tile_offset_r, tile_offset_c, max_r, max_c,
+            dropout_to_mask, SUBGROUP_SIZE, blk_r, blk_c, nblk_r, nblk_c);
+#undef dropout_to_mask
+#endif
+
+#undef DROPOUT_IN_PLACE
+#undef DROPOUT_GROUPED
 }
+#undef blk_r
+#undef blk_c
+#undef nblk_r
+#undef nblk_c
+#undef tile_len
 #endif
 
 // Tile debugging example for s_tile
@@ -555,7 +693,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const int remainder_k
 #if WITH_DROPOUT
         ,
-        global uchar *dropout_mask_buf, int dropout_use_offset,
+        global uchar *dropout_mask_buf,
 #if DROPOUT_HOST_SCALARS
         long dropout_seed, long dropout_offset, float dropout_p
 #else
@@ -821,7 +959,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     /* Hoist loop-invariant dropout scalars and batch offset once. */
 #if !DROPOUT_HOST_SCALARS
     long dropout_seed = dropout_seed_buf[0];
-    long dropout_offset = dropout_use_offset ? dropout_offset_buf[0] : 0;
+    long dropout_offset = DROPOUT_USE_OFFSET ? dropout_offset_buf[0] : 0;
     float dropout_p = dropout_p_buf[0];
 #endif
     uint dropout_threshold = get_dropout_threshold(dropout_p);
@@ -829,6 +967,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     const ulong dropout_batch_head_idx = (ulong)b1 * (ulong)DST_D1 + (ulong)b0;
     const ulong dropout_batch_head_base
             = dropout_batch_head_idx * (ulong)q * (ulong)k;
+    /* Dropout index of key sg_i0_kq in this lane's first query column. */
+    const ulong dropout_lane_base = dropout_batch_head_base
+            + (ulong)(wg_j0 + sg_j0_kq + get_sub_group_local_id()) * (ulong)k
+            + sg_i0_kq;
 #endif
 
     /* Main loop over k blocks */
@@ -1016,8 +1158,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #if WITH_DROPOUT
         apply_dropout_s_tile(&S_tile, k0 + sg_i0_kq, wg_j0 + sg_j0_kq, k0end, q,
-                dropout_batch_head_base, k, dropout_use_offset, dropout_seed,
-                dropout_offset, dropout_threshold, dropout_inv_q
+                dropout_batch_head_base, dropout_lane_base + (ulong)k0, k,
+                dropout_seed, dropout_offset, dropout_threshold
 #if DROPOUT_OUTPUT_MASK
                 ,
                 dropout_mask_buf
@@ -1282,6 +1424,12 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define descale_probs(x) ((x) * probs_descale)
         tile_elementwise(A_scale_tile, descale_probs);
 #undef descale_probs
+#endif
+#if WITH_DROPOUT
+        /* Kept entries of S were not scaled: apply 1 / (1 - p) here. */
+#define dropout_scale_op(x) ((x) * dropout_inv_q)
+        tile_elementwise(A_scale_tile, dropout_scale_op);
+#undef dropout_scale_op
 #endif
         tile_hbroadcast_mul(&A_tile, A_scale_tile);
     }

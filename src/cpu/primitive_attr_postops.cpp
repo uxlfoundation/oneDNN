@@ -303,8 +303,8 @@ float ref_dropout(float src, uint8_t *mask, dim_t idx, float p, int64_t seed,
     //
     // Note: for `offset = 0` keep the legacy logic without the `offset`.
     float inv_q = (p != 1.f) ? 1.f / (1.f - p) : 0.f;
-    uint32_t r = offset ? philox4x32(idx, seed, offset)
-                        : philox4x32(uint32_t(idx), uint32_t(seed));
+    uint32_t r = offset ? philox4x32_dropout(idx, seed, offset)
+                        : philox4x32_dropout(uint32_t(idx), uint32_t(seed));
     p = std::max(std::min(p, 1.f), 0.f);
     uint8_t m = (r > double(std::numeric_limits<uint32_t>::max()) * p);
     if (mask) mask[idx] = m;

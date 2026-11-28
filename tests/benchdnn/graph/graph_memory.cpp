@@ -84,7 +84,6 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
             // Fill data from reference memories.
             fill_mem_with_data(mem, g_eng, res);
         }
-
     } else {
         if (use_graph_layout) {
             // For some cases such as fake outputs and no reference memory
@@ -145,30 +144,38 @@ int dnn_graph_mem_t::fill_mem_with_data(
 
     const auto &src_dt = mem.dt();
     const auto &dst_dt = mem_.dt();
-    if (src_dt == dst_dt && mem.size() != mem_.size()) {
-        BENCHDNN_PRINT(0, "%s\n",
-                "Error: failed to fill graph memory with given memory\n");
-        SAFE(FAIL, WARN);
+
+    // If dt or eng is different, need to transfer data under same dt or
+    // engine to perform a data copy.
+    const bool need_conversion = src_dt != dst_dt || src_eng != dst_eng;
+    dnn_mem_t c_mem;
+    if (need_conversion) {
+        c_mem = dnn_mem_t(mem.ndims(), mem.dims(), dst_dt, mem.strides(),
+                dst_eng, /* prefill = */ true);
+        SAFE(c_mem.reorder(mem, res), WARN);
+    }
+    const dnn_mem_t &src_mem = need_conversion ? c_mem : mem;
+
+    if (src_mem.size() != mem_.size()) {
+        if (!mem_.is_dense()) {
+            BENCHDNN_PRINT(2, "%s",
+                    "[SKIP]: Filling graph memory with non-dense "
+                    "strides is not supported yet.\n");
+            res->state = SKIPPED;
+            res->reason = reason_t::skip_not_supported;
+            return OK;
+        } else {
+            BENCHDNN_PRINT(0,
+                    "Error: failed to fill graph memory: reference size %zu "
+                    "doesn't match graph size %zu.\n",
+                    src_mem.size(), mem_.size());
+            res->state = FAILED;
+            return FAIL;
+        }
     }
 
-    int ndims = mem.ndims();
-    const auto prim_to_graph_memcpy
-            = [](dnn_mem_t &graph_mem, const dnn_mem_t &prim_mem) {
-        const void *prim_data_handle = static_cast<const void *>(prim_mem);
-        void *graph_data_handle = graph_mem.get_mapped_pointer<void>();
-        std::memcpy(graph_data_handle, prim_data_handle, graph_mem.size());
-    };
-
-    if (src_dt != dst_dt || src_eng != dst_eng) {
-        // If dt or eng is different, need to transfer data under same dt or
-        // engine to perform a data copy.
-        dnn_mem_t c_mem(ndims, mem.dims(), dst_dt, mem.strides(), dst_eng,
-                /* prefill = */ true);
-        SAFE_V(c_mem.reorder(mem, res));
-        prim_to_graph_memcpy(mem_, c_mem);
-    } else {
-        prim_to_graph_memcpy(mem_, mem);
-    }
+    std::memcpy(mem_.get_mapped_pointer<void>(),
+            static_cast<const void *>(src_mem), mem_.size());
 
     return OK;
 }

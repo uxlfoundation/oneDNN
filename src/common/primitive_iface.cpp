@@ -163,6 +163,21 @@ status_t primitive_execute(
             pd_info = pd->info();
         }
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+        // Replace `*` of the token printed by `init_info_matmul()`
+        const std::string hint_token = "hint_max_group_size:*";
+        const size_t hint_pos = pd_info.find(hint_token);
+        const memory_t *hint_mem = ctx.input(DNNL_ARG_HINT_MAX_GROUP_SIZE);
+        int32_t hint = 0;
+        if (hint_pos != std::string::npos && hint_mem
+                && memory_desc_wrapper(hint_mem->md()).is_host_scalar_desc()
+                && hint_mem->md()->data_type == data_type::s32
+                && dnnl_memory_get_host_scalar_value(hint_mem, &hint) == success
+                && hint > 0)
+            pd_info.replace(
+                    hint_pos + hint_token.size() - 1, 1, std::to_string(hint));
+#endif
+
         // Block around execution to measure host-side timing, unless the runtime
         // supports non-blocking device-measured profiling (GPU runtimes and
         // async threadpool CPU).

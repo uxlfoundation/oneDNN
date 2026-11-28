@@ -1315,6 +1315,13 @@ std::string init_info_matmul(const engine_t *e, const pd_t *pd) {
         ss << "runtime_dims_masks:" << get_runtime_mask(src_md) << ":"
            << get_runtime_mask(wei_md);
     }
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+    // `primitive_execute()` replaces `*` with the hint value
+    if (memory_desc_wrapper(src_md).is_grouped_desc()) {
+        if (pd->has_runtime_dims_or_strides()) ss << " ";
+        ss << "hint_max_group_size:*";
+    }
+#endif
     ss << "," << dims2fmt_str_matmul(src_md, wei_md);
 
     return ss.str();

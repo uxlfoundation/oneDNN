@@ -53,49 +53,23 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc) {
     using namespace data_type;
 
-    VCHECK_MATMUL(
-            !any_null(src_desc, weights_desc, dst_desc), VERBOSE_NULL_ARG);
-
-    VCHECK_MATMUL(!any_memory_desc_host_scalar(
-                          src_desc, weights_desc, bias_desc, dst_desc),
-            VERBOSE_UNSUPPORTED_FORMAT_KIND);
-
-    auto op_d = matmul_desc_t();
-    op_d.primitive_kind = primitive_kind::matmul;
-
-    op_d.src_desc = *src_desc;
-    op_d.weights_desc = *weights_desc;
-    if (bias_desc) op_d.bias_desc = *bias_desc;
-    op_d.dst_desc = *dst_desc;
+    // Dims agree as in a batched matmul, the variable dims are placeholders
+    CHECK(matmul_desc_init(
+            matmul_desc, src_desc, weights_desc, bias_desc, dst_desc));
+    const auto &op_d = *matmul_desc;
 
     const memory_desc_wrapper src_d(&op_d.src_desc);
     const memory_desc_wrapper wei_d(&op_d.weights_desc);
     const memory_desc_wrapper dst_d(&op_d.dst_desc);
-
-    VCHECK_MATMUL_UNIMPL(
-            src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     const bool is_var_M = dst_d.is_grouped_desc() && !wei_d.is_grouped_desc();
     const bool is_var_K = wei_d.is_grouped_desc() && !dst_d.is_grouped_desc();
 
     VCHECK_MATMUL_UNIMPL(is_var_M || is_var_K, VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-    VCHECK_MATMUL_UNIMPL(
-            wei_d.ndims() == 3, VERBOSE_BAD_NDIMS, "weights", wei_d.ndims());
-    VCHECK_MATMUL_UNIMPL(
-            dst_d.ndims() == 3, VERBOSE_BAD_NDIMS, "dst", dst_d.ndims());
-
     // The tensor split along with src: dst (variable M) or wei (variable K)
     const memory_desc_wrapper &partner_d = is_var_M ? dst_d : wei_d;
     const char *partner_name = is_var_M ? "dst" : "weights";
-
-    VCHECK_MATMUL_UNIMPL(
-            src_d.grouped_variable_dim() == src_d.ndims() - (is_var_M ? 2 : 1)
-                    && partner_d.grouped_variable_dim()
-                            == partner_d.ndims() - 2,
-            VERBOSE_INCONSISTENT_DIM, "src_variable_dim",
-            src_d.grouped_variable_dim(), partner_name,
-            partner_d.grouped_variable_dim());
 
     // Only the default layout, with the variable dim outermost, is supported
     VCHECK_MATMUL_UNIMPL(src_d.strides()[3 - src_d.grouped_variable_dim()] == 1,
@@ -105,30 +79,18 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
             VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, partner_name);
 
     VCHECK_MATMUL_UNIMPL(src_d.grouped_total() == partner_d.grouped_total(),
-            VERBOSE_INCONSISTENT_DIM, "src_total", (int)src_d.grouped_total(),
-            partner_name, (int)partner_d.grouped_total());
+            VERBOSE_INCONSISTENT_DIM, "src", src_d.grouped_variable_dim(),
+            partner_name, partner_d.grouped_variable_dim());
 
     VCHECK_MATMUL_UNIMPL(
             src_d.metadata_type(0) == s32 && partner_d.metadata_type(0) == s32,
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-    // Dims agree as in a batched matmul, the variable dims are placeholders
+    // Unlike batch dims, a group dim of 1 is not broadcast
     VCHECK_MATMUL_UNIMPL(src_d.dims()[0] == wei_d.dims()[0],
             VERBOSE_INCONSISTENT_DIM, "src", 0, "weights", 0);
     VCHECK_MATMUL_UNIMPL(src_d.dims()[0] == dst_d.dims()[0],
             VERBOSE_INCONSISTENT_DIM, "src", 0, "dst", 0);
-    VCHECK_MATMUL_UNIMPL(
-            src_d.dims()[src_d.ndims() - 2] == dst_d.dims()[dst_d.ndims() - 2],
-            VERBOSE_INCONSISTENT_DIM, "src", src_d.ndims() - 2, "dst",
-            dst_d.ndims() - 2);
-    VCHECK_MATMUL_UNIMPL(
-            src_d.dims()[src_d.ndims() - 1] == wei_d.dims()[wei_d.ndims() - 2],
-            VERBOSE_INCONSISTENT_DIM, "src", src_d.ndims() - 1, "weights",
-            wei_d.ndims() - 2);
-    VCHECK_MATMUL_UNIMPL(
-            dst_d.dims()[dst_d.ndims() - 1] == wei_d.dims()[wei_d.ndims() - 1],
-            VERBOSE_INCONSISTENT_DIM, "dst", dst_d.ndims() - 1, "weights",
-            wei_d.ndims() - 1);
 
     if (is_var_M) {
         // Bias is [G, 1, N]
@@ -139,8 +101,7 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
 
             VCHECK_MATMUL_UNIMPL(
                     !bia_d.is_sparse_desc(), VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VCHECK_MATMUL_UNIMPL(bia_d.ndims() == 3
-                            && bia_d.dims()[0] == dst_d.dims()[0]
+            VCHECK_MATMUL_UNIMPL(bia_d.dims()[0] == dst_d.dims()[0]
                             && bia_d.dims()[bia_d.ndims() - 2] == 1
                             && bia_d.dims()[bia_d.ndims() - 1] == N,
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
@@ -151,11 +112,6 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
                 op_d.bias_desc.ndims == 0, VERBOSE_UNSUPPORTED_BIAS_CFG);
     }
 
-    op_d.accum_data_type = types::default_accum_data_type(src_desc->data_type,
-            weights_desc->data_type, dst_desc->data_type, prop_kind::forward);
-    VCHECK_MATMUL_UNIMPL(op_d.accum_data_type != data_type::undef,
-            VERBOSE_INVALID_DATATYPE, "accumulation");
-    *matmul_desc = op_d;
     return status::success;
 }
 

@@ -563,12 +563,13 @@ std::string md2fmt_str(
         case format_kind::rnn_packed:
         case format_kind::zen_packed:
         case format_kind::opaque: ss << "::"; break;
-        case format_kind::sparse: ss << ":" << mdw.encoding();
+        case format_kind::sparse: ss << ":" << mdw.encoding() << ":";
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+            // No format tag carries the order of a grouped md, so its strides
+            // are always shown
             if (mdw.is_grouped_desc())
-                ss << ":" << md2dim_str(md, dims_type_t::strides);
+                ss << md2dim_str(md, dims_type_t::strides);
 #endif
-            ss << ":";
             break;
         case format_kind::any: ss << ":any:"; break;
         default:

@@ -291,6 +291,16 @@ where:
 5. `extra_flags` is unspecified information that is intended for development
    purposes.
 
+A grouped memory descriptor (see @ref dev_guide_grouped_mem) has the `sparse`
+format kind and the `grouped` format tag, and always shows its `strides`, since
+no format tag conveys the order of its dimensions, for example
+`src:f32::sparse:grouped:0x64x1:f0`. In the problem description, its variable
+dimension shows the size summed over all groups, so `{4, *, 64}` with a total
+of 32 appears as `4x32x64`; per-group sizes are not shown. benchdnn takes such
+a problem description with its `--grouped` option. For matmul, the grouped
+tensors tell which dimension varies: a grouped source and destination mean
+variable `M`, and a grouped source and weights mean variable `K`.
+
 @note
 Grouped matmul lines show `hint_max_group_size:*` in the auxiliary information.
 When max group size hint is passed during the execution, `*` is replaced with the hint value.

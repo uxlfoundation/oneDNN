@@ -188,6 +188,37 @@ int verify_input(const settings_t &s, const settings_t &def) {
     return OK;
 }
 
+// A grouped src, and the weights of variable K, may also come in the 3D form
+// of the library descriptor that verbose prints, with G first. Dropping G
+// gives the 2D form the driver uses
+int drop_group_dim(settings_t &s) {
+    const auto &so = s.sparse_options[0];
+    if (!so.is_grouped(DNNL_ARG_SRC)) return OK;
+
+    const bool is_var_K = so.get_variable_dim_idx(DNNL_ARG_SRC) == 1;
+    auto vdims = s.prb_vdims.vdims;
+    bool dropped = false;
+    for (int i = 0; i < (is_var_K ? 2 : 1); i++) {
+        if (vdims[i].size() != 3) continue;
+        // All grouped configs run with this shape
+        for (const auto &i_so : s.sparse_options) {
+            if (!i_so.is_grouped(DNNL_ARG_SRC)
+                    || vdims[i][0] == i_so.get_group_count())
+                continue;
+            BENCHDNN_PRINT(0,
+                    "ERROR: grouped %s dim 0 (%lld) doesn't match the number "
+                    "of groups (%lld)\n",
+                    i == 0 ? "src" : "wei", (long long)vdims[i][0],
+                    (long long)i_so.get_group_count());
+            SAFE_V(FAIL);
+        }
+        vdims[i].erase(vdims[i].begin());
+        dropped = true;
+    }
+    if (dropped) s.prb_vdims = prb_vdims_t(vdims, s.prb_vdims.name);
+    return OK;
+}
+
 // Validate input consistency for grouped encoding
 //
 // Two configurations are supported:
@@ -354,6 +385,7 @@ int bench(int argc, char **argv) {
             catch_unknown_options(argv[0]);
 
             parse_prb_vdims(s.prb_vdims, argv[0]);
+            SAFE(drop_group_dim(s), WARN);
 
             SAFE(verify_input(s, def), WARN);
             SAFE(verify_grouped_input(s), WARN);

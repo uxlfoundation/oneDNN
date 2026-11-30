@@ -48,6 +48,10 @@ where *matmul-knobs* are:
             When `M` is variable, weights must be provided as 3D `[G,K,N]`
             where `G` matches `NUM_GROUPS`. When `K` is variable, weights are
             2D `[total_K,N]` and the destination is 3D `[G,M,N]`.
+            Grouped operands can also be given in the 3D form of the library
+            descriptor that oneDNN verbose prints, with `G` first: `GxMxK`
+            for the source and `GxKxN` for variable `K` weights, where the
+            variable dimension is the total.
             Multiple configs can be comma-separated to iterate over them.
             Masks of `--attr-scales` and `--attr-zero-points` are over the 3D
             operands, src `{G, M, K}` and weights `{G, K, N}`: e.g., `src:3`
@@ -55,6 +59,8 @@ where *matmul-knobs* are:
             Example: `--grouped=0:4:32+0+32+96 160x512:4x512x256`
             means `M` dimension is variable, `4` experts are used, `32, 0, ...`
             are sizes of each group with total `32+0+32+96 = 160`.
+            Example: `--grouped=0:4:32+0+32+96 4x160x512:4x512x256` is the
+            same problem with the source in the 3D form.
             Example: `--grouped=0:4:8+8+8+8:8` specifies max group size of `8`.
             Example: `--grouped=0:4:8+8+8+8,0:3:2+6+8` iterates over two configs.
  - `--grouped=DIM_IDX:NUM_GROUPS:PROFILE[.PARAM][:HINT]` -- alternative form
